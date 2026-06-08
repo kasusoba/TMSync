@@ -156,6 +156,9 @@ function QuickLinkRow({
   onSave,
   onDelete,
   onToggle,
+  onMove,
+  first,
+  last,
   startOpen,
 }: {
   site: QuickLinkSite;
@@ -163,6 +166,9 @@ function QuickLinkRow({
   onSave: (site: QuickLinkSite) => Promise<void>;
   onDelete: (id: string) => void;
   onToggle: (id: string) => void;
+  onMove: (id: string, dir: -1 | 1) => void;
+  first: boolean;
+  last: boolean;
   startOpen: boolean;
 }) {
   const [open, setOpen] = useState(startOpen);
@@ -197,6 +203,24 @@ function QuickLinkRow({
           <strong>{site.name}</strong>
           {site.source === "library" && <span class="muted"> · library</span>}
         </label>
+        <button
+          type="button"
+          class="link"
+          disabled={busy || first}
+          title="Move up"
+          onClick={() => onMove(site.id, -1)}
+        >
+          ↑
+        </button>
+        <button
+          type="button"
+          class="link"
+          disabled={busy || last}
+          title="Move down"
+          onClick={() => onMove(site.id, 1)}
+        >
+          ↓
+        </button>
         <button type="button" class="link" onClick={() => setOpen((v) => !v)}>
           {open ? "Close" : "Edit"}
         </button>
@@ -255,6 +279,7 @@ function QuickLinks({
   onSave,
   onDelete,
   onToggle,
+  onMove,
   onAdd,
   onAddFromRecipe,
   justAdded,
@@ -265,6 +290,7 @@ function QuickLinks({
   onSave: (site: QuickLinkSite) => Promise<void>;
   onDelete: (id: string) => void;
   onToggle: (id: string) => void;
+  onMove: (id: string, dir: -1 | 1) => void;
   onAdd: () => void;
   onAddFromRecipe: (s: RecipeSuggestion) => void;
   justAdded: string | null;
@@ -300,7 +326,7 @@ function QuickLinks({
       {sites.length === 0 ? (
         <p class="muted">No quick-link sites yet. Add one and give it the site’s URL patterns.</p>
       ) : (
-        sites.map((s) => (
+        sites.map((s, i) => (
           <QuickLinkRow
             key={s.id}
             site={s}
@@ -308,6 +334,9 @@ function QuickLinks({
             onSave={onSave}
             onDelete={onDelete}
             onToggle={onToggle}
+            onMove={onMove}
+            first={i === 0}
+            last={i === sites.length - 1}
             startOpen={s.id === justAdded}
           />
         ))
@@ -551,6 +580,19 @@ export function App() {
     await quickLinks.setValue(next);
     setLinks(next);
   };
+  // Reorder: array order is the display order on both Options and Trakt pages.
+  const moveLink = async (id: string, dir: -1 | 1) => {
+    const next = [...(await quickLinks.getValue())];
+    const i = next.findIndex((s) => s.id === id);
+    const j = i + dir;
+    const a = next[i];
+    const b = next[j];
+    if (!a || !b) return;
+    next[i] = b;
+    next[j] = a;
+    await quickLinks.setValue(next);
+    setLinks(next);
+  };
   const addLink = async () => {
     const id = `ql-${Date.now()}`;
     const site: QuickLinkSite = { id, name: "New site", enabled: true };
@@ -596,6 +638,7 @@ export function App() {
         onSave={saveLink}
         onDelete={deleteLink}
         onToggle={toggleLink}
+        onMove={moveLink}
         onAdd={addLink}
         onAddFromRecipe={addFromRecipe}
         justAdded={justAdded}
