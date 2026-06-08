@@ -7,15 +7,7 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "ignore": [
-      "**/.wxt",
-      "**/.output",
-      "**/dist",
-      "**/coverage",
-      "**/node_modules",
-      "**/test-results",
-      "**/playwright-report"
-    ]
+    "ignore": ["**/.wxt", "**/.output", "**/dist", "**/coverage", "**/node_modules"]
   },
   "formatter": {
     "enabled": true,

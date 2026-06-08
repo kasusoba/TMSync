@@ -28,8 +28,3 @@ jobs:
       - run: pnpm test
       - run: pnpm build
       - run: pnpm build:firefox
-
-  # E2E (pnpm e2e) is intentionally NOT in CI: headless-extension runs are the
-  # flakiest part of the suite and pull a ~100MB browser per run, while the build
-  # + typecheck above already cover most of what it would catch. Run it locally
-  # before a release.
