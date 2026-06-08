@@ -9,9 +9,12 @@ shows to Trakt** while you watch on arbitrary streaming sites, using declarative
 
 ```
 packages/shared      # recipe schema (Zod) + types + pure extraction engine (no DOM/browser globals)
-packages/extension   # WXT app: entrypoints (background, content), messaging, options (later)
-recipes/             # versioned JSON recipe list (Phase 1 source of truth, PR-contributed)
+packages/extension   # WXT app: entrypoints (background, content, options), engine, picker, UI
+recipes/             # versioned index.json: recipes + quick links (Phase 1 source of truth, PR-contributed)
 ```
+
+**Adding a site or quick link?** See [`CONTRIBUTING.md`](./CONTRIBUTING.md) — the recipe library is
+crowdsourced via PRs to `recipes/index.json`.
 
 ## Develop
 
@@ -38,6 +41,16 @@ In place:
   (debounce, one start/session, stop on ended/leave).
 - **Element picker** — uBlock-style point-and-click (`@medv/finder`) in a Shadow-DOM overlay with
   auto-detect + live extract preview; saves a custom recipe and enables the site.
+- **Ratings & notes** — rate the movie/show/season/episode (auto-prompted after a history write or
+  from the badge), keep one personal note per item, and sync existing ratings back from Trakt.
+- **Quick links** — on a trakt.tv movie/show page, injects deep "watch on …" links to your favourite
+  sites (movie → movie, show → S1E1, season → S{n}E1, episode → S{n}E{m}); managed per-site,
+  reorderable, independent of recipes.
+- **Recipe library** — recipes **and** quick links are fetched from a versioned `index.json`
+  (ETag-conditional, schema-validated, cached), merged custom > remote > bundled. Local edits made
+  with the picker shadow a library recipe for the same site.
+- **Options page** — manage enabled sites, quick links (toggle/reorder/edit), the fetched library,
+  your custom recipes (grouped by host), and corrections.
 
 Also handled: a Shadow-DOM **scrobble badge** showing the live state **and what Trakt matched**,
 **click-to-correct** (search Trakt and fix a wrong match, remembered per scraped title),
@@ -57,4 +70,6 @@ First-run (Chrome):
    up with the picker** for a new site. Reload, press play.
 5. The badge shows live state + the matched title. Wrong match? Click the badge → search → pick.
 
-Upcoming: options page (manage sites/corrections), recipe fetch-from-CDN.
+Site definitions ship in [`recipes/index.json`](./recipes/index.json) and are fetched/refreshed at
+runtime; add your own with the picker or contribute one via PR (see
+[`CONTRIBUTING.md`](./CONTRIBUTING.md)).
