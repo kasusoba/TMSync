@@ -1,132 +1,132 @@
 {
   "recipes": [
-  {
-    "id": "cineby-movie",
-    "schemaVersion": 1,
-    "name": "Cineby",
-    "match": {
-      "urlPattern": "www\\.cineby\\.at/movie",
-      "hostnames": ["www.cineby.at"]
-    },
-    "mediaType": "auto",
-    "video": {
-      "frame": "iframe",
-      "selector": "video",
-      "watchedThreshold": 0.8
-    },
-    "extract": {
-      "title": {
-        "source": "meta",
-        "selector": "og:title",
-        "transforms": ["trim", "collapseSpaces"]
+    {
+      "id": "cineby-movie",
+      "schemaVersion": 1,
+      "name": "Cineby",
+      "match": {
+        "urlPattern": "www\\.cineby\\.at/movie",
+        "hostnames": ["www.cineby.at"]
       },
-      "year": {
-        "source": "dom",
-        "selector": ".flex-wrap > span:nth-of-type(2) > .tabular-nums",
-        "transforms": ["trim", "toInt"]
+      "mediaType": "auto",
+      "video": {
+        "frame": "iframe",
+        "selector": "video",
+        "watchedThreshold": 0.8
+      },
+      "extract": {
+        "title": {
+          "source": "meta",
+          "selector": "og:title",
+          "transforms": ["trim", "collapseSpaces"]
+        },
+        "year": {
+          "source": "dom",
+          "selector": ".flex-wrap > span:nth-of-type(2) > .tabular-nums",
+          "transforms": ["trim", "toInt"]
+        }
+      }
+    },
+    {
+      "id": "cineby-tv",
+      "schemaVersion": 1,
+      "name": "Cineby",
+      "match": {
+        "urlPattern": "www\\.cineby\\.at/tv",
+        "hostnames": ["www.cineby.at"]
+      },
+      "mediaType": "auto",
+      "video": {
+        "frame": "auto",
+        "selector": "video",
+        "watchedThreshold": 0.8
+      },
+      "extract": {
+        "title": {
+          "source": "meta",
+          "selector": "og:title",
+          "transforms": ["trim", "collapseSpaces"]
+        },
+        "season": {
+          "source": "url",
+          "regex": "(?:\\D*\\d+){1}\\D*(\\d+)",
+          "group": 1,
+          "transforms": ["toInt"]
+        },
+        "episode": {
+          "source": "url",
+          "regex": "(?:\\D*\\d+){2}\\D*(\\d+)",
+          "group": 1,
+          "transforms": ["toInt"]
+        }
+      }
+    },
+    {
+      "id": "popcornmovies-movie",
+      "schemaVersion": 1,
+      "name": "Popcorn Movies",
+      "match": {
+        "urlPattern": "popcornmovies\\.org/movie",
+        "hostnames": ["popcornmovies.org"]
+      },
+      "mediaType": "auto",
+      "video": {
+        "frame": "auto",
+        "selector": "video",
+        "watchedThreshold": 0.8
+      },
+      "extract": {
+        "title": {
+          "source": "dom",
+          "selector": "h1",
+          "transforms": ["trim", "collapseSpaces"]
+        },
+        "year": {
+          "source": "dom",
+          "selector": ".hidden > span:nth-of-type(3)",
+          "transforms": ["trim", "toInt"]
+        }
+      }
+    },
+    {
+      "id": "popcornmovies-episode",
+      "schemaVersion": 1,
+      "name": "Popcorn Movies",
+      "match": {
+        "urlPattern": "popcornmovies\\.org/episode",
+        "hostnames": ["popcornmovies.org"]
+      },
+      "mediaType": "auto",
+      "video": {
+        "frame": "auto",
+        "selector": "video",
+        "watchedThreshold": 0.8
+      },
+      "extract": {
+        "title": {
+          "source": "dom",
+          "selector": ".tracking-tighter > a",
+          "transforms": ["trim", "collapseSpaces"]
+        },
+        "year": {
+          "source": "dom",
+          "selector": ".hidden > span:nth-of-type(2)",
+          "transforms": ["trim", "toInt"]
+        },
+        "season": {
+          "source": "url",
+          "regex": "(?:\\D*\\d+){0}\\D*(\\d+)",
+          "group": 1,
+          "transforms": ["toInt"]
+        },
+        "episode": {
+          "source": "url",
+          "regex": "(?:\\D*\\d+){1}\\D*(\\d+)",
+          "group": 1,
+          "transforms": ["toInt"]
+        }
       }
     }
-  },
-  {
-    "id": "cineby-tv",
-    "schemaVersion": 1,
-    "name": "Cineby",
-    "match": {
-      "urlPattern": "www\\.cineby\\.at/tv",
-      "hostnames": ["www.cineby.at"]
-    },
-    "mediaType": "auto",
-    "video": {
-      "frame": "auto",
-      "selector": "video",
-      "watchedThreshold": 0.8
-    },
-    "extract": {
-      "title": {
-        "source": "meta",
-        "selector": "og:title",
-        "transforms": ["trim", "collapseSpaces"]
-      },
-      "season": {
-        "source": "url",
-        "regex": "(?:\\D*\\d+){1}\\D*(\\d+)",
-        "group": 1,
-        "transforms": ["toInt"]
-      },
-      "episode": {
-        "source": "url",
-        "regex": "(?:\\D*\\d+){2}\\D*(\\d+)",
-        "group": 1,
-        "transforms": ["toInt"]
-      }
-    }
-  },
-  {
-    "id": "popcornmovies-movie",
-    "schemaVersion": 1,
-    "name": "Popcorn Movies",
-    "match": {
-      "urlPattern": "popcornmovies\\.org/movie",
-      "hostnames": ["popcornmovies.org"]
-    },
-    "mediaType": "auto",
-    "video": {
-      "frame": "auto",
-      "selector": "video",
-      "watchedThreshold": 0.8
-    },
-    "extract": {
-      "title": {
-        "source": "dom",
-        "selector": "h1",
-        "transforms": ["trim", "collapseSpaces"]
-      },
-      "year": {
-        "source": "dom",
-        "selector": ".hidden > span:nth-of-type(3)",
-        "transforms": ["trim", "toInt"]
-      }
-    }
-  },
-  {
-    "id": "popcornmovies-episode",
-    "schemaVersion": 1,
-    "name": "Popcorn Movies",
-    "match": {
-      "urlPattern": "popcornmovies\\.org/episode",
-      "hostnames": ["popcornmovies.org"]
-    },
-    "mediaType": "auto",
-    "video": {
-      "frame": "auto",
-      "selector": "video",
-      "watchedThreshold": 0.8
-    },
-    "extract": {
-      "title": {
-        "source": "dom",
-        "selector": ".tracking-tighter > a",
-        "transforms": ["trim", "collapseSpaces"]
-      },
-      "year": {
-        "source": "dom",
-        "selector": ".hidden > span:nth-of-type(2)",
-        "transforms": ["trim", "toInt"]
-      },
-      "season": {
-        "source": "url",
-        "regex": "(?:\\D*\\d+){0}\\D*(\\d+)",
-        "group": 1,
-        "transforms": ["toInt"]
-      },
-      "episode": {
-        "source": "url",
-        "regex": "(?:\\D*\\d+){1}\\D*(\\d+)",
-        "group": 1,
-        "transforms": ["toInt"]
-      }
-    }
-  }
   ],
   "links": [
     {
