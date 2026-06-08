@@ -10,6 +10,10 @@ stats.html
 dist/
 coverage/
 
+# Playwright E2E
+test-results/
+playwright-report/
+
 # env & secrets (Trakt OAuth creds never committed)
 .env
 .env.*

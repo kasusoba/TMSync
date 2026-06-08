@@ -15,6 +15,7 @@
     "build:firefox": "pnpm -F @tmsync/extension build:firefox",
     "prepare": "pnpm -F @tmsync/extension exec wxt prepare",
     "test": "pnpm -r test",
+    "e2e": "pnpm -F @tmsync/extension e2e",
     "typecheck": "pnpm -r typecheck",
     "lint": "biome check .",
     "format": "biome format --write ."
