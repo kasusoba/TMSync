@@ -339,8 +339,15 @@ function RecipeLibrary({
           ? `${remote.recipes.length} recipe${remote.recipes.length === 1 ? "" : "s"} from the library · updated ${new Date(remote.fetchedAt).toLocaleString()}`
           : "Not fetched yet — it syncs automatically in the background."}
       </p>
+      {remote?.recipes.map((r) => (
+        <div class="card" key={r.id}>
+          <strong>{r.name}</strong>
+          <code class="block">{r.match.urlPattern}</code>
+        </div>
+      ))}
       <p class="hint">
-        Recipes are shared through the project repo (no server). Add a site by opening a PR —{" "}
+        Recipes are shared through the project repo (no server) and merge with your own (yours win).
+        Add a site by opening a PR —{" "}
         <a href={RECIPES.contributeUrl} target="_blank" rel="noreferrer">
           contribute here
         </a>{" "}
