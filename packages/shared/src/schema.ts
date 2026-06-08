@@ -43,6 +43,18 @@ export const LinkTemplates = z.object({
 });
 export type LinkTemplates = z.infer<typeof LinkTemplates>;
 
+/**
+ * A quick-link site shared through the recipe library (the `links` section of
+ * index.json). Per-site, separate from recipes (scraping config) but contributed
+ * in the same file. The client adds these to the user's quick-links disabled by
+ * default — the user enables their favourites.
+ */
+export const LibraryLink = LinkTemplates.extend({
+  id: z.string(),
+  name: z.string(),
+});
+export type LibraryLink = z.infer<typeof LibraryLink>;
+
 export const Recipe = z.object({
   id: z.string(),
   schemaVersion: z.number().int(), // client ignores recipes with a newer schemaVersion than it supports

@@ -1,4 +1,5 @@
-[
+{
+  "recipes": [
   {
     "id": "cineby-movie",
     "schemaVersion": 1,
@@ -126,4 +127,19 @@
       }
     }
   }
-]
+  ],
+  "links": [
+    {
+      "id": "cineby",
+      "name": "Cineby",
+      "movie": "https://www.cineby.at/movie/{tmdb}",
+      "tv": "https://www.cineby.at/tv/{tmdb}/{season}/{episode}"
+    },
+    {
+      "id": "popcornmovies",
+      "name": "Popcorn Movies",
+      "movie": "https://popcornmovies.org/movie/{slug}",
+      "tv": "https://popcornmovies.org/episode/{slug}/{season}-{episode}"
+    }
+  ]
+}

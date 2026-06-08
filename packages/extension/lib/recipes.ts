@@ -1,10 +1,14 @@
-import { type Recipe, parseRecipes } from "@tmsync/shared";
+import { type LibraryLink, type Recipe, parseLibrary } from "@tmsync/shared";
 // Bundled seed list — a fallback so the extension works offline / before the
 // first CDN fetch. The remote list (when present) supersedes it.
 import rawBundled from "../../../recipes/index.json";
 import { customRecipes, remoteRecipes } from "./storage";
 
-const bundled = parseRecipes(rawBundled as unknown[]);
+const bundledLibrary = parseLibrary(rawBundled);
+const bundled = bundledLibrary.recipes;
+
+/** Quick-link sites shipped in the bundled library (seeded even before a fetch). */
+export const bundledLinks: LibraryLink[] = bundledLibrary.links;
 
 /**
  * The recipes the engine should use, merged by precedence: the user's own custom

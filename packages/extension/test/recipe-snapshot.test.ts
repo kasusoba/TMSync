@@ -1,12 +1,12 @@
 import { type ParsedMedia, extract, parseRecipes, selectRecipe } from "@tmsync/shared";
 import { describe, expect, it } from "vitest";
-// Synthetic recipes paired with the fixtures below — kept out of the shipped
-// recipes/index.json so that list holds only real, contributable site recipes.
-import sampleRecipes from "./fixtures/sample-recipes.json";
 // Vite `?raw` inlines the saved HTML as a string (works in the WXT/Vitest env,
 // where import.meta.url is rewritten and fs paths can't be relied on).
 import episodeHtml from "./fixtures/sample-episode.html?raw";
 import movieHtml from "./fixtures/sample-movie.html?raw";
+// Synthetic recipes paired with the fixtures below — kept out of the shipped
+// recipes/index.json so that list holds only real, contributable site recipes.
+import sampleRecipes from "./fixtures/sample-recipes.json";
 
 /**
  * Recipe-snapshot harness: given saved page HTML + a recipe, assert the parsed

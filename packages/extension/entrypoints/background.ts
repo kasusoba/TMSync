@@ -1,4 +1,5 @@
 import { RECIPES } from "@/config";
+import { bundledLinks } from "@/lib/recipes";
 import {
   type QuickLinkSite,
   corrections,
@@ -33,7 +34,7 @@ import {
   reviewKey,
 } from "@/lib/trakt/util";
 import { onMessage, sendMessage } from "@/messaging";
-import { type Recipe, parseRecipes } from "@tmsync/shared";
+import { type LibraryLink, type Recipe, parseLibrary } from "@tmsync/shared";
 import { browser } from "wxt/browser";
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -56,8 +57,10 @@ export default defineBackground(() => {
   // standalone quickLinks store, then strip them from the recipes.
   void migrateRecipeLinks();
 
-  // Refresh the CDN recipe list on startup, then on a periodic alarm (the SW is
-  // ephemeral, so we can't hold a timer — constraint #4).
+  // Seed quick links shipped in the bundled library (available offline, before
+  // the first fetch), then refresh the CDN list on startup + a periodic alarm
+  // (the SW is ephemeral, so we can't hold a timer — constraint #4).
+  void mergeLibraryLinks(bundledLinks);
   void fetchRemoteRecipes();
   browser.alarms.create("tmsync-recipes", { periodInMinutes: 720 });
   browser.alarms.onAlarm.addListener((alarm) => {
@@ -455,17 +458,49 @@ async function fetchRemoteRecipes(
     }
     if (!res.ok)
       return { ok: false, count: current?.recipes.length ?? 0, error: `HTTP ${res.status}` };
-    const json = (await res.json()) as unknown;
-    const recipes = parseRecipes(Array.isArray(json) ? json : []);
+    const library = parseLibrary((await res.json()) as unknown);
     await remoteRecipes.setValue({
-      recipes,
+      recipes: library.recipes,
       fetchedAt: Date.now(),
       etag: res.headers.get("etag") ?? undefined,
     });
-    return { ok: true, count: recipes.length };
+    await mergeLibraryLinks(library.links);
+    return { ok: true, count: library.recipes.length };
   } catch (e) {
     return { ok: false, count: 0, error: errMsg(e) };
   }
+}
+
+/**
+ * Merge shared library links into the user's quick-links store. New ones arrive
+ * DISABLED (the user enables favourites); existing library-sourced entries get
+ * their templates/name refreshed but keep the user's enabled choice. User-owned
+ * entries are never touched.
+ */
+async function mergeLibraryLinks(links: LibraryLink[]): Promise<void> {
+  if (links.length === 0) return;
+  const existing = await quickLinks.getValue();
+  const byId = new Map(existing.map((s) => [s.id, s]));
+  let changed = false;
+  for (const l of links) {
+    const cur = byId.get(l.id);
+    if (!cur) {
+      byId.set(l.id, {
+        id: l.id,
+        name: l.name,
+        enabled: false,
+        source: "library",
+        movie: l.movie,
+        tv: l.tv,
+        search: l.search,
+      });
+      changed = true;
+    } else if (cur.source === "library") {
+      byId.set(l.id, { ...cur, name: l.name, movie: l.movie, tv: l.tv, search: l.search });
+      changed = true;
+    }
+  }
+  if (changed) await quickLinks.setValue([...byId.values()]);
 }
 
 /**

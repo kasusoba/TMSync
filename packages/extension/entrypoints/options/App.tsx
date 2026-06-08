@@ -195,6 +195,7 @@ function QuickLinkRow({
             onChange={() => onToggle(site.id)}
           />
           <strong>{site.name}</strong>
+          {site.source === "library" && <span class="muted"> · library</span>}
         </label>
         <button type="button" class="link" onClick={() => setOpen((v) => !v)}>
           {open ? "Close" : "Edit"}

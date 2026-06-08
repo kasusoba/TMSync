@@ -52,6 +52,9 @@ export interface QuickLinkSite extends LinkTemplates {
   id: string;
   name: string;
   enabled: boolean;
+  /** "library" = synced from the shared list (templates refresh on sync);
+   * "user"/undefined = created or fully owned by the user. */
+  source?: "library" | "user";
 }
 export const quickLinks = storage.defineItem<QuickLinkSite[]>("local:quick_links", {
   fallback: [],
