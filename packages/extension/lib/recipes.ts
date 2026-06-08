@@ -13,19 +13,22 @@ export const bundledLinks: LibraryLink[] = bundledLibrary.links;
 /**
  * The recipes the engine should use, merged by precedence: the user's own custom
  * recipes win, then the fetched remote list, then the bundled seed. Deduped by
- * id (first wins) so a custom recipe overrides a remote/bundled one with the
- * same id, and `selectRecipe` picks the user's version when several match a URL.
+ * BOTH id and urlPattern (first wins) — so a local recipe for a site cleanly
+ * SHADOWS a library recipe covering the same URL even if their ids differ. The
+ * result is one effective recipe per pattern, never a confusing double match.
  */
 export async function loadRecipes(): Promise<Recipe[]> {
   const [remoteEntry, custom] = await Promise.all([
     remoteRecipes.getValue(),
     customRecipes.getValue(),
   ]);
-  const seen = new Set<string>();
+  const seenIds = new Set<string>();
+  const seenPatterns = new Set<string>();
   const merged: Recipe[] = [];
   for (const r of [...custom, ...(remoteEntry?.recipes ?? []), ...bundled]) {
-    if (seen.has(r.id)) continue;
-    seen.add(r.id);
+    if (seenIds.has(r.id) || seenPatterns.has(r.match.urlPattern)) continue;
+    seenIds.add(r.id);
+    seenPatterns.add(r.match.urlPattern);
     merged.push(r);
   }
   return merged;

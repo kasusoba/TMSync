@@ -1,7 +1,8 @@
+import { loadRecipes } from "@/lib/recipes";
 import { customRecipes } from "@/lib/storage";
 import { sendMessage } from "@/messaging";
 import { finder } from "@medv/finder";
-import { type EngineContext, type Field, readField } from "@tmsync/shared";
+import { type EngineContext, type Field, readField, selectRecipe } from "@tmsync/shared";
 import { useEffect, useMemo, useState } from "preact/hooks";
 import {
   type DraftFieldKey,
@@ -80,29 +81,35 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
   const [picking, setPicking] = useState<DraftFieldKey | null>(null);
   const [highlight, setHighlight] = useState<Rect | null>(null);
   const [status, setStatus] = useState<string | null>(null);
-  // Set once we've loaded an existing saved recipe for this site — we then edit
-  // it in place (keep its id) instead of creating a duplicate.
+  // Set once we've loaded the user's OWN saved recipe for this site — we then
+  // edit it in place (keep its id) instead of creating a duplicate.
   const [editingId, setEditingId] = useState<string | null>(null);
   // The loaded recipe as a draft, so "Reset to saved" can revert edits.
   const [savedDraft, setSavedDraft] = useState<RecipeDraft | null>(null);
+  // Name of a LIBRARY recipe that already covers this page (when the user has no
+  // override yet) — saving here creates a local override that wins over it.
+  const [libraryCovers, setLibraryCovers] = useState<string | null>(null);
 
-  // Reload a saved recipe for this host so the panel reflects what's stored
-  // (and editing — e.g. adding quick links — doesn't clobber the scrape fields),
-  // even when opened from the homepage rather than a media page.
+  // Populate ONLY from the user's own custom recipe — never from the library, so
+  // fixing a wrong library recipe starts fresh rather than inheriting its fields.
+  // Separately note if a library recipe covers this page (transparency); the
+  // local save will shadow it (loadRecipes dedupes by urlPattern, custom-first).
   useEffect(() => {
     void (async () => {
-      const saved = (await customRecipes.getValue()).find((r) =>
-        recipeMatchesHost(r, location.hostname),
-      );
+      const custom = await customRecipes.getValue();
+      const saved = custom.find((r) => recipeMatchesHost(r, location.hostname));
       if (saved) {
         const loaded = recipeToDraft(saved);
         setDraft(loaded);
         setSavedDraft(loaded);
         setName(saved.name);
         setEditingId(saved.id);
+        return; // editing own recipe — no need for the library note
       }
+      const match = selectRecipe(await loadRecipes(), ctx);
+      if (match) setLibraryCovers(match.name);
     })();
-  }, []);
+  }, [ctx]);
 
   // Element-picking mode: highlight on hover, capture the next page click.
   useEffect(() => {
@@ -247,6 +254,14 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
             </button>
           </div>
         )}
+        {!editingId && libraryCovers && (
+          <div class="editbanner">
+            <span>
+              A library recipe (“{libraryCovers}”) already covers this page. Saving here creates
+              your local override — it wins over the library one.
+            </span>
+          </div>
+        )}
 
         <label class="name">
           Site name
@@ -357,7 +372,11 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
 
         <div class="actions">
           <button type="button" class="primary" onClick={save} disabled={!draft.fields.title}>
-            {editingId ? "Update saved recipe" : "Save & enable"}
+            {editingId
+              ? "Update saved recipe"
+              : libraryCovers
+                ? "Save override & enable"
+                : "Save & enable"}
           </button>
           <button type="button" onClick={copyJson} disabled={!draft.fields.title}>
             Copy JSON
