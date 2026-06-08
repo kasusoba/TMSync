@@ -1,0 +1,62 @@
+[
+  {
+    "id": "sample-streamer",
+    "schemaVersion": 1,
+    "name": "Sample Streamer",
+    "match": {
+      "urlPattern": "samplestreamer\\.example/watch",
+      "domFingerprint": "#video-player",
+      "hostnames": ["samplestreamer.example"]
+    },
+    "mediaType": "auto",
+    "video": {
+      "selector": "#video-player video",
+      "frame": "auto",
+      "watchedThreshold": 0.8
+    },
+    "extract": {
+      "title": {
+        "source": "meta",
+        "selector": "og:title",
+        "transforms": ["trim", "collapseSpaces"]
+      },
+      "season": {
+        "source": "jsonld",
+        "selector": "partOfTVSeason.seasonNumber"
+      },
+      "episode": {
+        "source": "jsonld",
+        "selector": "episodeNumber"
+      }
+    }
+  },
+  {
+    "id": "sample-cinema",
+    "schemaVersion": 1,
+    "name": "Sample Cinema",
+    "match": {
+      "urlPattern": "samplecinema\\.example/film",
+      "domFingerprint": ".player-shell",
+      "hostnames": ["samplecinema.example"]
+    },
+    "mediaType": "auto",
+    "video": {
+      "selector": ".player-shell video",
+      "frame": "auto",
+      "watchedThreshold": 0.85
+    },
+    "extract": {
+      "title": {
+        "source": "meta",
+        "selector": "og:title",
+        "transforms": ["trim", "collapseSpaces"]
+      },
+      "year": {
+        "source": "jsonld",
+        "selector": "datePublished",
+        "regex": "(\\d{4})",
+        "transforms": ["toInt"]
+      }
+    }
+  }
+]
