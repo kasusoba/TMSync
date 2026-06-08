@@ -24,9 +24,9 @@ export const TRAKT = {
 export const RECIPES = {
   url:
     import.meta.env.WXT_RECIPES_URL ||
-    "https://raw.githubusercontent.com/tmsync/tmsync/main/recipes/index.json",
+    "https://raw.githubusercontent.com/kasusoba/TMSync/main/recipes/index.json",
   /** Re-fetch at most this often. */
   refreshMs: 12 * 60 * 60 * 1000,
   /** Where contributors open a PR to add a site. */
-  contributeUrl: import.meta.env.WXT_RECIPES_REPO || "https://github.com/tmsync/tmsync",
+  contributeUrl: import.meta.env.WXT_RECIPES_REPO || "https://github.com/kasusoba/TMSync",
 } as const;
