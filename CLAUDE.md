@@ -18,7 +18,7 @@ TMSync is a cross-browser (Chrome + Firefox) WebExtension that passively scrobbl
 ## Stack (use exactly these)
 - **WXT** + **TypeScript** (strict). File-based entrypoints; multi-browser build (Chrome + Firefox).
 - **Injected content UI:** Preact (lightweight; content scripts ship on every page). Render inside Shadow DOM via WXT's `createShadowRootUi`. Tailwind allowed only if scoped into the shadow root.
-- **Options page:** React is fine here (not injected, weight irrelevant).
+- **Options page:** React is fine here (not injected, weight irrelevant). Any UI kit / design system is welcome (shadcn, Radix, etc.).
 - **Messaging:** `@webext-core/messaging` for typed content↔background↔options messages. No ad-hoc `postMessage` plumbing.
 - **Storage:** WXT storage API. `local` for caches (recipe list, resolution cache, per-(site,show) corrections, OAuth tokens). `sync` for small user prefs.
 - **Element picker selectors:** `@medv/finder` to generate short, robust, unique selectors. Do not hand-roll selector heuristics.
@@ -125,4 +125,4 @@ Engine contract: a single pure-ish `extract(recipe, { document, url }): ParsedMe
 - Do not request `<all_urls>` or put host permissions in the install manifest.
 - Do not let recipes carry or run JavaScript; no `eval`/`new Function`/remote scripts.
 - Do not send watch history anywhere except the user's Trakt account.
-- Do not introduce a UI component library or design framework without being asked (no Taste Skill / heavy UI kit for the injected micro-UI).
+- Keep the **injected** content UI (badge / picker / quicklinks) lean and Shadow-DOM-friendly — it ships on every granted page, so mind bundle weight and style isolation (Tailwind + headless primitives are fine; avoid a heavy CSS-in-JS runtime in the content script). The **options page** has no weight budget — use whatever UI kit/design system you like there.

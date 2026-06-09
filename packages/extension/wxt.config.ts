@@ -1,4 +1,5 @@
 import preact from "@preact/preset-vite";
+import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "wxt";
 
 // Stable identity so the OAuth redirect URI never changes across reloads:
@@ -65,6 +66,6 @@ export default defineConfig({
     },
   },
   vite: () => ({
-    plugins: [preact()],
+    plugins: [tailwindcss(), preact()],
   }),
 });

@@ -1,0 +1,11 @@
+@import "tailwindcss";
+
+/*
+ * Shared design tokens for TMSync UI. The brand accent is Trakt red.
+ * Tailwind v4 turns these into utilities: bg-trakt, text-trakt, ring-trakt, …
+ */
+@theme {
+  --color-trakt: #ed1c24;
+  --color-trakt-600: #cc141b;
+  --color-trakt-700: #a8121a;
+}

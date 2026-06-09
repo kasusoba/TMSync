@@ -24,7 +24,10 @@
   },
   "devDependencies": {
     "@preact/preset-vite": "^2.10.1",
+    "@tailwindcss/vite": "^4.3.0",
+    "clsx": "^2.1.1",
     "happy-dom": "^15.11.7",
+    "tailwindcss": "^4.3.0",
     "typescript": "^5.7.3",
     "vitest": "^3.2.4",
     "wxt": "^0.20.6"
