@@ -224,6 +224,26 @@ export function OptionsView({ variant }: { variant: Variant }) {
                     Disconnect
                   </Btn>
                 </div>
+                <div class={clsx("space-y-2 rounded-lg px-3 py-2.5", t.card)}>
+                  <div class="flex items-center justify-between gap-3">
+                    <span class="min-w-0">
+                      <span class={clsx("block text-[13px] font-medium", t.heading)}>
+                        Export to Letterboxd
+                      </span>
+                      <span class={clsx("block text-[11px] leading-relaxed", t.sub)}>
+                        Your movie history, ratings &amp; reviews as a Letterboxd-import CSV
+                        (rewatches included).
+                      </span>
+                    </span>
+                    <Btn t={t} tone="ghost">
+                      <Icon name="external" class="text-[12px]" /> Export CSV
+                    </Btn>
+                  </div>
+                  <p class={clsx("rounded-md px-2.5 py-1.5 text-[11px]", t.infoBox)}>
+                    Exported 482 entries. Import the file at Letterboxd → Settings → Import &amp;
+                    Export.
+                  </p>
+                </div>
               </>
             )}
 

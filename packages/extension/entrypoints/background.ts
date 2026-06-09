@@ -19,6 +19,7 @@ import {
   TraktNotConnectedError,
   commentItem,
   deleteComment,
+  exportLetterboxd,
   getRemoteRating,
   postComment,
   rate,
@@ -89,6 +90,18 @@ export default defineBackground(() => {
   });
 
   onMessage("disconnectTrakt", () => disconnect());
+
+  onMessage("exportLetterboxd", async () => {
+    try {
+      const { csv, count } = await exportLetterboxd();
+      return { ok: true, csv, count };
+    } catch (e) {
+      return {
+        ok: false,
+        error: e instanceof TraktNotConnectedError ? "Not connected to Trakt" : errMsg(e),
+      };
+    }
+  });
 
   // A frame reports a video event; resolve identity (cached) and scrobble.
   onMessage("scrobble", async ({ data, sender }) => {

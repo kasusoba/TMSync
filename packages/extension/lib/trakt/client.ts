@@ -1,6 +1,13 @@
 import { TRAKT } from "@/config";
 import { corrections, remoteRatings, resolutionCache } from "@/lib/storage";
-import type { ParsedMedia } from "@tmsync/shared";
+import {
+  type LetterboxdComment,
+  type ParsedMedia,
+  type TraktHistoryMovie,
+  type TraktRatedMovie,
+  buildLetterboxdRows,
+  toLetterboxdCsv,
+} from "@tmsync/shared";
 import { getValidAccessToken, refreshTokens } from "./auth";
 import type {
   RatingSyncBody,
@@ -329,4 +336,56 @@ async function errorDetail(res: Response): Promise<string | undefined> {
   } catch {
     return undefined;
   }
+}
+
+// --- Letterboxd export (reads Trakt only; constraint #1) ---
+
+/** Raw item from GET /users/me/comments/all/movies. */
+interface RawMovieComment {
+  type: string;
+  comment?: { comment?: string; review?: boolean };
+  movie?: { ids: { trakt: number } };
+}
+
+/** Walk a paginated Trakt list endpoint to completion (auth required). */
+async function getAllPages<T>(path: string, limit = 100): Promise<T[]> {
+  const out: T[] = [];
+  let page = 1;
+  let pageCount = 1;
+  do {
+    const sep = path.includes("?") ? "&" : "?";
+    const res = await api(`${path}${sep}page=${page}&limit=${limit}`, {}, true);
+    if (!res.ok) throw new Error(`Trakt ${path} returned ${res.status}`);
+    out.push(...((await res.json()) as T[]));
+    pageCount = Number(res.headers.get("X-Pagination-Page-Count")) || 1;
+    page += 1;
+  } while (page <= pageCount);
+  return out;
+}
+
+/**
+ * Build a Letterboxd-import CSV from the user's Trakt movies. Reads *history*
+ * (one record per play) so rewatches survive, plus ratings and comments. Pure
+ * shaping lives in @tmsync/shared; here we just fetch + normalise.
+ */
+export async function exportLetterboxd(): Promise<{ csv: string; count: number }> {
+  const [history, ratings, rawComments] = await Promise.all([
+    getAllPages<TraktHistoryMovie>("/sync/history/movies"),
+    getAllPages<TraktRatedMovie>("/sync/ratings/movies"),
+    getAllPages<RawMovieComment>("/users/me/comments/all/movies"),
+  ]);
+
+  const comments: LetterboxdComment[] = [];
+  for (const c of rawComments) {
+    if (c.type === "movie" && c.movie && c.comment?.comment) {
+      comments.push({
+        movieId: c.movie.ids.trakt,
+        comment: c.comment.comment,
+        isReview: !!c.comment.review,
+      });
+    }
+  }
+
+  const rows = buildLetterboxdRows({ history, ratings, comments });
+  return { csv: toLetterboxdCsv(rows), count: rows.length };
 }

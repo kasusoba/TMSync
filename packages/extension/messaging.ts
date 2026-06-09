@@ -76,6 +76,10 @@ export interface ProtocolMap {
   };
   /** Force-refresh the CDN recipe list; returns how many recipes are now cached. */
   refreshRecipes(): { ok: boolean; count: number; error?: string };
+  /** Build a Letterboxd-import CSV from the user's Trakt movie history, ratings
+   * and reviews (rewatches included). Client-side only — the CSV is returned to
+   * the page to download; nothing is sent anywhere new (constraint #6). */
+  exportLetterboxd(): { ok: boolean; csv?: string; count?: number; error?: string };
   /** Register the content script for an origin the user just granted access to. */
   registerSite(origin: string): { ok: boolean; error?: string };
   unregisterSite(origin: string): { ok: boolean };

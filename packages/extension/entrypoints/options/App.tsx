@@ -208,6 +208,8 @@ export function App() {
   const [active, setActive] = useState("account");
   const [q, setQ] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportNote, setExportNote] = useState<string | null>(null);
   const has = (s: string) => s.toLowerCase().includes(q.toLowerCase());
 
   const refresh = async () => {
@@ -315,6 +317,28 @@ export function App() {
     await quickLinks.setValue(next);
     setLinks(next);
     setJustAdded(id);
+  };
+
+  const exportLetterboxd = async () => {
+    setExporting(true);
+    setExportNote(null);
+    const out = await sendMessage("exportLetterboxd", undefined);
+    if (out.ok && out.csv !== undefined) {
+      const blob = new Blob([out.csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "trakt-letterboxd.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+      const n = out.count ?? 0;
+      setExportNote(
+        `Exported ${n} ${n === 1 ? "entry" : "entries"}. Import the file at Letterboxd → Settings → Import & Export.`,
+      );
+    } else {
+      setExportNote(`Couldn’t export: ${out.error ?? "unknown error"}`);
+    }
+    setExporting(false);
   };
 
   const deleteCorrection = (key: string) =>
@@ -426,6 +450,30 @@ export function App() {
                       {status.redirectUri}
                     </code>
                   </p>
+                )}
+                {connected && (
+                  <div class={clsx("space-y-2 rounded-lg px-3 py-2.5", t.card)}>
+                    <div class="flex items-center justify-between gap-3">
+                      <span class="min-w-0">
+                        <span class={clsx("block text-[13px] font-medium", t.heading)}>
+                          Export to Letterboxd
+                        </span>
+                        <span class={clsx("block text-[11px] leading-relaxed", t.sub)}>
+                          Your movie history, ratings &amp; reviews as a Letterboxd-import CSV
+                          (rewatches included).
+                        </span>
+                      </span>
+                      <Btn t={t} tone="ghost" disabled={exporting} onClick={exportLetterboxd}>
+                        <Icon name="external" class="text-[12px]" />{" "}
+                        {exporting ? "Exporting…" : "Export CSV"}
+                      </Btn>
+                    </div>
+                    {exportNote && (
+                      <p class={clsx("rounded-md px-2.5 py-1.5 text-[11px]", t.infoBox)}>
+                        {exportNote}
+                      </p>
+                    )}
+                  </div>
                 )}
               </>
             )}
