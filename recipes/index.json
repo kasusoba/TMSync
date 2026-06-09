@@ -139,7 +139,8 @@
       "id": "popcornmovies",
       "name": "Popcorn Movies",
       "movie": "https://popcornmovies.org/movie/{slug}",
-      "tv": "https://popcornmovies.org/episode/{slug}/{season}-{episode}"
+      "tv": "https://popcornmovies.org/episode/{slug}/{season}-{episode}",
+      "search": "https://popcornmovies.org/search/{title}"
     }
   ]
 }
