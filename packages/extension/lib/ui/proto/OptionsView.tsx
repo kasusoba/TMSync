@@ -149,7 +149,7 @@ const CORRECTIONS: Pair[] = TITLES.map((title, i) =>
 );
 
 const SECTIONS: { id: string; label: string; icon: IconName; count?: number }[] = [
-  { id: "trakt", label: "Trakt", icon: "play" },
+  { id: "trakt", label: "Account", icon: "play" },
   { id: "sites", label: "Sites", icon: "frame", count: SITES.length },
   { id: "links", label: "Quick links", icon: "link", count: QUICK_LINKS.length },
   { id: "library", label: "Library", icon: "refresh", count: LIBRARY.length },
@@ -214,13 +214,13 @@ export function OptionsView({ variant }: { variant: Variant }) {
           <div class="mx-auto max-w-xl space-y-3">
             {active === "trakt" && (
               <>
-                <PaneHead t={t} title="Trakt" />
+                <PaneHead t={t} title="Account" />
                 <div
                   class={clsx("flex items-center justify-between rounded-lg px-3 py-2.5", t.card)}
                 >
                   <span class="flex items-center gap-2 text-[13px]">
                     <span class="size-2 rounded-full bg-emerald-500" />
-                    <span class={t.heading}>Connected</span>
+                    <span class={t.heading}>Connected to Trakt</span>
                   </span>
                   <Btn t={t} tone="ghost">
                     Disconnect

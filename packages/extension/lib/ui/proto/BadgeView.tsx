@@ -39,28 +39,35 @@ export function BadgePill({
       <button
         type="button"
         class={clsx(
-          "absolute top-1 right-1.5 grid size-5 place-items-center rounded-md text-[15px] leading-none",
+          "absolute top-1 right-1 grid size-5 place-items-center rounded-md",
           t.faint,
-          "hover:bg-white/5",
+          "hover:bg-white/5 hover:text-current",
         )}
-        title="Minimize to a dot"
+        title="Minimize"
       >
-        −
+        <Icon name="minimize" class="text-[11px]" />
       </button>
     </div>
   );
 }
 
-/** Minimized: just a live status dot. */
+/** Minimized: the TMSync mark with a live status dot. Click to expand. */
 export function BadgeMini({ variant, state }: { variant: Variant; state: BadgeState }) {
   return (
-    <span
-      class={clsx(
-        "inline-block size-4 rounded-full shadow-lg shadow-black/40 ring-2",
-        STATE[state].color,
-        variant === "dark" ? "ring-white/80" : "ring-white",
-      )}
-    />
+    <button
+      type="button"
+      title="TMSync — click to expand"
+      class="relative grid size-8 place-items-center rounded-xl bg-trakt text-white shadow-lg shadow-black/40 transition-transform hover:scale-105"
+    >
+      <Icon name="play" fill class="text-[14px]" />
+      <span
+        class={clsx(
+          "absolute -top-0.5 -right-0.5 size-3 rounded-full ring-2",
+          STATE[state].color,
+          variant === "dark" ? "ring-zinc-900" : "ring-white",
+        )}
+      />
+    </button>
   );
 }
 

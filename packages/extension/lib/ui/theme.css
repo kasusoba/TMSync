@@ -9,3 +9,14 @@
   --color-trakt-600: #cc141b;
   --color-trakt-700: #a8121a;
 }
+
+/* Tailwind v4's preflight sets buttons to cursor:default — restore the pointer
+   on all interactive controls (disabled ones stay default). */
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not(:disabled),
+  [role="switch"]:not(:disabled),
+  summary {
+    cursor: pointer;
+  }
+}

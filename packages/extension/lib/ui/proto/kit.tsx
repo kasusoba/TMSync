@@ -88,7 +88,8 @@ export type IconName =
   | "refresh"
   | "up"
   | "down"
-  | "edit";
+  | "edit"
+  | "minimize";
 
 const PATHS: Record<IconName, string> = {
   check: "M20 6 9 17l-5-5",
@@ -110,6 +111,7 @@ const PATHS: Record<IconName, string> = {
   up: "m18 15-6-6-6 6",
   down: "m6 9 6 6 6-6",
   edit: "M12 20h9 M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z",
+  minimize: "M4 14h6v6 M10 14l-7 7 M20 10h-6V4 M14 10l7-7",
 };
 
 export function Icon({
