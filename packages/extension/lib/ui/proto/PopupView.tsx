@@ -34,16 +34,11 @@ export function PopupView(p: PopupViewProps) {
     <div class={clsx("w-[360px] p-4 antialiased", t.page)}>
       <div class={clsx("rounded-2xl p-4 space-y-5", t.panel)}>
         {/* header */}
-        <header class="flex items-center justify-between">
-          <div class="flex items-center gap-2">
-            <span class="grid size-7 place-items-center rounded-lg bg-trakt text-white">
-              <Icon name="play" fill class="text-[13px]" />
-            </span>
-            <span class={clsx("text-[15px] font-semibold tracking-tight", t.heading)}>TMSync</span>
-          </div>
-          <Btn t={t} tone="ghost" class="size-8 !px-0" onClick={p.onOpenOptions} title="Settings">
-            <Icon name="settings" class="text-[15px]" />
-          </Btn>
+        <header class="flex items-center gap-2">
+          <span class="grid size-7 place-items-center rounded-lg bg-trakt text-white">
+            <Icon name="play" fill class="text-[13px]" />
+          </span>
+          <span class={clsx("text-[15px] font-semibold tracking-tight", t.heading)}>TMSync</span>
         </header>
 
         {/* Trakt connection */}
@@ -145,14 +140,29 @@ export function PopupView(p: PopupViewProps) {
                 disabled={p.busy}
                 onClick={p.onSetup}
                 class={clsx(
-                  "mt-1 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed px-3 py-2.5 text-[12px] font-medium transition-colors disabled:opacity-50",
-                  t.divider,
-                  t.sub,
-                  "hover:border-trakt hover:text-trakt",
+                  "group mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition disabled:opacity-50",
+                  t.card,
+                  "hover:ring-2 hover:ring-trakt",
                 )}
               >
-                <Icon name="target" class="text-[14px]" />
-                No recipe yet — set up with the picker
+                <span class="grid size-9 shrink-0 place-items-center rounded-lg bg-trakt/15 text-trakt">
+                  <Icon name="target" class="text-[17px]" />
+                </span>
+                <span class="min-w-0 flex-1">
+                  <span class={clsx("block text-[13px] font-semibold", t.heading)}>
+                    Set up this site
+                  </span>
+                  <span class={clsx("block text-[11px]", t.sub)}>
+                    Point &amp; click to teach TMSync this page
+                  </span>
+                </span>
+                <Icon
+                  name="chevron"
+                  class={clsx(
+                    "text-[16px] transition-transform group-hover:translate-x-0.5",
+                    t.faint,
+                  )}
+                />
               </button>
               <p class={clsx("px-1 text-[11px] leading-relaxed", t.faint)}>
                 Player in another frame? Press play so it loads, then reopen this popup to enable

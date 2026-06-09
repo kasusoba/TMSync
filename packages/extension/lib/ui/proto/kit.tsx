@@ -82,7 +82,13 @@ type IconName =
   | "external"
   | "play"
   | "copy"
-  | "frame";
+  | "frame"
+  | "search"
+  | "trash"
+  | "refresh"
+  | "up"
+  | "down"
+  | "edit";
 
 const PATHS: Record<IconName, string> = {
   check: "M20 6 9 17l-5-5",
@@ -97,6 +103,13 @@ const PATHS: Record<IconName, string> = {
   play: "M6 4v16l14-8z",
   copy: "M9 9h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V11a2 2 0 0 1 2-2Z M5 15H4a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1",
   frame: "M3 5h18v14H3z M3 9h18 M9 9v10",
+  search: "m21 21-4.35-4.35 M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z",
+  trash:
+    "M3 6h18 M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2 M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6",
+  refresh: "M3 12a9 9 0 0 1 15-6.7L21 8 M21 3v5h-5 M21 12a9 9 0 0 1-15 6.7L3 16 M3 21v-5h5",
+  up: "m18 15-6-6-6 6",
+  down: "m6 9 6 6 6-6",
+  edit: "M12 20h9 M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z",
 };
 
 export function Icon({
@@ -184,5 +197,55 @@ export function Section({
       </div>
       {children}
     </section>
+  );
+}
+
+export function Switch({
+  on,
+  t,
+  onClick,
+}: {
+  on: boolean;
+  t: Tokens;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      onClick={onClick}
+      class={clsx(
+        "relative inline-flex h-[18px] w-8 shrink-0 items-center rounded-full transition-colors",
+        on ? "bg-trakt" : clsx(t.chip, "ring-0"),
+      )}
+    >
+      <span
+        class={clsx(
+          "absolute size-3.5 rounded-full bg-white shadow transition-all",
+          on ? "left-[15px]" : "left-[2px]",
+        )}
+      />
+    </button>
+  );
+}
+
+/** 1–10 star scale, filled up to `value`. Presentational (no hover state). */
+export function Stars({ value }: { value: number | null }) {
+  return (
+    <span class="inline-flex items-center gap-px">
+      {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+        <span
+          key={n}
+          class={clsx(
+            "text-[16px] leading-none",
+            value && n <= value ? "text-amber-400" : "text-zinc-500/40",
+          )}
+        >
+          ★
+        </span>
+      ))}
+      <span class="ml-1.5 text-[11px] opacity-70">{value ? `${value}/10` : "—"}</span>
+    </span>
   );
 }

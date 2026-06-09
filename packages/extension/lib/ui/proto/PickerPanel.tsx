@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { Btn, Icon, type Variant, tokens } from "./kit";
+import { Btn, Icon, Switch, type Variant, tokens } from "./kit";
 
 export type FieldKey = "title" | "year" | "season" | "episode";
 export interface FieldRow {
@@ -171,32 +171,40 @@ export function PickerPanel(p: PickerPanelProps) {
           </div>
         </div>
 
-        {/* type + iframe */}
-        <div class="mb-3 flex items-center gap-2">
-          <label class="flex-1">
-            <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>Type</span>
-            <select
-              value={p.mediaType}
-              class={clsx(
-                "w-full rounded-lg px-2 py-1.5 text-[13px] outline-none ring-inset",
-                t.input,
-              )}
-            >
-              <option value="auto">Auto</option>
-              <option value="movie">Movie</option>
-              <option value="show">Show</option>
-            </select>
-          </label>
-          <label
+        {/* type */}
+        <label class="mb-2 block">
+          <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>Type</span>
+          <select
+            value={p.mediaType}
             class={clsx(
-              "flex flex-1 cursor-pointer items-center gap-2 self-end pb-1.5 text-[11px]",
-              t.sub,
+              "w-full rounded-lg px-2 py-1.5 text-[13px] outline-none ring-inset",
+              t.input,
             )}
           >
-            <input type="checkbox" checked={p.iframe} class="accent-trakt" />
-            Player in a separate frame
-          </label>
-        </div>
+            <option value="auto">Auto</option>
+            <option value="movie">Movie</option>
+            <option value="show">Show</option>
+          </select>
+        </label>
+
+        {/* iframe toggle — its own full-width row so it sits clean */}
+        <button
+          type="button"
+          class={clsx(
+            "mb-3 flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left",
+            t.card,
+          )}
+        >
+          <Switch on={p.iframe} t={t} />
+          <span class="min-w-0 flex-1">
+            <span class={clsx("block text-[12px]", t.heading)}>
+              Player loads in a separate frame
+            </span>
+            <span class={clsx("block text-[10px]", t.faint)}>
+              Turn on if the video is inside an iframe from another site.
+            </span>
+          </span>
+        </button>
 
         {/* preview */}
         <div
