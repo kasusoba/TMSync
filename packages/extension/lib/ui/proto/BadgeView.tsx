@@ -184,9 +184,12 @@ export function RateNotePanel({
             <Icon name="trash" class="text-[13px]" />
           </Btn>
         )}
-        <Btn t={t} tone="link" class="ml-auto">
+        <button
+          type="button"
+          class={clsx("ml-auto text-[12px] underline underline-offset-2", t.sub)}
+        >
           Wrong match?
-        </Btn>
+        </button>
       </div>
     </div>
   );

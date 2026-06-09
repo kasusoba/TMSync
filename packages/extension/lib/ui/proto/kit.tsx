@@ -71,7 +71,7 @@ export function tokens(v: Variant): Tokens {
   };
 }
 
-type IconName =
+export type IconName =
   | "check"
   | "link"
   | "plus"
@@ -174,6 +174,37 @@ export function Btn({
       {...rest}
     >
       {children}
+    </button>
+  );
+}
+
+/** Consistent square icon button for row actions (edit / reorder / delete …). */
+export function IconBtn({
+  name,
+  t,
+  title,
+  danger,
+  onClick,
+}: {
+  name: IconName;
+  t: Tokens;
+  title: string;
+  danger?: boolean;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      onClick={onClick}
+      class={clsx(
+        "grid size-7 shrink-0 place-items-center rounded-md transition-colors",
+        t.faint,
+        danger ? "hover:bg-rose-500/10 hover:text-rose-500" : "hover:bg-white/5",
+      )}
+    >
+      <Icon name={name} class="text-[13px]" />
     </button>
   );
 }
