@@ -3,8 +3,12 @@ import { z } from "zod";
 /**
  * Recipe schema version understood by this build of the engine.
  * Clients ignore recipes whose `schemaVersion` is newer than this.
+ *
+ * v2 added manual recipes (no `extract`; the user picks the title in-page on
+ * sites with no readable metadata — e.g. asbplayer/twoseven). A v1-only engine
+ * skips v2 recipes rather than choking on the missing `extract`.
  */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export const Transform = z.enum(["trim", "lowercase", "uppercase", "toInt", "collapseSpaces"]);
 export type Transform = z.infer<typeof Transform>;
@@ -74,12 +78,22 @@ export const Recipe = z.object({
       watchedThreshold: z.number().min(0).max(1).default(0.8),
     })
     .default({}),
-  extract: z.object({
-    title: Field,
-    year: Field.optional(), // helps movie disambiguation
-    season: Field.optional(), // shows
-    episode: Field.optional(), // shows
-  }),
+  // Omitted on MANUAL recipes: sites with no readable title (local-file players,
+  // watch-party rooms) where one URL serves everything. The user picks the title
+  // in-page instead; see `manualKey`. A recipe with no `extract` is manual.
+  extract: z
+    .object({
+      title: Field,
+      year: Field.optional(), // helps movie disambiguation
+      season: Field.optional(), // shows
+      episode: Field.optional(), // shows
+    })
+    .optional(),
+  // MANUAL recipes only: a field whose VALUE distinguishes the current content
+  // (a filename, a room/media title) so a manual pick can be remembered and
+  // re-applied when the same thing plays again. NOT resolved against Trakt — it
+  // is purely a cache key. Absent ⇒ the engine falls back to document.title.
+  manualKey: Field.optional(),
 });
 
 export type Recipe = z.infer<typeof Recipe>;

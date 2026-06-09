@@ -10,6 +10,7 @@ import {
   emptyDraft,
   escapeRegex,
   previewDraft,
+  recipeToDraft,
   suggestUrlPattern,
   urlTokenRegex,
 } from "./recipe-builder";
@@ -113,5 +114,34 @@ describe("buildRecipe + previewDraft", () => {
       ok: true,
       media: { mediaType: "show", title: "The Pixel Frontier", season: 2, episode: 4 },
     });
+  });
+});
+
+describe("manual recipes", () => {
+  it("builds a manual recipe with no extract (title not required)", () => {
+    const draft: RecipeDraft = { ...emptyDraft("https://twoseven.xyz/room/abc"), manual: true };
+    const built = buildRecipe(draft, { id: "m", name: "TwoSeven" });
+    expect(built.ok).toBe(true);
+    if (built.ok) {
+      expect(built.recipe.extract).toBeUndefined();
+      expect(built.recipe.schemaVersion).toBe(2);
+    }
+  });
+
+  it("carries an optional manualKey through build + round-trips via recipeToDraft", () => {
+    const draft: RecipeDraft = {
+      ...emptyDraft("https://twoseven.xyz/room/abc"),
+      manual: true,
+      manualKey: { source: "dom", selector: ".media-title", transforms: ["trim"] },
+    };
+    const built = buildRecipe(draft, { id: "m", name: "TwoSeven" });
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    expect(built.recipe.manualKey?.selector).toBe(".media-title");
+
+    const back = recipeToDraft(built.recipe);
+    expect(back.manual).toBe(true);
+    expect(back.manualKey?.selector).toBe(".media-title");
+    expect(back.fields.title).toBeUndefined();
   });
 });

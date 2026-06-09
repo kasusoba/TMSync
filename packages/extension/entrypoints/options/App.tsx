@@ -26,7 +26,7 @@ function recipeHost(r: Recipe): string {
 }
 
 const isShowRecipe = (r: Recipe) =>
-  r.mediaType === "show" || !!r.extract.season || !!r.extract.episode;
+  r.mediaType === "show" || !!r.extract?.season || !!r.extract?.episode;
 
 /** `https://host/segment/` from a recipe's urlPattern — the inferable part of a link. */
 function recipeBaseUrl(r: Recipe): string {

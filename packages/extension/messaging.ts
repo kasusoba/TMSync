@@ -39,6 +39,9 @@ export interface BadgeStatus {
   title?: string;
   /** short human detail, e.g. "added to history" or "not connected". */
   detail?: string;
+  /** Manual mode awaiting a selection — the badge shows a "pick what you're
+   * watching" prompt instead of (or alongside) the status line. */
+  pick?: boolean;
 }
 
 export interface TabMedia {
@@ -100,6 +103,24 @@ export interface ProtocolMap {
   reportFrameOrigins(origins: string[]): void;
   /** Background → top frame: update the badge. */
   scrobbleStatus(status: BadgeStatus): void;
+
+  // --- manual mode (sites with no readable title) ---
+  /** The remembered manual pick for (recipeId, pageKey), or null. */
+  getManualMedia(q: { recipeId: string; pageKey: string }): ParsedMedia | null;
+  /** Set what's playing on a manual site: saves a correction (so it resolves to
+   * the exact picked Trakt entry) + remembers it by (recipeId, pageKey), then
+   * re-resolves the tab so scrobbling starts. */
+  setManualMedia(q: {
+    recipeId: string;
+    pageKey: string;
+    media: ParsedMedia;
+    identity: ResolvedIdentity;
+  }): { ok: boolean };
+  /** Matcher frame publishes (or clears) this tab's manual context so the badge
+   * knows which recipe + page key a pick belongs to. */
+  publishManualContext(ctx: { recipeId: string; pageKey: string } | null): void;
+  /** Badge reads the manual context for its tab. */
+  getManualContext(): { recipeId: string; pageKey: string } | null;
 
   // --- corrections (fix a wrong match) ---
   /** Free-text Trakt search for the correction picker. */

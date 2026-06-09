@@ -3,6 +3,8 @@ import {
   BadgePill,
   type BadgeState,
   CorrectionPanel,
+  ManualPickPanel,
+  ManualPrompt,
   RateNotePanel,
   RatingPrompt,
 } from "@/lib/ui/proto/BadgeView";
@@ -229,6 +231,20 @@ export function App() {
               preview={{ ok: true, text: "movie: Srimulat (2023)" }}
             />
           </Tile>
+          <Tile label="Manual mode · no title to scrape" t={t}>
+            <PickerPanel
+              variant={variant}
+              mode="setup"
+              name="TwoSeven"
+              manual
+              manualKeyValue="The Bear S03E01.mkv"
+              fields={[]}
+              urlParts={urlParts("twoseven.xyz/room/abc123")}
+              mediaType="auto"
+              iframe
+              preview={{ ok: true, text: "Manual — pick each title from the badge" }}
+            />
+          </Tile>
         </Group>
 
         {/* BADGE */}
@@ -289,6 +305,20 @@ export function App() {
               results={[]}
               saved="Spider-Noir (2026) · show"
             />
+          </Tile>
+          <Tile label="Manual mode · pick prompt" t={t}>
+            <ManualPrompt variant={variant} />
+          </Tile>
+          <Tile label="Manual mode · pick a movie" t={t}>
+            <ManualPickPanel
+              variant={variant}
+              type="movie"
+              query="dune part two"
+              results={["Dune: Part Two (2024) · movie", "Dune (2021) · movie"]}
+            />
+          </Tile>
+          <Tile label="Manual mode · pick a show + S/E" t={t}>
+            <ManualPickPanel variant={variant} type="show" query="the bear" results={[]} />
           </Tile>
         </Group>
 

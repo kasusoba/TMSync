@@ -5,6 +5,8 @@ import {
   corrections,
   customRecipes,
   enabledOrigins,
+  manualContexts,
+  manualSelections,
   notes,
   quickLinks,
   ratings,
@@ -169,6 +171,56 @@ export default defineBackground(() => {
   onMessage("registerSite", ({ data }) => registerSite(data));
   onMessage("unregisterSite", ({ data }) => unregisterSite(data));
   onMessage("listEnabledSites", () => enabledOrigins.getValue());
+
+  // --- manual mode (sites with no readable title) ---
+  onMessage("getManualMedia", async ({ data }) => {
+    const all = await manualSelections.getValue();
+    return all[`${data.recipeId}::${data.pageKey}`] ?? null;
+  });
+
+  onMessage("setManualMedia", async ({ data, sender }) => {
+    // Lock resolution to the exact entry the user picked via a correction — so
+    // re-searching the title can't drift to a remake/wrong year later.
+    const key = resolutionCacheKey(data.media);
+    const corr = await corrections.getValue();
+    corr[key] = data.identity;
+    await corrections.setValue(corr);
+    const cache = await resolutionCache.getValue();
+    if (cache[key]) {
+      delete cache[key];
+      await resolutionCache.setValue(cache);
+    }
+    // Remember the pick so the same file/title auto-resolves next time.
+    const all = await manualSelections.getValue();
+    all[`${data.recipeId}::${data.pageKey}`] = data.media;
+    await manualSelections.setValue(all);
+    // Re-resolve the tab so the session picks up the chosen media and scrobbles.
+    const tabId = sender.tab?.id;
+    if (tabId !== undefined) void sendMessage("recheck", undefined, tabId);
+    return { ok: true };
+  });
+
+  onMessage("publishManualContext", async ({ data, sender }) => {
+    const tabId = sender.tab?.id;
+    if (tabId === undefined) return;
+    const all = await manualContexts.getValue();
+    if (data === null) {
+      if (all[tabId]) {
+        delete all[tabId];
+        await manualContexts.setValue(all);
+      }
+      return;
+    }
+    if (all[tabId]?.recipeId === data.recipeId && all[tabId]?.pageKey === data.pageKey) return;
+    all[tabId] = data;
+    await manualContexts.setValue(all);
+  });
+
+  onMessage("getManualContext", async ({ sender }) => {
+    const tabId = sender.tab?.id;
+    if (tabId === undefined) return null;
+    return (await manualContexts.getValue())[tabId] ?? null;
+  });
 
   // --- corrections ---
   onMessage("searchTrakt", async ({ data }) => {
@@ -393,6 +445,12 @@ export default defineBackground(() => {
     if (frames[tabId]) {
       delete frames[tabId];
       await tabFrameOrigins.setValue(frames);
+    }
+    // Drop the tab's manual context (the remembered selections persist).
+    const mctx = await manualContexts.getValue();
+    if (mctx[tabId]) {
+      delete mctx[tabId];
+      await manualContexts.setValue(mctx);
     }
     const all = await tabSessions.getValue();
     const session = all[tabId];

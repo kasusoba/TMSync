@@ -198,6 +198,118 @@ export function RateNotePanel({
   );
 }
 
+/** Manual-mode prompt bar: shown when a manual site has no pick yet. */
+export function ManualPrompt({ variant }: { variant: Variant }) {
+  const t = tokens(variant);
+  return (
+    <div
+      class={clsx(
+        "inline-flex items-center gap-3 rounded-xl py-2 pr-2 pl-3 shadow-xl shadow-black/30",
+        t.panel,
+      )}
+    >
+      <span class={clsx("whitespace-nowrap text-[12px] font-semibold", t.heading)}>
+        What are you watching?
+      </span>
+      <Btn t={t} tone="primary" class="ml-auto">
+        Pick title
+      </Btn>
+    </div>
+  );
+}
+
+/** Manual-mode picker: choose what's playing on a site with no readable title. */
+export function ManualPickPanel({
+  variant,
+  type = "movie",
+  query,
+  results,
+}: {
+  variant: Variant;
+  type?: "movie" | "show";
+  query: string;
+  results: string[];
+}) {
+  const t = tokens(variant);
+  return (
+    <div class={clsx("w-[300px] rounded-2xl p-3.5 shadow-2xl shadow-black/40", t.panel)}>
+      <header class="mb-3 flex items-center justify-between">
+        <strong class={clsx("text-[13px]", t.heading)}>What are you watching?</strong>
+        <IconBtn t={t} name="x" title="Close" />
+      </header>
+
+      <div class="mb-3 flex gap-1">
+        {(["movie", "show"] as const).map((tt) => (
+          <button
+            key={tt}
+            type="button"
+            class={clsx(
+              "flex-1 rounded-md py-1 text-[11px] capitalize transition-colors",
+              type === tt ? "bg-trakt text-white" : t.ghost,
+            )}
+          >
+            {tt}
+          </button>
+        ))}
+      </div>
+
+      {type === "show" && (
+        <div class="mb-3 flex gap-2">
+          {["Season", "Episode"].map((l) => (
+            <label key={l} class="flex-1">
+              <span class={clsx("mb-1 block text-[11px]", t.faint)}>{l}</span>
+              <input
+                placeholder="1"
+                class={clsx(
+                  "w-full rounded-lg px-2.5 py-1.5 text-[13px] outline-none ring-inset focus:ring-2",
+                  t.input,
+                )}
+              />
+            </label>
+          ))}
+        </div>
+      )}
+
+      <div class="mb-3 flex gap-2">
+        <div class={clsx("flex flex-1 items-center gap-2 rounded-lg px-2.5", t.input)}>
+          <Icon name="search" class={clsx("text-[14px]", t.faint)} />
+          <input
+            value={query}
+            placeholder={`Search ${type}s on Trakt…`}
+            class="w-full bg-transparent py-1.5 text-[13px] outline-none"
+          />
+        </div>
+        <Btn t={t} tone="primary">
+          Search
+        </Btn>
+      </div>
+
+      <div class="flex flex-col gap-1.5">
+        {results.length === 0 ? (
+          <p class={clsx("py-1 text-[12px]", t.faint)}>
+            Search and pick the title you’re watching.
+          </p>
+        ) : (
+          results.map((r) => (
+            <button
+              key={r}
+              type="button"
+              class={clsx(
+                "truncate rounded-lg px-2.5 py-1.5 text-left text-[12px] transition-colors",
+                t.card,
+                t.heading,
+                "hover:ring-2 hover:ring-trakt",
+              )}
+            >
+              {r}
+            </button>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 /** Fix-match (correction) panel. */
 export function CorrectionPanel({
   variant,

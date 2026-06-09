@@ -17,6 +17,11 @@ export interface RecipeDraft {
   match: { urlPattern: string; domFingerprint?: string; hostnames?: string[] };
   mediaType: "auto" | "movie" | "show";
   video: { selector: string; frame: "auto" | "top" | "iframe" };
+  /** Manual recipe: no scraping — the user picks each title from the badge. */
+  manual: boolean;
+  /** Manual only: the field whose value distinguishes the current content (to
+   * remember a pick). Optional; the engine falls back to document.title. */
+  manualKey?: Field;
   fields: {
     title?: Field;
     year?: Field;
@@ -70,6 +75,7 @@ export function emptyDraft(url: string): RecipeDraft {
     },
     mediaType: "auto",
     video: { selector: "video", frame: "auto" },
+    manual: false,
     fields: {},
   };
 }
@@ -84,11 +90,13 @@ export function recipeToDraft(recipe: Recipe): RecipeDraft {
     },
     mediaType: recipe.mediaType,
     video: { selector: recipe.video.selector, frame: recipe.video.frame },
+    manual: recipe.extract === undefined,
+    manualKey: recipe.manualKey,
     fields: {
-      title: recipe.extract.title,
-      year: recipe.extract.year,
-      season: recipe.extract.season,
-      episode: recipe.extract.episode,
+      title: recipe.extract?.title,
+      year: recipe.extract?.year,
+      season: recipe.extract?.season,
+      episode: recipe.extract?.episode,
     },
   };
 }
@@ -153,22 +161,32 @@ export type BuildResult = { ok: true; recipe: Recipe } | { ok: false; error: str
 
 /** Assemble + validate a recipe from a draft. */
 export function buildRecipe(draft: RecipeDraft, meta: { id: string; name: string }): BuildResult {
-  if (!draft.fields.title) return { ok: false, error: "Pick a title first." };
-
-  const candidate = {
+  const base = {
     id: meta.id,
     schemaVersion: SCHEMA_VERSION,
     name: meta.name,
     match: draft.match,
     mediaType: draft.mediaType,
     video: { selector: draft.video.selector, frame: draft.video.frame },
-    extract: {
-      title: draft.fields.title,
-      year: draft.fields.year,
-      season: draft.fields.season,
-      episode: draft.fields.episode,
-    },
   };
+
+  // Manual recipe: no extract. An optional manualKey remembers a pick by the
+  // page's distinguishing string (filename / room title).
+  const candidate = draft.manual
+    ? { ...base, ...(draft.manualKey ? { manualKey: draft.manualKey } : {}) }
+    : draft.fields.title
+      ? {
+          ...base,
+          extract: {
+            title: draft.fields.title,
+            year: draft.fields.year,
+            season: draft.fields.season,
+            episode: draft.fields.episode,
+          },
+        }
+      : null;
+
+  if (!candidate) return { ok: false, error: "Pick a title first." };
 
   const parsed = RecipeSchema.safeParse(candidate);
   if (!parsed.success) {
@@ -177,7 +195,11 @@ export function buildRecipe(draft: RecipeDraft, meta: { id: string; name: string
   return { ok: true, recipe: parsed.data };
 }
 
-/** Live preview: run the real engine against the page with the current draft. */
+/**
+ * Live preview: run the real engine against the page with the current draft.
+ * A manual recipe has no extract, so the engine returns its manual guard result
+ * ({ ok: false }); the picker presents that as an info note, not an error.
+ */
 export function previewDraft(draft: RecipeDraft, ctx: EngineContext): ExtractResult {
   const built = buildRecipe(draft, { id: "preview", name: "preview" });
   if (!built.ok) return { ok: false, error: built.error };

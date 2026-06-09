@@ -108,6 +108,33 @@ export const notes = storage.defineItem<Record<string, StoredNote>>("local:notes
 });
 
 /**
+ * Remembered MANUAL picks (sites with no readable title — local-file players,
+ * watch parties). Keyed `${recipeId}::${pageKey}` where pageKey is the recipe's
+ * manualKey value (or the page title); the value is the media the user chose.
+ * Persistent (`local`) so the same file/title auto-resolves next time — the
+ * "remember when possible" behaviour. A pick is also stored as a correction
+ * (see corrections) so it resolves to the exact Trakt entry the user picked.
+ */
+export const manualSelections = storage.defineItem<Record<string, ParsedMedia>>(
+  "local:manual_selections",
+  { fallback: {} },
+);
+
+/**
+ * Per-tab manual context published by the recipe-matching frame: which manual
+ * recipe matched and the current page key. Lets the (top-frame) badge save a
+ * manual pick under the right key. Session-scoped, cleared with the tab.
+ */
+export interface ManualContext {
+  recipeId: string;
+  pageKey: string;
+}
+export const manualContexts = storage.defineItem<Record<number, ManualContext>>(
+  "session:manual_contexts",
+  { fallback: {} },
+);
+
+/**
  * Per-tab watch session, keyed by tabId. Set by the recipe-matching frame and
  * updated by whichever frame owns the <video> (which may be a cross-origin
  * iframe). Lives in `session` storage (ephemeral, per browser session) — the

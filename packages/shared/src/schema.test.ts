@@ -50,4 +50,17 @@ describe("RecipeSchema", () => {
     const bad = { ...validRecipe, video: { watchedThreshold: 1.5 } };
     expect(RecipeSchema.safeParse(bad).success).toBe(false);
   });
+
+  it("accepts a manual recipe with no extract (optional manualKey)", () => {
+    const manual = {
+      id: "asbplayer",
+      schemaVersion: 2,
+      name: "asbplayer",
+      match: { urlPattern: "killergerbah\\.github\\.io/asbplayer" },
+      manualKey: { source: "title", transforms: ["trim"] },
+    };
+    const parsed = RecipeSchema.safeParse(manual);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.extract).toBeUndefined();
+  });
 });

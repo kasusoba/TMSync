@@ -12,6 +12,12 @@ import type { EngineContext, ExtractResult, ParsedMedia } from "./types";
  * `{ ok: false }` so the content script can degrade quietly.
  */
 export function extract(recipe: Recipe, ctx: EngineContext): ExtractResult {
+  if (!recipe.extract) {
+    // Manual recipe — there is nothing to scrape. Callers should branch on
+    // isManualRecipe() before reaching here; this guard keeps extract() total.
+    return { ok: false, error: "manual recipe — pick the title in-page" };
+  }
+
   const title = readField(recipe.extract.title, ctx);
   if (!title) {
     return { ok: false, error: "could not read a title from this page" };
@@ -30,6 +36,15 @@ export function extract(recipe: Recipe, ctx: EngineContext): ExtractResult {
   if (episode !== undefined) media.episode = episode;
 
   return { ok: true, media };
+}
+
+/**
+ * A manual recipe carries no `extract` — the page has no readable title, so the
+ * user picks it in-page (and we remember it by `manualKey`). The content script
+ * branches on this instead of calling extract().
+ */
+export function isManualRecipe(recipe: Recipe): boolean {
+  return recipe.extract === undefined;
 }
 
 function resolveMediaType(

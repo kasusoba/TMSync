@@ -80,7 +80,7 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
     return base;
   });
   const [name, setName] = useState(location.hostname);
-  const [picking, setPicking] = useState<DraftFieldKey | null>(null);
+  const [picking, setPicking] = useState<DraftFieldKey | "manualKey" | null>(null);
   const [highlight, setHighlight] = useState<Rect | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   // Set once we've loaded the user's OWN saved recipe for this site — we then
@@ -145,10 +145,18 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
     };
   }, [picking]);
 
-  function selectField(field: DraftFieldKey, el: Element) {
+  function selectField(field: DraftFieldKey | "manualKey", el: Element) {
     const selector = safeFinder(el);
     if (!selector) {
       setStatus("Couldn't build a selector for that element.");
+      return;
+    }
+    if (field === "manualKey") {
+      setDraft((d) => ({
+        ...d,
+        manualKey: { source: "dom", selector, transforms: ["trim", "collapseSpaces"] },
+      }));
+      setStatus(null);
       return;
     }
     const transforms: Field["transforms"] =
@@ -236,7 +244,13 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
           variant="dark"
           mode={editingId ? "edit" : "setup"}
           name={name}
-          picking={picking ? FIELD_LABELS[picking] : null}
+          picking={
+            picking
+              ? picking === "manualKey"
+                ? "remember-by element"
+                : FIELD_LABELS[picking]
+              : null
+          }
           fields={(Object.keys(FIELD_LABELS) as DraftFieldKey[]).map((key) => {
             const field = draft.fields[key];
             return {
@@ -249,15 +263,21 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
           urlParts={parts}
           mediaType={draft.mediaType}
           iframe={draft.video.frame === "iframe"}
+          manual={draft.manual}
+          manualKeyValue={draft.manualKey ? readField(draft.manualKey, ctx) : null}
           preview={
-            preview.ok ? { ok: true, text: previewText } : { ok: false, error: preview.error }
+            draft.manual
+              ? { ok: true, text: "Manual — pick each title from the badge" }
+              : preview.ok
+                ? { ok: true, text: previewText }
+                : { ok: false, error: preview.error }
           }
           banner={!editingId && libraryCovers ? { kind: "library", name: libraryCovers } : null}
           status={status}
-          canSave={!!draft.fields.title}
+          canSave={draft.manual || !!draft.fields.title}
           onPick={(key) => setPicking(key)}
           onPickToken={(ord) => {
-            if (picking) selectUrlToken(picking, ord);
+            if (picking && picking !== "manualKey") selectUrlToken(picking, ord);
           }}
           onClear={clearField}
           onClose={onClose}
@@ -268,6 +288,9 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
           onIframeChange={(v) =>
             setDraft((d) => ({ ...d, video: { ...d.video, frame: v ? "iframe" : "auto" } }))
           }
+          onManualChange={(v) => setDraft((d) => ({ ...d, manual: v }))}
+          onPickManualKey={() => setPicking("manualKey")}
+          onClearManualKey={() => setDraft((d) => ({ ...d, manualKey: undefined }))}
         />
       </div>
     </div>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extract } from "./extract";
+import { extract, isManualRecipe } from "./extract";
 import type { Recipe } from "./schema";
 
 function parse(html: string): Document {
@@ -145,5 +145,29 @@ describe("extract — quiet failure", () => {
       },
     });
     expect(() => extract(r, { document: doc, url: "https://x" })).not.toThrow();
+  });
+});
+
+describe("isManualRecipe", () => {
+  const base = {
+    id: "t",
+    schemaVersion: 2,
+    name: "T",
+    match: { urlPattern: ".*" },
+    mediaType: "auto" as const,
+    video: { selector: "video", frame: "auto" as const, watchedThreshold: 0.8 },
+  };
+
+  it("is true when a recipe has no extract", () => {
+    const manual: Recipe = { ...base, manualKey: { source: "title" } };
+    expect(isManualRecipe(manual)).toBe(true);
+    // extract() is total: it degrades quietly instead of throwing.
+    const doc = parse("<html><body></body></html>");
+    expect(extract(manual, { document: doc, url: "https://x" }).ok).toBe(false);
+  });
+
+  it("is false for a scraped recipe", () => {
+    const scraped: Recipe = { ...base, extract: { title: { source: "title" } } };
+    expect(isManualRecipe(scraped)).toBe(false);
   });
 });

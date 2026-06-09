@@ -1,5 +1,5 @@
 import "@/lib/ui/theme.css";
-import type { ReviewLevel, TraktSearchOption } from "@/lib/trakt/types";
+import type { ResolvedIdentity, ReviewLevel, TraktSearchOption } from "@/lib/trakt/types";
 import { type BadgeState, type BadgeStatus, onMessage, sendMessage } from "@/messaging";
 import type { ParsedMedia } from "@tmsync/shared";
 import clsx from "clsx";
@@ -387,12 +387,173 @@ function Correction({ onClose }: { onClose: () => void }) {
   );
 }
 
+/**
+ * Manual-mode picker: on sites with no readable title (local-file players,
+ * watch parties), the user tells TMSync what's playing. Search Trakt, choose
+ * movie/show, give season+episode for a show. The pick is saved (and remembered
+ * by the page's distinguishing key) via setManualMedia.
+ */
+function ManualPick({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const [ctx, setCtx] = useState<{ recipeId: string; pageKey: string } | null>(null);
+  const [type, setType] = useState<"movie" | "show">("movie");
+  const [query, setQuery] = useState("");
+  const [season, setSeason] = useState("");
+  const [episode, setEpisode] = useState("");
+  const [results, setResults] = useState<TraktSearchOption[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    void sendMessage("getManualContext", undefined).then(setCtx);
+  }, []);
+
+  const runSearch = async () => {
+    if (!query.trim()) return;
+    setBusy(true);
+    setErr(null);
+    setResults(await sendMessage("searchTrakt", { query, type }));
+    setBusy(false);
+  };
+
+  const pick = async (o: TraktSearchOption) => {
+    if (!ctx) return;
+    let s: number | undefined;
+    let e: number | undefined;
+    if (type === "show") {
+      s = Number.parseInt(season, 10);
+      e = Number.parseInt(episode, 10);
+      if (!Number.isFinite(s) || !Number.isFinite(e)) {
+        setErr("Enter the season and episode numbers.");
+        return;
+      }
+    }
+    setBusy(true);
+    setErr(null);
+    const media: ParsedMedia =
+      type === "movie"
+        ? { mediaType: "movie", title: o.title, year: o.year }
+        : { mediaType: "show", title: o.title, year: o.year, season: s, episode: e };
+    const identity: ResolvedIdentity = {
+      mediaType: o.type,
+      traktId: o.traktId,
+      title: o.title,
+      year: o.year,
+    };
+    const out = await sendMessage("setManualMedia", {
+      recipeId: ctx.recipeId,
+      pageKey: ctx.pageKey,
+      media,
+      identity,
+    });
+    setBusy(false);
+    if (out.ok) onDone();
+    else setErr("Couldn’t save the pick.");
+  };
+
+  return (
+    <div class={PANEL}>
+      <header class="mb-3 flex items-center justify-between">
+        <strong class={clsx("text-[13px]", t.heading)}>What are you watching?</strong>
+        <IconBtn t={t} name="x" title="Close" onClick={onClose} />
+      </header>
+
+      <div class="mb-3 flex gap-1">
+        {(["movie", "show"] as const).map((tt) => (
+          <button
+            type="button"
+            key={tt}
+            onClick={() => setType(tt)}
+            class={clsx(
+              "flex-1 rounded-md py-1 text-[11px] capitalize transition-colors",
+              type === tt ? "bg-trakt text-white" : t.ghost,
+            )}
+          >
+            {tt}
+          </button>
+        ))}
+      </div>
+
+      {type === "show" && (
+        <div class="mb-3 flex gap-2">
+          {[
+            { label: "Season", value: season, set: setSeason },
+            { label: "Episode", value: episode, set: setEpisode },
+          ].map((f) => (
+            <label key={f.label} class="flex-1">
+              <span class={clsx("mb-1 block text-[11px]", t.faint)}>{f.label}</span>
+              <input
+                {...stopKeys}
+                inputMode="numeric"
+                value={f.value}
+                onInput={(ev) => f.set((ev.target as HTMLInputElement).value)}
+                placeholder="1"
+                class={clsx(
+                  "w-full rounded-lg px-2.5 py-1.5 text-[13px] outline-none ring-inset focus:ring-2",
+                  t.input,
+                )}
+              />
+            </label>
+          ))}
+        </div>
+      )}
+
+      <div class="mb-3 flex gap-2">
+        <div class={clsx("flex flex-1 items-center gap-2 rounded-lg px-2.5", t.input)}>
+          <Icon name="search" class={clsx("text-[14px]", t.faint)} />
+          <input
+            value={query}
+            onInput={(ev) => setQuery((ev.target as HTMLInputElement).value)}
+            onKeyDown={(ev) => {
+              ev.stopPropagation();
+              if (ev.key === "Enter") runSearch();
+            }}
+            onKeyUp={(ev) => ev.stopPropagation()}
+            onKeyPress={(ev) => ev.stopPropagation()}
+            placeholder={`Search ${type}s on Trakt…`}
+            class="w-full bg-transparent py-1.5 text-[13px] outline-none"
+          />
+        </div>
+        <Btn t={t} tone="primary" disabled={busy} onClick={runSearch}>
+          Search
+        </Btn>
+      </div>
+
+      <div class="flex max-h-[200px] flex-col gap-1.5 overflow-y-auto">
+        {results.length === 0 ? (
+          <p class={clsx("py-1 text-[12px]", t.faint)}>
+            {busy ? "Searching…" : "Search and pick the title you’re watching."}
+          </p>
+        ) : (
+          results.map((o) => (
+            <button
+              type="button"
+              key={`${o.type}-${o.traktId}`}
+              onClick={() => pick(o)}
+              disabled={busy}
+              class={clsx(
+                "truncate rounded-lg px-2.5 py-1.5 text-left text-[12px] transition-colors disabled:opacity-50",
+                t.card,
+                t.heading,
+                "hover:ring-2 hover:ring-trakt",
+              )}
+            >
+              {optionLabel(o)}
+            </button>
+          ))
+        )}
+      </div>
+      {err && <p class="mt-2 text-[11px] text-rose-400">{err}</p>}
+    </div>
+  );
+}
+
 function BadgeRoot() {
   const [status, setStatus] = useState<BadgeStatus | null>(null);
   const [minimized, setMinimized] = useState(false);
-  const [panel, setPanel] = useState<null | "review" | "fix">(null);
+  const [panel, setPanel] = useState<null | "review" | "fix" | "manual">(null);
   const [media, setMedia] = useState<ParsedMedia | null>(null);
   const [promptDismissed, setPromptDismissed] = useState(false);
+  const [manualMode, setManualMode] = useState(false);
 
   useEffect(() => {
     // Don't auto-expand on every status: while minimized the dot color keeps
@@ -408,6 +569,12 @@ function BadgeRoot() {
       void sendMessage("getTabMedia", undefined).then((tab) => tab && setMedia(tab.media));
     }
   }, [status, media]);
+
+  // Track whether this is a manual-mode site, so "wrong match?" re-opens the
+  // manual picker (changing the remembered pick) rather than the correction UI.
+  useEffect(() => {
+    if (status) void sendMessage("getManualContext", undefined).then((c) => setManualMode(!!c));
+  }, [status]);
 
   // After a watch lands in history, leave the rating prompt up for a moment then
   // auto-collapse to the dot so it gets out of the way. Cancelled if a panel is
@@ -447,9 +614,32 @@ function BadgeRoot() {
   return (
     <div class="fixed bottom-3.5 left-3.5 z-[2147483646] flex max-w-[340px] flex-col gap-2 font-sans">
       {panel === "review" && media && (
-        <RateNote media={media} onClose={() => setPanel(null)} onFix={() => setPanel("fix")} />
+        <RateNote
+          media={media}
+          onClose={() => setPanel(null)}
+          onFix={() => setPanel(manualMode ? "manual" : "fix")}
+        />
       )}
       {panel === "fix" && <Correction onClose={() => setPanel(null)} />}
+      {panel === "manual" && (
+        <ManualPick onClose={() => setPanel(null)} onDone={() => setPanel(null)} />
+      )}
+
+      {status.pick && panel === null && (
+        <div
+          class={clsx(
+            "inline-flex items-center gap-3 rounded-xl py-2 pr-2 pl-3 shadow-xl shadow-black/30",
+            t.panel,
+          )}
+        >
+          <span class={clsx("whitespace-nowrap text-[12px] font-semibold", t.heading)}>
+            What are you watching?
+          </span>
+          <Btn t={t} tone="primary" class="ml-auto" onClick={() => setPanel("manual")}>
+            Pick title
+          </Btn>
+        </div>
+      )}
 
       {showPrompt && media && (
         <div
@@ -493,8 +683,8 @@ function BadgeRoot() {
         <button
           type="button"
           class="min-w-0 flex-1 text-left"
-          onClick={() => setPanel((p) => (p ? null : "review"))}
-          title="Rate, note, or fix the match"
+          onClick={() => setPanel((p) => (p ? null : status.pick ? "manual" : "review"))}
+          title={status.pick ? "Pick what you’re watching" : "Rate, note, or fix the match"}
         >
           <span class={clsx("block text-[12px] font-semibold", t.heading)}>
             TMSync · {status.detail ?? s.label}

@@ -1,5 +1,12 @@
 import { type BadgeStatus, type ScrobbleReply, onMessage, sendMessage } from "@/messaging";
-import { type ParsedMedia, type Recipe, extract, selectRecipe } from "@tmsync/shared";
+import {
+  type ParsedMedia,
+  type Recipe,
+  extract,
+  isManualRecipe,
+  readField,
+  selectRecipe,
+} from "@tmsync/shared";
 import type { ContentScriptContext } from "wxt/utils/content-script-context";
 import { ScrobbleController } from "./controller";
 
@@ -89,6 +96,8 @@ export class SessionManager {
   private frame: PlayerFrame = "auto";
   private watchedThreshold = 0.8;
   private lastPublishedKey: string | null = null;
+  /** Manual recipe matched but no selection yet — wait for the user's pick. */
+  private manualAwaiting = false;
   private framesObserver: MutationObserver | null = null;
   private readonly seenFrameOrigins = new Set<string>();
   private currentKey: string | null = null;
@@ -161,6 +170,8 @@ export class SessionManager {
 
   private async reconcile(): Promise<void> {
     await this.matchAndPublish();
+    // Manual site with no pick yet: nothing to play until the user chooses.
+    if (this.manualAwaiting) return;
     await this.ensurePlaying();
   }
 
@@ -170,8 +181,20 @@ export class SessionManager {
     const recipe = selectRecipe(this.recipes, engineCtx);
     if (!recipe) {
       this.localMedia = null;
+      this.manualAwaiting = false;
+      if (this.isTop) await sendMessage("publishManualContext", null);
       return;
     }
+
+    // Manual recipe: nothing to scrape. The top frame derives the page key,
+    // looks up a remembered pick, and otherwise prompts the user via the badge.
+    if (isManualRecipe(recipe)) {
+      if (this.isTop) await this.handleManual(recipe, engineCtx);
+      else this.localMedia = null; // a player iframe consumes the published media
+      return;
+    }
+
+    this.manualAwaiting = false;
     const result = extract(recipe, engineCtx);
     if (!result.ok) {
       this.localMedia = null;
@@ -213,6 +236,64 @@ export class SessionManager {
             detail: "not found on Trakt — click to fix",
           },
     );
+  }
+
+  /**
+   * Manual recipe (top frame). There's nothing to scrape, so derive a stable
+   * page key (the recipe's manualKey value, else the page title), publish the
+   * manual context for the badge, and look up a remembered pick. If one exists,
+   * drive it exactly like a scraped match; otherwise prompt the user to pick.
+   */
+  private async handleManual(
+    recipe: Recipe,
+    engineCtx: { document: Document; url: string },
+  ): Promise<void> {
+    this.videoSelector = recipe.video.selector;
+    this.frame = recipe.video.frame;
+    this.watchedThreshold = recipe.video.watchedThreshold;
+
+    const pageKey =
+      (recipe.manualKey ? readField(recipe.manualKey, engineCtx) : null) ?? document.title.trim();
+    await sendMessage("publishManualContext", { recipeId: recipe.id, pageKey });
+
+    const media = await sendMessage("getManualMedia", { recipeId: recipe.id, pageKey });
+    if (!media) {
+      // No selection for what's playing — stop any stale session and prompt.
+      this.manualAwaiting = true;
+      this.localMedia = null;
+      this.lastPublishedKey = null;
+      this.teardownSession();
+      await sendMessage("reportScrobble", {
+        state: "idle",
+        detail: "Pick what you’re watching",
+        pick: true,
+      });
+      return;
+    }
+
+    this.manualAwaiting = false;
+    this.localMedia = media;
+    const key = `manual:${pageKey}:${mediaKey(media)}`;
+    if (key === this.lastPublishedKey) return;
+    this.lastPublishedKey = key;
+
+    await sendMessage("publishMedia", {
+      media,
+      videoSelector: this.videoSelector,
+      frame: this.frame,
+      watchedThreshold: this.watchedThreshold,
+    });
+    // The pick is locked to a Trakt entry via a correction, so resolveMedia hits;
+    // either way the title is set, so seed the badge and let play scrobble it.
+    const resolved = await sendMessage("resolveMedia", media);
+    await sendMessage("reportScrobble", {
+      state: "idle",
+      title:
+        resolved.resolved && resolved.title
+          ? resolvedLabel(resolved.title, resolved.year, media)
+          : label(media),
+      detail: "press play to scrobble",
+    });
   }
 
   /**
