@@ -210,12 +210,16 @@ export function OptionsView({ variant }: { variant: Variant }) {
             {active === "trakt" && (
               <>
                 <PaneHead t={t} title="Account" />
-                <div
-                  class={clsx("flex items-center justify-between rounded-lg px-3 py-2.5", t.card)}
-                >
-                  <span class="flex items-center gap-2 text-[13px]">
-                    <span class="size-2 rounded-full bg-emerald-500" />
-                    <span class={t.heading}>Connected to Trakt</span>
+                <div class={clsx("flex items-center gap-3 rounded-lg px-3 py-2.5", t.card)}>
+                  <span class="grid size-8 shrink-0 place-items-center rounded-full bg-trakt text-[14px] font-bold lowercase text-white">
+                    t
+                  </span>
+                  <span class="min-w-0 flex-1">
+                    <span class={clsx("block text-[13px] font-semibold", t.heading)}>Trakt</span>
+                    <span class={clsx("flex items-center gap-1.5 text-[11px]", t.sub)}>
+                      <span class="size-1.5 rounded-full bg-emerald-500" />
+                      Connected
+                    </span>
                   </span>
                   <Btn t={t} tone="ghost">
                     Disconnect

@@ -41,18 +41,17 @@ export function PopupView(p: PopupViewProps) {
           <span class={clsx("text-[15px] font-semibold tracking-tight", t.heading)}>TMSync</span>
         </header>
 
-        {/* Trakt connection */}
+        {/* Account — one provider row today (Trakt); scales to a list. */}
         <Section title="Account" t={t}>
-          <div class={clsx("flex items-center justify-between rounded-xl px-3 py-2.5", t.card)}>
-            <span class="flex items-center gap-2 text-[13px]">
-              <span
-                class={clsx(
-                  "size-2 rounded-full",
-                  p.connected ? "bg-emerald-500" : clsx("ring-1", t.faint, "bg-current opacity-40"),
-                )}
-              />
-              <span class={p.connected ? t.heading : t.sub}>
-                {p.connected ? "Connected to Trakt" : "Not connected"}
+          <div class={clsx("flex items-center gap-3 rounded-xl px-3 py-2.5", t.card)}>
+            <span class="grid size-8 shrink-0 place-items-center rounded-full bg-trakt text-[14px] font-bold lowercase text-white">
+              t
+            </span>
+            <span class="min-w-0 flex-1">
+              <span class={clsx("block text-[13px] font-semibold", t.heading)}>Trakt</span>
+              <span class={clsx("flex items-center gap-1.5 text-[11px]", t.sub)}>
+                {p.connected && <span class="size-1.5 rounded-full bg-emerald-500" />}
+                {p.connected ? "Connected" : "Not connected"}
               </span>
             </span>
             {p.connected ? (
