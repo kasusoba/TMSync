@@ -33,64 +33,93 @@ function RowIcons({ t, open = false }: { t: Tokens; open?: boolean }) {
   );
 }
 
-// --- mock data sized to stress the layout ---
-const SITES = [
-  "www.cineby.at",
-  "popcornmovies.org",
-  "onlyflix.to",
-  "vidsrc.to",
-  "www.2embed.cc",
-  "flixhq.to",
-  "sflix.to",
-  "watchseries.io",
-  "primewire.mov",
-];
+// --- mock data sized to stress the layout (realistic volume) ---
+type Pair = [string, string];
+const pair = (a: string, b: string): Pair => [a, b];
 
-const QUICK_LINKS: { name: string; library?: boolean; on: boolean }[] = [
-  { name: "Cineby", on: true },
-  { name: "Popcorn Movies", library: true, on: true },
-  { name: "VidSrc", on: true },
-  { name: "FlixHQ", library: true, on: false },
-  { name: "2Embed", on: false },
-  { name: "SFlix", library: true, on: false },
+const NAMES = [
+  "Rive",
+  "CorsFlix",
+  "Cineby",
+  "Cineplay",
+  "Fmovies+",
+  "PopcornMovies",
+  "BingeBox",
+  "Flixer",
+  "Hexa",
+  "FlickyStream",
+  "MeowTV",
+  "CineMora",
+  "Cinevibe",
+  "bCine",
+  "Coreflix",
+  "Vyla",
+  "ShuttleTV",
+  "Poprink",
+  "Cinegram",
+  "LordFlix",
+  "Stigstream",
+  "dulo.tv",
+  "MovieBite",
+  "TouStream",
+  "IceFY",
+  "Lunara",
+  "SpenFlix",
+  "Willow",
+  "Flixtrz",
+  "NomorFlix",
+  "CineBolt",
+  "ZXCSTREAM",
+  "NetPlay",
+  "Cinelove",
+  "Screenscape",
+  "Mapple.tv",
+  "Watch Surface",
+  "Watchott",
+  "StreamVaults",
+  "ReelStream",
+  "Chillflix",
+  "GaiaFlix",
+  "Vegeta TV",
+  "Smashystream",
+  "VidPlay",
+  "Nxsha",
 ];
+const TLDS = ["to", "net", "cc", "watch", "stream", "mov", "sbs"];
+const hostOf = (n: string, i: number) =>
+  `${n.toLowerCase().replace(/[^a-z0-9]+/g, "")}.${TLDS[i % TLDS.length] ?? "to"}`;
+const nameAt = (i: number) => NAMES[i % NAMES.length] ?? "Site";
 
-const LIBRARY: [string, string][] = [
-  ["Cineby", "www\\.cineby\\.at/movie"],
-  ["Cineby", "www\\.cineby\\.at/tv"],
-  ["Popcorn Movies", "popcornmovies\\.org/movie"],
-  ["Popcorn Movies", "popcornmovies\\.org/episode"],
-  ["VidSrc", "vidsrc\\.to/embed/movie"],
-  ["VidSrc", "vidsrc\\.to/embed/tv"],
-  ["FlixHQ", "flixhq\\.to/watch-film"],
-  ["2Embed", "2embed\\.cc/embed"],
+const SITES = NAMES.slice(0, 24).map(hostOf);
+const QUICK_LINKS = NAMES.slice(0, 22).map((name, i) => ({
+  name,
+  on: i % 3 !== 0,
+  library: i % 4 === 0,
+}));
+const LIBRARY: Pair[] = NAMES.slice(0, 16).flatMap((n, i) => [
+  pair(n, `${hostOf(n, i).replace(/\./g, "\\.")}/movie`),
+  pair(n, `${hostOf(n, i).replace(/\./g, "\\.")}/tv`),
+]);
+const RECIPES = NAMES.slice(0, 7).map((n, i) => {
+  const e = hostOf(n, i).replace(/\./g, "\\.");
+  const items: Pair[] =
+    i % 2 === 0 ? [pair(n, `${e}/movie`), pair(n, `${e}/tv`)] : [pair(n, `${e}/watch`)];
+  return { host: hostOf(n, i), items };
+});
+const SUGGESTIONS = NAMES.slice(24, 42).map(hostOf);
+const TITLES = [
+  "Dune: Part Two (2024) · movie",
+  "The Bear (2022) · show",
+  "Interstellar (2014) · movie",
+  "Spider-Noir (2026) · show",
+  "Oppenheimer (2023) · movie",
+  "Severance (2022) · show",
+  "Sinners (2025) · movie",
+  "Andor (2022) · show",
 ];
-
-const RECIPES: { host: string; items: [string, string][] }[] = [
-  {
-    host: "www.cineby.at",
-    items: [
-      ["Cineby", "www\\.cineby\\.at/movie"],
-      ["Cineby", "www\\.cineby\\.at/tv"],
-    ],
-  },
-  {
-    host: "popcornmovies.org",
-    items: [
-      ["Popcorn Movies", "popcornmovies\\.org/movie"],
-      ["Popcorn Movies", "popcornmovies\\.org/episode"],
-    ],
-  },
-  { host: "onlyflix.to", items: [["OnlyFlix", "onlyflix\\.to/play"]] },
-];
-
-const CORRECTIONS: [string, string][] = [
-  ["cineby.at::the wrong title", "Dune: Part Two (2024) · movie"],
-  ["popcornmovies.org::srimulat", "Srimulat: Hidup Memang Komedi (2023) · movie"],
-  ["onlyflix.to::spider noir e1", "Spider-Noir (2026) · show"],
-  ["vidsrc.to::the bear", "The Bear (2022) · show"],
-  ["flixhq.to::interstellar", "Interstellar (2014) · movie"],
-];
+const CORRECTIONS: Pair[] = TITLES.map((title, i) =>
+  pair(`${hostOf(nameAt(i), i)}::wrong title ${i + 1}`, title),
+);
 
 export function OptionsView({ variant }: { variant: Variant }) {
   const t = tokens(variant);
@@ -197,12 +226,14 @@ export function OptionsView({ variant }: { variant: Variant }) {
                 </div>
               );
             })}
-            <p class={clsx("text-[12px]", t.sub)}>
-              From your recipes:{" "}
-              <button type="button" class={clsx("underline underline-offset-2", t.link)}>
-                + onlyflix.to
-              </button>
-            </p>
+            <div class={clsx("flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]", t.sub)}>
+              <span class="shrink-0">From your recipes:</span>
+              {SUGGESTIONS.map((h) => (
+                <button key={h} type="button" class={clsx("underline underline-offset-2", t.link)}>
+                  + {h}
+                </button>
+              ))}
+            </div>
           </div>
         </Section>
 
