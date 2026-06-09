@@ -27,7 +27,7 @@ export function BadgePill({
   return (
     <div
       class={clsx(
-        "inline-flex max-w-[340px] items-center gap-2.5 rounded-xl py-2 pr-2 pl-3 shadow-xl shadow-black/30",
+        "relative inline-flex max-w-[340px] items-center gap-2.5 rounded-xl py-2 pr-7 pl-3 shadow-xl shadow-black/30",
         t.panel,
       )}
     >
@@ -39,13 +39,13 @@ export function BadgePill({
       <button
         type="button"
         class={clsx(
-          "ml-1 grid size-6 shrink-0 place-items-center rounded-md leading-none",
+          "absolute top-1 right-1.5 grid size-5 place-items-center rounded-md text-[15px] leading-none",
           t.faint,
           "hover:bg-white/5",
         )}
         title="Minimize to a dot"
       >
-        –
+        −
       </button>
     </div>
   );
@@ -58,7 +58,7 @@ export function BadgeMini({ variant, state }: { variant: Variant; state: BadgeSt
       class={clsx(
         "inline-block size-4 rounded-full shadow-lg shadow-black/40 ring-2",
         STATE[state].color,
-        variant === "trakt" ? "ring-white/80" : "ring-white",
+        variant === "dark" ? "ring-white/80" : "ring-white",
       )}
     />
   );
@@ -84,8 +84,15 @@ export function RatingPrompt({
     >
       <span class={clsx("whitespace-nowrap text-[12px] font-semibold", t.heading)}>{label}</span>
       <Stars value={value} />
-      <button type="button" class={clsx("text-[12px] underline underline-offset-2", t.link)}>
-        note
+      <button
+        type="button"
+        class={clsx(
+          "inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium",
+          t.ghost,
+        )}
+      >
+        <Icon name="edit" class="text-[11px]" />
+        Note
       </button>
       <button
         type="button"
@@ -168,7 +175,7 @@ export function RateNotePanel({
         Mark as spoiler
       </div>
 
-      <div class="flex items-center gap-2">
+      <div class="flex items-stretch gap-2">
         <Btn t={t} tone="primary" class="flex-1">
           {hasNote ? "Update note" : "Post note"}
         </Btn>

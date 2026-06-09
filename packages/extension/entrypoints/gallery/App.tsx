@@ -74,7 +74,7 @@ const NAV = [
 ] as const;
 
 export function App() {
-  const [variant, setVariant] = useState<Variant>("trakt");
+  const [variant, setVariant] = useState<Variant>("dark");
   const t = tokens(variant);
 
   return (
@@ -105,7 +105,7 @@ export function App() {
             </nav>
           </div>
           <div class={clsx("flex gap-1 rounded-xl p-1", t.card)}>
-            {(["clean", "trakt"] as Variant[]).map((v) => (
+            {(["light", "dark"] as Variant[]).map((v) => (
               <button
                 key={v}
                 type="button"
@@ -198,7 +198,6 @@ export function App() {
               variant={variant}
               mode="edit"
               name="Cineby"
-              banner={{ kind: "edit" }}
               fields={[
                 { key: "title", label: "Title", value: "Dune: Part Two", source: "meta" },
                 { key: "year", label: "Year", value: "2024", source: "dom" },

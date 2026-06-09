@@ -4,11 +4,11 @@ import type { ComponentChildren } from "preact";
 /**
  * Prototype design kit — presentational only (no browser APIs, no effects), so
  * the gallery can render every state with mock props. Two visual directions:
- *   "clean" — light, neutral, system-native, dense.
- *   "trakt" — dark, branded (Trakt red), roomier, card-based.
- * Pick one and we wire it into the real popup / picker.
+ *   "light" — light, neutral surfaces.
+ *   "dark"  — dark surfaces.
+ * Both use the Trakt-red accent. Pick one and we wire it into the real UI.
  */
-export type Variant = "clean" | "trakt";
+export type Variant = "light" | "dark";
 
 export interface Tokens {
   page: string;
@@ -30,7 +30,7 @@ export interface Tokens {
 }
 
 export function tokens(v: Variant): Tokens {
-  if (v === "trakt") {
+  if (v === "dark") {
     return {
       page: "bg-zinc-950",
       panel: "bg-zinc-900 text-zinc-100 ring-1 ring-white/10",

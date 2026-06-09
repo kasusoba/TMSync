@@ -21,7 +21,7 @@ export interface PickerPanelProps {
   mediaType: "auto" | "movie" | "show";
   iframe: boolean;
   preview: { ok: true; text: string } | { ok: false; error: string };
-  banner?: { kind: "edit" } | { kind: "library"; name: string } | null;
+  banner?: { kind: "library"; name: string } | null;
   status?: string | null;
   onPick?: (key: FieldKey) => void;
   onClear?: (key: FieldKey) => void;
@@ -67,11 +67,6 @@ export function PickerPanel(p: PickerPanelProps) {
           </Btn>
         </header>
 
-        {p.banner?.kind === "edit" && (
-          <div class={clsx("mb-3 rounded-lg px-2.5 py-2 text-[11px] leading-snug", t.infoBox)}>
-            Loaded your saved recipe — fields below are from it, not auto-detected.
-          </div>
-        )}
         {p.banner?.kind === "library" && (
           <div class={clsx("mb-3 rounded-lg px-2.5 py-2 text-[11px] leading-snug", t.infoBox)}>
             A library recipe (“{p.banner.name}”) already covers this page. Saving creates your local
