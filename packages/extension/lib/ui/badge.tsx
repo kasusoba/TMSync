@@ -218,7 +218,7 @@ function RateNote({
                 onClick={() => setLevel(l)}
                 class={clsx(
                   "flex-1 rounded-md py-1 text-[11px] capitalize transition-colors",
-                  level === l ? "bg-trakt text-white" : t.ghost,
+                  level === l ? "bg-ikura text-white" : t.ghost,
                 )}
               >
                 {l}
@@ -373,7 +373,7 @@ function Correction({ onClose }: { onClose: () => void }) {
                     "truncate rounded-lg px-2.5 py-1.5 text-left text-[12px] transition-colors disabled:opacity-50",
                     t.card,
                     t.heading,
-                    "hover:ring-2 hover:ring-trakt",
+                    "hover:ring-2 hover:ring-ikura",
                   )}
                 >
                   {optionLabel(o)}
@@ -465,7 +465,7 @@ function ManualPick({ onClose, onDone }: { onClose: () => void; onDone: () => vo
             onClick={() => setType(tt)}
             class={clsx(
               "flex-1 rounded-md py-1 text-[11px] capitalize transition-colors",
-              type === tt ? "bg-trakt text-white" : t.ghost,
+              type === tt ? "bg-ikura text-white" : t.ghost,
             )}
           >
             {tt}
@@ -534,7 +534,7 @@ function ManualPick({ onClose, onDone }: { onClose: () => void; onDone: () => vo
                 "truncate rounded-lg px-2.5 py-1.5 text-left text-[12px] transition-colors disabled:opacity-50",
                 t.card,
                 t.heading,
-                "hover:ring-2 hover:ring-trakt",
+                "hover:ring-2 hover:ring-ikura",
               )}
             >
               {optionLabel(o)}

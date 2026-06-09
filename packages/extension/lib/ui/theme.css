@@ -1,10 +1,23 @@
 @import "tailwindcss";
 
 /*
- * Shared design tokens for TMSync UI. The brand accent is Trakt red.
- * Tailwind v4 turns these into utilities: bg-trakt, text-trakt, ring-trakt, …
+ * Shared design tokens for TMSync UI.
+ *
+ * Brand accent is "ikura" orange, sampled from the extension icon (a glossy
+ * salmon-roe pearl). Tailwind v4 turns these into utilities: bg-ikura,
+ * text-ikura, ring-ikura, … Used for primary actions, links, focus rings, the
+ * Switch on-state, and selected chips.
+ *
+ * `--color-trakt` is kept SEPARATELY and stays Trakt's real logo red — it backs
+ * the TraktMark only, where it names the provider. Do not use it as a general
+ * accent; reach for ikura instead.
  */
 @theme {
+  --color-ikura: #d4530f;
+  --color-ikura-600: #b3430c;
+  --color-ikura-700: #8f3408;
+  --color-ikura-glow: #ffe1d0;
+
   --color-trakt: #ed1c24;
   --color-trakt-600: #cc141b;
   --color-trakt-700: #a8121a;

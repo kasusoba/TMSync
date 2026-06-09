@@ -58,7 +58,7 @@ export function PickerPanel(p: PickerPanelProps) {
     <div class="space-y-2">
       {p.picking && (
         <div class="flex justify-center">
-          <span class="inline-flex items-center gap-2 rounded-full bg-trakt px-3.5 py-1.5 text-[12px] font-medium text-white shadow-lg shadow-black/20">
+          <span class="inline-flex items-center gap-2 rounded-full bg-ikura px-3.5 py-1.5 text-[12px] font-medium text-white shadow-lg shadow-black/20">
             <Icon name="target" class="text-[14px]" />
             Click the {p.picking} on the page — or a number in the URL · Esc to cancel
           </span>
@@ -69,7 +69,7 @@ export function PickerPanel(p: PickerPanelProps) {
         {/* header */}
         <header class="mb-3 flex items-center justify-between">
           <div class="flex items-center gap-2">
-            <span class="grid size-6 place-items-center rounded-md bg-trakt text-white">
+            <span class="grid size-6 place-items-center rounded-md bg-ikura text-white">
               <Icon name="target" class="text-[12px]" />
             </span>
             <strong class={clsx("text-[13px]", t.heading)}>
@@ -141,7 +141,7 @@ export function PickerPanel(p: PickerPanelProps) {
                 onClick={() => p.onPickManualKey?.()}
                 class={clsx(
                   "rounded-md px-2 py-1 text-[11px] font-medium transition-colors",
-                  p.picking === "remember-by element" ? "bg-trakt text-white" : t.ghost,
+                  p.picking === "remember-by element" ? "bg-ikura text-white" : t.ghost,
                 )}
               >
                 Pick
@@ -187,7 +187,7 @@ export function PickerPanel(p: PickerPanelProps) {
                     onClick={() => p.onPick?.(f.key)}
                     class={clsx(
                       "rounded-md px-2 py-1 text-[11px] font-medium transition-colors",
-                      p.picking === f.label ? "bg-trakt text-white" : t.ghost,
+                      p.picking === f.label ? "bg-ikura text-white" : t.ghost,
                     )}
                   >
                     Pick

@@ -148,7 +148,7 @@ export function RateNotePanel({
                 type="button"
                 class={clsx(
                   "flex-1 rounded-md py-1 text-[11px] capitalize transition-colors",
-                  level === l ? "bg-trakt text-white" : t.ghost,
+                  level === l ? "bg-ikura text-white" : t.ghost,
                 )}
               >
                 {l}
@@ -245,7 +245,7 @@ export function ManualPickPanel({
             type="button"
             class={clsx(
               "flex-1 rounded-md py-1 text-[11px] capitalize transition-colors",
-              type === tt ? "bg-trakt text-white" : t.ghost,
+              type === tt ? "bg-ikura text-white" : t.ghost,
             )}
           >
             {tt}
@@ -298,7 +298,7 @@ export function ManualPickPanel({
                 "truncate rounded-lg px-2.5 py-1.5 text-left text-[12px] transition-colors",
                 t.card,
                 t.heading,
-                "hover:ring-2 hover:ring-trakt",
+                "hover:ring-2 hover:ring-ikura",
               )}
             >
               {r}
@@ -360,7 +360,7 @@ export function CorrectionPanel({
                     "truncate rounded-lg px-2.5 py-1.5 text-left text-[12px] transition-colors",
                     t.card,
                     t.heading,
-                    "hover:ring-2 hover:ring-trakt",
+                    "hover:ring-2 hover:ring-ikura",
                   )}
                 >
                   {r}

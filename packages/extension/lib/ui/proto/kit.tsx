@@ -7,7 +7,7 @@ import { useState } from "preact/hooks";
  * the gallery can render every state with mock props. Two visual directions:
  *   "light" — light, neutral surfaces.
  *   "dark"  — dark surfaces.
- * Both use the Trakt-red accent. Pick one and we wire it into the real UI.
+ * Both use the ikura-orange brand accent. Pick one and we wire it into the real UI.
  */
 export type Variant = "light" | "dark";
 
@@ -40,12 +40,12 @@ export function tokens(v: Variant): Tokens {
       faint: "text-zinc-500",
       card: "bg-white/[0.04] ring-1 ring-white/10",
       divider: "border-white/10",
-      primary: "bg-trakt text-white hover:bg-trakt-600 active:bg-trakt-700",
+      primary: "bg-ikura text-white hover:bg-ikura-600 active:bg-ikura-700",
       ghost: "bg-white/5 text-zinc-200 ring-1 ring-white/10 hover:bg-white/10",
       danger: "bg-white/5 text-rose-300 ring-1 ring-white/10 hover:bg-rose-500/10",
-      link: "text-trakt hover:text-trakt-600",
+      link: "text-ikura hover:text-ikura-600",
       input:
-        "bg-white/5 text-zinc-100 ring-1 ring-white/15 focus:ring-trakt placeholder:text-zinc-500",
+        "bg-white/5 text-zinc-100 ring-1 ring-white/15 focus:ring-ikura placeholder:text-zinc-500",
       chip: "bg-white/5 text-zinc-300 ring-1 ring-white/10",
       okBox: "bg-emerald-500/10 text-emerald-300 ring-1 ring-emerald-500/20",
       badBox: "bg-rose-500/10 text-rose-300 ring-1 ring-rose-500/20",
@@ -60,11 +60,11 @@ export function tokens(v: Variant): Tokens {
     faint: "text-zinc-400",
     card: "bg-zinc-50 ring-1 ring-zinc-200",
     divider: "border-zinc-200",
-    primary: "bg-trakt text-white hover:bg-trakt-600 active:bg-trakt-700",
+    primary: "bg-ikura text-white hover:bg-ikura-600 active:bg-ikura-700",
     ghost: "bg-white text-zinc-700 ring-1 ring-zinc-300 hover:bg-zinc-50",
     danger: "bg-white text-rose-600 ring-1 ring-zinc-300 hover:bg-rose-50",
-    link: "text-trakt hover:text-trakt-600",
-    input: "bg-white text-zinc-900 ring-1 ring-zinc-300 focus:ring-trakt placeholder:text-zinc-400",
+    link: "text-ikura hover:text-ikura-600",
+    input: "bg-white text-zinc-900 ring-1 ring-zinc-300 focus:ring-ikura placeholder:text-zinc-400",
     chip: "bg-zinc-100 text-zinc-600 ring-1 ring-zinc-200",
     okBox: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200",
     badBox: "bg-rose-50 text-rose-700 ring-1 ring-rose-200",
@@ -285,7 +285,7 @@ export function Switch({
       onClick={onClick}
       class={clsx(
         "relative inline-flex h-[18px] w-8 shrink-0 items-center rounded-full transition-colors",
-        on ? "bg-trakt" : clsx(t.chip, "ring-0"),
+        on ? "bg-ikura" : clsx(t.chip, "ring-0"),
       )}
     >
       <span

@@ -35,9 +35,6 @@ export function PopupView(p: PopupViewProps) {
       <div class={clsx("rounded-2xl p-4 space-y-5", t.panel)}>
         {/* header */}
         <header class="flex items-center gap-2">
-          <span class="grid size-7 place-items-center rounded-lg bg-trakt text-white">
-            <Icon name="play" fill class="text-[13px]" />
-          </span>
           <span class={clsx("text-[15px] font-semibold tracking-tight", t.heading)}>TMSync</span>
         </header>
 
@@ -139,10 +136,10 @@ export function PopupView(p: PopupViewProps) {
                 class={clsx(
                   "group mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition disabled:opacity-50",
                   t.card,
-                  "hover:ring-2 hover:ring-trakt",
+                  "hover:ring-2 hover:ring-ikura",
                 )}
               >
-                <span class="grid size-9 shrink-0 place-items-center rounded-lg bg-trakt/15 text-trakt">
+                <span class="grid size-9 shrink-0 place-items-center rounded-lg bg-ikura/15 text-ikura">
                   <Icon name="target" class="text-[17px]" />
                 </span>
                 <span class="min-w-0 flex-1">

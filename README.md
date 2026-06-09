@@ -1,4 +1,7 @@
-# TMSync
+<div align="center">
+  <img src="packages/extension/public/icon/128.png" width="96" height="96" alt="TMSync icon">
+  <h1>TMSync</h1>
+</div>
 
 Track the movies and TV shows you watch to your [Trakt](https://trakt.tv) profile, automatically.
 
