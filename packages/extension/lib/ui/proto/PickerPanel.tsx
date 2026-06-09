@@ -23,11 +23,17 @@ export interface PickerPanelProps {
   preview: { ok: true; text: string } | { ok: false; error: string };
   banner?: { kind: "library"; name: string } | null;
   status?: string | null;
+  /** Override the save/copy enabled state (default: title currently resolves). */
+  canSave?: boolean;
   onPick?: (key: FieldKey) => void;
+  onPickToken?: (ordinal: number) => void;
   onClear?: (key: FieldKey) => void;
   onClose?: () => void;
   onSave?: () => void;
   onCopy?: () => void;
+  onNameChange?: (name: string) => void;
+  onMediaTypeChange?: (type: "auto" | "movie" | "show") => void;
+  onIframeChange?: (iframe: boolean) => void;
 }
 
 export function PickerPanel(p: PickerPanelProps) {
@@ -38,7 +44,7 @@ export function PickerPanel(p: PickerPanelProps) {
       : p.banner?.kind === "library"
         ? "Save override & enable"
         : "Save & enable";
-  const hasTitle = p.fields.some((f) => f.key === "title" && f.value !== null);
+  const hasTitle = p.canSave ?? p.fields.some((f) => f.key === "title" && f.value !== null);
 
   return (
     <div class="space-y-2">
@@ -77,6 +83,9 @@ export function PickerPanel(p: PickerPanelProps) {
           <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>Site name</span>
           <input
             value={p.name}
+            onInput={(e) => p.onNameChange?.((e.target as HTMLInputElement).value)}
+            onKeyDown={(e) => e.stopPropagation()}
+            onKeyUp={(e) => e.stopPropagation()}
             class={clsx(
               "w-full rounded-lg px-2.5 py-1.5 text-[13px] outline-none ring-inset focus:ring-2",
               t.input,
@@ -147,6 +156,7 @@ export function PickerPanel(p: PickerPanelProps) {
                   key={i}
                   type="button"
                   disabled={!p.picking}
+                  onClick={() => p.onPickToken?.(part.ordinal)}
                   class={clsx(
                     "mx-0.5 rounded px-1.5 py-0.5 text-[11px] transition-colors",
                     p.picking
@@ -170,6 +180,11 @@ export function PickerPanel(p: PickerPanelProps) {
           <div class="relative">
             <select
               value={p.mediaType}
+              onChange={(e) =>
+                p.onMediaTypeChange?.(
+                  (e.target as HTMLSelectElement).value as "auto" | "movie" | "show",
+                )
+              }
               class={clsx(
                 "w-full appearance-none rounded-lg py-1.5 pr-8 pl-2.5 text-[13px] outline-none ring-inset focus:ring-2",
                 t.input,
@@ -192,6 +207,7 @@ export function PickerPanel(p: PickerPanelProps) {
         {/* iframe toggle — its own full-width row so it sits clean */}
         <button
           type="button"
+          onClick={() => p.onIframeChange?.(!p.iframe)}
           class={clsx(
             "mb-3 flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left",
             t.card,

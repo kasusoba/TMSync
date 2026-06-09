@@ -1,5 +1,7 @@
+import "@/lib/ui/theme.css";
 import { loadRecipes } from "@/lib/recipes";
 import { customRecipes } from "@/lib/storage";
+import { PickerPanel } from "@/lib/ui/proto/PickerPanel";
 import { sendMessage } from "@/messaging";
 import { finder } from "@medv/finder";
 import { type EngineContext, type Field, readField, selectRecipe } from "@tmsync/shared";
@@ -84,8 +86,6 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
   // Set once we've loaded the user's OWN saved recipe for this site — we then
   // edit it in place (keep its id) instead of creating a duplicate.
   const [editingId, setEditingId] = useState<string | null>(null);
-  // The loaded recipe as a draft, so "Reset to saved" can revert edits.
-  const [savedDraft, setSavedDraft] = useState<RecipeDraft | null>(null);
   // Name of a LIBRARY recipe that already covers this page (when the user has no
   // override yet) — saving here creates a local override that wins over it.
   const [libraryCovers, setLibraryCovers] = useState<string | null>(null);
@@ -101,7 +101,6 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
       if (saved) {
         const loaded = recipeToDraft(saved);
         setDraft(loaded);
-        setSavedDraft(loaded);
         setName(saved.name);
         setEditingId(saved.id);
         return; // editing own recipe — no need for the library note
@@ -208,14 +207,21 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
   }
 
   const preview = previewDraft(draft, ctx);
+  const previewText = preview.ok
+    ? `${preview.media.mediaType}: ${preview.media.title}${
+        preview.media.year ? ` (${preview.media.year})` : ""
+      }${
+        preview.media.season !== undefined
+          ? ` S${preview.media.season}E${preview.media.episode ?? "?"}`
+          : ""
+      }`
+    : "";
 
   return (
-    <div class="root">
-      <style>{CSS}</style>
-
+    <div class="pointer-events-none fixed inset-0 z-[2147483647] font-sans text-zinc-100">
       {highlight && (
         <div
-          class="hl"
+          class="pointer-events-none fixed rounded-sm bg-trakt/10 ring-2 ring-trakt"
           style={{
             top: `${highlight.top}px`,
             left: `${highlight.left}px`,
@@ -225,217 +231,45 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
         />
       )}
 
-      {picking && (
-        <div class="banner">
-          Click the {FIELD_LABELS[picking]} on the page, or a number in the URL · Esc to cancel
-        </div>
-      )}
-
-      <div class="panel">
-        <header>
-          <strong>TMSync · {editingId ? "edit site" : "set up site"}</strong>
-          <button type="button" class="x" onClick={onClose}>
-            ✕
-          </button>
-        </header>
-
-        {editingId && savedDraft && (
-          <div class="editbanner">
-            <span>Loaded your saved recipe — the fields below are from it, not auto-detected.</span>
-            <button
-              type="button"
-              class="resetlink"
-              onClick={() => {
-                setDraft(savedDraft);
-                setStatus("Reverted to your saved recipe.");
-              }}
-            >
-              Reset to saved
-            </button>
-          </div>
-        )}
-        {!editingId && libraryCovers && (
-          <div class="editbanner">
-            <span>
-              A library recipe (“{libraryCovers}”) already covers this page. Saving here creates
-              your local override — it wins over the library one.
-            </span>
-          </div>
-        )}
-
-        <label class="name">
-          Site name
-          <input value={name} onInput={(e) => setName((e.target as HTMLInputElement).value)} />
-        </label>
-
-        <div class="fields">
-          {(Object.keys(FIELD_LABELS) as DraftFieldKey[]).map((key) => {
+      <div class="pointer-events-auto fixed right-4 bottom-4">
+        <PickerPanel
+          variant="dark"
+          mode={editingId ? "edit" : "setup"}
+          name={name}
+          picking={picking ? FIELD_LABELS[picking] : null}
+          fields={(Object.keys(FIELD_LABELS) as DraftFieldKey[]).map((key) => {
             const field = draft.fields[key];
-            const value = field ? readField(field, ctx) : null;
-            return (
-              <div class="field" key={key}>
-                <span class="lbl">{FIELD_LABELS[key]}</span>
-                <span class="val" title={value ?? ""}>
-                  {value ?? "—"}
-                  {field && <em class="src"> {field.source}</em>}
-                </span>
-                <button type="button" onClick={() => setPicking(key)}>
-                  Pick
-                </button>
-                {field && (
-                  <button type="button" class="clear" onClick={() => clearField(key)}>
-                    ✕
-                  </button>
-                )}
-              </div>
-            );
+            return {
+              key,
+              label: FIELD_LABELS[key],
+              value: field ? readField(field, ctx) : null,
+              source: field?.source,
+            };
           })}
-        </div>
-
-        <div class="url">
-          <span class="lbl">
-            From URL{picking ? ` → click a number for ${FIELD_LABELS[picking]}` : ""}
-          </span>
-          <div class="urlline">
-            {parts.map((p, i) =>
-              "num" in p ? (
-                <button
-                  // biome-ignore lint/suspicious/noArrayIndexKey: positional URL tokens are stable
-                  key={i}
-                  type="button"
-                  class="chip"
-                  disabled={!picking}
-                  onClick={() => picking && selectUrlToken(picking, p.ordinal)}
-                >
-                  {p.num}
-                </button>
-              ) : (
-                // biome-ignore lint/suspicious/noArrayIndexKey: positional URL tokens are stable
-                <span key={i}>{p.text}</span>
-              ),
-            )}
-          </div>
-        </div>
-
-        <label class="type">
-          Type
-          <select
-            value={draft.mediaType}
-            onChange={(e) =>
-              setDraft((d) => ({
-                ...d,
-                mediaType: (e.target as HTMLSelectElement).value as RecipeDraft["mediaType"],
-              }))
-            }
-          >
-            <option value="auto">Auto</option>
-            <option value="movie">Movie</option>
-            <option value="show">Show</option>
-          </select>
-        </label>
-
-        <label class="check">
-          <input
-            type="checkbox"
-            checked={draft.video.frame === "iframe"}
-            onChange={(e) =>
-              setDraft((d) => ({
-                ...d,
-                video: {
-                  ...d.video,
-                  frame: (e.target as HTMLInputElement).checked ? "iframe" : "auto",
-                },
-              }))
-            }
-          />
-          Player loads in a separate frame (iframe)
-        </label>
-
-        <div class={`preview ${preview.ok ? "ok" : "bad"}`}>
-          {preview.ok
-            ? `✓ ${preview.media.mediaType}: ${preview.media.title}${
-                preview.media.year ? ` (${preview.media.year})` : ""
-              }${
-                preview.media.season !== undefined
-                  ? ` S${preview.media.season}E${preview.media.episode ?? "?"}`
-                  : ""
-              }`
-            : `✗ ${preview.error}`}
-        </div>
-
-        {!preview.ok && draft.fields.title && (
-          <p class="status">
-            Can’t preview on this page, but the saved fields are intact — safe to save quick-link
-            edits.
-          </p>
-        )}
-
-        <div class="actions">
-          <button type="button" class="primary" onClick={save} disabled={!draft.fields.title}>
-            {editingId
-              ? "Update saved recipe"
-              : libraryCovers
-                ? "Save override & enable"
-                : "Save & enable"}
-          </button>
-          <button type="button" onClick={copyJson} disabled={!draft.fields.title}>
-            Copy JSON
-          </button>
-        </div>
-
-        {status && <p class="status">{status}</p>}
+          urlParts={parts}
+          mediaType={draft.mediaType}
+          iframe={draft.video.frame === "iframe"}
+          preview={
+            preview.ok ? { ok: true, text: previewText } : { ok: false, error: preview.error }
+          }
+          banner={!editingId && libraryCovers ? { kind: "library", name: libraryCovers } : null}
+          status={status}
+          canSave={!!draft.fields.title}
+          onPick={(key) => setPicking(key)}
+          onPickToken={(ord) => {
+            if (picking) selectUrlToken(picking, ord);
+          }}
+          onClear={clearField}
+          onClose={onClose}
+          onSave={save}
+          onCopy={copyJson}
+          onNameChange={setName}
+          onMediaTypeChange={(v) => setDraft((d) => ({ ...d, mediaType: v }))}
+          onIframeChange={(v) =>
+            setDraft((d) => ({ ...d, video: { ...d.video, frame: v ? "iframe" : "auto" } }))
+          }
+        />
       </div>
     </div>
   );
 }
-
-const CSS = `
-.root { position: fixed; inset: 0; pointer-events: none; z-index: 2147483647;
-  font: 13px/1.4 system-ui, sans-serif; color: #111; }
-.hl { position: fixed; border: 2px solid #e11d48; background: rgba(225,29,72,0.12);
-  pointer-events: none; border-radius: 2px; }
-.banner { position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
-  background: #e11d48; color: #fff; padding: 6px 12px; border-radius: 6px;
-  pointer-events: none; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
-.panel { position: fixed; right: 16px; bottom: 16px; width: 300px; pointer-events: auto;
-  background: #fff; border: 1px solid #d4d4d8; border-radius: 10px; padding: 12px;
-  box-shadow: 0 8px 28px rgba(0,0,0,0.25); }
-.panel header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-.panel .x { border: none; background: transparent; cursor: pointer; font-size: 14px; }
-.panel label { display: block; font-size: 11px; opacity: 0.7; margin-bottom: 8px; }
-.panel input, .panel select { display: block; width: 100%; margin-top: 2px; padding: 4px 6px;
-  border: 1px solid #d4d4d8; border-radius: 6px; font: inherit; box-sizing: border-box; }
-.fields { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
-.field { display: grid; grid-template-columns: 58px 1fr auto auto; align-items: center; gap: 6px; }
-.field .lbl { font-size: 11px; opacity: 0.7; }
-.field .val { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.field .src { font-size: 10px; opacity: 0.5; font-style: normal; }
-.field button { padding: 3px 8px; border: 1px solid #d4d4d8; border-radius: 6px;
-  background: #fff; cursor: pointer; font: inherit; }
-.field .clear { padding: 3px 6px; }
-.preview { margin: 8px 0; padding: 6px 8px; border-radius: 6px; font-size: 12px;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.url { margin-bottom: 8px; }
-.url .lbl { display: block; font-size: 11px; opacity: 0.7; margin-bottom: 3px; }
-.urlline { font-size: 11px; word-break: break-all; line-height: 1.8; color: #52525b; }
-.chip { font: inherit; font-size: 11px; padding: 1px 5px; margin: 0 1px; border-radius: 4px;
-  border: 1px solid #d4d4d8; background: #f4f4f5; color: #111; cursor: pointer; }
-.chip:disabled { cursor: default; opacity: 0.6; }
-.chip:not(:disabled):hover { background: #fde68a; border-color: #f59e0b; }
-.check { display: flex; flex-direction: row; align-items: center; gap: 6px;
-  font-size: 11px; opacity: 0.85; margin-bottom: 8px; cursor: pointer; }
-.check input { width: auto; margin: 0; flex: none; }
-.preview.ok { background: #ecfdf5; color: #047857; }
-.preview.bad { background: #fef2f2; color: #b91c1c; }
-.editbanner { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px;
-  padding: 6px 8px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px;
-  font-size: 11px; color: #1e40af; }
-.resetlink { align-self: flex-start; border: none; background: none; padding: 0;
-  color: #2563eb; text-decoration: underline; cursor: pointer; font: inherit; font-size: 11px; }
-.actions { display: flex; gap: 8px; }
-.actions button { flex: 1; padding: 6px; border: 1px solid #d4d4d8; border-radius: 6px;
-  background: #fff; cursor: pointer; font: inherit; }
-.actions .primary { background: #e11d48; color: #fff; border-color: #e11d48; }
-.actions button:disabled { opacity: 0.5; cursor: default; }
-.status { margin: 8px 0 0; font-size: 11px; opacity: 0.8; }
-`;

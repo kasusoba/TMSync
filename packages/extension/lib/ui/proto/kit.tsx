@@ -218,12 +218,14 @@ export function IconBtn({
   t,
   title,
   danger,
+  disabled,
   onClick,
 }: {
   name: IconName;
   t: Tokens;
   title: string;
   danger?: boolean;
+  disabled?: boolean;
   onClick?: () => void;
 }) {
   return (
@@ -231,9 +233,10 @@ export function IconBtn({
       type="button"
       title={title}
       aria-label={title}
+      disabled={disabled}
       onClick={onClick}
       class={clsx(
-        "grid size-7 shrink-0 place-items-center rounded-md transition-colors",
+        "grid size-7 shrink-0 place-items-center rounded-md transition-colors disabled:pointer-events-none disabled:opacity-50",
         t.faint,
         danger ? "hover:bg-rose-500/10 hover:text-rose-500" : "hover:bg-white/5",
       )}

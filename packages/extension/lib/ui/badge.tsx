@@ -1,27 +1,47 @@
+import "@/lib/ui/theme.css";
 import type { ReviewLevel, TraktSearchOption } from "@/lib/trakt/types";
 import { type BadgeState, type BadgeStatus, onMessage, sendMessage } from "@/messaging";
 import type { ParsedMedia } from "@tmsync/shared";
+import clsx from "clsx";
 import { render } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import type { ContentScriptContext } from "wxt/utils/content-script-context";
 import { createShadowRootUi } from "wxt/utils/content-script-ui/shadow-root";
+import { Btn, Icon, IconBtn, tokens } from "./proto/kit";
 
-const DOT: Record<BadgeState, string> = {
-  idle: "#9ca3af",
-  watching: "#16a34a",
-  paused: "#d97706",
-  scrobbled: "#2563eb",
-  stopped: "#6b7280",
-  error: "#dc2626",
-};
+const t = tokens("dark");
 
-const LABEL: Record<BadgeState, string> = {
-  idle: "matched",
-  watching: "scrobbling",
-  paused: "paused",
-  scrobbled: "added to history",
-  stopped: "stopped",
-  error: "error",
+const STATE: Record<BadgeState, { color: string; glow: string; label: string }> = {
+  idle: {
+    color: "bg-zinc-400",
+    glow: "shadow-[0_0_7px_2px_rgba(161,161,170,0.4)]",
+    label: "matched",
+  },
+  watching: {
+    color: "bg-emerald-500",
+    glow: "shadow-[0_0_8px_2px_rgba(16,185,129,0.55)]",
+    label: "scrobbling",
+  },
+  paused: {
+    color: "bg-amber-500",
+    glow: "shadow-[0_0_8px_2px_rgba(245,158,11,0.55)]",
+    label: "paused",
+  },
+  scrobbled: {
+    color: "bg-sky-500",
+    glow: "shadow-[0_0_8px_2px_rgba(56,189,248,0.55)]",
+    label: "added to history",
+  },
+  stopped: {
+    color: "bg-zinc-500",
+    glow: "shadow-[0_0_7px_2px_rgba(113,113,122,0.4)]",
+    label: "stopped",
+  },
+  error: {
+    color: "bg-rose-500",
+    glow: "shadow-[0_0_8px_2px_rgba(244,63,94,0.55)]",
+    label: "error",
+  },
 };
 
 /** How long the rating prompt stays up after a scrobble before auto-collapsing. */
@@ -42,100 +62,7 @@ const stopKeys = {
   onKeyPress: (e: KeyboardEvent) => e.stopPropagation(),
 };
 
-/** The "fix match" panel: search Trakt and pick the correct entry. */
-function Correction({ onClose }: { onClose: () => void }) {
-  const [media, setMedia] = useState<ParsedMedia | null>(null);
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<TraktSearchOption[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [saved, setSaved] = useState<string | null>(null);
-
-  useEffect(() => {
-    void (async () => {
-      const tab = await sendMessage("getTabMedia", undefined);
-      if (tab) {
-        setMedia(tab.media);
-        setQuery(tab.media.title);
-      }
-    })();
-  }, []);
-
-  const runSearch = async () => {
-    setBusy(true);
-    const type =
-      media && (media.season !== undefined || media.episode !== undefined)
-        ? "show"
-        : media?.mediaType === "show"
-          ? "show"
-          : media?.mediaType === "movie"
-            ? "movie"
-            : undefined;
-    setResults(await sendMessage("searchTrakt", { query, type }));
-    setBusy(false);
-  };
-
-  const pick = async (o: TraktSearchOption) => {
-    if (!media) return;
-    setBusy(true);
-    await sendMessage("saveCorrection", {
-      media,
-      identity: { mediaType: o.type, traktId: o.traktId, title: o.title, year: o.year },
-    });
-    setSaved(optionLabel(o));
-    setBusy(false);
-  };
-
-  return (
-    <div class="panel">
-      <div class="phead">
-        <strong>Fix match</strong>
-        <button type="button" class="x" onClick={onClose} aria-label="close">
-          ✕
-        </button>
-      </div>
-      {saved ? (
-        <p class="saved">Corrected → {saved}. It’ll re-scrobble now.</p>
-      ) : (
-        <>
-          <div class="search">
-            <input
-              value={query}
-              onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
-              onKeyDown={(e) => {
-                e.stopPropagation();
-                if (e.key === "Enter") runSearch();
-              }}
-              onKeyUp={(e) => e.stopPropagation()}
-              onKeyPress={(e) => e.stopPropagation()}
-              placeholder="Search Trakt…"
-            />
-            <button type="button" onClick={runSearch} disabled={busy}>
-              Search
-            </button>
-          </div>
-          <div class="results">
-            {results.length === 0 ? (
-              <p class="muted">{busy ? "Searching…" : "Search and pick the right title."}</p>
-            ) : (
-              results.map((o) => (
-                <button
-                  type="button"
-                  class="result"
-                  key={`${o.type}-${o.traktId}`}
-                  onClick={() => pick(o)}
-                  disabled={busy}
-                >
-                  {optionLabel(o)}
-                </button>
-              ))
-            )}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
+const PANEL = clsx("w-[300px] rounded-2xl p-3.5 shadow-2xl shadow-black/40", t.panel);
 const NUMS = Array.from({ length: 10 }, (_, i) => i + 1);
 
 /** 1–10 star scale. Hover to preview, click to set, click your current value to clear. */
@@ -143,12 +70,15 @@ function Stars({ value, onChoose }: { value: number | null; onChoose: (n: number
   const [hover, setHover] = useState<number | null>(null);
   const active = hover ?? value ?? 0;
   return (
-    <div class="stars" onMouseLeave={() => setHover(null)}>
+    <div class="flex items-center gap-px" onMouseLeave={() => setHover(null)}>
       {NUMS.map((n) => (
         <button
           type="button"
           key={n}
-          class={`star${n <= active ? " on" : ""}`}
+          class={clsx(
+            "px-px text-[18px] leading-none transition-colors",
+            n <= active ? "text-amber-400" : "text-zinc-600 hover:text-amber-400/60",
+          )}
           onMouseEnter={() => setHover(n)}
           onClick={() => onChoose(n)}
           aria-label={`${n} of 10`}
@@ -157,7 +87,9 @@ function Stars({ value, onChoose }: { value: number | null; onChoose: (n: number
           ★
         </button>
       ))}
-      <span class="rval">{value ? `${value}/10` : "—"}</span>
+      <span class={clsx("ml-1.5 min-w-[30px] text-[11px]", t.sub)}>
+        {value ? `${value}/10` : "—"}
+      </span>
     </div>
   );
 }
@@ -204,10 +136,10 @@ function RatingRow({
   };
 
   return (
-    <div class="rate">
-      {!compact && <span class="rlabel">Your rating</span>}
+    <div>
+      {!compact && <span class={clsx("mb-1 block text-[11px]", t.faint)}>Your rating</span>}
       <Stars value={rating} onChoose={choose} />
-      {err && <span class="msg err">{err}</span>}
+      {err && <span class="mt-1 block text-[11px] text-rose-400">{err}</span>}
     </div>
   );
 }
@@ -269,61 +201,188 @@ function RateNote({
   };
 
   return (
-    <div class="panel">
-      <div class="phead">
-        <strong>Rate &amp; note</strong>
-        <button type="button" class="x" onClick={onClose} aria-label="close">
-          ✕
-        </button>
-      </div>
+    <div class={PANEL}>
+      <header class="mb-3 flex items-center justify-between">
+        <strong class={clsx("text-[13px]", t.heading)}>Rate &amp; note</strong>
+        <IconBtn t={t} name="x" title="Close" onClick={onClose} />
+      </header>
+
       {isShow && (
-        <>
-          <span class="rlabel">Rate &amp; note the</span>
-          <div class="tabs">
+        <div class="mb-3">
+          <span class={clsx("mb-1 block text-[11px]", t.faint)}>Rate &amp; note the</span>
+          <div class="flex gap-1">
             {LEVELS.map((l) => (
               <button
                 type="button"
                 key={l}
-                class={`tab${level === l ? " on" : ""}`}
                 onClick={() => setLevel(l)}
+                class={clsx(
+                  "flex-1 rounded-md py-1 text-[11px] capitalize transition-colors",
+                  level === l ? "bg-trakt text-white" : t.ghost,
+                )}
               >
                 {l}
               </button>
             ))}
           </div>
-        </>
+        </div>
       )}
-      <RatingRow media={media} level={level} />
+
+      <div class="mb-3">
+        <RatingRow media={media} level={level} />
+      </div>
+
       <textarea
         {...stopKeys}
-        class="noteinput"
         rows={4}
         value={note}
         onInput={(e) => setNote((e.target as HTMLTextAreaElement).value)}
         placeholder="Your note — public on Trakt, at least 5 words…"
+        class={clsx(
+          "mb-2 w-full resize-none rounded-lg px-2.5 py-2 text-[12px] outline-none ring-inset focus:ring-2",
+          t.input,
+        )}
       />
-      <label class="spoil">
+
+      <label class={clsx("mb-3 flex cursor-pointer items-center gap-2 text-[11px]", t.sub)}>
         <input
           type="checkbox"
+          class="accent-trakt"
           checked={spoiler}
           onChange={(e) => setSpoiler((e.target as HTMLInputElement).checked)}
         />
         Mark as spoiler
       </label>
-      <div class="actions">
-        <button type="button" onClick={save} disabled={busy || note.trim().length === 0}>
+
+      <div class="flex items-stretch gap-2">
+        <Btn
+          t={t}
+          tone="primary"
+          class="flex-1"
+          disabled={busy || note.trim().length === 0}
+          onClick={save}
+        >
           {hasNote ? "Update note" : "Post note"}
-        </button>
+        </Btn>
         {hasNote && (
-          <button type="button" class="danger" onClick={remove} disabled={busy}>
-            Delete
-          </button>
+          <Btn t={t} tone="danger" title="Delete note" disabled={busy} onClick={remove}>
+            <Icon name="trash" class="text-[13px]" />
+          </Btn>
         )}
-        <button type="button" class="link" onClick={onFix}>
+        <button
+          type="button"
+          onClick={onFix}
+          class={clsx("ml-auto text-[12px] underline underline-offset-2", t.sub)}
+        >
           Wrong match?
         </button>
       </div>
-      {msg && <p class="msg">{msg}</p>}
+      {msg && <p class={clsx("mt-2 text-[11px]", t.sub)}>{msg}</p>}
+    </div>
+  );
+}
+
+/** The "fix match" panel: search Trakt and pick the correct entry. */
+function Correction({ onClose }: { onClose: () => void }) {
+  const [media, setMedia] = useState<ParsedMedia | null>(null);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<TraktSearchOption[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState<string | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      const tab = await sendMessage("getTabMedia", undefined);
+      if (tab) {
+        setMedia(tab.media);
+        setQuery(tab.media.title);
+      }
+    })();
+  }, []);
+
+  const runSearch = async () => {
+    setBusy(true);
+    const type =
+      media && (media.season !== undefined || media.episode !== undefined)
+        ? "show"
+        : media?.mediaType === "show"
+          ? "show"
+          : media?.mediaType === "movie"
+            ? "movie"
+            : undefined;
+    setResults(await sendMessage("searchTrakt", { query, type }));
+    setBusy(false);
+  };
+
+  const pick = async (o: TraktSearchOption) => {
+    if (!media) return;
+    setBusy(true);
+    await sendMessage("saveCorrection", {
+      media,
+      identity: { mediaType: o.type, traktId: o.traktId, title: o.title, year: o.year },
+    });
+    setSaved(optionLabel(o));
+    setBusy(false);
+  };
+
+  return (
+    <div class={PANEL}>
+      <header class="mb-3 flex items-center justify-between">
+        <strong class={clsx("text-[13px]", t.heading)}>Fix match</strong>
+        <IconBtn t={t} name="x" title="Close" onClick={onClose} />
+      </header>
+      {saved ? (
+        <p class={clsx("rounded-lg px-2.5 py-2 text-[12px]", t.okBox)}>
+          Corrected → {saved}. It’ll re-scrobble now.
+        </p>
+      ) : (
+        <>
+          <div class="mb-3 flex gap-2">
+            <div class={clsx("flex flex-1 items-center gap-2 rounded-lg px-2.5", t.input)}>
+              <Icon name="search" class={clsx("text-[14px]", t.faint)} />
+              <input
+                value={query}
+                onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
+                onKeyDown={(e) => {
+                  e.stopPropagation();
+                  if (e.key === "Enter") runSearch();
+                }}
+                onKeyUp={(e) => e.stopPropagation()}
+                onKeyPress={(e) => e.stopPropagation()}
+                placeholder="Search Trakt…"
+                class="w-full bg-transparent py-1.5 text-[13px] outline-none"
+              />
+            </div>
+            <Btn t={t} tone="primary" disabled={busy} onClick={runSearch}>
+              Search
+            </Btn>
+          </div>
+          <div class="flex max-h-[220px] flex-col gap-1.5 overflow-y-auto">
+            {results.length === 0 ? (
+              <p class={clsx("py-1 text-[12px]", t.faint)}>
+                {busy ? "Searching…" : "Search and pick the right title."}
+              </p>
+            ) : (
+              results.map((o) => (
+                <button
+                  type="button"
+                  key={`${o.type}-${o.traktId}`}
+                  onClick={() => pick(o)}
+                  disabled={busy}
+                  class={clsx(
+                    "truncate rounded-lg px-2.5 py-1.5 text-left text-[12px] transition-colors disabled:opacity-50",
+                    t.card,
+                    t.heading,
+                    "hover:ring-2 hover:ring-trakt",
+                  )}
+                >
+                  {optionLabel(o)}
+                </button>
+              ))
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -346,7 +405,7 @@ function BadgeRoot() {
   // Pull the tab's media once a session exists (needed for rating/note/fix).
   useEffect(() => {
     if (status && !media) {
-      void sendMessage("getTabMedia", undefined).then((t) => t && setMedia(t.media));
+      void sendMessage("getTabMedia", undefined).then((tab) => tab && setMedia(tab.media));
     }
   }, [status, media]);
 
@@ -355,86 +414,96 @@ function BadgeRoot() {
   // open (mid note/fix) so we never minimize from under the user.
   useEffect(() => {
     if (status?.state === "scrobbled" && panel === null && !minimized) {
-      const t = setTimeout(() => setMinimized(true), AUTO_COLLAPSE_MS);
-      return () => clearTimeout(t);
+      const id = setTimeout(() => setMinimized(true), AUTO_COLLAPSE_MS);
+      return () => clearTimeout(id);
     }
   }, [status?.state, panel, minimized]);
 
   if (!status) return null;
 
-  const summary = `TMSync · ${status.detail ?? LABEL[status.state]}${
-    status.title ? ` — ${status.title}` : ""
-  }`;
+  const s = STATE[status.state];
+  const summary = `TMSync · ${status.detail ?? s.label}${status.title ? ` — ${status.title}` : ""}`;
 
-  // Minimized: a persistent status dot so presence + state stay visible.
+  // Minimized: a status dot with a soft glow.
   if (minimized) {
     return (
-      <div class="root">
-        <style>{CSS}</style>
+      <div class="fixed bottom-3.5 left-3.5 z-[2147483646] font-sans">
         <button
           type="button"
-          class="mini"
-          style={{ background: DOT[status.state] }}
+          class="grid place-items-center p-1.5"
           onClick={() => setMinimized(false)}
           title={summary}
           aria-label={summary}
-        />
+        >
+          <span class={clsx("size-3.5 rounded-full", s.color, s.glow)} />
+        </button>
       </div>
     );
   }
 
-  // Compact, dismissible rating prompt right after a watch lands in history.
   const showPrompt =
     status.state === "scrobbled" && media !== null && panel === null && !promptDismissed;
 
   return (
-    <div class="root">
-      <style>{CSS}</style>
+    <div class="fixed bottom-3.5 left-3.5 z-[2147483646] flex max-w-[340px] flex-col gap-2 font-sans">
       {panel === "review" && media && (
         <RateNote media={media} onClose={() => setPanel(null)} onFix={() => setPanel("fix")} />
       )}
       {panel === "fix" && <Correction onClose={() => setPanel(null)} />}
+
       {showPrompt && media && (
-        <div class="prompt">
-          <span class="plabel">Rate {media.season !== undefined ? "episode" : "movie"}?</span>
-          <RatingRow
-            media={media}
-            level={media.season !== undefined ? "episode" : "movie"}
-            compact
-          />
-          <button type="button" class="link" onClick={() => setPanel("review")}>
-            note
-          </button>
+        <div
+          class={clsx(
+            "inline-flex items-center gap-3 rounded-xl py-2 pr-2 pl-3 shadow-xl shadow-black/30",
+            t.panel,
+          )}
+        >
+          <span class={clsx("whitespace-nowrap text-[12px] font-semibold", t.heading)}>
+            Rate {media.season !== undefined ? "episode" : "movie"}?
+          </span>
+          <div class="flex-1">
+            <RatingRow
+              media={media}
+              level={media.season !== undefined ? "episode" : "movie"}
+              compact
+            />
+          </div>
           <button
             type="button"
-            class="x"
-            onClick={() => setPromptDismissed(true)}
-            aria-label="dismiss"
+            onClick={() => setPanel("review")}
+            class={clsx(
+              "inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium",
+              t.ghost,
+            )}
           >
-            ✕
+            <Icon name="edit" class="text-[11px]" />
+            Note
           </button>
+          <IconBtn t={t} name="x" title="Dismiss" onClick={() => setPromptDismissed(true)} />
         </div>
       )}
-      <div class="badge">
-        <span class="dot" style={{ background: DOT[status.state] }} />
+
+      <div
+        class={clsx(
+          "inline-flex items-center gap-2.5 rounded-xl py-2 pr-2 pl-3 shadow-xl shadow-black/30",
+          t.panel,
+        )}
+      >
+        <span class={clsx("size-2.5 shrink-0 rounded-full", s.color)} />
         <button
           type="button"
-          class="text"
+          class="min-w-0 flex-1 text-left"
           onClick={() => setPanel((p) => (p ? null : "review"))}
           title="Rate, note, or fix the match"
         >
-          <strong>TMSync · {status.detail ?? LABEL[status.state]}</strong>
-          {status.title && <span class="title">{status.title}</span>}
+          <span class={clsx("block text-[12px] font-semibold", t.heading)}>
+            TMSync · {status.detail ?? s.label}
+          </span>
+          {status.title && (
+            <span class={clsx("block truncate text-[12px]", t.sub)}>{status.title}</span>
+          )}
         </button>
-        <button
-          type="button"
-          class="x"
-          onClick={() => setMinimized(true)}
-          aria-label="minimize"
-          title="Minimize to a dot"
-        >
-          –
-        </button>
+        <IconBtn t={t} name="minimize" title="Minimize" onClick={() => setMinimized(true)} />
       </div>
     </div>
   );
@@ -450,70 +519,3 @@ export async function mountBadge(ctx: ContentScriptContext): Promise<void> {
   });
   ui.mount();
 }
-
-const CSS = `
-.root { position: fixed; left: 14px; bottom: 14px; z-index: 2147483646;
-  display: flex; flex-direction: column; gap: 8px; max-width: 340px;
-  font: 12px/1.3 system-ui, sans-serif; }
-.badge { display: flex; align-items: center; gap: 8px;
-  padding: 8px 10px; border-radius: 10px; background: rgba(17,17,17,0.92);
-  color: #f4f4f5; box-shadow: 0 4px 16px rgba(0,0,0,0.35); }
-.dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
-.mini { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.85);
-  padding: 0; cursor: pointer; box-shadow: 0 2px 10px rgba(0,0,0,0.4);
-  transition: transform 0.1s; }
-.mini:hover { transform: scale(1.15); }
-.text { display: flex; flex-direction: column; overflow: hidden; gap: 1px;
-  border: none; background: transparent; color: inherit; cursor: pointer;
-  text-align: left; font: inherit; padding: 0; }
-.text strong { font-weight: 600; }
-.title { opacity: 0.75; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.badge .x { border: none; background: transparent; color: inherit; cursor: pointer;
-  opacity: 0.6; padding: 0 2px; font-size: 12px; }
-.badge .x:hover { opacity: 1; }
-.panel { background: #fff; color: #111; border-radius: 10px; padding: 10px;
-  box-shadow: 0 8px 28px rgba(0,0,0,0.3); }
-.phead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-.phead .x { border: none; background: transparent; cursor: pointer; font-size: 12px; }
-.search { display: flex; gap: 6px; margin-bottom: 8px; }
-.search input { flex: 1; padding: 5px 7px; border: 1px solid #d4d4d8; border-radius: 6px;
-  font: inherit; }
-.search button { padding: 5px 10px; border: 1px solid #d4d4d8; border-radius: 6px;
-  background: #fff; cursor: pointer; font: inherit; }
-.results { display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow-y: auto; }
-.result { text-align: left; padding: 6px 8px; border: 1px solid #e4e4e7; border-radius: 6px;
-  background: #fafafa; cursor: pointer; font: inherit; }
-.result:hover { background: #f0f0f0; }
-.muted { opacity: 0.6; margin: 4px 0; }
-.saved { margin: 4px 0; color: #047857; }
-.tabs { display: flex; gap: 4px; margin-bottom: 8px; }
-.tab { flex: 1; padding: 4px 6px; border: 1px solid #d4d4d8; border-radius: 6px;
-  background: #fff; cursor: pointer; font: inherit; text-transform: capitalize; }
-.tab.on { background: #111; color: #fff; border-color: #111; }
-.rate { margin-bottom: 8px; }
-.rlabel { display: block; font-size: 11px; opacity: 0.6; margin-bottom: 2px; }
-.stars { display: flex; align-items: center; gap: 1px; }
-.star { border: none; background: none; padding: 0 1px; cursor: pointer; line-height: 1;
-  font-size: 19px; color: #d4d4d8; }
-.star.on, .star:hover { color: #f5b50a; }
-.rval { margin-left: 8px; font-size: 11px; opacity: 0.75; min-width: 30px; }
-.noteinput { width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid #d4d4d8;
-  border-radius: 6px; font: inherit; resize: vertical; }
-.spoil { display: flex; align-items: center; gap: 5px; margin: 6px 0; font-size: 11px; opacity: 0.8; }
-.actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.actions .danger { border-color: #dc2626; color: #dc2626; }
-.msg { margin: 6px 0 0; font-size: 11px; opacity: 0.8; }
-.msg.err { color: #dc2626; opacity: 1; }
-.prompt { display: flex; align-items: center; gap: 8px; padding: 8px 10px;
-  border-radius: 10px; background: rgba(17,17,17,0.92); color: #f4f4f5;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.35); }
-.prompt .plabel { font-weight: 600; white-space: nowrap; }
-.prompt .rate { margin: 0; flex: 1; }
-.prompt .star { color: rgba(255,255,255,0.3); font-size: 17px; }
-.prompt .star.on, .prompt .star:hover { color: #f5b50a; }
-.prompt .rval { color: #f4f4f5; }
-.prompt .link { color: #93c5fd; }
-.prompt .x { border: none; background: transparent; color: inherit; cursor: pointer; opacity: 0.6; }
-.panel .link { border: none; background: none; padding: 0; color: #2563eb;
-  cursor: pointer; text-decoration: underline; font: inherit; }
-`;
