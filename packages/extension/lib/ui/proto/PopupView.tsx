@@ -42,7 +42,7 @@ export function PopupView(p: PopupViewProps) {
         </header>
 
         {/* Trakt connection */}
-        <Section title="Trakt" t={t}>
+        <Section title="Account" t={t}>
           <div class={clsx("flex items-center justify-between rounded-xl px-3 py-2.5", t.card)}>
             <span class="flex items-center gap-2 text-[13px]">
               <span
@@ -52,7 +52,7 @@ export function PopupView(p: PopupViewProps) {
                 )}
               />
               <span class={p.connected ? t.heading : t.sub}>
-                {p.connected ? "Connected" : "Not connected"}
+                {p.connected ? "Connected to Trakt" : "Not connected"}
               </span>
             </span>
             {p.connected ? (

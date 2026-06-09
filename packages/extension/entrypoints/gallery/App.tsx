@@ -242,10 +242,10 @@ export function App() {
           </Tile>
           <Tile label="Minimized dot + rating prompt" t={t}>
             <div class="flex flex-col items-center gap-4">
-              <div class="flex items-center gap-3">
-                <BadgeMini variant={variant} state="watching" />
-                <BadgeMini variant={variant} state="paused" />
-                <BadgeMini variant={variant} state="scrobbled" />
+              <div class="flex items-center gap-4">
+                <BadgeMini state="watching" />
+                <BadgeMini state="paused" />
+                <BadgeMini state="scrobbled" />
               </div>
               <RatingPrompt variant={variant} label="Rate movie?" value={8} />
             </div>

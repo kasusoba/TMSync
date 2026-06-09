@@ -1,15 +1,40 @@
 import clsx from "clsx";
-import { Btn, Icon, Stars, Switch, type Variant, tokens } from "./kit";
+import { Btn, Icon, IconBtn, Stars, Switch, type Variant, tokens } from "./kit";
 
 export type BadgeState = "idle" | "watching" | "paused" | "scrobbled" | "stopped" | "error";
 
-const STATE: Record<BadgeState, { color: string; label: string }> = {
-  idle: { color: "bg-zinc-400", label: "matched" },
-  watching: { color: "bg-emerald-500", label: "scrobbling" },
-  paused: { color: "bg-amber-500", label: "paused" },
-  scrobbled: { color: "bg-sky-500", label: "added to history" },
-  stopped: { color: "bg-zinc-500", label: "stopped" },
-  error: { color: "bg-rose-500", label: "error" },
+// `glow` is a soft outer glow in the state colour (used by the minimized dot).
+const STATE: Record<BadgeState, { color: string; glow: string; label: string }> = {
+  idle: {
+    color: "bg-zinc-400",
+    glow: "shadow-[0_0_7px_2px_rgba(161,161,170,0.4)]",
+    label: "matched",
+  },
+  watching: {
+    color: "bg-emerald-500",
+    glow: "shadow-[0_0_8px_2px_rgba(16,185,129,0.55)]",
+    label: "scrobbling",
+  },
+  paused: {
+    color: "bg-amber-500",
+    glow: "shadow-[0_0_8px_2px_rgba(245,158,11,0.55)]",
+    label: "paused",
+  },
+  scrobbled: {
+    color: "bg-sky-500",
+    glow: "shadow-[0_0_8px_2px_rgba(56,189,248,0.55)]",
+    label: "added to history",
+  },
+  stopped: {
+    color: "bg-zinc-500",
+    glow: "shadow-[0_0_7px_2px_rgba(113,113,122,0.4)]",
+    label: "stopped",
+  },
+  error: {
+    color: "bg-rose-500",
+    glow: "shadow-[0_0_8px_2px_rgba(244,63,94,0.55)]",
+    label: "error",
+  },
 };
 
 /** The resting scrobble pill (dot + state + title + minimize). */
@@ -27,46 +52,25 @@ export function BadgePill({
   return (
     <div
       class={clsx(
-        "relative inline-flex max-w-[340px] items-center gap-2.5 rounded-xl py-2 pr-7 pl-3 shadow-xl shadow-black/30",
+        "inline-flex max-w-[340px] items-center gap-2.5 rounded-xl py-2 pr-2 pl-3 shadow-xl shadow-black/30",
         t.panel,
       )}
     >
       <span class={clsx("size-2.5 shrink-0 rounded-full", s.color)} />
-      <span class="min-w-0">
+      <span class="min-w-0 flex-1">
         <span class={clsx("block text-[12px] font-semibold", t.heading)}>TMSync · {s.label}</span>
         {title && <span class={clsx("block truncate text-[12px]", t.sub)}>{title}</span>}
       </span>
-      <button
-        type="button"
-        class={clsx(
-          "absolute top-1 right-1 grid size-5 place-items-center rounded-md",
-          t.faint,
-          "hover:bg-white/5 hover:text-current",
-        )}
-        title="Minimize"
-      >
-        <Icon name="minimize" class="text-[11px]" />
-      </button>
+      <IconBtn t={t} name="minimize" title="Minimize" />
     </div>
   );
 }
 
-/** Minimized: the TMSync mark with a live status dot. Click to expand. */
-export function BadgeMini({ variant, state }: { variant: Variant; state: BadgeState }) {
+/** Minimized: a live status dot with a soft glow. Click to expand. */
+export function BadgeMini({ state }: { state: BadgeState }) {
   return (
-    <button
-      type="button"
-      title="TMSync — click to expand"
-      class="relative grid size-8 place-items-center rounded-xl bg-trakt text-white shadow-lg shadow-black/40 transition-transform hover:scale-105"
-    >
-      <Icon name="play" fill class="text-[14px]" />
-      <span
-        class={clsx(
-          "absolute -top-0.5 -right-0.5 size-3 rounded-full ring-2",
-          STATE[state].color,
-          variant === "dark" ? "ring-zinc-900" : "ring-white",
-        )}
-      />
+    <button type="button" title="TMSync — click to expand" class="grid place-items-center p-1.5">
+      <span class={clsx("size-3.5 rounded-full", STATE[state].color, STATE[state].glow)} />
     </button>
   );
 }
@@ -101,13 +105,7 @@ export function RatingPrompt({
         <Icon name="edit" class="text-[11px]" />
         Note
       </button>
-      <button
-        type="button"
-        class={clsx("grid size-6 place-items-center rounded-md", t.faint, "hover:bg-white/5")}
-        title="Dismiss"
-      >
-        <Icon name="x" class="text-[12px]" />
-      </button>
+      <IconBtn t={t} name="x" title="Dismiss" />
     </div>
   );
 }
@@ -137,9 +135,7 @@ export function RateNotePanel({
     <div class={clsx("w-[300px] rounded-2xl p-3.5 shadow-2xl shadow-black/40", t.panel)}>
       <header class="mb-3 flex items-center justify-between">
         <strong class={clsx("text-[13px]", t.heading)}>Rate &amp; note</strong>
-        <button type="button" class={clsx("grid size-7 place-items-center rounded-md", t.faint)}>
-          <Icon name="x" class="text-[14px]" />
-        </button>
+        <IconBtn t={t} name="x" title="Close" />
       </header>
 
       {isShow && (
@@ -219,9 +215,7 @@ export function CorrectionPanel({
     <div class={clsx("w-[300px] rounded-2xl p-3.5 shadow-2xl shadow-black/40", t.panel)}>
       <header class="mb-3 flex items-center justify-between">
         <strong class={clsx("text-[13px]", t.heading)}>Fix match</strong>
-        <button type="button" class={clsx("grid size-7 place-items-center rounded-md", t.faint)}>
-          <Icon name="x" class="text-[14px]" />
-        </button>
+        <IconBtn t={t} name="x" title="Close" />
       </header>
       {saved ? (
         <p class={clsx("rounded-lg px-2.5 py-2 text-[12px]", t.okBox)}>

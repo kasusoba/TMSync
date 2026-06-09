@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { Btn, Icon, Switch, type Variant, tokens } from "./kit";
+import { Btn, Icon, IconBtn, Switch, type Variant, tokens } from "./kit";
 
 export type FieldKey = "title" | "year" | "season" | "episode";
 export interface FieldRow {
@@ -62,9 +62,7 @@ export function PickerPanel(p: PickerPanelProps) {
               {p.mode === "edit" ? "Edit site" : "Set up site"}
             </strong>
           </div>
-          <Btn t={t} tone="ghost" class="size-7 !px-0" onClick={p.onClose} title="Close">
-            <Icon name="x" class="text-[14px]" />
-          </Btn>
+          <IconBtn t={t} name="x" title="Close" onClick={p.onClose} />
         </header>
 
         {p.banner?.kind === "library" && (
@@ -169,17 +167,26 @@ export function PickerPanel(p: PickerPanelProps) {
         {/* type */}
         <label class="mb-2 block">
           <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>Type</span>
-          <select
-            value={p.mediaType}
-            class={clsx(
-              "w-full rounded-lg px-2 py-1.5 text-[13px] outline-none ring-inset",
-              t.input,
-            )}
-          >
-            <option value="auto">Auto</option>
-            <option value="movie">Movie</option>
-            <option value="show">Show</option>
-          </select>
+          <div class="relative">
+            <select
+              value={p.mediaType}
+              class={clsx(
+                "w-full appearance-none rounded-lg py-1.5 pr-8 pl-2.5 text-[13px] outline-none ring-inset focus:ring-2",
+                t.input,
+              )}
+            >
+              <option value="auto">Auto</option>
+              <option value="movie">Movie</option>
+              <option value="show">Show</option>
+            </select>
+            <Icon
+              name="down"
+              class={clsx(
+                "pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 text-[14px]",
+                t.faint,
+              )}
+            />
+          </div>
         </label>
 
         {/* iframe toggle — its own full-width row so it sits clean */}

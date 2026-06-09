@@ -171,13 +171,8 @@ export function OptionsView({ variant }: { variant: Variant }) {
 
   return (
     <div class={clsx("flex min-h-full flex-col", t.page)}>
-      <header class={clsx("flex items-center gap-2.5 border-b px-5 py-3.5", t.divider)}>
-        <span class="grid size-8 place-items-center rounded-lg bg-trakt text-white">
-          <Icon name="play" fill class="text-[15px]" />
-        </span>
-        <span class={clsx("text-[15px] font-semibold tracking-tight", t.heading)}>
-          TMSync settings
-        </span>
+      <header class={clsx("flex items-center border-b px-5 py-3.5", t.divider)}>
+        <span class={clsx("text-[15px] font-semibold tracking-tight", t.heading)}>TMSync</span>
       </header>
 
       <div class="flex flex-1">
