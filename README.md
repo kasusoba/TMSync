@@ -1,11 +1,57 @@
 # TMSync
 
-Cross-browser (Chrome + Firefox) WebExtension that passively scrobbles **movies & TV
-shows to Trakt** while you watch on arbitrary streaming sites, using declarative
-**recipes** (data, not code). See [`TMSync-PRD.md`](./TMSync-PRD.md) for the what/why and
-[`CLAUDE.md`](./CLAUDE.md) for the settled architecture and constraints.
+Track the movies and TV shows you watch to your [Trakt](https://trakt.tv) profile, automatically.
 
-## Monorepo layout
+TMSync is a browser extension for Chrome and Firefox. While you watch on a streaming site it
+reads what's playing, finds it on Trakt, and logs it for you. No manual check-ins. It also works
+on aggregator sites that don't have an official app or API, which most trackers can't touch.
+
+If you know MAL-Sync for anime, this is the same idea for movies and live-action TV on Trakt.
+
+## What it does
+
+- Detects the title and episode when you press play and scrobbles it to Trakt in real time, so
+  your profile shows what you're currently watching and marks it watched when you finish.
+- Works on most sites with a video and a readable title, including ones with no API.
+- Lets you add a new site yourself with a point-and-click picker, like an ad blocker's element
+  picker. No code.
+- Got the wrong match? Click the badge, search Trakt, pick the right one. It remembers the fix.
+- Rate movies, shows, seasons, and episodes, and keep a private note per item, all synced with Trakt.
+- Adds "watch on…" links to trakt.tv pages that take you to your usual streaming sites at the
+  right episode.
+- Your watch history only goes to your own Trakt account. Matching and scrobbling happen on your
+  machine.
+- Only gets access to a site once you enable it there. No broad permissions at install.
+
+## Getting started
+
+1. Install it from the Chrome Web Store or Firefox Add-ons.
+2. Click the toolbar icon and connect your Trakt account.
+3. Open something to watch on a supported site. A small badge shows what it matched. Press play.
+4. On a new site, click "Set it up with the picker," point at the title and episode, and you're
+   tracking it. You can share the result so others get the site too.
+
+## Contributing
+
+Site definitions ("recipes") are crowdsourced. Anyone can add support for a new site with a pull
+request, no server involved. See [`CONTRIBUTING.md`](./CONTRIBUTING.md).
+
+<!--
+  Chrome Web Store listing copy, kept here so it stays in sync.
+
+  Short description (max 132 chars):
+  Track the movies and TV you watch to your Trakt profile, automatically. Works on most streaming sites, no manual logging.
+
+  Full description: the "What it does" + "Getting started" sections above.
+-->
+
+## For developers
+
+Cross-browser WebExtension that passively scrobbles **movies & TV shows to Trakt** using
+declarative **recipes** (data, not code). See [`TMSync-PRD.md`](./TMSync-PRD.md) for the
+what/why and [`CLAUDE.md`](./CLAUDE.md) for the settled architecture and constraints.
+
+### Monorepo layout
 
 ```
 packages/shared      # recipe schema (Zod) + types + pure extraction engine (no DOM/browser globals)
@@ -16,7 +62,7 @@ recipes/             # versioned index.json: recipes + quick links (Phase 1 sour
 **Adding a site or quick link?** See [`CONTRIBUTING.md`](./CONTRIBUTING.md) — the recipe library is
 crowdsourced via PRs to `recipes/index.json`.
 
-## Develop
+### Develop
 
 ```bash
 pnpm install            # also runs `wxt prepare`
@@ -31,7 +77,7 @@ pnpm lint               # biome (format + lint)
 pnpm format             # biome format --write
 ```
 
-## Status
+### Status
 
 In place:
 - **Foundation + engine** — monorepo, `@tmsync/shared` schema + pure `extract()`/`matchRecipe`,
