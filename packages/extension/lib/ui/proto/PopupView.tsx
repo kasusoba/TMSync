@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { Btn, Icon, Section, type Variant, tokens } from "./kit";
+import { Btn, Icon, Section, TraktMark, type Variant, tokens } from "./kit";
 
 export interface OriginRow {
   origin: string;
@@ -44,9 +44,7 @@ export function PopupView(p: PopupViewProps) {
         {/* Account — one provider row today (Trakt); scales to a list. */}
         <Section title="Account" t={t}>
           <div class={clsx("flex items-center gap-3 rounded-xl px-3 py-2.5", t.card)}>
-            <span class="grid size-8 shrink-0 place-items-center rounded-full bg-trakt text-[14px] font-bold lowercase text-white">
-              t
-            </span>
+            <TraktMark />
             <span class="min-w-0 flex-1">
               <span class={clsx("block text-[13px] font-semibold", t.heading)}>Trakt</span>
               <span class={clsx("flex items-center gap-1.5 text-[11px]", t.sub)}>

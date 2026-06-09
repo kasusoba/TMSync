@@ -112,6 +112,22 @@ Engine contract: a single pure-ish `extract(recipe, { document, url }): ParsedMe
 - Recipes prefer `url`/`meta`/`jsonld` over `dom`; the picker should auto-detect page metadata before asking the user to click.
 - Errors degrade quietly: a failed scrape shows "couldn't read this page," never throws into the host page.
 
+## UI & visual design (settled — `packages/extension/lib/ui`)
+The look and these rules are **settled**; don't relitigate spacing/colour/structure or invent new patterns without being asked. The user cares a lot about **consistency** — uniformity across surfaces is the bar. When adding UI, reuse the kit and match the rules below.
+
+- **Stack:** Tailwind v4 (tokens + base in `lib/ui/theme.css`, wired via `@tailwindcss/vite`). Brand accent is **Trakt red** (`bg-trakt` / `text-trakt`). A shared kit in `lib/ui/proto/` holds the tokens + primitives (`tokens()`, `Btn`, `IconBtn`, `Switch`, `Stars`, `Icon`, `TraktMark`) and the presentational views (`PopupView`, `PickerPanel`, `BadgeView`, `QuickLinksView`, `OptionsView`). Real entrypoints stay thin and feed these props. (Folder is named `proto/` for historical reasons — it's the real shared UI.)
+- **Theme: dark is the chosen direction** (`tokens("dark")`). A light token set still exists and must keep working, but dark is what ships.
+- **Gallery harness:** `entrypoints/gallery/` renders every surface + state with mock data and a light/dark switch — the prototyping/review tool. Keep it updated when you add UI states. View via `pnpm dev` → `chrome-extension://<id>/gallery.html`.
+- **Consistency rules (keep uniform across popup / picker / badge / quicklinks / options):**
+  - Icon actions (close, minimize, reorder, edit, delete) use the **borderless `IconBtn`** (hover state, no ring). Never mix bordered and borderless icon buttons.
+  - **Destructive** actions are a **trash `IconBtn` (`danger`)**, identical everywhere (recipes, corrections, quick links).
+  - Text buttons: `primary` (filled red) = the main action; `ghost` = secondary (Refresh, Add, Disable, Copy JSON); `danger` (ghost-rose) = bulk-destructive (Clear all).
+  - **Red underline is for genuine inline text links only** (e.g. "contribute here"). Never style a button as red underlined text.
+  - All interactive controls get `cursor: pointer` (restored in the theme base layer; Tailwind v4 preflight defaults buttons to `default`).
+  - In any header show **either the logo mark or the wordmark — not both**.
+- **Account section is a provider row** (`TraktMark` + "Trakt" + status + Connect/Disconnect). It NAMES the provider so "Connect" is never "connect to what?". One row today; the layout scales to a list if another tracker is ever added — but TMSync still scrobbles to a **single** account (no multi-tracker sync; constraint #1). Section is labelled "Account", not "Trakt".
+- **Injected UI + Tailwind (Shadow DOM):** badge / picker / quicklinks render inside a Shadow DOM. Tailwind v4 emits its theme custom properties on `:root`, which do **not** reach a shadow root — so `var(--color-*)` (i.e. every colour utility) is unresolved there. Wiring Tailwind into the injected surfaces requires making the theme vars available inside the shadow scope (mirror them onto `:host`) — solve and document this when wiring those three. (Popup + options are normal pages and need none of this.)
+
 ## Testing
 - **Vitest** for `shared` (schema, `extract` against saved HTML snapshots — keep fixtures in `packages/extension/test/fixtures/`).
 - **Playwright** for extension E2E (load the built extension, drive a fixture page, assert a scrobble call).

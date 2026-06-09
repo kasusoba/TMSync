@@ -1,4 +1,5 @@
 import { tabFrameOrigins } from "@/lib/storage";
+import { PopupView } from "@/lib/ui/proto/PopupView";
 import { type TraktStatus, sendMessage } from "@/messaging";
 import { useEffect, useState } from "preact/hooks";
 import { browser } from "wxt/browser";
@@ -142,84 +143,24 @@ export function App() {
     window.close(); // get out of the way so the picker is visible
   };
 
-  const connected = status?.connected ?? false;
-
   return (
-    <main class="tmsync">
-      <h1>TMSync</h1>
-
-      <section>
-        <h2>Trakt</h2>
-        {connected ? (
-          <div class="row">
-            <span class="ok">Connected</span>
-            <button type="button" onClick={disconnect} disabled={busy}>
-              Disconnect
-            </button>
-          </div>
-        ) : (
-          <div class="row">
-            <span class="muted">Not connected</span>
-            <button type="button" onClick={connect} disabled={busy}>
-              Connect Trakt
-            </button>
-          </div>
-        )}
-        {!connected && status?.redirectUri && (
-          <p class="hint">
-            Register this redirect URI in your Trakt app:
-            <code>{status.redirectUri}</code>
-          </p>
-        )}
-      </section>
-
-      <section>
-        <h2>Sites &amp; player frames</h2>
-        {origins.length === 0 ? (
-          <p class="muted">No eligible page in the active tab.</p>
-        ) : (
-          <>
-            {origins.map((origin) => {
-              const isEnabled = enabled.includes(origin);
-              const isTop = origin === topOrigin;
-              return (
-                <div class="row" key={origin}>
-                  <code title={origin}>
-                    {origin.replace(/^https?:\/\//, "")}
-                    {!isTop && <span class="muted"> · frame</span>}
-                  </code>
-                  {isEnabled ? (
-                    <button type="button" onClick={() => disableOrigin(origin)} disabled={busy}>
-                      Disable
-                    </button>
-                  ) : (
-                    <button type="button" onClick={() => enableOrigin(origin)} disabled={busy}>
-                      Enable
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-            <p class="hint">
-              No recipe yet for this page?{" "}
-              <button type="button" class="link" onClick={setupSite} disabled={busy}>
-                Set it up with the picker
-              </button>
-              <br />
-              Player in another site (e.g. a player iframe)? Press play first so it loads, then
-              reopen this popup and Enable it here.
-            </p>
-          </>
-        )}
-      </section>
-
-      {note && <p class="note">{note}</p>}
-
-      <p class="hint">
-        <button type="button" class="link" onClick={() => browser.runtime.openOptionsPage()}>
-          Manage sites, recipes &amp; corrections
-        </button>
-      </p>
-    </main>
+    <PopupView
+      variant="dark"
+      connected={status?.connected ?? false}
+      redirectUri={status?.redirectUri}
+      busy={busy}
+      note={note}
+      origins={origins.map((origin) => ({
+        origin,
+        isTop: origin === topOrigin,
+        enabled: enabled.includes(origin),
+      }))}
+      onConnect={connect}
+      onDisconnect={disconnect}
+      onEnable={enableOrigin}
+      onDisable={disableOrigin}
+      onSetup={setupSite}
+      onOpenOptions={() => browser.runtime.openOptionsPage()}
+    />
   );
 }

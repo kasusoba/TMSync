@@ -1,5 +1,6 @@
 import clsx from "clsx";
 import type { ComponentChildren } from "preact";
+import { useState } from "preact/hooks";
 
 /**
  * Prototype design kit — presentational only (no browser APIs, no effects), so
@@ -177,6 +178,37 @@ export function Btn({
     >
       {children}
     </button>
+  );
+}
+
+/**
+ * The Trakt provider mark — the bundled logo, with a red "t" monogram fallback
+ * if the asset can't load. `src` defaults to the extension-root `/trakt.svg`.
+ */
+export function TraktMark({
+  class: cls = "size-8",
+  src = "/trakt.svg",
+}: { class?: string; src?: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <span
+        class={clsx(
+          "grid shrink-0 place-items-center rounded-full bg-trakt text-[14px] font-bold lowercase text-white",
+          cls,
+        )}
+      >
+        t
+      </span>
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt="Trakt"
+      class={clsx("shrink-0 object-contain", cls)}
+      onError={() => setFailed(true)}
+    />
   );
 }
 
