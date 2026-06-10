@@ -12,10 +12,11 @@ build order and progress; delete it once shipped.
 
 ## Build order
 - [ ] **1. Schema** — add `tracker: "trakt"|"anilist"` (default `"trakt"`) to the Zod recipe schema in `packages/shared`; bump `SCHEMA_VERSION` to 2. Update fixtures + snapshot tests. Confirm old (v1) recipes still parse and default to `trakt`.
-- [ ] **2. Adapter seam** — extract existing Trakt logic behind a `TrackerAdapter` interface (`resolve()` + `recordProgress()`). Pure refactor, **no behavior change**; Trakt path must stay byte-for-byte equivalent. This proves the seam before AniList exists.
+- [ ] **2. Adapter seam** — extract existing Trakt logic behind a `TrackerAdapter` interface: `resolve()`, `recordProgress()`, **plus the existing rating/comment path** (`ratingLevels()`, `rate()`, `setNote()`, optional `postPublic()`). Pure refactor, **no behavior change**; Trakt path (scrobble *and* rating/comment) must stay byte-for-byte equivalent. This proves the seam before AniList exists.
 - [ ] **3. AniList adapter** — implicit-grant OAuth via `launchWebAuthFlow`; thin GraphQL `fetch` client; `resolve()` (title → `Media` id, cache it) + `recordProgress()` (threshold crossed → `SaveMediaListEntry(mediaId, progress, status)`, idempotent, never lower progress). Read `mediaListOptions { scoreFormat }` for score display. Add the **second Account row** (AniList) reusing the existing provider-row component.
 - [ ] **4. Routing** — engine selects the adapter by `recipe.tracker`. `extract()` stays tracker-agnostic.
 - [ ] **5. First anime recipe** — one dedicated anime site under `recipes/anime/`, validated end-to-end against a real AniList write. Add to the gallery harness if it introduces new UI states.
+- [ ] **6. Rating & private note (AniList)** — implement `ratingLevels()`/`rate()`/`setNote()` for the AniList adapter: score (per the user's `scoreFormat`) + `MediaList.notes`, both via `SaveMediaListEntry`, both at the **cour entry** (no per-episode score). Make the rating UI adapter-driven (render only supported levels — anime shows a single "rate this cour"). Public `Review`/comments (`postPublic`) deferred.
 
 ## Deferred (NOT v1 — see CLAUDE.md drift guards)
 - Absolute↔AniList-entry offset mapping; TMDB/general-site anime; is-anime classifier.

@@ -122,8 +122,13 @@ One seam, two implementations, picked per recipe by `tracker`. The shared engine
 Sketch (final shape lives in code, not here):
 ```ts
 interface TrackerAdapter {
-  resolve(media: ParsedMedia): Promise<TrackedItem | null>;   // title (+season/episode) → tracker id
+  resolve(media: ParsedMedia): Promise<TrackedItem | null>;        // title (+season/episode) → tracker id
   recordProgress(item: TrackedItem, progress: number, phase: "play"|"pause"|"stop"): Promise<void>;
+  // rating + review — the existing Trakt rating/comment feature lives behind this seam too:
+  ratingLevels(item: TrackedItem): RatingLevel[];                  // which levels this tracker rates → UI affordances
+  rate(item: TrackedItem, level: RatingLevel, score: number): Promise<void>;
+  setNote(item: TrackedItem, text: string): Promise<void>;        // private note (Trakt VIP note / AniList MediaList.notes)
+  postPublic?(item: TrackedItem, body: string): Promise<void>;    // optional, DEFERRED — Trakt public comment / AniList public Review
 }
 ```
 
@@ -141,6 +146,19 @@ interface TrackerAdapter {
 - No `start`/`pause` chatter — AniList has nothing to receive it. Only **one write per episode**, when `watchedThreshold` is crossed. Debounce so seeking/replaying never double-writes.
 - **Idempotent:** never lower `progress`, and never re-write the same episode in a session. Re-watching an already-counted episode is a no-op.
 - Respect AniList's modest per-minute rate limit; these writes are infrequent by design, so this is mostly about not retrying in a tight loop.
+
+**Rating & reviews are adapter-driven — the levels differ, so the UI must not assume a fixed set.** TMSync already has the Trakt rating/comment feature; it moves behind the seam, and AniList implements its own shape:
+
+| | **Trakt** | **AniList** |
+|---|---|---|
+| Rate at | show / season / **episode** (multiple levels) | **entry = cour only** (no per-episode, no franchise-wide score) |
+| Score scale | 1–10 | per user's `scoreFormat` (`POINT_100`/`POINT_10[_DECIMAL]`/`POINT_5`/`POINT_3`) |
+| Private text | VIP note | `MediaList.notes` (per cour, via `SaveMediaListEntry`) |
+| Public text | comment (≥5 words) | `Review` — separate `SaveReview` entity, public, ~2200-char min |
+
+- AniList score + private `notes` both write through `SaveMediaListEntry`, both attach to the **cour entry** — there is no episode-level user score and no object above the entries to rate.
+- `ratingLevels(item)` lets the shared UI render only the affordances a tracker supports: Trakt shows show/season/episode stars; an AniList anime entry shows a single "rate this cour."
+- **v1 = score + private note.** AniList's public `Review` (heavyweight, long minimum) and Trakt public comments map to the optional `postPublic` and are **deferred**.
 
 **Episode mapping is OUT for v1 and, when added, lives ONLY here.** v1 = dedicated anime sites whose numbering matches the AniList entry. The hard absolute↔entry offset arithmetic (TMDB/general sites, the `Media.relations` walk, the cross-walk database, the is-anime classifier) is deferred; when it lands it is a private concern of the AniList adapter and must never appear in the shared engine. Mapping background when that day comes: `Fribb/anime-lists` (TMDB/TVDB↔AniList/MAL bridge), `Anime-Lists/anime-lists` (`anime-list-master.xml`, the canonical offset/season-mapping format), `manami-project/anime-offline-database` (title→id), and `MALSync/MAL-Sync-Backend` (prior-art page→entry mappings).
 
