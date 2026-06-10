@@ -1,0 +1,22 @@
+# ANIME-PLAN.md — adding AniList for anime
+
+Working checklist for the AniList integration. Direction + rules are settled in `CLAUDE.md`
+(see the 2026-06 direction note + the **Tracker adapters** section). This file is just the
+build order and progress; delete it once shipped.
+
+## Scope recap (settled — do not relitigate)
+- Routing: **anime series → AniList; movies (anime or not) + non-anime TV → Trakt.** One item, one tracker. No cross-tracker sync/mapping.
+- **v1 = dedicated anime sites only** (numbering already matches the AniList entry). Absolute↔entry offset mapping, the TMDB/general-site anime path, and the is-anime classifier are **deferred**, and when added live ONLY inside the AniList adapter — never in the shared `extract()` engine.
+- Anime recipes live in `recipes/anime/`, separate from the public `recipes/trakt/` list.
+- AniList = implicit-grant OAuth (no backend), GraphQL, `SaveMediaListEntry` (no scrobble API → we own the watched decision via `watchedThreshold`, one idempotent write per episode).
+
+## Build order
+- [ ] **1. Schema** — add `tracker: "trakt"|"anilist"` (default `"trakt"`) to the Zod recipe schema in `packages/shared`; bump `SCHEMA_VERSION` to 2. Update fixtures + snapshot tests. Confirm old (v1) recipes still parse and default to `trakt`.
+- [ ] **2. Adapter seam** — extract existing Trakt logic behind a `TrackerAdapter` interface (`resolve()` + `recordProgress()`). Pure refactor, **no behavior change**; Trakt path must stay byte-for-byte equivalent. This proves the seam before AniList exists.
+- [ ] **3. AniList adapter** — implicit-grant OAuth via `launchWebAuthFlow`; thin GraphQL `fetch` client; `resolve()` (title → `Media` id, cache it) + `recordProgress()` (threshold crossed → `SaveMediaListEntry(mediaId, progress, status)`, idempotent, never lower progress). Read `mediaListOptions { scoreFormat }` for score display. Add the **second Account row** (AniList) reusing the existing provider-row component.
+- [ ] **4. Routing** — engine selects the adapter by `recipe.tracker`. `extract()` stays tracker-agnostic.
+- [ ] **5. First anime recipe** — one dedicated anime site under `recipes/anime/`, validated end-to-end against a real AniList write. Add to the gallery harness if it introduces new UI states.
+
+## Deferred (NOT v1 — see CLAUDE.md drift guards)
+- Absolute↔AniList-entry offset mapping; TMDB/general-site anime; is-anime classifier.
+- Mapping-DB background when that day comes: `Fribb/anime-lists`, `Anime-Lists/anime-lists` (`anime-list-master.xml`), `manami-project/anime-offline-database`, `MALSync/MAL-Sync-Backend`.
