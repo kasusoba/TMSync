@@ -35,7 +35,7 @@
         "urlPattern": "www\\.cineby\\.at/tv",
         "hostnames": ["www.cineby.at"]
       },
-      "mediaType": "auto",
+      "mediaType": "show",
       "video": {
         "frame": "auto",
         "selector": "video",
@@ -49,13 +49,13 @@
         },
         "season": {
           "source": "url",
-          "regex": "(?:\\D*\\d+){1}\\D*(\\d+)",
+          "regex": "/tv/\\d+/(\\d+)",
           "group": 1,
           "transforms": ["toInt"]
         },
         "episode": {
           "source": "url",
-          "regex": "(?:\\D*\\d+){2}\\D*(\\d+)",
+          "regex": "/tv/\\d+/\\d+/(\\d+)",
           "group": 1,
           "transforms": ["toInt"]
         }
