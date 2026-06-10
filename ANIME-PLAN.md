@@ -6,7 +6,7 @@ build order and progress; delete it once shipped.
 
 ## Scope recap (settled — do not relitigate)
 - Routing: **anime series → AniList; movies (anime or not) + non-anime TV → Trakt.** One item, one tracker. No cross-tracker sync/mapping.
-- **v1 = dedicated anime sites only** (numbering already matches the AniList entry). Absolute↔entry offset mapping, the TMDB/general-site anime path, and the is-anime classifier are **deferred**, and when added live ONLY inside the AniList adapter — never in the shared `extract()` engine.
+- **Dedicated anime sites only** (numbering already matches the AniList entry). Absolute↔entry offset mapping, the TMDB/general-site anime path, and the is-anime classifier are a **non-goal (decided 2026-06)** — not deferred, not planned. They only serve Trakt↔AniList parity, which TMSync isn't. If ever revisited they live ONLY inside the AniList adapter, never the shared `extract()` engine.
 - Anime recipes live in `recipes/anime/`, separate from the public `recipes/trakt/` list.
 - AniList = implicit-grant OAuth (no backend), GraphQL, `SaveMediaListEntry` (no scrobble API → we own the watched decision via `watchedThreshold`, one idempotent write per episode).
 
@@ -19,6 +19,7 @@ build order and progress; delete it once shipped.
 - [ ] **6. Numbering guardrail (AniList `recordProgress`)** — before writing, if scraped `progress` > the resolved entry's `Media.episodes`, refuse and surface a "site numbering doesn't match AniList" warning instead of writing. Turns the common mis-authoring (anilist recipe on a TMDB/absolute-numbered site) from silent corruption into a loud, fixable error.
 - [ ] **7. Rating & private note (AniList)** — implement `ratingLevels()`/`rate()`/`setNote()` for the AniList adapter: score (per the user's `scoreFormat`) + `MediaList.notes`, both via `SaveMediaListEntry`, both at the **cour entry** (no per-episode score). Make the rating UI adapter-driven (render only supported levels — anime shows a single "rate this cour"). Public `Review`/comments (`postPublic`) deferred.
 
-## Deferred (NOT v1 — see CLAUDE.md drift guards)
+## Non-goal — will NOT build (see CLAUDE.md constraint #2 + drift guards)
 - Absolute↔AniList-entry offset mapping; TMDB/general-site anime; is-anime classifier.
-- Mapping-DB background when that day comes: `Fribb/anime-lists`, `Anime-Lists/anime-lists` (`anime-list-master.xml`), `manami-project/anime-offline-database`, `MALSync/MAL-Sync-Backend`.
+- Why: anime viewers use dedicated anime sites; the general-site path only serves Trakt↔AniList parity, which TMSync rejects. Decided 2026-06 (reconsidered and dropped).
+- Mapping-DB background, reference only (do not start building): `Fribb/anime-lists`, `Anime-Lists/anime-lists` (`anime-list-master.xml`), `manami-project/anime-offline-database`, `MALSync/MAL-Sync-Backend`.
