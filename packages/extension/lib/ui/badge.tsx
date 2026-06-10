@@ -547,10 +547,84 @@ function ManualPick({ onClose, onDone }: { onClose: () => void; onDone: () => vo
   );
 }
 
+/**
+ * Episode chooser: a show page whose URL carries no episode (e.g. a Cineby
+ * "?play=true" deep link) can't tell TMSync which episode is playing. The title
+ * is already resolved — the user just supplies season + episode, which is
+ * remembered for this URL so scrobbling can start.
+ */
+function EpisodePick({
+  title,
+  onClose,
+  onDone,
+}: {
+  title?: string;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [season, setSeason] = useState("1");
+  const [episode, setEpisode] = useState("1");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const submit = async () => {
+    const s = Number.parseInt(season, 10);
+    const e = Number.parseInt(episode, 10);
+    if (!Number.isFinite(s) || !Number.isFinite(e) || s < 0 || e < 1) {
+      setErr("Enter valid season and episode numbers.");
+      return;
+    }
+    setBusy(true);
+    setErr(null);
+    const out = await sendMessage("setEpisode", { season: s, episode: e });
+    setBusy(false);
+    if (out.ok) onDone();
+    else setErr("Couldn’t save the episode.");
+  };
+
+  return (
+    <div class={PANEL}>
+      <header class="mb-3 flex items-center justify-between">
+        <strong class={clsx("text-[13px]", t.heading)}>Which episode?</strong>
+        <IconBtn t={t} name="x" title="Close" onClick={onClose} />
+      </header>
+      {title && <p class={clsx("mb-2 truncate text-[12px]", t.sub)}>{title}</p>}
+      <p class={clsx("mb-3 text-[11px]", t.faint)}>
+        This page’s URL doesn’t say which episode is playing. Set it so TMSync can scrobble.
+      </p>
+      <div class="mb-3 flex gap-2">
+        {[
+          { label: "Season", value: season, set: setSeason },
+          { label: "Episode", value: episode, set: setEpisode },
+        ].map((f) => (
+          <label key={f.label} class="flex-1">
+            <span class={clsx("mb-1 block text-[11px]", t.faint)}>{f.label}</span>
+            <input
+              {...stopKeys}
+              inputMode="numeric"
+              value={f.value}
+              onInput={(ev) => f.set((ev.target as HTMLInputElement).value)}
+              placeholder="1"
+              class={clsx(
+                "w-full rounded-lg px-2.5 py-1.5 text-[13px] outline-none ring-inset focus:ring-2",
+                t.input,
+              )}
+            />
+          </label>
+        ))}
+      </div>
+      <Btn t={t} tone="primary" class="w-full" disabled={busy} onClick={submit}>
+        {busy ? "Saving…" : "Set episode & scrobble"}
+      </Btn>
+      {err && <p class="mt-2 text-[11px] text-rose-400">{err}</p>}
+    </div>
+  );
+}
+
 function BadgeRoot() {
   const [status, setStatus] = useState<BadgeStatus | null>(null);
   const [minimized, setMinimized] = useState(false);
-  const [panel, setPanel] = useState<null | "review" | "fix" | "manual">(null);
+  const [panel, setPanel] = useState<null | "review" | "fix" | "manual" | "episode">(null);
   const [media, setMedia] = useState<ParsedMedia | null>(null);
   const [promptDismissed, setPromptDismissed] = useState(false);
   const [manualMode, setManualMode] = useState(false);
@@ -624,6 +698,13 @@ function BadgeRoot() {
       {panel === "manual" && (
         <ManualPick onClose={() => setPanel(null)} onDone={() => setPanel(null)} />
       )}
+      {panel === "episode" && (
+        <EpisodePick
+          title={status.title}
+          onClose={() => setPanel(null)}
+          onDone={() => setPanel(null)}
+        />
+      )}
 
       {status.pick && panel === null && (
         <div
@@ -637,6 +718,22 @@ function BadgeRoot() {
           </span>
           <Btn t={t} tone="primary" class="ml-auto" onClick={() => setPanel("manual")}>
             Pick title
+          </Btn>
+        </div>
+      )}
+
+      {status.needEpisode && panel === null && (
+        <div
+          class={clsx(
+            "inline-flex items-center gap-3 rounded-xl py-2 pr-2 pl-3 shadow-xl shadow-black/30",
+            t.panel,
+          )}
+        >
+          <span class={clsx("whitespace-nowrap text-[12px] font-semibold", t.heading)}>
+            Which episode?
+          </span>
+          <Btn t={t} tone="primary" class="ml-auto" onClick={() => setPanel("episode")}>
+            Set episode
           </Btn>
         </div>
       )}
@@ -683,8 +780,18 @@ function BadgeRoot() {
         <button
           type="button"
           class="min-w-0 flex-1 text-left"
-          onClick={() => setPanel((p) => (p ? null : status.pick ? "manual" : "review"))}
-          title={status.pick ? "Pick what you’re watching" : "Rate, note, or fix the match"}
+          onClick={() =>
+            setPanel((p) =>
+              p ? null : status.pick ? "manual" : status.needEpisode ? "episode" : "review",
+            )
+          }
+          title={
+            status.pick
+              ? "Pick what you’re watching"
+              : status.needEpisode
+                ? "Set the episode you’re watching"
+                : "Rate, note, or fix the match"
+          }
         >
           <span class={clsx("block text-[12px] font-semibold", t.heading)}>
             TMSync · {status.detail ?? s.label}

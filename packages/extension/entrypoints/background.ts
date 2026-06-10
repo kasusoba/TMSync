@@ -5,6 +5,7 @@ import {
   corrections,
   customRecipes,
   enabledOrigins,
+  episodeOverrides,
   manualContexts,
   manualSelections,
   notes,
@@ -195,6 +196,42 @@ export default defineBackground(() => {
     all[`${data.recipeId}::${data.pageKey}`] = data.media;
     await manualSelections.setValue(all);
     // Re-resolve the tab so the session picks up the chosen media and scrobbles.
+    const tabId = sender.tab?.id;
+    if (tabId !== undefined) void sendMessage("recheck", undefined, tabId);
+    return { ok: true };
+  });
+
+  onMessage("getEpisodeOverride", async ({ sender }) => {
+    const url = sender.tab?.url;
+    if (!url) return null;
+    return (await episodeOverrides.getValue())[url] ?? null;
+  });
+
+  onMessage("clearEpisodeOverride", async ({ data }) => {
+    const all = await episodeOverrides.getValue();
+    if (all[data.url]) {
+      delete all[data.url];
+      await episodeOverrides.setValue(all);
+    }
+  });
+
+  onMessage("stopTabSession", async ({ sender }) => {
+    const tabId = sender.tab?.id;
+    if (tabId === undefined) return;
+    // Clear the published media so any frame that re-pulls gets nothing, then
+    // recheck so an active player iframe tears down its (now stale) session.
+    await clearTabSession(tabId);
+    void sendMessage("recheck", undefined, tabId);
+  });
+
+  onMessage("setEpisode", async ({ data, sender }) => {
+    // A show page with no episode in its URL — remember the user's S/E for THIS
+    // page URL, then re-resolve the tab so the session applies it and scrobbles.
+    const url = sender.tab?.url;
+    if (!url) return { ok: false };
+    const all = await episodeOverrides.getValue();
+    all[url] = { season: data.season, episode: data.episode };
+    await episodeOverrides.setValue(all);
     const tabId = sender.tab?.id;
     if (tabId !== undefined) void sendMessage("recheck", undefined, tabId);
     return { ok: true };

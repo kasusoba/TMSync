@@ -218,6 +218,60 @@ export function ManualPrompt({ variant }: { variant: Variant }) {
   );
 }
 
+/** Episode prompt bar: a show URL with no episode (e.g. a "?play=true" link). */
+export function EpisodePrompt({ variant }: { variant: Variant }) {
+  const t = tokens(variant);
+  return (
+    <div
+      class={clsx(
+        "inline-flex items-center gap-3 rounded-xl py-2 pr-2 pl-3 shadow-xl shadow-black/30",
+        t.panel,
+      )}
+    >
+      <span class={clsx("whitespace-nowrap text-[12px] font-semibold", t.heading)}>
+        Which episode?
+      </span>
+      <Btn t={t} tone="primary" class="ml-auto">
+        Set episode
+      </Btn>
+    </div>
+  );
+}
+
+/** Episode chooser: supply season/episode for a show URL that carries none. */
+export function EpisodePickPanel({ variant, title }: { variant: Variant; title?: string }) {
+  const t = tokens(variant);
+  return (
+    <div class={clsx("w-[300px] rounded-2xl p-3.5 shadow-2xl shadow-black/40", t.panel)}>
+      <header class="mb-3 flex items-center justify-between">
+        <strong class={clsx("text-[13px]", t.heading)}>Which episode?</strong>
+        <IconBtn t={t} name="x" title="Close" />
+      </header>
+      {title && <p class={clsx("mb-2 truncate text-[12px]", t.sub)}>{title}</p>}
+      <p class={clsx("mb-3 text-[11px]", t.faint)}>
+        This page’s URL doesn’t say which episode is playing. Set it so TMSync can scrobble.
+      </p>
+      <div class="mb-3 flex gap-2">
+        {["Season", "Episode"].map((l) => (
+          <label key={l} class="flex-1">
+            <span class={clsx("mb-1 block text-[11px]", t.faint)}>{l}</span>
+            <input
+              placeholder="1"
+              class={clsx(
+                "w-full rounded-lg px-2.5 py-1.5 text-[13px] outline-none ring-inset focus:ring-2",
+                t.input,
+              )}
+            />
+          </label>
+        ))}
+      </div>
+      <Btn t={t} tone="primary" class="w-full">
+        Set episode &amp; scrobble
+      </Btn>
+    </div>
+  );
+}
+
 /** Manual-mode picker: choose what's playing on a site with no readable title. */
 export function ManualPickPanel({
   variant,

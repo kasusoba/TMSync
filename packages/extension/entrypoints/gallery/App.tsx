@@ -3,6 +3,8 @@ import {
   BadgePill,
   type BadgeState,
   CorrectionPanel,
+  EpisodePickPanel,
+  EpisodePrompt,
   ManualPickPanel,
   ManualPrompt,
   RateNotePanel,
@@ -319,6 +321,12 @@ export function App() {
           </Tile>
           <Tile label="Manual mode · pick a show + S/E" t={t}>
             <ManualPickPanel variant={variant} type="show" query="the bear" results={[]} />
+          </Tile>
+          <Tile label="Episode chooser · prompt (S/E-less URL)" t={t}>
+            <EpisodePrompt variant={variant} />
+          </Tile>
+          <Tile label="Episode chooser · panel" t={t}>
+            <EpisodePickPanel variant={variant} title="Severance" />
           </Tile>
         </Group>
 

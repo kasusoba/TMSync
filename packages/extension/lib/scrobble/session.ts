@@ -98,6 +98,12 @@ export class SessionManager {
   private lastPublishedKey: string | null = null;
   /** Manual recipe matched but no selection yet — wait for the user's pick. */
   private manualAwaiting = false;
+  /** Show page matched but its URL carries no episode — wait for the user to
+   * supply season/episode via the badge (e.g. a "?play=true" deep link). */
+  private episodeAwaiting = false;
+  /** URL an episode override was last applied for. Cleared (and the override
+   * dropped) when we navigate away, so returning to an S/E-less URL re-prompts. */
+  private episodeOverrideUrl: string | null = null;
   private framesObserver: MutationObserver | null = null;
   private readonly seenFrameOrigins = new Set<string>();
   private currentKey: string | null = null;
@@ -170,18 +176,29 @@ export class SessionManager {
 
   private async reconcile(): Promise<void> {
     await this.matchAndPublish();
-    // Manual site with no pick yet: nothing to play until the user chooses.
-    if (this.manualAwaiting) return;
+    // Awaiting the user: a manual-site title pick, or the episode # for an
+    // S/E-less show URL. Nothing to play until they choose.
+    if (this.manualAwaiting || this.episodeAwaiting) return;
     await this.ensurePlaying();
   }
 
   /** If this frame matches a recipe, extract + publish the media and seed the badge. */
   private async matchAndPublish(): Promise<void> {
     const engineCtx = { document, url: location.href };
+
+    // Navigated away from the URL an episode override was set for: drop it so a
+    // later return to that (ambiguous) URL re-prompts instead of reusing a stale
+    // episode it may no longer be playing.
+    if (this.episodeOverrideUrl && this.episodeOverrideUrl !== location.href) {
+      void sendMessage("clearEpisodeOverride", { url: this.episodeOverrideUrl });
+      this.episodeOverrideUrl = null;
+    }
+
     const recipe = selectRecipe(this.recipes, engineCtx);
     if (!recipe) {
       this.localMedia = null;
       this.manualAwaiting = false;
+      this.episodeAwaiting = false;
       if (this.isTop) await sendMessage("publishManualContext", null);
       return;
     }
@@ -189,6 +206,7 @@ export class SessionManager {
     // Manual recipe: nothing to scrape. The top frame derives the page key,
     // looks up a remembered pick, and otherwise prompts the user via the badge.
     if (isManualRecipe(recipe)) {
+      this.episodeAwaiting = false;
       if (this.isTop) await this.handleManual(recipe, engineCtx);
       else this.localMedia = null; // a player iframe consumes the published media
       return;
@@ -200,18 +218,52 @@ export class SessionManager {
       this.localMedia = null;
       return;
     }
-    this.localMedia = result.media;
+    let media = result.media;
+
+    // A show whose URL carries no episode (e.g. a Cineby "?play=true" deep link):
+    // the page can't tell us which episode is playing. Apply a season/episode the
+    // user supplied for this URL, else prompt for it via the badge — without one
+    // the scrobble would fail with "missing episode #".
+    if (media.mediaType === "show" && media.episode === undefined) {
+      const override = await sendMessage("getEpisodeOverride", undefined);
+      if (override) {
+        media = { ...media, season: override.season, episode: override.episode };
+        this.episodeOverrideUrl = location.href;
+      } else {
+        // Enter the prompt. Only the first time (not on the recheck-driven
+        // re-reconcile below) do we stop the tab session — otherwise the still-
+        // playing player iframe keeps reporting the previous episode and the
+        // prompt never sticks. The guard also prevents a recheck → reconcile loop.
+        if (!this.episodeAwaiting) {
+          this.episodeAwaiting = true;
+          await sendMessage("stopTabSession", undefined);
+        }
+        this.localMedia = null;
+        this.lastPublishedKey = null;
+        this.teardownSession();
+        await sendMessage("reportScrobble", {
+          state: "idle",
+          title: label(media),
+          detail: "set the episode to scrobble",
+          needEpisode: true,
+        });
+        return;
+      }
+    }
+
+    this.episodeAwaiting = false;
+    this.localMedia = media;
     this.videoSelector = recipe.video.selector;
     this.frame = recipe.video.frame;
     this.watchedThreshold = recipe.video.watchedThreshold;
 
     // Avoid churn from the head observer firing on unrelated mutations.
-    const key = mediaKey(result.media);
+    const key = mediaKey(media);
     if (key === this.lastPublishedKey) return;
     this.lastPublishedKey = key;
 
     await sendMessage("publishMedia", {
-      media: result.media,
+      media,
       videoSelector: recipe.video.selector,
       frame: recipe.video.frame,
       watchedThreshold: recipe.video.watchedThreshold,
@@ -220,19 +272,19 @@ export class SessionManager {
     // Seed the badge immediately with the scraped title, then refine it with what
     // Trakt actually matched — so the user can verify (and fix) the target BEFORE
     // pressing play, not only after the first scrobble fires.
-    await sendMessage("reportScrobble", { state: "idle", title: label(result.media) });
-    const resolved = await sendMessage("resolveMedia", result.media);
+    await sendMessage("reportScrobble", { state: "idle", title: label(media) });
+    const resolved = await sendMessage("resolveMedia", media);
     await sendMessage(
       "reportScrobble",
       resolved.resolved && resolved.title
         ? {
             state: "idle",
-            title: resolvedLabel(resolved.title, resolved.year, result.media),
+            title: resolvedLabel(resolved.title, resolved.year, media),
             detail: "press play to scrobble",
           }
         : {
             state: "error",
-            title: label(result.media),
+            title: label(media),
             detail: "not found on Trakt — click to fix",
           },
     );
@@ -441,9 +493,14 @@ export class SessionManager {
     const controller = new ScrobbleController(
       video,
       (action, progress) => {
-        void sendMessage("scrobble", { action, media, progress }).then((reply) =>
-          sendMessage("reportScrobble", statusFromReply(action, reply, media)),
-        );
+        void sendMessage("scrobble", { action, media, progress }).then((reply) => {
+          // We still tell Trakt to stop the outgoing episode — but if we've since
+          // shown the episode prompt (tearing down e.g. S1E2 to ask which episode
+          // a "?play=true" URL is on), this stop's late reply must not overwrite
+          // the prompt back to the old episode.
+          if (action === "stop" && this.episodeAwaiting) return;
+          void sendMessage("reportScrobble", statusFromReply(action, reply, media));
+        });
         if (action === "stop") void sendMessage("endSession");
         else void sendMessage("updateProgress", progress);
       },

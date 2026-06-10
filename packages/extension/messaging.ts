@@ -42,6 +42,9 @@ export interface BadgeStatus {
   /** Manual mode awaiting a selection — the badge shows a "pick what you're
    * watching" prompt instead of (or alongside) the status line. */
   pick?: boolean;
+  /** A show page whose URL carries no episode (e.g. a "?play=true" deep link) —
+   * the badge shows a season/episode chooser so scrobbling can start. */
+  needEpisode?: boolean;
 }
 
 export interface TabMedia {
@@ -116,6 +119,23 @@ export interface ProtocolMap {
     media: ParsedMedia;
     identity: ResolvedIdentity;
   }): { ok: boolean };
+  /** The remembered manual season/episode for this tab's URL, or null. Read via
+   * the background because the override lives in `session` storage, which
+   * content scripts cannot access directly. */
+  getEpisodeOverride(): { season: number; episode: number } | null;
+  /** Drop the override stored for a specific URL — sent by the matcher frame when
+   * it navigates away from an S/E-less URL, so a later return re-prompts instead
+   * of silently reusing a stale episode (the URL can resume a different one). */
+  clearEpisodeOverride(q: { url: string }): void;
+  /** Stop this tab's scrobble session and tell every frame to re-evaluate. The
+   * matcher frame sends this when it can no longer determine what's playing (an
+   * S/E-less URL with no override) so a stale player-iframe session can't keep
+   * the badge — and Trakt — on the previous episode. */
+  stopTabSession(): void;
+  /** The user supplied the season/episode for a show URL that carries none
+   * (e.g. a "?play=true" deep link). Persists it keyed by the tab's URL and
+   * re-resolves the tab so scrobbling starts. */
+  setEpisode(q: { season: number; episode: number }): { ok: boolean };
   /** Matcher frame publishes (or clears) this tab's manual context so the badge
    * knows which recipe + page key a pick belongs to. */
   publishManualContext(ctx: { recipeId: string; pageKey: string } | null): void;
