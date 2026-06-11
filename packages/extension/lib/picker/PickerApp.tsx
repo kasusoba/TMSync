@@ -47,6 +47,52 @@ function inOurUi(e: Event): boolean {
     .some((n) => n instanceof HTMLElement && n.tagName.toLowerCase() === HOST_TAG);
 }
 
+/** An element with its own visible text node (not just nested children). */
+function hasDirectText(el: Element): boolean {
+  for (const n of el.childNodes) {
+    if (n.nodeType === Node.TEXT_NODE && (n.textContent ?? "").trim() !== "") return true;
+  }
+  return false;
+}
+
+/**
+ * The best element to pick at a screen point. Video players overlay a fullscreen
+ * click-catcher (the play/pause layer), so `event.target` is usually the whole
+ * page — useless for grabbing the title/episode text drawn in a corner. Instead
+ * walk the FULL stack under the cursor (elementsFromPoint sees through the
+ * overlay) and choose the SMALLEST element that owns visible text, skipping our
+ * own UI and near-fullscreen overlays. Falls back to the smallest non-overlay
+ * element, else the topmost.
+ */
+function candidateAt(x: number, y: number): Element | null {
+  const stack = document
+    .elementsFromPoint(x, y)
+    .filter((el) => el.tagName.toLowerCase() !== HOST_TAG);
+  if (stack.length === 0) return null;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const isOverlay = (r: DOMRect) => r.width >= vw * 0.9 && r.height >= vh * 0.9;
+
+  let bestText: Element | null = null;
+  let bestTextArea = Number.POSITIVE_INFINITY;
+  let bestAny: Element | null = null;
+  let bestAnyArea = Number.POSITIVE_INFINITY;
+  for (const el of stack) {
+    const r = el.getBoundingClientRect();
+    const area = r.width * r.height;
+    if (area === 0 || isOverlay(r)) continue;
+    if (area < bestAnyArea) {
+      bestAny = el;
+      bestAnyArea = area;
+    }
+    if (hasDirectText(el) && area < bestTextArea) {
+      bestText = el;
+      bestTextArea = area;
+    }
+  }
+  return bestText ?? bestAny ?? stack[0] ?? null;
+}
+
 interface Rect {
   top: number;
   left: number;
@@ -144,8 +190,11 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
     if (!picking) return;
     const onMove = (e: MouseEvent) => {
       if (inOurUi(e)) return setHighlight(null);
-      const el = e.target as Element | null;
-      if (!el?.getBoundingClientRect) return;
+      // Highlight the element we'd actually pick (the tight text box under the
+      // player overlay), not the topmost full-page catcher — so the box tracks
+      // the real target and the user can aim precisely.
+      const el = candidateAt(e.clientX, e.clientY);
+      if (!el) return setHighlight(null);
       const r = el.getBoundingClientRect();
       setHighlight({ top: r.top, left: r.left, width: r.width, height: r.height });
     };
@@ -153,7 +202,7 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
       if (inOurUi(e)) return;
       e.preventDefault();
       e.stopPropagation();
-      const el = e.target as Element | null;
+      const el = candidateAt(e.clientX, e.clientY);
       if (el) selectField(picking, el);
       setPicking(null);
       setHighlight(null);
