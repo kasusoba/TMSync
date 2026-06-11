@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildSiteLinks, fillTemplate, slugify } from "./links";
+import { buildAniListSiteLinks, buildSiteLinks, fillTemplate, slugify } from "./links";
 import type { LinkTemplates } from "./schema";
 
 describe("fillTemplate", () => {
@@ -107,5 +107,35 @@ describe("buildSiteLinks", () => {
   it("returns nothing when no template can be filled", () => {
     const tmdbOnly: LinkTemplates = { movie: "https://s/movie/{tmdb}" };
     expect(buildSiteLinks(tmdbOnly, { type: "movie", title: "X" })).toEqual({});
+  });
+});
+
+describe("buildAniListSiteLinks", () => {
+  const media = {
+    anilistId: 147105,
+    title: "Witch Hat Atelier",
+    romaji: "Tongari Boushi no Atelier",
+  };
+
+  it("fills the anime template with id / title / slug / romaji", () => {
+    expect(buildAniListSiteLinks({ anime: "https://s/anime/{slug}" }, media).direct).toBe(
+      "https://s/anime/witch-hat-atelier",
+    );
+    expect(buildAniListSiteLinks({ anime: "https://s/a/{anilistId}" }, media).direct).toBe(
+      "https://s/a/147105",
+    );
+  });
+
+  it("URL-encodes the title and romaji in search", () => {
+    expect(buildAniListSiteLinks({ search: "https://s/?q={title}" }, media).search).toBe(
+      "https://s/?q=Witch%20Hat%20Atelier",
+    );
+    expect(buildAniListSiteLinks({ anime: "https://s/{romaji}" }, media).direct).toBe(
+      "https://s/Tongari%20Boushi%20no%20Atelier",
+    );
+  });
+
+  it("skips a template whose placeholder is missing", () => {
+    expect(buildAniListSiteLinks({ anime: "https://s/a/{anilistId}" }, { title: "X" })).toEqual({});
   });
 });

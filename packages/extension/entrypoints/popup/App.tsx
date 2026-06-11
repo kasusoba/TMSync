@@ -1,6 +1,6 @@
 import { tabFrameOrigins } from "@/lib/storage";
 import { PopupView } from "@/lib/ui/proto/PopupView";
-import { type TraktStatus, sendMessage } from "@/messaging";
+import { type AniListStatus, type TraktStatus, sendMessage } from "@/messaging";
 import { useEffect, useState } from "preact/hooks";
 import { browser } from "wxt/browser";
 
@@ -51,6 +51,7 @@ async function collectOrigins(tabId: number): Promise<string[]> {
 
 export function App() {
   const [status, setStatus] = useState<TraktStatus | null>(null);
+  const [anilist, setAnilist] = useState<AniListStatus | null>(null);
   const [topOrigin, setTopOrigin] = useState<string | null>(null);
   const [origins, setOrigins] = useState<string[]>([]); // top + every iframe origin on the page
   const [enabled, setEnabled] = useState<string[]>([]);
@@ -59,8 +60,9 @@ export function App() {
 
   const refresh = async () => {
     const tabId = await activeTabId();
-    const [s, o, found, sites] = await Promise.all([
+    const [s, al, o, found, sites] = await Promise.all([
       sendMessage("getTraktStatus", undefined),
+      sendMessage("getAniListStatus", undefined),
       activeTabOrigin(),
       tabId !== null ? collectOrigins(tabId) : Promise.resolve<string[]>([]),
       sendMessage("listEnabledSites", undefined),
@@ -69,6 +71,7 @@ export function App() {
     // the session — catches player iframes that loaded after the page settled.
     const stored = tabId !== null ? ((await tabFrameOrigins.getValue())[tabId] ?? []) : [];
     setStatus(s);
+    setAnilist(al);
     setTopOrigin(o);
     setOrigins([...new Set([...found, ...stored])]);
     setEnabled(sites);
@@ -91,6 +94,22 @@ export function App() {
   const disconnect = async () => {
     setBusy(true);
     await sendMessage("disconnectTrakt", undefined);
+    await refresh();
+    setBusy(false);
+  };
+
+  const connectAniList = async () => {
+    setBusy(true);
+    setNote(null);
+    const res = await sendMessage("connectAniList", undefined);
+    if (!res.ok) setNote(res.error ?? "AniList connection failed");
+    await refresh();
+    setBusy(false);
+  };
+
+  const disconnectAniList = async () => {
+    setBusy(true);
+    await sendMessage("disconnectAniList", undefined);
     await refresh();
     setBusy(false);
   };
@@ -148,6 +167,7 @@ export function App() {
       variant="dark"
       connected={status?.connected ?? false}
       redirectUri={status?.redirectUri}
+      anilistConnected={anilist?.connected ?? false}
       busy={busy}
       note={note}
       origins={origins.map((origin) => ({
@@ -157,6 +177,8 @@ export function App() {
       }))}
       onConnect={connect}
       onDisconnect={disconnect}
+      onConnectAniList={connectAniList}
+      onDisconnectAniList={disconnectAniList}
       onEnable={enableOrigin}
       onDisable={disableOrigin}
       onSetup={setupSite}

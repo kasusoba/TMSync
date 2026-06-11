@@ -1,5 +1,10 @@
+import type { Tracker } from "@/lib/tracker/types";
+import type { LinkTemplates } from "@tmsync/shared";
 import clsx from "clsx";
 import { Btn, Icon, IconBtn, Switch, type Variant, tokens } from "./kit";
+
+/** Which quick-link template fields exist for a tracker. */
+export type QuickLinkField = "movie" | "tv" | "anime" | "search";
 
 export type FieldKey = "title" | "year" | "season" | "episode";
 export interface FieldRow {
@@ -19,6 +24,8 @@ export interface PickerPanelProps {
   /** Field label currently being picked, or null. */
   picking?: string | null;
   mediaType: "auto" | "movie" | "show";
+  /** Which tracker this recipe routes to (Trakt default; AniList = anime series). */
+  tracker: Tracker;
   iframe: boolean;
   preview: { ok: true; text: string } | { ok: false; error: string };
   banner?: { kind: "library"; name: string } | null;
@@ -37,6 +44,12 @@ export interface PickerPanelProps {
   onCopy?: () => void;
   onNameChange?: (name: string) => void;
   onMediaTypeChange?: (type: "auto" | "movie" | "show") => void;
+  onTrackerChange?: (tracker: Tracker) => void;
+  /** Quick-link bridge: optionally create the inverse "watch on this site" link. */
+  quickLinkEnabled?: boolean;
+  quickLink?: LinkTemplates;
+  onQuickLinkToggle?: (on: boolean) => void;
+  onQuickLinkChange?: (field: QuickLinkField, value: string) => void;
   onIframeChange?: (iframe: boolean) => void;
   onManualChange?: (manual: boolean) => void;
   onPickManualKey?: () => void;
@@ -53,6 +66,23 @@ export function PickerPanel(p: PickerPanelProps) {
         : "Save & enable";
   const hasTitle =
     p.canSave ?? (p.manual || p.fields.some((f) => f.key === "title" && f.value !== null));
+
+  const qlField = (label: string, value: string | undefined, field: QuickLinkField, ph: string) => (
+    <label class="block" key={field}>
+      <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>{label}</span>
+      <input
+        value={value ?? ""}
+        placeholder={ph}
+        onInput={(e) => p.onQuickLinkChange?.(field, (e.target as HTMLInputElement).value)}
+        onKeyDown={(e) => e.stopPropagation()}
+        onKeyUp={(e) => e.stopPropagation()}
+        class={clsx(
+          "w-full rounded-lg px-2.5 py-1.5 font-mono text-[11px] outline-none ring-inset focus:ring-2",
+          t.input,
+        )}
+      />
+    </label>
+  );
 
   return (
     <div class="space-y-2">
@@ -101,24 +131,58 @@ export function PickerPanel(p: PickerPanelProps) {
           />
         </label>
 
-        {/* manual-mode toggle */}
-        <button
-          type="button"
-          onClick={() => p.onManualChange?.(!p.manual)}
-          class={clsx(
-            "mb-3 flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left",
-            t.card,
+        {/* tracker — governs which fields show below, so it sits up top */}
+        <div class="mb-3">
+          <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>Scrobble to</span>
+          <div class="flex gap-1">
+            {(
+              [
+                ["trakt", "Trakt"],
+                ["anilist", "AniList"],
+              ] as const
+            ).map(([value, lbl]) => (
+              <button
+                type="button"
+                key={value}
+                onClick={() => p.onTrackerChange?.(value)}
+                class={clsx(
+                  "flex-1 rounded-md py-1.5 text-[12px] font-medium transition-colors",
+                  p.tracker === value ? "bg-ikura text-white" : t.ghost,
+                )}
+              >
+                {lbl}
+              </button>
+            ))}
+          </div>
+          {p.tracker === "anilist" && (
+            <div class={clsx("mt-1.5 rounded-lg px-2.5 py-2 text-[10px] leading-snug", t.infoBox)}>
+              For <strong>dedicated anime sites</strong> where the episode number matches the
+              AniList entry — pick <strong>title + episode</strong>. If numbering doesn’t line up
+              (e.g. a general/TMDB site), TMSync refuses the write rather than corrupt your list.
+            </div>
           )}
-        >
-          <Switch on={!!p.manual} t={t} />
-          <span class="min-w-0 flex-1">
-            <span class={clsx("block text-[12px]", t.heading)}>Pick titles manually</span>
-            <span class={clsx("block text-[10px]", t.faint)}>
-              For players with no title to read (local files, watch parties). You’ll choose each
-              title from the badge.
+        </div>
+
+        {/* manual mode — a Trakt-only concept (anime sites always have a title) */}
+        {p.tracker !== "anilist" && (
+          <button
+            type="button"
+            onClick={() => p.onManualChange?.(!p.manual)}
+            class={clsx(
+              "mb-3 flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left",
+              t.card,
+            )}
+          >
+            <Switch on={!!p.manual} t={t} />
+            <span class="min-w-0 flex-1">
+              <span class={clsx("block text-[12px]", t.heading)}>Pick titles manually</span>
+              <span class={clsx("block text-[10px]", t.faint)}>
+                For players with no title to read (local files, watch parties). You’ll choose each
+                title from the badge.
+              </span>
             </span>
-          </span>
-        </button>
+          </button>
+        )}
 
         {p.manual ? (
           <div class="mb-3 space-y-2">
@@ -243,8 +307,8 @@ export function PickerPanel(p: PickerPanelProps) {
               </div>
             </div>
 
-            {/* type */}
-            <label class="mb-2 block">
+            {/* type — N/A for AniList (always an anime series) */}
+            <label class={clsx("mb-2 block", p.tracker === "anilist" && "hidden")}>
               <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>Type</span>
               <div class="relative">
                 <select
@@ -272,6 +336,65 @@ export function PickerPanel(p: PickerPanelProps) {
                 />
               </div>
             </label>
+
+            {/* quick-link bridge — create the inverse "watch on this site" link
+                here instead of copy-pasting into the options page */}
+            <button
+              type="button"
+              onClick={() => p.onQuickLinkToggle?.(!p.quickLinkEnabled)}
+              class={clsx(
+                "flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left",
+                t.card,
+              )}
+            >
+              <Switch on={!!p.quickLinkEnabled} t={t} />
+              <span class="min-w-0 flex-1">
+                <span class={clsx("block text-[12px]", t.heading)}>“Watch on …” link</span>
+                <span class={clsx("block text-[10px]", t.faint)}>
+                  A button on {p.tracker === "anilist" ? "anilist.co" : "Trakt"} pages that opens
+                  this site. Per-site — saves on its own, no recipe needed.
+                </span>
+              </span>
+            </button>
+            {p.quickLinkEnabled && (
+              <div class="space-y-2">
+                {p.tracker === "anilist"
+                  ? qlField("Anime URL", p.quickLink?.anime, "anime", "https://site/anime/{slug}")
+                  : [
+                      qlField(
+                        "Movie URL",
+                        p.quickLink?.movie,
+                        "movie",
+                        "https://site/movie/{tmdb}",
+                      ),
+                      qlField(
+                        "TV URL",
+                        p.quickLink?.tv,
+                        "tv",
+                        "https://site/tv/{tmdb}/{season}/{episode}",
+                      ),
+                    ]}
+                {qlField(
+                  "Search URL",
+                  p.quickLink?.search,
+                  "search",
+                  "https://site/search/{title}",
+                )}
+                <p class={clsx("text-[10px] leading-snug", t.faint)}>
+                  Auto-filled — edit if the dynamic part is wrong.{" "}
+                  <span
+                    class="cursor-help underline decoration-dotted underline-offset-2"
+                    title={
+                      p.tracker === "anilist"
+                        ? "Placeholders: {anilistId} {title} {romaji} {slug}"
+                        : "Placeholders: {tmdb} {imdb} {season} {episode} {title} {slug}"
+                    }
+                  >
+                    placeholders
+                  </span>
+                </p>
+              </div>
+            )}
           </>
         )}
 

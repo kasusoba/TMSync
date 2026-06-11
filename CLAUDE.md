@@ -26,7 +26,7 @@ TMSync is a cross-browser (Chrome + Firefox) WebExtension that passively scrobbl
 - **Element picker selectors:** `@medv/finder` to generate short, robust, unique selectors. Do not hand-roll selector heuristics.
 - **Validation:** Zod (recipe schema + any external payloads).
 - **Trakt:** OAuth via `browser.identity.launchWebAuthFlow` (or device-code flow). A thin typed `fetch` client — no heavy SDK. Cache search/resolve results.
-- **AniList:** **implicit-grant** OAuth via `browser.identity.launchWebAuthFlow` (token returned in the redirect fragment, ~1-year validity, **no client secret, no token-exchange backend** — fits constraint #7 better than Trakt). A thin typed GraphQL `fetch` client (one POST endpoint) — no SDK. Reads use `Media` (`id`, `idMal`, `title`, `synonyms`, `episodes`, `relations`); writes use `SaveMediaListEntry(mediaId, progress, status)`. Read the user's `mediaListOptions { scoreFormat }` to render scores. Cache resolutions. AniList has **no real-time scrobble endpoint** — see **Tracker adapters**.
+- **AniList:** OAuth via `browser.identity.launchWebAuthFlow`. **Originally planned as implicit grant, but AniList removed it** (its authorize endpoint returns `unsupported_grant_type` for `response_type=token`, verified 2026-06), so TMSync uses the **Authorization Code grant** — get a `code` on the redirect, exchange it at `/oauth/token` with the bundled client secret. This still needs **no backend** (constraint #7 holds — the secret is bundled exactly like Trakt's); the only change from the old plan is a bundled secret instead of none. ~1-year token validity. A thin typed GraphQL `fetch` client (one POST endpoint) — no SDK. Reads use `Media` (`id`, `idMal`, `title`, `synonyms`, `episodes`, `relations`); writes use `SaveMediaListEntry(mediaId, progress, status)`. Read the user's `mediaListOptions { scoreFormat }` to render scores. Cache resolutions. AniList has **no real-time scrobble endpoint** — see **Tracker adapters**.
 - **Monorepo:** pnpm workspaces.
 
 ## Repo layout
@@ -138,13 +138,16 @@ interface TrackerAdapter {
 |---|---|---|
 | Progress API | real-time scrobble `start`/`pause`/`stop` | none — just `SaveMediaListEntry(mediaId, progress, status)` |
 | Watched decision | **Trakt owns it** (≥80% on stop) | **we own it** — crossing `watchedThreshold` ⇒ write `progress=N`, `status: CURRENT`→`COMPLETED` |
-| Auth | OAuth (web auth / device code) | **implicit grant** — no secret, no backend |
+| Auth | OAuth (web auth / device code) | **auth code grant** — bundled secret, no backend (implicit grant was removed by AniList) |
 | Identity | Trakt search → trakt/imdb/tmdb ids | GraphQL `Media` search → AniList id (`idMal` bridges to MAL-keyed data later) |
 | Episode numbering | pass season/episode as scraped | v1: pass as scraped (dedicated sites only) |
 
 **AniList recording rules (the analogue of the Trakt scrobble rules):**
 - No `start`/`pause` chatter — AniList has nothing to receive it. Only **one write per episode**, when `watchedThreshold` is crossed. Debounce so seeking/replaying never double-writes.
-- **Idempotent:** never lower `progress`, and never re-write the same episode in a session. Re-watching an already-counted episode is a no-op.
+- **Read-before-write — the entry is the source of truth.** Before each write, fetch the viewer's `MediaList { status progress repeat }` and compute the transition from it (NOT a local counter — a local counter can lower remote progress if the user advanced the entry on the AniList site). **Never lower `progress`.**
+- **Status state machine (we own it).** not-on-list / `PLANNING` / `PAUSED` / `DROPPED` + a watch → `CURRENT`, `progress = max(remote, ep)`. Final episode → `COMPLETED`. We never *set* PLANNING/PAUSED/DROPPED ourselves.
+- **A `COMPLETED` cour is never silently mutated.** Re-watching any episode of a completed cour does **not** write — it surfaces a **"Rewatching?" confirmation** in the badge first (upfront, on any episode, not just the last). On confirm → status `REPEATING`, tracking resumes; the final episode re-`COMPLETED`s it and **increments `repeat`**. This is the one place AniList is interactive (the rest is passive, like Trakt) because auto-incrementing repeats on a stray replay would be wrong.
+- **Rating prompt fires on completion only** (you rate a cour once at the end, not per episode).
 - Respect AniList's modest per-minute rate limit; these writes are infrequent by design, so this is mostly about not retrying in a tight loop.
 - **Guardrail — fail visibly, never silently corrupt.** Before writing, if the scraped `progress` exceeds the resolved entry's `Media.episodes`, **refuse the write and surface a "this site's numbering doesn't match AniList" warning** instead. This catches the classic v1 mis-authoring (an `anilist` recipe pointed at a TMDB/absolute-numbered site → episode 50 written to a 12-ep cour, silently completing it). It won't catch every mismatch (e.g. ep 6 written to the wrong same-length cour), but it turns the worst, most common failure from silent corruption into a loud, fixable error.
 

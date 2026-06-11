@@ -16,7 +16,18 @@ export interface TraktPageMedia {
   episode?: number;
 }
 
-/** The links a site can offer for one Trakt item: a direct deep link and/or search. */
+/**
+ * Anime identified on an AniList page, used to build an outbound quick link.
+ * `title` is the display title (English, else romaji); `romaji` is kept separate
+ * because some anime sites key off it.
+ */
+export interface AniListPageMedia {
+  anilistId?: number;
+  title?: string;
+  romaji?: string;
+}
+
+/** The links a site can offer for one item: a direct deep link and/or search. */
 export interface SiteLinks {
   direct?: string;
   search?: string;
@@ -81,6 +92,31 @@ export function buildSiteLinks(links: LinkTemplates, media: TraktPageMedia): Sit
   const directTpl = media.type === "movie" ? links.movie : links.tv;
   if (directTpl) {
     const url = fillTemplate(directTpl, params);
+    if (url) out.direct = url;
+  }
+  if (links.search) {
+    const url = fillTemplate(links.search, params);
+    if (url) out.search = url;
+  }
+  return out;
+}
+
+/**
+ * Build the outbound links for an anime site from its templates and an AniList
+ * page's media: the `anime` deep link (if fillable) and the title-based `search`
+ * link. Placeholders: {anilistId}, {title} (URL-encoded English/romaji), {romaji}
+ * (URL-encoded), {slug} (clean, hyphen-joined).
+ */
+export function buildAniListSiteLinks(links: LinkTemplates, media: AniListPageMedia): SiteLinks {
+  const params = {
+    anilistId: media.anilistId,
+    title: media.title !== undefined ? encodeURIComponent(media.title) : undefined,
+    romaji: media.romaji !== undefined ? encodeURIComponent(media.romaji) : undefined,
+    slug: media.title !== undefined ? slugify(media.title) : undefined,
+  };
+  const out: SiteLinks = {};
+  if (links.anime) {
+    const url = fillTemplate(links.anime, params);
     if (url) out.direct = url;
   }
   if (links.search) {

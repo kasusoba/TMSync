@@ -1,3 +1,4 @@
+import type { Tracker } from "@/lib/tracker/types";
 import { type BadgeStatus, type ScrobbleReply, onMessage, sendMessage } from "@/messaging";
 import {
   type ParsedMedia,
@@ -21,44 +22,71 @@ function mediaKey(m: ParsedMedia): string {
   return `${m.mediaType}:${m.title}:${m.season ?? ""}:${m.episode ?? ""}`;
 }
 
-function label(m: ParsedMedia): string {
-  const ep = m.season !== undefined ? ` S${m.season}E${m.episode ?? "?"}` : "";
-  const yr = m.year ? ` (${m.year})` : "";
-  return `${m.title}${ep}${yr}`;
+/**
+ * The episode suffix for the badge. Seasoned TV → ` S{n}E{m}`; anime (AniList,
+ * episode but no season) → ` E{n}`; movies → "". So the badge always shows which
+ * episode is scrobbling, including for season-less anime.
+ */
+function episodeSuffix(m: ParsedMedia): string {
+  if (m.season !== undefined) return ` S${m.season}E${m.episode ?? "?"}`;
+  if (m.episode !== undefined) return ` E${m.episode}`;
+  return "";
 }
 
-/** Title as Trakt matched it, keeping the scraped season/episode (transparency). */
+function label(m: ParsedMedia): string {
+  const yr = m.year ? ` (${m.year})` : "";
+  return `${m.title}${episodeSuffix(m)}${yr}`;
+}
+
+/** Title as the tracker matched it, keeping the scraped episode (transparency). */
 function resolvedLabel(title: string, year: number | undefined, m: ParsedMedia): string {
-  const ep = m.season !== undefined ? ` S${m.season}E${m.episode ?? "?"}` : "";
-  return `${title}${year ? ` (${year})` : ""}${ep}`;
+  return `${title}${year ? ` (${year})` : ""}${episodeSuffix(m)}`;
 }
 
 function statusFromReply(
   action: "start" | "pause" | "stop",
   reply: ScrobbleReply,
   m: ParsedMedia,
+  tracker: Tracker,
 ): BadgeStatus {
-  // Prefer what Trakt actually matched (transparency); keep the scraped S/E.
+  const name = tracker === "anilist" ? "AniList" : "Trakt";
+  // Prefer what the tracker actually matched (transparency); keep the scraped S/E.
   const title = reply.resolvedTitle
     ? resolvedLabel(reply.resolvedTitle, reply.resolvedYear, m)
     : label(m);
   if (reply.ok) {
     if (action === "start") return { state: "watching", title };
     if (action === "pause") return { state: "paused", title };
-    return reply.action === "scrobble"
-      ? { state: "scrobbled", title, detail: "added to history" }
-      : { state: "stopped", title };
+    if (reply.action !== "scrobble") return { state: "stopped", title };
+    if (tracker === "anilist") {
+      // The title already carries the episode (E{n}); keep the detail short.
+      return {
+        state: "scrobbled",
+        title,
+        detail: reply.completed ? "completed on AniList" : "saved to AniList",
+        completed: reply.completed,
+      };
+    }
+    return { state: "scrobbled", title, detail: "added to history" };
+  }
+  // A completed AniList cour, re-watched: not an error — prompt to confirm the
+  // rewatch. Nothing was written; the badge offers "Rewatching?".
+  if (reply.reason === "needs_rewatch") {
+    return { state: "idle", title, rewatch: true, detail: "rewatching? confirm to track" };
   }
   const detail =
     reply.reason === "not_connected"
-      ? "connect Trakt"
+      ? `connect ${name}`
       : reply.reason === "unresolved"
-        ? "not found on Trakt"
+        ? `not found on ${name}`
         : reply.reason === "no_episode"
           ? "missing episode #"
-          : `scrobble failed${reply.status ? ` (${reply.status})` : ""}${
-              reply.httpError ? `: ${reply.httpError.slice(0, 80)}` : ""
-            }`;
+          : reply.reason === "numbering_mismatch"
+            ? // The AniList guardrail: site numbering ≠ AniList entry (step 6).
+              (reply.httpError ?? "site numbering doesn't match AniList")
+            : `scrobble failed${reply.status ? ` (${reply.status})` : ""}${
+                reply.httpError ? `: ${reply.httpError.slice(0, 80)}` : ""
+              }`;
   return { state: "error", title, detail };
 }
 
@@ -95,6 +123,8 @@ export class SessionManager {
   private videoSelector = "video";
   private frame: PlayerFrame = "auto";
   private watchedThreshold = 0.8;
+  /** Tracker the matched recipe routes to (constraint #1: one item, one tracker). */
+  private tracker: Tracker = "trakt";
   private lastPublishedKey: string | null = null;
   /** Manual recipe matched but no selection yet — wait for the user's pick. */
   private manualAwaiting = false;
@@ -256,6 +286,7 @@ export class SessionManager {
     this.videoSelector = recipe.video.selector;
     this.frame = recipe.video.frame;
     this.watchedThreshold = recipe.video.watchedThreshold;
+    this.tracker = recipe.tracker;
 
     // Avoid churn from the head observer firing on unrelated mutations.
     const key = mediaKey(media);
@@ -264,16 +295,18 @@ export class SessionManager {
 
     await sendMessage("publishMedia", {
       media,
+      tracker: this.tracker,
       videoSelector: recipe.video.selector,
       frame: recipe.video.frame,
       watchedThreshold: recipe.video.watchedThreshold,
     });
 
     // Seed the badge immediately with the scraped title, then refine it with what
-    // Trakt actually matched — so the user can verify (and fix) the target BEFORE
-    // pressing play, not only after the first scrobble fires.
+    // the tracker actually matched — so the user can verify (and fix) the target
+    // BEFORE pressing play, not only after the first scrobble fires.
+    const trackerName = this.tracker === "anilist" ? "AniList" : "Trakt";
     await sendMessage("reportScrobble", { state: "idle", title: label(media) });
-    const resolved = await sendMessage("resolveMedia", media);
+    const resolved = await sendMessage("resolveMedia", { media, tracker: this.tracker });
     await sendMessage(
       "reportScrobble",
       resolved.resolved && resolved.title
@@ -285,7 +318,7 @@ export class SessionManager {
         : {
             state: "error",
             title: label(media),
-            detail: "not found on Trakt — click to fix",
+            detail: `not found on ${trackerName} — click to fix`,
           },
     );
   }
@@ -303,6 +336,7 @@ export class SessionManager {
     this.videoSelector = recipe.video.selector;
     this.frame = recipe.video.frame;
     this.watchedThreshold = recipe.video.watchedThreshold;
+    this.tracker = recipe.tracker;
 
     const pageKey =
       (recipe.manualKey ? readField(recipe.manualKey, engineCtx) : null) ?? document.title.trim();
@@ -331,13 +365,14 @@ export class SessionManager {
 
     await sendMessage("publishMedia", {
       media,
+      tracker: this.tracker,
       videoSelector: this.videoSelector,
       frame: this.frame,
       watchedThreshold: this.watchedThreshold,
     });
     // The pick is locked to a Trakt entry via a correction, so resolveMedia hits;
     // either way the title is set, so seed the badge and let play scrobble it.
-    const resolved = await sendMessage("resolveMedia", media);
+    const resolved = await sendMessage("resolveMedia", { media, tracker: this.tracker });
     await sendMessage("reportScrobble", {
       state: "idle",
       title:
@@ -376,6 +411,10 @@ export class SessionManager {
       if (tab) {
         this.videoSelector = tab.videoSelector;
         this.watchedThreshold = tab.watchedThreshold;
+        // Cross-frame: the player iframe must record to the SAME tracker the
+        // matcher frame routed to — otherwise an iframe anime recipe scrobbles to
+        // Trakt (no season → "missing episode #") instead of AniList.
+        this.tracker = tab.tracker;
         return { media: tab.media, frame: tab.frame };
       }
       await sleep(TAB_MEDIA_POLL_MS);
@@ -490,17 +529,21 @@ export class SessionManager {
     this.currentVideo = video;
     this.currentKey = mediaKey(media);
 
+    const tracker = this.tracker;
+    const watchedThreshold = this.watchedThreshold;
     const controller = new ScrobbleController(
       video,
       (action, progress) => {
-        void sendMessage("scrobble", { action, media, progress }).then((reply) => {
-          // We still tell Trakt to stop the outgoing episode — but if we've since
-          // shown the episode prompt (tearing down e.g. S1E2 to ask which episode
-          // a "?play=true" URL is on), this stop's late reply must not overwrite
-          // the prompt back to the old episode.
-          if (action === "stop" && this.episodeAwaiting) return;
-          void sendMessage("reportScrobble", statusFromReply(action, reply, media));
-        });
+        void sendMessage("scrobble", { action, media, progress, tracker, watchedThreshold }).then(
+          (reply) => {
+            // We still tell the tracker to stop the outgoing episode — but if we've
+            // since shown the episode prompt (tearing down e.g. S1E2 to ask which
+            // episode a "?play=true" URL is on), this stop's late reply must not
+            // overwrite the prompt back to the old episode.
+            if (action === "stop" && this.episodeAwaiting) return;
+            void sendMessage("reportScrobble", statusFromReply(action, reply, media, tracker));
+          },
+        );
         if (action === "stop") void sendMessage("endSession");
         else void sendMessage("updateProgress", progress);
       },

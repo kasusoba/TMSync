@@ -12,8 +12,8 @@ export { applyTransforms } from "./transforms";
 export { extract, isManualRecipe, readField } from "./extract";
 export { matchRecipe, selectRecipe } from "./match";
 export { type RecipeLibrary, parseLibrary, parseLinks, parseRecipes } from "./recipes";
-export { buildSiteLinks, fillTemplate, slugify } from "./links";
-export type { SiteLinks, TraktPageMedia } from "./links";
+export { buildAniListSiteLinks, buildSiteLinks, fillTemplate, slugify } from "./links";
+export type { AniListPageMedia, SiteLinks, TraktPageMedia } from "./links";
 export {
   buildLetterboxdRows,
   convertRating,

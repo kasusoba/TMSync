@@ -1,7 +1,24 @@
 import { RECIPES } from "@/config";
+import { confirmAniListRewatch } from "@/lib/anilist/adapter";
+import {
+  connect as anilistConnect,
+  disconnect as anilistDisconnect,
+  isConnected as anilistIsConnected,
+  getRedirectUri as anilistRedirectUri,
+} from "@/lib/anilist/auth";
+import {
+  AniListNotConnectedError,
+  resolve as anilistResolve,
+  saveNotes as anilistSaveNotes,
+  saveRating as anilistSaveRating,
+  viewerScoreFormat,
+} from "@/lib/anilist/client";
+import { ANILIST } from "@/lib/anilist/config";
 import { bundledLinks } from "@/lib/recipes";
 import {
   type QuickLinkSite,
+  anilistNotes,
+  anilistRatings,
   corrections,
   customRecipes,
   enabledOrigins,
@@ -17,6 +34,7 @@ import {
   tabFrameOrigins,
   tabSessions,
 } from "@/lib/storage";
+import { getAdapter } from "@/lib/tracker";
 import { connect, disconnect, getRedirectUri, isConnected } from "@/lib/trakt/auth";
 import {
   TraktNotConnectedError,
@@ -27,18 +45,13 @@ import {
   postComment,
   rate,
   resolve,
-  scrobble,
   search,
   updateComment,
 } from "@/lib/trakt/client";
-import {
-  buildRatingBody,
-  buildScrobbleBody,
-  resolutionCacheKey,
-  reviewKey,
-} from "@/lib/trakt/util";
+import type { ReviewLevel } from "@/lib/trakt/types";
+import { buildRatingBody, resolutionCacheKey, reviewKey } from "@/lib/trakt/util";
 import { onMessage, sendMessage } from "@/messaging";
-import { type LibraryLink, type Recipe, parseLibrary } from "@tmsync/shared";
+import { type LibraryLink, type ParsedMedia, type Recipe, parseLibrary } from "@tmsync/shared";
 import { browser } from "wxt/browser";
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -94,6 +107,23 @@ export default defineBackground(() => {
 
   onMessage("disconnectTrakt", () => disconnect());
 
+  onMessage("getAniListStatus", async () => ({
+    connected: await anilistIsConnected(),
+    redirectUri: anilistRedirectUri(),
+    configured: !!(ANILIST.clientId && ANILIST.clientSecret),
+  }));
+
+  onMessage("connectAniList", async () => {
+    try {
+      await anilistConnect();
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: errMsg(e) };
+    }
+  });
+
+  onMessage("disconnectAniList", () => anilistDisconnect());
+
   onMessage("exportLetterboxd", async () => {
     try {
       const { csv, count } = await exportLetterboxd();
@@ -106,64 +136,56 @@ export default defineBackground(() => {
     }
   });
 
-  // A frame reports a video event; resolve identity (cached) and scrobble.
+  // A frame reports a video event; route to the recipe's tracker adapter, resolve
+  // identity (cached) and record progress. The Trakt and AniList paradigms differ
+  // entirely (real-time scrobble vs one threshold write) — that lives behind the
+  // adapter; this handler is tracker-agnostic.
   onMessage("scrobble", async ({ data, sender }) => {
-    // Only one frame scrobbles per tab (page + player iframe would otherwise
-    // both fire start/pause/stop for the same item → Trakt rejects out-of-order).
+    // Only one frame records per tab (page + player iframe would otherwise both
+    // fire start/pause/stop for the same item → Trakt rejects out-of-order).
     const tabId = sender.tab?.id;
     const frameId = sender.frameId ?? 0;
     if (tabId !== undefined && !(await claimScrobbleOwner(tabId, frameId, data.action))) {
       return { ok: true, resolved: true }; // another frame owns this tab's scrobble
     }
+    const adapter = getAdapter(data.tracker ?? "trakt");
+    let item: Awaited<ReturnType<typeof adapter.resolve>>;
     try {
-      const identity = await resolve(data.media);
-      if (!identity) return { ok: false, resolved: false, reason: "unresolved" as const };
-      const body = buildScrobbleBody(identity, data.media, data.progress);
-      if (!body) return { ok: false, resolved: true, reason: "no_episode" as const };
-      // Trakt rejects a pause under 1% ("progress should be at least 1.0% to
-      // pause"). Pausing that early has nothing meaningful to save — skip it.
-      if (data.action === "pause" && body.progress < 1) {
-        return {
-          ok: true,
-          resolved: true,
-          resolvedTitle: identity.title,
-          resolvedYear: identity.year,
-        };
-      }
-      const outcome = await scrobble(data.action, body);
-      return {
-        ok: outcome.ok,
-        status: outcome.status,
-        action: outcome.action,
-        resolved: true,
-        reason: outcome.ok ? undefined : ("http" as const),
-        resolvedTitle: identity.title,
-        resolvedYear: identity.year,
-        httpError: outcome.error,
-      };
-    } catch (e) {
-      return {
-        ok: false,
-        resolved: false,
-        reason:
-          e instanceof TraktNotConnectedError ? ("not_connected" as const) : ("http" as const),
-      };
+      item = await adapter.resolve(data.media);
+    } catch {
+      return { ok: false, resolved: false, reason: "http" as const };
     }
+    if (!item) return { ok: false, resolved: false, reason: "unresolved" as const };
+    const result = await adapter.recordProgress(
+      item,
+      data.media,
+      data.progress,
+      data.action,
+      data.watchedThreshold ?? 0.8,
+    );
+    return {
+      ok: result.ok,
+      status: result.status,
+      action: result.action,
+      resolved: true,
+      reason: result.ok ? undefined : result.reason,
+      completed: result.completed,
+      // The no_episode error never carried a title (it has no resolved target shown).
+      resolvedTitle: result.reason === "no_episode" ? undefined : item.title,
+      resolvedYear: result.reason === "no_episode" ? undefined : item.year,
+      httpError: result.httpError,
+    };
   });
 
-  // Pre-resolution for the badge: resolve identity (cached) without scrobbling so
-  // the user sees the matched Trakt title before play. Works unauthenticated
-  // (search needs only the api key), so transparency holds even pre-connect.
+  // Pre-resolution for the badge: resolve identity (cached) without recording so
+  // the user sees the matched tracker title before play. Reads work
+  // unauthenticated for both trackers, so transparency holds even pre-connect.
   onMessage("resolveMedia", async ({ data }) => {
     try {
-      const identity = await resolve(data);
-      if (!identity) return { resolved: false };
-      return {
-        resolved: true,
-        title: identity.title,
-        year: identity.year,
-        mediaType: identity.mediaType,
-      };
+      const adapter = getAdapter(data.tracker ?? "trakt");
+      const item = await adapter.resolve(data.media);
+      if (!item) return { resolved: false };
+      return { resolved: true, title: item.title, year: item.year, mediaType: item.mediaType };
     } catch {
       return { resolved: false };
     }
@@ -284,12 +306,57 @@ export default defineBackground(() => {
     if (tabId !== undefined) void sendMessage("recheck", undefined, tabId);
   });
 
-  // --- ratings & notes ---
+  // The user confirmed a rewatch of a COMPLETED AniList cour → write REPEATING
+  // (or re-COMPLETED + repeat++ on the final episode) and update the badge.
+  onMessage("confirmRewatch", async ({ data, sender }) => {
+    try {
+      const item = await getAdapter("anilist").resolve(data.media);
+      if (!item || item.tracker !== "anilist") return { ok: false, error: "not found on AniList" };
+      const result = await confirmAniListRewatch(item, data.media);
+      if (!result.ok) {
+        return {
+          ok: false,
+          error: result.reason === "not_connected" ? "Not connected to AniList" : result.httpError,
+        };
+      }
+      // Reflect it on the badge (and gate the rating prompt on completion).
+      const tabId = sender.tab?.id;
+      if (tabId !== undefined) {
+        const ep = data.media.episode;
+        void sendMessage(
+          "scrobbleStatus",
+          {
+            state: "scrobbled",
+            title: `${item.title}${ep !== undefined ? ` E${ep}` : ""}`,
+            detail: result.completed ? "rewatch complete on AniList" : "rewatching on AniList",
+            completed: result.completed,
+          },
+          { tabId, frameId: 0 },
+        );
+      }
+      return { ok: true, completed: result.completed };
+    } catch (e) {
+      return { ok: false, error: errMsg(e) };
+    }
+  });
+
+  // --- ratings & notes (routed: Trakt comment-per-level / AniList cour entry) ---
+  // Which affordances the badge should render for the routed tracker. Trakt:
+  // movie or episode/season/show. AniList: a single "cour" + the user's score format.
+  onMessage("getRatingMeta", async ({ data }) => {
+    const tracker = data.tracker ?? "trakt";
+    const levels = getAdapter(tracker).ratingLevels(data.media);
+    if (tracker !== "anilist") return { levels };
+    return { levels, scoreFormat: (await viewerScoreFormat()) ?? undefined };
+  });
+
   onMessage("getReview", async ({ data }) => {
+    if ((data.tracker ?? "trakt") === "anilist") return anilistGetReview(data.media);
+    const level = data.level as ReviewLevel; // trakt branch: never "cour"
     try {
       const identity = await resolve(data.media);
       if (!identity) return { rating: null, note: null };
-      const key = reviewKey(identity, data.level, data.media.season, data.media.episode);
+      const key = reviewKey(identity, level, data.media.season, data.media.episode);
       const localRating = (await ratings.getValue())[key] ?? null;
       // Prefer a recent local action; otherwise sync the rating from Trakt so
       // ratings set on the website show up too. Mirror the remote value locally.
@@ -298,7 +365,7 @@ export default defineBackground(() => {
         try {
           const remote = await getRemoteRating(
             identity,
-            data.level,
+            level,
             data.media.season,
             data.media.episode,
           );
@@ -320,12 +387,14 @@ export default defineBackground(() => {
   });
 
   onMessage("rateItem", async ({ data }) => {
+    if ((data.tracker ?? "trakt") === "anilist") return anilistRate(data.media, data.rating);
+    const level = data.level as ReviewLevel;
     try {
       const identity = await resolve(data.media);
       if (!identity) return { ok: false, error: "not found on Trakt" };
       const body = buildRatingBody(
         identity,
-        data.level,
+        level,
         data.media.season,
         data.media.episode,
         data.rating,
@@ -333,7 +402,7 @@ export default defineBackground(() => {
       if (!body) return { ok: false, error: "missing season/episode" };
       const out = await rate(body);
       if (!out.ok) return { ok: false, error: out.error ?? `failed (${out.status})` };
-      const key = reviewKey(identity, data.level, data.media.season, data.media.episode);
+      const key = reviewKey(identity, level, data.media.season, data.media.episode);
       const all = await ratings.getValue();
       all[key] = data.rating;
       await ratings.setValue(all);
@@ -345,14 +414,16 @@ export default defineBackground(() => {
   });
 
   onMessage("unrateItem", async ({ data }) => {
+    if ((data.tracker ?? "trakt") === "anilist") return anilistUnrate(data.media);
+    const level = data.level as ReviewLevel;
     try {
       const identity = await resolve(data.media);
       if (!identity) return { ok: false, error: "not found on Trakt" };
-      const body = buildRatingBody(identity, data.level, data.media.season, data.media.episode);
+      const body = buildRatingBody(identity, level, data.media.season, data.media.episode);
       if (!body) return { ok: false, error: "missing season/episode" };
       const out = await rate(body, true);
       if (!out.ok) return { ok: false, error: out.error ?? `failed (${out.status})` };
-      const key = reviewKey(identity, data.level, data.media.season, data.media.episode);
+      const key = reviewKey(identity, level, data.media.season, data.media.episode);
       const all = await ratings.getValue();
       delete all[key];
       await ratings.setValue(all);
@@ -364,13 +435,15 @@ export default defineBackground(() => {
   });
 
   onMessage("saveNote", async ({ data }) => {
+    if ((data.tracker ?? "trakt") === "anilist") return anilistSaveNote(data.media, data.text);
+    const level = data.level as ReviewLevel;
     try {
       const text = data.text.trim();
       if (wordCount(text) < 5)
         return { ok: false, error: "Trakt needs a note of at least 5 words" };
       const identity = await resolve(data.media);
       if (!identity) return { ok: false, error: "not found on Trakt" };
-      const key = reviewKey(identity, data.level, data.media.season, data.media.episode);
+      const key = reviewKey(identity, level, data.media.season, data.media.episode);
       const all = await notes.getValue();
       const existing = all[key];
       if (existing) {
@@ -378,7 +451,7 @@ export default defineBackground(() => {
         if (!out.ok) return { ok: false, error: out.error };
         all[key] = { ...existing, text, spoiler: data.spoiler };
       } else {
-        const ref = await commentItem(identity, data.level, data.media.season, data.media.episode);
+        const ref = await commentItem(identity, level, data.media.season, data.media.episode);
         if ("error" in ref) return { ok: false, error: ref.error };
         const out = await postComment(ref.item, text, data.spoiler);
         if (!out.ok || out.id === undefined)
@@ -393,10 +466,12 @@ export default defineBackground(() => {
   });
 
   onMessage("deleteNote", async ({ data }) => {
+    if ((data.tracker ?? "trakt") === "anilist") return anilistDeleteNote(data.media);
+    const level = data.level as ReviewLevel;
     try {
       const identity = await resolve(data.media);
       if (!identity) return { ok: false, error: "not found on Trakt" };
-      const key = reviewKey(identity, data.level, data.media.season, data.media.episode);
+      const key = reviewKey(identity, level, data.media.season, data.media.episode);
       const all = await notes.getValue();
       const existing = all[key];
       if (!existing) return { ok: true };
@@ -417,6 +492,7 @@ export default defineBackground(() => {
     const all = await tabSessions.getValue();
     all[tabId] = {
       media: data.media,
+      tracker: data.tracker,
       videoSelector: data.videoSelector,
       frame: data.frame,
       watchedThreshold: data.watchedThreshold,
@@ -433,6 +509,7 @@ export default defineBackground(() => {
     return session
       ? {
           media: session.media,
+          tracker: session.tracker,
           videoSelector: session.videoSelector,
           frame: session.frame,
           watchedThreshold: session.watchedThreshold,
@@ -495,15 +572,128 @@ export default defineBackground(() => {
     await clearTabSession(tabId);
     if (session.progress <= 0) return;
     try {
-      const identity = await resolve(session.media);
-      if (!identity) return;
-      const body = buildScrobbleBody(identity, session.media, session.progress);
-      if (body) await scrobble("stop", body);
+      // Route the reconciling stop to the same adapter the session used. For Trakt
+      // this sends the final /scrobble/stop; for AniList it commits the threshold
+      // write if the last progress crossed it (otherwise a quiet no-op).
+      const adapter = getAdapter(session.tracker);
+      const item = await adapter.resolve(session.media);
+      if (!item) return;
+      await adapter.recordProgress(
+        item,
+        session.media,
+        session.progress,
+        "stop",
+        session.watchedThreshold,
+      );
     } catch {
       // not connected / network — nothing to reconcile
     }
   });
 });
+
+// --- AniList rating + private note (step 7) ---
+// AniList rates the COUR ENTRY only — score + private notes both write through
+// SaveMediaListEntry, keyed by Media id (no per-episode score, no spoiler flag,
+// no word minimum). Stars are 1–10 in the UI; we store a format-agnostic
+// scoreRaw (0–100) and mirror it locally for instant display.
+
+async function anilistGetReview(
+  media: ParsedMedia,
+): Promise<{ rating: number | null; note: { text: string; spoiler: boolean } | null }> {
+  try {
+    const identity = await anilistResolve(media);
+    if (!identity) return { rating: null, note: null };
+    const scoreRaw = (await anilistRatings.getValue())[identity.id];
+    const noteText = (await anilistNotes.getValue())[identity.id];
+    return {
+      rating: scoreRaw === undefined ? null : Math.round(scoreRaw / 10),
+      note: noteText ? { text: noteText, spoiler: false } : null,
+    };
+  } catch {
+    return { rating: null, note: null };
+  }
+}
+
+async function anilistRate(
+  media: ParsedMedia,
+  rating: number,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const identity = await anilistResolve(media);
+    if (!identity) return { ok: false, error: "not found on AniList" };
+    const scoreRaw = Math.max(0, Math.min(100, Math.round(rating * 10)));
+    const out = await anilistSaveRating(identity.id, scoreRaw);
+    if (!out.ok) return { ok: false, error: out.error ?? "rating failed" };
+    const all = await anilistRatings.getValue();
+    all[identity.id] = scoreRaw;
+    await anilistRatings.setValue(all);
+    return { ok: true };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof AniListNotConnectedError ? "Not connected to AniList" : errMsg(e),
+    };
+  }
+}
+
+async function anilistUnrate(media: ParsedMedia): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const identity = await anilistResolve(media);
+    if (!identity) return { ok: false, error: "not found on AniList" };
+    const out = await anilistSaveRating(identity.id, 0);
+    if (!out.ok) return { ok: false, error: out.error ?? "failed" };
+    const all = await anilistRatings.getValue();
+    delete all[identity.id];
+    await anilistRatings.setValue(all);
+    return { ok: true };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof AniListNotConnectedError ? "Not connected to AniList" : errMsg(e),
+    };
+  }
+}
+
+async function anilistSaveNote(
+  media: ParsedMedia,
+  text: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const trimmed = text.trim();
+    if (!trimmed) return { ok: false, error: "Note is empty" };
+    const identity = await anilistResolve(media);
+    if (!identity) return { ok: false, error: "not found on AniList" };
+    const out = await anilistSaveNotes(identity.id, trimmed);
+    if (!out.ok) return { ok: false, error: out.error ?? "note failed" };
+    const all = await anilistNotes.getValue();
+    all[identity.id] = trimmed;
+    await anilistNotes.setValue(all);
+    return { ok: true };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof AniListNotConnectedError ? "Not connected to AniList" : errMsg(e),
+    };
+  }
+}
+
+async function anilistDeleteNote(media: ParsedMedia): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const identity = await anilistResolve(media);
+    if (!identity) return { ok: false, error: "not found on AniList" };
+    const out = await anilistSaveNotes(identity.id, "");
+    if (!out.ok) return { ok: false, error: out.error ?? "failed" };
+    const all = await anilistNotes.getValue();
+    delete all[identity.id];
+    await anilistNotes.setValue(all);
+    return { ok: true };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof AniListNotConnectedError ? "Not connected to AniList" : errMsg(e),
+    };
+  }
+}
 
 async function clearTabSession(tabId: number): Promise<void> {
   // Note: does NOT clear tabFrameOrigins — a `stop` (e.g. the mid-playback
@@ -598,13 +788,23 @@ async function mergeLibraryLinks(links: LibraryLink[]): Promise<void> {
         name: l.name,
         enabled: false,
         source: "library",
+        tracker: l.tracker,
         movie: l.movie,
         tv: l.tv,
+        anime: l.anime,
         search: l.search,
       });
       changed = true;
     } else if (cur.source === "library") {
-      byId.set(l.id, { ...cur, name: l.name, movie: l.movie, tv: l.tv, search: l.search });
+      byId.set(l.id, {
+        ...cur,
+        name: l.name,
+        tracker: l.tracker,
+        movie: l.movie,
+        tv: l.tv,
+        anime: l.anime,
+        search: l.search,
+      });
       changed = true;
     }
   }

@@ -1,4 +1,5 @@
 import "@/lib/ui/theme.css";
+import type { RatingLevel, Tracker } from "@/lib/tracker/types";
 import type { ResolvedIdentity, ReviewLevel, TraktSearchOption } from "@/lib/trakt/types";
 import { type BadgeState, type BadgeStatus, onMessage, sendMessage } from "@/messaging";
 import type { ParsedMedia } from "@tmsync/shared";
@@ -101,10 +102,12 @@ function Stars({ value, onChoose }: { value: number | null; onChoose: (n: number
 function RatingRow({
   media,
   level,
+  tracker,
   compact = false,
 }: {
   media: ParsedMedia;
-  level: ReviewLevel;
+  level: RatingLevel;
+  tracker: Tracker;
   compact?: boolean;
 }) {
   const [rating, setRating] = useState<number | null>(null);
@@ -112,11 +115,13 @@ function RatingRow({
 
   useEffect(() => {
     let live = true;
-    void sendMessage("getReview", { media, level }).then((r) => live && setRating(r.rating));
+    void sendMessage("getReview", { media, level, tracker }).then(
+      (r) => live && setRating(r.rating),
+    );
     return () => {
       live = false;
     };
-  }, [media, level]);
+  }, [media, level, tracker]);
 
   const choose = (n: number) => {
     const prev = rating;
@@ -125,8 +130,8 @@ function RatingRow({
     setErr(null);
     void (
       next === null
-        ? sendMessage("unrateItem", { media, level })
-        : sendMessage("rateItem", { media, level, rating: next })
+        ? sendMessage("unrateItem", { media, level, tracker })
+        : sendMessage("rateItem", { media, level, rating: next, tracker })
     ).then((out) => {
       if (!out.ok) {
         setRating(prev); // revert on failure
@@ -144,20 +149,31 @@ function RatingRow({
   );
 }
 
-const LEVELS: ReviewLevel[] = ["episode", "season", "show"];
+const TRAKT_LEVELS: ReviewLevel[] = ["episode", "season", "show"];
 
-/** Rate + keep a single editable note (public Trakt comment) for the matched item. */
+/**
+ * Rate + keep a single editable note for the matched item. Adapter-driven: Trakt
+ * rates show/season/episode with a public comment (≥5 words, spoiler flag);
+ * AniList rates the single cour entry with a private note (no spoiler, no minimum).
+ * The level affordances come from the tracker, so the UI assumes no fixed set.
+ */
 function RateNote({
   media,
+  tracker,
   onClose,
   onFix,
 }: {
   media: ParsedMedia;
+  tracker: Tracker;
   onClose: () => void;
   onFix: () => void;
 }) {
+  const isAniList = tracker === "anilist";
   const isShow = media.season !== undefined || media.episode !== undefined;
-  const [level, setLevel] = useState<ReviewLevel>(isShow ? "episode" : "movie");
+  // AniList: one "cour" level. Trakt: movie, or the show/season/episode tabs.
+  const [level, setLevel] = useState<RatingLevel>(
+    isAniList ? "cour" : isShow ? "episode" : "movie",
+  );
   const [note, setNote] = useState("");
   const [spoiler, setSpoiler] = useState(false);
   const [hasNote, setHasNote] = useState(false);
@@ -166,20 +182,20 @@ function RateNote({
 
   useEffect(() => {
     setMsg(null);
-    void sendMessage("getReview", { media, level }).then((r) => {
+    void sendMessage("getReview", { media, level, tracker }).then((r) => {
       setNote(r.note?.text ?? "");
       setSpoiler(r.note?.spoiler ?? false);
       setHasNote(!!r.note);
     });
-  }, [media, level]);
+  }, [media, level, tracker]);
 
   const save = async () => {
     setBusy(true);
     setMsg(null);
-    const out = await sendMessage("saveNote", { media, level, text: note, spoiler });
+    const out = await sendMessage("saveNote", { media, level, text: note, spoiler, tracker });
     if (out.ok) {
       setHasNote(true);
-      setMsg("Saved to Trakt");
+      setMsg(isAniList ? "Saved to AniList" : "Saved to Trakt");
     } else {
       setMsg(out.error ?? "Failed");
     }
@@ -189,7 +205,7 @@ function RateNote({
   const remove = async () => {
     setBusy(true);
     setMsg(null);
-    const out = await sendMessage("deleteNote", { media, level });
+    const out = await sendMessage("deleteNote", { media, level, tracker });
     if (out.ok) {
       setNote("");
       setHasNote(false);
@@ -203,15 +219,18 @@ function RateNote({
   return (
     <div class={PANEL}>
       <header class="mb-3 flex items-center justify-between">
-        <strong class={clsx("text-[13px]", t.heading)}>Rate &amp; note</strong>
+        <strong class={clsx("text-[13px]", t.heading)}>
+          {isAniList ? "Rate this cour" : "Rate & note"}
+        </strong>
         <IconBtn t={t} name="x" title="Close" onClick={onClose} />
       </header>
 
-      {isShow && (
+      {/* Trakt-only level tabs (AniList rates the single cour entry). */}
+      {!isAniList && isShow && (
         <div class="mb-3">
           <span class={clsx("mb-1 block text-[11px]", t.faint)}>Rate &amp; note the</span>
           <div class="flex gap-1">
-            {LEVELS.map((l) => (
+            {TRAKT_LEVELS.map((l) => (
               <button
                 type="button"
                 key={l}
@@ -229,7 +248,7 @@ function RateNote({
       )}
 
       <div class="mb-3">
-        <RatingRow media={media} level={level} />
+        <RatingRow media={media} level={level} tracker={tracker} />
       </div>
 
       <textarea
@@ -237,22 +256,27 @@ function RateNote({
         rows={4}
         value={note}
         onInput={(e) => setNote((e.target as HTMLTextAreaElement).value)}
-        placeholder="Your note — public on Trakt, at least 5 words…"
+        placeholder={
+          isAniList ? "Private note on AniList…" : "Your note — public on Trakt, at least 5 words…"
+        }
         class={clsx(
           "mb-2 w-full resize-none rounded-lg px-2.5 py-2 text-[12px] outline-none ring-inset focus:ring-2",
           t.input,
         )}
       />
 
-      <label class={clsx("mb-3 flex cursor-pointer items-center gap-2 text-[11px]", t.sub)}>
-        <input
-          type="checkbox"
-          class="accent-trakt"
-          checked={spoiler}
-          onChange={(e) => setSpoiler((e.target as HTMLInputElement).checked)}
-        />
-        Mark as spoiler
-      </label>
+      {/* Spoiler flag is a Trakt public-comment concept; AniList notes are private. */}
+      {!isAniList && (
+        <label class={clsx("mb-3 flex cursor-pointer items-center gap-2 text-[11px]", t.sub)}>
+          <input
+            type="checkbox"
+            class="accent-trakt"
+            checked={spoiler}
+            onChange={(e) => setSpoiler((e.target as HTMLInputElement).checked)}
+          />
+          Mark as spoiler
+        </label>
+      )}
 
       <div class="flex items-stretch gap-2">
         <Btn
@@ -262,20 +286,23 @@ function RateNote({
           disabled={busy || note.trim().length === 0}
           onClick={save}
         >
-          {hasNote ? "Update note" : "Post note"}
+          {hasNote ? "Update note" : isAniList ? "Save note" : "Post note"}
         </Btn>
         {hasNote && (
           <Btn t={t} tone="danger" title="Delete note" disabled={busy} onClick={remove}>
             <Icon name="trash" class="text-[13px]" />
           </Btn>
         )}
-        <button
-          type="button"
-          onClick={onFix}
-          class={clsx("ml-auto text-[12px] underline underline-offset-2", t.sub)}
-        >
-          Wrong match?
-        </button>
+        {/* AniList has no in-badge correction flow in v1 — hide "wrong match?". */}
+        {!isAniList && (
+          <button
+            type="button"
+            onClick={onFix}
+            class={clsx("ml-auto text-[12px] underline underline-offset-2", t.sub)}
+          >
+            Wrong match?
+          </button>
+        )}
       </div>
       {msg && <p class={clsx("mt-2 text-[11px]", t.sub)}>{msg}</p>}
     </div>
@@ -626,21 +653,31 @@ function BadgeRoot() {
   const [minimized, setMinimized] = useState(false);
   const [panel, setPanel] = useState<null | "review" | "fix" | "manual" | "episode">(null);
   const [media, setMedia] = useState<ParsedMedia | null>(null);
+  const [tracker, setTracker] = useState<Tracker>("trakt");
   const [promptDismissed, setPromptDismissed] = useState(false);
+  const [rewatchHidden, setRewatchHidden] = useState(false);
   const [manualMode, setManualMode] = useState(false);
 
   useEffect(() => {
     // Don't auto-expand on every status: while minimized the dot color keeps
     // tracking state live, so the user always sees TMSync is working without it
     // popping back open on each play/pause/timeupdate.
-    const off = onMessage("scrobbleStatus", ({ data }) => setStatus(data));
+    const off = onMessage("scrobbleStatus", ({ data }) => {
+      setStatus(data);
+      setRewatchHidden(false); // a fresh status may carry a new rewatch prompt
+    });
     return () => off();
   }, []);
 
-  // Pull the tab's media once a session exists (needed for rating/note/fix).
+  // Pull the tab's media + tracker once a session exists (needed for rating/note/fix).
   useEffect(() => {
     if (status && !media) {
-      void sendMessage("getTabMedia", undefined).then((tab) => tab && setMedia(tab.media));
+      void sendMessage("getTabMedia", undefined).then((tab) => {
+        if (tab) {
+          setMedia(tab.media);
+          setTracker(tab.tracker);
+        }
+      });
     }
   }, [status, media]);
 
@@ -676,20 +713,33 @@ function BadgeRoot() {
           title={summary}
           aria-label={summary}
         >
-          <span class={clsx("size-3.5 rounded-full", s.color, s.glow)} />
+          <span class={clsx("tmsync-dot size-3.5 rounded-full", s.color, s.glow)} />
         </button>
       </div>
     );
   }
 
+  // Rating prompt: Trakt on any scrobble; AniList only when the cour completed
+  // (you rate a cour once at the end, not after every episode).
   const showPrompt =
-    status.state === "scrobbled" && media !== null && panel === null && !promptDismissed;
+    status.state === "scrobbled" &&
+    media !== null &&
+    panel === null &&
+    !promptDismissed &&
+    (tracker !== "anilist" || status.completed === true);
+
+  const confirmRewatch = () => {
+    if (!media) return;
+    setRewatchHidden(true); // background pushes the resulting status back
+    void sendMessage("confirmRewatch", { media });
+  };
 
   return (
-    <div class="fixed bottom-3.5 left-3.5 z-[2147483646] flex max-w-[340px] flex-col gap-2 font-sans">
+    <div class="tmsync-pop fixed bottom-3.5 left-3.5 z-[2147483646] flex max-w-[340px] flex-col gap-2 font-sans">
       {panel === "review" && media && (
         <RateNote
           media={media}
+          tracker={tracker}
           onClose={() => setPanel(null)}
           onFix={() => setPanel(manualMode ? "manual" : "fix")}
         />
@@ -738,6 +788,30 @@ function BadgeRoot() {
         </div>
       )}
 
+      {status.rewatch && panel === null && !rewatchHidden && (
+        <div
+          class={clsx(
+            "inline-flex items-center gap-3 rounded-xl py-2 pr-2 pl-3 shadow-xl shadow-black/30",
+            t.panel,
+          )}
+        >
+          <span class="min-w-0">
+            <span class={clsx("block whitespace-nowrap text-[12px] font-semibold", t.heading)}>
+              Rewatching?
+            </span>
+            {status.title && (
+              <span class={clsx("block max-w-[200px] truncate text-[11px]", t.sub)}>
+                {status.title} · completed before
+              </span>
+            )}
+          </span>
+          <Btn t={t} tone="primary" class="ml-auto" onClick={confirmRewatch}>
+            Start rewatch
+          </Btn>
+          <IconBtn t={t} name="x" title="Dismiss" onClick={() => setRewatchHidden(true)} />
+        </div>
+      )}
+
       {showPrompt && media && (
         <div
           class={clsx(
@@ -746,12 +820,17 @@ function BadgeRoot() {
           )}
         >
           <span class={clsx("whitespace-nowrap text-[12px] font-semibold", t.heading)}>
-            Rate {media.season !== undefined ? "episode" : "movie"}?
+            {tracker === "anilist"
+              ? "Rate this cour?"
+              : `Rate ${media.season !== undefined ? "episode" : "movie"}?`}
           </span>
           <div class="flex-1">
             <RatingRow
               media={media}
-              level={media.season !== undefined ? "episode" : "movie"}
+              tracker={tracker}
+              level={
+                tracker === "anilist" ? "cour" : media.season !== undefined ? "episode" : "movie"
+              }
               compact
             />
           </div>

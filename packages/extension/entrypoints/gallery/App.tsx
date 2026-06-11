@@ -175,6 +175,7 @@ export function App() {
               ]}
               urlParts={urlParts(EP_URL)}
               mediaType="auto"
+              tracker="trakt"
               iframe={false}
               preview={{ ok: true, text: "show: Spider-Noir S1E1" }}
             />
@@ -193,6 +194,7 @@ export function App() {
               ]}
               urlParts={urlParts("www.cineby.at/tv/273240/1/1")}
               mediaType="auto"
+              tracker="trakt"
               iframe
               preview={{ ok: false, error: "no title yet — pick one" }}
             />
@@ -210,6 +212,7 @@ export function App() {
               ]}
               urlParts={urlParts("www.cineby.at/movie/693134")}
               mediaType="movie"
+              tracker="trakt"
               iframe
               preview={{ ok: true, text: "movie: Dune: Part Two (2024)" }}
               status="Saved! Reload the page to start scrobbling."
@@ -229,6 +232,7 @@ export function App() {
               ]}
               urlParts={urlParts("popcornmovies.org/movie/srimulat-hidup-memang-komedi")}
               mediaType="auto"
+              tracker="trakt"
               iframe={false}
               preview={{ ok: true, text: "movie: Srimulat (2023)" }}
             />
@@ -243,8 +247,25 @@ export function App() {
               fields={[]}
               urlParts={urlParts("twoseven.xyz/room/abc123")}
               mediaType="auto"
+              tracker="trakt"
               iframe
               preview={{ ok: true, text: "Manual — pick each title from the badge" }}
+            />
+          </Tile>
+          <Tile label="Anime site → AniList" t={t}>
+            <PickerPanel
+              variant={variant}
+              mode="setup"
+              name="reanime.to"
+              fields={[
+                { key: "title", label: "Title", value: "Frieren", source: "dom" },
+                { key: "episode", label: "Episode", value: "3", source: "url" },
+              ]}
+              urlParts={urlParts("reanime.to/watch/frieren/3")}
+              mediaType="show"
+              tracker="anilist"
+              iframe
+              preview={{ ok: true, text: "show: Frieren E3 → AniList" }}
             />
           </Tile>
         </Group>

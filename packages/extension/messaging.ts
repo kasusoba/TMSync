@@ -1,9 +1,6 @@
-import type {
-  ResolvedIdentity,
-  ReviewLevel,
-  ScrobbleAction,
-  TraktSearchOption,
-} from "@/lib/trakt/types";
+import type { ScoreFormat } from "@/lib/anilist/types";
+import type { RatingLevel, Tracker } from "@/lib/tracker/types";
+import type { ResolvedIdentity, ScrobbleAction, TraktSearchOption } from "@/lib/trakt/types";
 import type { ParsedMedia } from "@tmsync/shared";
 import { defineExtensionMessaging } from "@webext-core/messaging";
 
@@ -12,6 +9,10 @@ export interface ScrobbleRequest {
   media: ParsedMedia;
   /** 0–100. */
   progress: number;
+  /** Which tracker records this item (routed by the matched recipe). Default trakt. */
+  tracker?: Tracker;
+  /** 0–1; the per-recipe "treat as finished here" point (AniList owns the watched decision). */
+  watchedThreshold?: number;
 }
 
 export interface ScrobbleReply {
@@ -22,8 +23,18 @@ export interface ScrobbleReply {
   resolved: boolean;
   /** Trakt's echoed action; "scrobble" means it was added to history. */
   action?: "start" | "pause" | "scrobble";
-  /** Why a scrobble failed, for the badge. */
-  reason?: "not_connected" | "unresolved" | "no_episode" | "http";
+  /** Why a scrobble failed, for the badge. `numbering_mismatch` is the AniList
+   * guardrail; `needs_rewatch` means a COMPLETED AniList cour needs a rewatch
+   * confirmation before anything is written. */
+  reason?:
+    | "not_connected"
+    | "unresolved"
+    | "no_episode"
+    | "numbering_mismatch"
+    | "needs_rewatch"
+    | "http";
+  /** AniList only: this write completed the cour (drives the cour-rating prompt). */
+  completed?: boolean;
   /** What this resolved to on Trakt (transparency for the badge). */
   resolvedTitle?: string;
   resolvedYear?: number;
@@ -45,10 +56,17 @@ export interface BadgeStatus {
   /** A show page whose URL carries no episode (e.g. a "?play=true" deep link) —
    * the badge shows a season/episode chooser so scrobbling can start. */
   needEpisode?: boolean;
+  /** An already-COMPLETED AniList cour is being re-watched — the badge shows a
+   * "rewatching?" confirmation; nothing is written until the user says yes. */
+  rewatch?: boolean;
+  /** AniList only: the last write finished the cour (gates the cour-rating prompt). */
+  completed?: boolean;
 }
 
 export interface TabMedia {
   media: ParsedMedia;
+  /** Which tracker this tab's item routes to. */
+  tracker: Tracker;
   videoSelector: string;
   /** Where the player lives: which frame should drive scrobbling. */
   frame: "auto" | "top" | "iframe";
@@ -62,6 +80,15 @@ export interface TraktStatus {
   redirectUri: string;
 }
 
+/** AniList account status (the second, independent provider — constraint #1). */
+export interface AniListStatus {
+  connected: boolean;
+  /** The redirect URI to register in the AniList app (shown in the options page). */
+  redirectUri: string;
+  /** Whether a client id is configured at all (so the UI can explain if not). */
+  configured: boolean;
+}
+
 /**
  * Typed content↔background↔popup contract. Background handlers are stateless and
  * read everything from storage on each call (constraint #4).
@@ -71,10 +98,14 @@ export interface ProtocolMap {
   getTraktStatus(): TraktStatus;
   connectTrakt(): { ok: boolean; error?: string };
   disconnectTrakt(): void;
+  /** AniList account (independent of Trakt — an item routes to one, never both). */
+  getAniListStatus(): AniListStatus;
+  connectAniList(): { ok: boolean; error?: string };
+  disconnectAniList(): void;
   scrobble(req: ScrobbleRequest): ScrobbleReply;
-  /** Resolve scraped media to its Trakt identity WITHOUT scrobbling — lets the
+  /** Resolve scraped media to its tracker identity WITHOUT recording — lets the
    * badge show the matched title before the user presses play (transparency). */
-  resolveMedia(media: ParsedMedia): {
+  resolveMedia(q: { media: ParsedMedia; tracker?: Tracker }): {
     resolved: boolean;
     title?: string;
     year?: number;
@@ -150,26 +181,50 @@ export interface ProtocolMap {
   /** Background → frames: a correction landed, re-resolve the current session. */
   recheck(): void;
 
-  // --- ratings & notes (a managed public Trakt comment per item) ---
+  /** Confirm a rewatch of an already-COMPLETED AniList cour (the badge prompt).
+   * Switches the entry to REPEATING and records this episode; on the final
+   * episode it re-completes and bumps the repeat count. */
+  confirmRewatch(q: { media: ParsedMedia }): { ok: boolean; error?: string; completed?: boolean };
+
+  // --- ratings & notes (Trakt: managed public comment per level; AniList: cour entry) ---
+  /** Which rating levels the routed tracker supports for this media, plus the
+   * AniList score format when relevant — so the badge renders only valid
+   * affordances (Trakt: show/season/episode; AniList: a single "cour"). */
+  getRatingMeta(q: { media: ParsedMedia; tracker?: Tracker }): {
+    levels: RatingLevel[];
+    scoreFormat?: ScoreFormat;
+  };
   /** Current rating (1–10) and note for an item at a level, from the local mirror. */
-  getReview(q: { media: ParsedMedia; level: ReviewLevel }): {
+  getReview(q: { media: ParsedMedia; level: RatingLevel; tracker?: Tracker }): {
     rating: number | null;
     note: { text: string; spoiler: boolean } | null;
   };
-  /** Set a 1–10 rating. */
-  rateItem(q: { media: ParsedMedia; level: ReviewLevel; rating: number }): {
+  /** Set a 1–10 rating (AniList: stored as scoreRaw = rating×10 on the cour entry). */
+  rateItem(q: { media: ParsedMedia; level: RatingLevel; rating: number; tracker?: Tracker }): {
     ok: boolean;
     error?: string;
   };
   /** Remove the rating. */
-  unrateItem(q: { media: ParsedMedia; level: ReviewLevel }): { ok: boolean; error?: string };
-  /** Create or edit the single note (Trakt requires ≥5 words). */
-  saveNote(q: { media: ParsedMedia; level: ReviewLevel; text: string; spoiler: boolean }): {
+  unrateItem(q: { media: ParsedMedia; level: RatingLevel; tracker?: Tracker }): {
+    ok: boolean;
+    error?: string;
+  };
+  /** Create or edit the single note (Trakt: ≥5 words, public; AniList: private cour note). */
+  saveNote(q: {
+    media: ParsedMedia;
+    level: RatingLevel;
+    text: string;
+    spoiler: boolean;
+    tracker?: Tracker;
+  }): {
     ok: boolean;
     error?: string;
   };
   /** Delete the note. */
-  deleteNote(q: { media: ParsedMedia; level: ReviewLevel }): { ok: boolean; error?: string };
+  deleteNote(q: { media: ParsedMedia; level: RatingLevel; tracker?: Tracker }): {
+    ok: boolean;
+    error?: string;
+  };
 }
 
 export const { sendMessage, onMessage } = defineExtensionMessaging<ProtocolMap>();

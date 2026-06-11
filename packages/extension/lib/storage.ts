@@ -1,5 +1,7 @@
 import type { LinkTemplates, ParsedMedia, Recipe } from "@tmsync/shared";
 import { storage } from "wxt/utils/storage";
+import type { AniListIdentity, AniListTokens } from "./anilist/types";
+import type { Tracker } from "./tracker/types";
 import type { ResolvedIdentity, TraktTokens } from "./trakt/types";
 
 /**
@@ -10,6 +12,32 @@ import type { ResolvedIdentity, TraktTokens } from "./trakt/types";
 
 export const traktTokens = storage.defineItem<TraktTokens | null>("local:trakt_tokens", {
   fallback: null,
+});
+
+// --- AniList (the anime tracker; routed, never synced with Trakt — constraint #1) ---
+
+/** AniList implicit-grant token (no refresh token; ~1-year validity). */
+export const anilistTokens = storage.defineItem<AniListTokens | null>("local:anilist_tokens", {
+  fallback: null,
+});
+
+/** AniList resolution cache keyed by anilistCacheKey(media). */
+export const anilistResolutionCache = storage.defineItem<Record<string, AniListIdentity>>(
+  "local:anilist_resolution_cache",
+  { fallback: {} },
+);
+
+/**
+ * Local mirror of the user's AniList cour-entry score, keyed by `Media` id, as a
+ * format-agnostic 0–100 `scoreRaw` (rendered per the user's scoreFormat).
+ */
+export const anilistRatings = storage.defineItem<Record<number, number>>("local:anilist_ratings", {
+  fallback: {},
+});
+
+/** Local mirror of the AniList private `MediaList.notes`, keyed by `Media` id. */
+export const anilistNotes = storage.defineItem<Record<number, string>>("local:anilist_notes", {
+  fallback: {},
 });
 
 /** Resolution cache keyed by resolutionCacheKey(media). */
@@ -52,6 +80,9 @@ export interface QuickLinkSite extends LinkTemplates {
   id: string;
   name: string;
   enabled: boolean;
+  /** Which tracker's pages this link injects on: trakt.tv (movies/TV) or
+   * anilist.co (anime). Defaults to "trakt" for back-compat (v1 links). */
+  tracker?: Tracker;
   /** "library" = synced from the shared list (templates refresh on sync);
    * "user"/undefined = created or fully owned by the user. */
   source?: "library" | "user";
@@ -156,6 +187,8 @@ export const manualContexts = storage.defineItem<Record<number, ManualContext>>(
  */
 export interface TabSession {
   media: ParsedMedia;
+  /** Which tracker this session records to (routed by the matched recipe). */
+  tracker: Tracker;
   videoSelector: string;
   frame: "auto" | "top" | "iframe";
   /** 0–1; a pause at/after this fraction is committed as a stop. */

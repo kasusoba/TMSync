@@ -1,7 +1,9 @@
+import type { Tracker } from "@/lib/tracker/types";
 import {
   type EngineContext,
   type ExtractResult,
   type Field,
+  type LinkTemplates,
   type Recipe,
   RecipeSchema,
   SCHEMA_VERSION,
@@ -16,6 +18,9 @@ import {
 export interface RecipeDraft {
   match: { urlPattern: string; domFingerprint?: string; hostnames?: string[] };
   mediaType: "auto" | "movie" | "show";
+  /** Which tracker this recipe routes to. "anilist" ⇒ a dedicated anime *series*
+   * site whose episode numbering matches the AniList entry (constraint #2). */
+  tracker: Tracker;
   video: { selector: string; frame: "auto" | "top" | "iframe" };
   /** Manual recipe: no scraping — the user picks each title from the badge. */
   manual: boolean;
@@ -31,6 +36,45 @@ export interface RecipeDraft {
 }
 
 export type DraftFieldKey = keyof RecipeDraft["fields"];
+
+/**
+ * Best-guess quick-link URL template(s) for the CURRENT page, so the picker can
+ * offer to add a "watch on this site" link without a trip to the options page.
+ * It's a starting point (heuristic, editable): the id/slug segment of the URL is
+ * swapped for a placeholder, and for shows a trailing `…/{id}/{season}/{episode}`
+ * or `…/{slug}/{s}-{e}` shape is recognised. AniList anime sites use `{slug}`.
+ */
+export function deriveQuickLink(draft: RecipeDraft, url: string): LinkTemplates {
+  let host: string;
+  let path: string;
+  try {
+    const u = new URL(url);
+    host = u.host;
+    path = u.pathname.replace(/\/$/, "");
+  } catch {
+    return {};
+  }
+  const base = `https://${host}`;
+  const isShow =
+    draft.mediaType === "show" ||
+    draft.fields.season !== undefined ||
+    draft.fields.episode !== undefined;
+
+  if (draft.tracker === "anilist") {
+    return { anime: `${base}${path.replace(/\/[^/]+$/, "/{slug}")}` };
+  }
+  if (isShow) {
+    const numbered = path.match(/^(.*?)\/\d+\/\d+\/\d+$/); // …/{id}/{season}/{episode}
+    if (numbered) return { tv: `${base}${numbered[1]}/{tmdb}/{season}/{episode}` };
+    const hyphenated = path.match(/^(.*?)\/[^/]+\/\d+-\d+$/); // …/{slug}/{s}-{e}
+    if (hyphenated) return { tv: `${base}${hyphenated[1]}/{slug}/{season}-{episode}` };
+    if (/\/\d+$/.test(path)) return { tv: `${base}${path.replace(/\/\d+$/, "/{tmdb}")}` };
+    return { tv: `${base}${path.replace(/\/[^/]+$/, "/{slug}")}` };
+  }
+  // movie: a numeric id → {tmdb}; otherwise a slug → {slug}.
+  if (/\/\d+$/.test(path)) return { movie: `${base}${path.replace(/\/\d+$/, "/{tmdb}")}` };
+  return { movie: `${base}${path.replace(/\/[^/]+$/, "/{slug}")}` };
+}
 
 export function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -74,6 +118,7 @@ export function emptyDraft(url: string): RecipeDraft {
       hostnames: hostname ? [hostname] : undefined,
     },
     mediaType: "auto",
+    tracker: "trakt",
     video: { selector: "video", frame: "auto" },
     manual: false,
     fields: {},
@@ -89,6 +134,7 @@ export function recipeToDraft(recipe: Recipe): RecipeDraft {
       hostnames: recipe.match.hostnames,
     },
     mediaType: recipe.mediaType,
+    tracker: recipe.tracker,
     video: { selector: recipe.video.selector, frame: recipe.video.frame },
     manual: recipe.extract === undefined,
     manualKey: recipe.manualKey,
@@ -167,6 +213,7 @@ export function buildRecipe(draft: RecipeDraft, meta: { id: string; name: string
     name: meta.name,
     match: draft.match,
     mediaType: draft.mediaType,
+    tracker: draft.tracker,
     video: { selector: draft.video.selector, frame: draft.video.frame },
   };
 

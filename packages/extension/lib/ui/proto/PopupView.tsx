@@ -1,5 +1,14 @@
 import clsx from "clsx";
-import { Btn, Icon, Section, TraktMark, type Variant, tokens } from "./kit";
+import {
+  AniListMark,
+  Btn,
+  Icon,
+  Section,
+  type Tokens,
+  TraktMark,
+  type Variant,
+  tokens,
+} from "./kit";
 
 export interface OriginRow {
   origin: string;
@@ -11,16 +20,61 @@ export interface PopupViewProps {
   variant: Variant;
   connected: boolean;
   redirectUri?: string;
+  /** AniList account (the second provider — independent of Trakt). */
+  anilistConnected?: boolean;
   /** null = no eligible page in the active tab. */
   origins: OriginRow[] | null;
   busy?: boolean;
   note?: string | null;
   onConnect?: () => void;
   onDisconnect?: () => void;
+  onConnectAniList?: () => void;
+  onDisconnectAniList?: () => void;
   onEnable?: (origin: string) => void;
   onDisable?: (origin: string) => void;
   onSetup?: () => void;
   onOpenOptions?: () => void;
+}
+
+/** One provider row (mark + name + status + connect/disconnect). Uniform per provider. */
+function ProviderRow({
+  t,
+  mark,
+  name,
+  connected,
+  busy,
+  onConnect,
+  onDisconnect,
+}: {
+  t: Tokens;
+  mark: preact.ComponentChildren;
+  name: string;
+  connected: boolean;
+  busy?: boolean;
+  onConnect?: () => void;
+  onDisconnect?: () => void;
+}) {
+  return (
+    <div class={clsx("flex items-center gap-3 rounded-xl px-3 py-2.5", t.card)}>
+      {mark}
+      <span class="min-w-0 flex-1">
+        <span class={clsx("block text-[13px] font-semibold", t.heading)}>{name}</span>
+        <span class={clsx("flex items-center gap-1.5 text-[11px]", t.sub)}>
+          {connected && <span class="size-1.5 rounded-full bg-emerald-500" />}
+          {connected ? "Connected" : "Not connected"}
+        </span>
+      </span>
+      {connected ? (
+        <Btn t={t} tone="ghost" disabled={busy} onClick={onDisconnect}>
+          Disconnect
+        </Btn>
+      ) : (
+        <Btn t={t} tone="primary" disabled={busy} onClick={onConnect}>
+          Connect
+        </Btn>
+      )}
+    </div>
+  );
 }
 
 function host(origin: string): string {
@@ -38,26 +92,27 @@ export function PopupView(p: PopupViewProps) {
           <span class={clsx("text-[15px] font-semibold tracking-tight", t.heading)}>TMSync</span>
         </header>
 
-        {/* Account — one provider row today (Trakt); scales to a list. */}
+        {/* Account — a provider list: Trakt + AniList (independent, never synced). */}
         <Section title="Account" t={t}>
-          <div class={clsx("flex items-center gap-3 rounded-xl px-3 py-2.5", t.card)}>
-            <TraktMark />
-            <span class="min-w-0 flex-1">
-              <span class={clsx("block text-[13px] font-semibold", t.heading)}>Trakt</span>
-              <span class={clsx("flex items-center gap-1.5 text-[11px]", t.sub)}>
-                {p.connected && <span class="size-1.5 rounded-full bg-emerald-500" />}
-                {p.connected ? "Connected" : "Not connected"}
-              </span>
-            </span>
-            {p.connected ? (
-              <Btn t={t} tone="ghost" disabled={p.busy} onClick={p.onDisconnect}>
-                Disconnect
-              </Btn>
-            ) : (
-              <Btn t={t} tone="primary" disabled={p.busy} onClick={p.onConnect}>
-                Connect
-              </Btn>
-            )}
+          <div class="space-y-1.5">
+            <ProviderRow
+              t={t}
+              mark={<TraktMark />}
+              name="Trakt"
+              connected={p.connected}
+              busy={p.busy}
+              onConnect={p.onConnect}
+              onDisconnect={p.onDisconnect}
+            />
+            <ProviderRow
+              t={t}
+              mark={<AniListMark />}
+              name="AniList"
+              connected={p.anilistConnected ?? false}
+              busy={p.busy}
+              onConnect={p.onConnectAniList}
+              onDisconnect={p.onDisconnectAniList}
+            />
           </div>
           {!p.connected && p.redirectUri && (
             <p class={clsx("text-[11px] leading-relaxed", t.sub)}>

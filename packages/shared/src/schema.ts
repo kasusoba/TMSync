@@ -4,9 +4,14 @@ import { z } from "zod";
  * Recipe schema version understood by this build of the engine.
  * Clients ignore recipes whose `schemaVersion` is newer than this.
  *
- * v2 added manual recipes (no `extract`; the user picks the title in-page on
- * sites with no readable metadata — e.g. asbplayer/twoseven). A v1-only engine
- * skips v2 recipes rather than choking on the missing `extract`.
+ * v2 added two things:
+ *   - manual recipes (no `extract`; the user picks the title in-page on sites
+ *     with no readable metadata — e.g. asbplayer/twoseven). A v1-only engine
+ *     skips v2 recipes rather than choking on the missing `extract`.
+ *   - the `tracker` field, routing a site to Trakt or AniList. It is optional
+ *     with a `"trakt"` default, so it is purely additive — v1 recipes (and v2
+ *     recipes that omit it) still parse and default to Trakt, the original
+ *     behaviour. `tracker: "anilist"` recipes carry `schemaVersion: 2`.
  */
 export const SCHEMA_VERSION = 2;
 
@@ -30,19 +35,23 @@ export const Field = z.object({
 export type Field = z.infer<typeof Field>;
 
 /**
- * URL templates for deep-linking FROM a Trakt page OUT to a streaming site (the
+ * URL templates for deep-linking FROM a tracker page OUT to a streaming site (the
  * "quick links" feature). Declarative data — placeholders are substituted, never
  * executed. Supported placeholders:
- *   {tmdb} {imdb}      — ids read from Trakt's own external links
- *   {title}            — URL-encoded title; {slug} — lowercase, hyphen-joined
- *   {season} {episode} — for `tv` (show → S1E1, season → S{n}E1, episode → S{n}E{m})
- * A `tv`/`movie` template that references an id we don't have falls back to
- * `search`. Quick links are managed per-SITE, independent of recipes (which are
- * scraping config) — see the extension's quickLinks store.
+ *   Trakt page (movie/tv): {tmdb} {imdb} (ids from Trakt's external links),
+ *     {title} (URL-encoded), {slug} (lowercase, hyphen-joined), {slugyear},
+ *     {season} {episode} (tv: show → S1E1, season → S{n}E1, episode → S{n}E{m}).
+ *   AniList page (`anime`): {anilistId}, {title} (English/romaji, URL-encoded),
+ *     {romaji} (URL-encoded), {slug}.
+ * A direct template that references an id we don't have falls back to `search`.
+ * Which tracker's pages a link shows on is decided by `tracker` (below); the
+ * `anime` template is the AniList analogue of `movie`/`tv`. Quick links are
+ * managed per-SITE, independent of recipes — see the extension's quickLinks store.
  */
 export const LinkTemplates = z.object({
   movie: z.string().optional(),
   tv: z.string().optional(),
+  anime: z.string().optional(),
   search: z.string().optional(),
 });
 export type LinkTemplates = z.infer<typeof LinkTemplates>;
@@ -51,11 +60,13 @@ export type LinkTemplates = z.infer<typeof LinkTemplates>;
  * A quick-link site shared through the recipe library (the `links` section of
  * index.json). Per-site, separate from recipes (scraping config) but contributed
  * in the same file. The client adds these to the user's quick-links disabled by
- * default — the user enables their favourites.
+ * default — the user enables their favourites. `tracker` decides which tracker's
+ * pages it injects on (trakt.tv vs anilist.co); v1 links default to `trakt`.
  */
 export const LibraryLink = LinkTemplates.extend({
   id: z.string(),
   name: z.string(),
+  tracker: z.enum(["trakt", "anilist"]).default("trakt"),
 });
 export type LibraryLink = z.infer<typeof LibraryLink>;
 
@@ -69,6 +80,12 @@ export const Recipe = z.object({
     hostnames: z.array(z.string()).optional(), // hints only, not the primary match
   }),
   mediaType: z.enum(["auto", "movie", "show"]).default("auto"),
+  // Which tracker adapter records this site. Routed, never synced (one item →
+  // one tracker). `"anilist"` ⇒ anime *series* only, on dedicated anime sites;
+  // everything else (movies — anime or not — and non-anime TV) is `"trakt"`.
+  // Optional + default `"trakt"` keeps v1/older-v2 recipes back-compatible. The
+  // engine selects the adapter by this field; `extract()` stays tracker-agnostic.
+  tracker: z.enum(["trakt", "anilist"]).default("trakt"),
   video: z
     .object({
       selector: z.string().default("video"),

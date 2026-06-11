@@ -14,6 +14,7 @@ function recipe(partial: Partial<Recipe> & Pick<Recipe, "extract">): Recipe {
     name: "Test",
     match: { urlPattern: ".*" },
     mediaType: "auto",
+    tracker: "trakt",
     video: { selector: "video", frame: "auto", watchedThreshold: 0.8 },
     ...partial,
   };
@@ -155,6 +156,7 @@ describe("isManualRecipe", () => {
     name: "T",
     match: { urlPattern: ".*" },
     mediaType: "auto" as const,
+    tracker: "trakt" as const,
     video: { selector: "video", frame: "auto" as const, watchedThreshold: 0.8 },
   };
 

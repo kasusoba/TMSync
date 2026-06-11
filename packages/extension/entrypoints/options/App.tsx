@@ -7,9 +7,19 @@ import {
   quickLinks,
   remoteRecipes,
 } from "@/lib/storage";
+import type { Tracker } from "@/lib/tracker/types";
 import type { ResolvedIdentity } from "@/lib/trakt/types";
-import { Btn, Icon, IconBtn, type IconName, Switch, TraktMark, tokens } from "@/lib/ui/proto/kit";
-import { type TraktStatus, sendMessage } from "@/messaging";
+import {
+  AniListMark,
+  Btn,
+  Icon,
+  IconBtn,
+  type IconName,
+  Switch,
+  TraktMark,
+  tokens,
+} from "@/lib/ui/proto/kit";
+import { type AniListStatus, type TraktStatus, sendMessage } from "@/messaging";
 import type { Recipe } from "@tmsync/shared";
 import clsx from "clsx";
 import { useEffect, useState } from "preact/hooks";
@@ -49,6 +59,9 @@ function recipeSuggestions(recipes: Recipe[], links: QuickLinkSite[]): RecipeSug
     links.some((l) => [l.movie, l.tv, l.search].some((u) => u?.includes(h)));
   const byHost = new Map<string, Recipe[]>();
   for (const r of recipes) {
+    // Quick-link suggestions are Trakt-only (we can derive a movie/tv URL base
+    // from the recipe). Anime recipes don't map to an anilist.co anime-site URL.
+    if ((r.tracker ?? "trakt") === "anilist") continue;
     const h = recipeHost(r);
     const g = byHost.get(h) ?? [];
     g.push(r);
@@ -120,17 +133,23 @@ function QuickLinkRow({
 }) {
   const [open, setOpen] = useState(startOpen);
   const [name, setName] = useState(site.name);
+  const [tracker, setTracker] = useState<Tracker>(site.tracker ?? "trakt");
   const [movie, setMovie] = useState(site.movie ?? "");
   const [tv, setTv] = useState(site.tv ?? "");
+  const [anime, setAnime] = useState(site.anime ?? "");
   const [search, setSearch] = useState(site.search ?? "");
   const [saved, setSaved] = useState(false);
+  const isAniList = tracker === "anilist";
 
   const save = async () => {
     await onSave({
       ...site,
       name: name.trim() || site.name,
-      movie: movie.trim() || undefined,
-      tv: tv.trim() || undefined,
+      tracker,
+      // Keep only the templates that apply to the chosen tracker.
+      movie: isAniList ? undefined : movie.trim() || undefined,
+      tv: isAniList ? undefined : tv.trim() || undefined,
+      anime: isAniList ? anime.trim() || undefined : undefined,
       search: search.trim() || undefined,
     });
     setSaved(true);
@@ -156,6 +175,12 @@ function QuickLinkRow({
     <div class={clsx("rounded-lg px-3 py-2", t.card)}>
       <div class="flex items-center gap-3">
         <Switch on={site.enabled} t={t} onClick={() => onToggle(site.id)} />
+        {/* tracker indicator — which pages this link shows on */}
+        {(site.tracker ?? "trakt") === "anilist" ? (
+          <AniListMark class="size-4" />
+        ) : (
+          <TraktMark class="size-4" />
+        )}
         <span class="min-w-0 flex-1 truncate">
           <span class={clsx("text-[13px] font-medium", t.heading)}>{site.name}</span>
           {site.source === "library" && (
@@ -169,14 +194,51 @@ function QuickLinkRow({
       </div>
       {open && (
         <div class={clsx("mt-3 space-y-2.5 border-t pt-3", t.divider)}>
+          {/* shows on — Trakt pages (movies/TV) or AniList pages (anime) */}
+          <div>
+            <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>Shows on</span>
+            <div class="flex gap-1">
+              {(
+                [
+                  ["trakt", "Trakt"],
+                  ["anilist", "AniList"],
+                ] as const
+              ).map(([value, lbl]) => (
+                <button
+                  type="button"
+                  key={value}
+                  onClick={() => setTracker(value)}
+                  class={clsx(
+                    "flex-1 rounded-md py-1 text-[11px] font-medium transition-colors",
+                    tracker === value ? "bg-ikura text-white" : t.ghost,
+                  )}
+                >
+                  {lbl}
+                </button>
+              ))}
+            </div>
+          </div>
           {field("Name", name, setName, "Site name")}
-          {field("Movie URL", movie, setMovie, "https://site/movie/{tmdb}")}
-          {field("TV URL", tv, setTv, "https://site/tv/{tmdb}/{season}/{episode}")}
-          {field("Search URL", search, setSearch, "https://site/search/{title}")}
-          <p class={clsx("text-[11px] leading-relaxed", t.faint)}>
-            Placeholders: {"{tmdb} {imdb} {season} {episode} {title} {slug}"} (year-free),{" "}
-            {"{slugyear}"} (with year).
-          </p>
+          {isAniList ? (
+            <>
+              {field("Anime URL", anime, setAnime, "https://site/anime/{slug}")}
+              {field("Search URL", search, setSearch, "https://site/search?q={title}")}
+              <p class={clsx("text-[11px] leading-relaxed", t.faint)}>
+                Placeholders: {"{anilistId} {title} {romaji} {slug}"} — shown on anilist.co anime
+                pages.
+              </p>
+            </>
+          ) : (
+            <>
+              {field("Movie URL", movie, setMovie, "https://site/movie/{tmdb}")}
+              {field("TV URL", tv, setTv, "https://site/tv/{tmdb}/{season}/{episode}")}
+              {field("Search URL", search, setSearch, "https://site/search/{title}")}
+              <p class={clsx("text-[11px] leading-relaxed", t.faint)}>
+                Placeholders: {"{tmdb} {imdb} {season} {episode} {title} {slug}"} (year-free),{" "}
+                {"{slugyear}"} (with year).
+              </p>
+            </>
+          )}
           <Btn t={t} tone="primary" disabled={busy} onClick={save}>
             {saved ? "Saved" : "Save"}
           </Btn>
@@ -195,8 +257,52 @@ const SECTIONS: { id: string; label: string; icon: IconName }[] = [
   { id: "corrections", label: "Corrections", icon: "check" },
 ];
 
+/**
+ * One provider row in the Account list — uniform across providers (constraint #1:
+ * two independent connections, never a sync pair). Always NAMES the provider so
+ * "Connect" is never "connect to what?".
+ */
+function ProviderRow({
+  mark,
+  name,
+  connected,
+  busy,
+  onConnect,
+  onDisconnect,
+}: {
+  mark: preact.ComponentChildren;
+  name: string;
+  connected: boolean;
+  busy: boolean;
+  onConnect: () => void;
+  onDisconnect: () => void;
+}) {
+  return (
+    <div class={clsx("flex items-center gap-3 rounded-lg px-3 py-2.5", t.card)}>
+      {mark}
+      <span class="min-w-0 flex-1">
+        <span class={clsx("block text-[13px] font-semibold", t.heading)}>{name}</span>
+        <span class={clsx("flex items-center gap-1.5 text-[11px]", t.sub)}>
+          {connected && <span class="size-1.5 rounded-full bg-emerald-500" />}
+          {connected ? "Connected" : "Not connected"}
+        </span>
+      </span>
+      {connected ? (
+        <Btn t={t} tone="ghost" disabled={busy} onClick={onDisconnect}>
+          Disconnect
+        </Btn>
+      ) : (
+        <Btn t={t} tone="primary" disabled={busy} onClick={onConnect}>
+          Connect
+        </Btn>
+      )}
+    </div>
+  );
+}
+
 export function App() {
   const [status, setStatus] = useState<TraktStatus | null>(null);
+  const [anilist, setAnilist] = useState<AniListStatus | null>(null);
   const [sites, setSites] = useState<string[]>([]);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [links, setLinks] = useState<QuickLinkSite[]>([]);
@@ -213,8 +319,9 @@ export function App() {
   const has = (s: string) => s.toLowerCase().includes(q.toLowerCase());
 
   const refresh = async () => {
-    const [s, sit, rec, ql, c, rem] = await Promise.all([
+    const [s, al, sit, rec, ql, c, rem] = await Promise.all([
       sendMessage("getTraktStatus", undefined),
+      sendMessage("getAniListStatus", undefined),
       sendMessage("listEnabledSites", undefined),
       customRecipes.getValue(),
       quickLinks.getValue(),
@@ -222,6 +329,7 @@ export function App() {
       remoteRecipes.getValue(),
     ]);
     setStatus(s);
+    setAnilist(al);
     setSites(sit);
     setRecipes(rec);
     setLinks(ql);
@@ -409,35 +517,18 @@ export function App() {
             {active === "account" && (
               <>
                 <PaneHead title="Account" />
-                <div class={clsx("flex items-center gap-3 rounded-lg px-3 py-2.5", t.card)}>
-                  <TraktMark />
-                  <span class="min-w-0 flex-1">
-                    <span class={clsx("block text-[13px] font-semibold", t.heading)}>Trakt</span>
-                    <span class={clsx("flex items-center gap-1.5 text-[11px]", t.sub)}>
-                      {connected && <span class="size-1.5 rounded-full bg-emerald-500" />}
-                      {connected ? "Connected" : "Not connected"}
-                    </span>
-                  </span>
-                  {connected ? (
-                    <Btn
-                      t={t}
-                      tone="ghost"
-                      disabled={busy}
-                      onClick={() => act(() => sendMessage("disconnectTrakt", undefined))}
-                    >
-                      Disconnect
-                    </Btn>
-                  ) : (
-                    <Btn
-                      t={t}
-                      tone="primary"
-                      disabled={busy}
-                      onClick={() => act(() => sendMessage("connectTrakt", undefined))}
-                    >
-                      Connect
-                    </Btn>
-                  )}
-                </div>
+                <p class={clsx("text-[12px]", t.sub)}>
+                  Two independent trackers. Movies &amp; non-anime TV route to Trakt; anime series
+                  to AniList — one item to one tracker, never both.
+                </p>
+                <ProviderRow
+                  mark={<TraktMark />}
+                  name="Trakt"
+                  connected={connected}
+                  busy={busy}
+                  onConnect={() => act(() => sendMessage("connectTrakt", undefined))}
+                  onDisconnect={() => act(() => sendMessage("disconnectTrakt", undefined))}
+                />
                 {!connected && status?.redirectUri && (
                   <p class={clsx("text-[11px] leading-relaxed", t.sub)}>
                     Set this redirect URI in your Trakt app:
@@ -448,6 +539,34 @@ export function App() {
                       )}
                     >
                       {status.redirectUri}
+                    </code>
+                  </p>
+                )}
+                <ProviderRow
+                  mark={<AniListMark />}
+                  name="AniList"
+                  connected={anilist?.connected ?? false}
+                  busy={busy}
+                  onConnect={() => act(() => sendMessage("connectAniList", undefined))}
+                  onDisconnect={() => act(() => sendMessage("disconnectAniList", undefined))}
+                />
+                {anilist && !anilist.configured && (
+                  <p class={clsx("rounded-md px-2.5 py-1.5 text-[11px]", t.infoBox)}>
+                    AniList isn’t configured in this build — set{" "}
+                    <code class="font-mono">WXT_ANILIST_CLIENT_ID</code> and{" "}
+                    <code class="font-mono">WXT_ANILIST_CLIENT_SECRET</code> to enable it.
+                  </p>
+                )}
+                {anilist?.configured && !anilist.connected && anilist.redirectUri && (
+                  <p class={clsx("text-[11px] leading-relaxed", t.sub)}>
+                    Set this redirect URI in your AniList app:
+                    <code
+                      class={clsx(
+                        "mt-1 block break-all rounded-md px-2 py-1 font-mono text-[10px]",
+                        t.chip,
+                      )}
+                    >
+                      {anilist.redirectUri}
                     </code>
                   </p>
                 )}
@@ -685,8 +804,8 @@ export function App() {
                                   <div class="flex shrink-0 items-center">
                                     <IconBtn
                                       t={t}
-                                      name="copy"
-                                      title={copied === r.id ? "Copied" : "Copy JSON"}
+                                      name={copied === r.id ? "check" : "copy"}
+                                      title={copied === r.id ? "Copied!" : "Copy JSON"}
                                       onClick={() => copyRecipe(r)}
                                     />
                                     <IconBtn

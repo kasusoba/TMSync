@@ -12,6 +12,7 @@ function recipe(partial: Partial<Recipe> & Pick<Recipe, "match">): Recipe {
     schemaVersion: 1,
     name: "Test",
     mediaType: "auto",
+    tracker: "trakt",
     video: { selector: "video", frame: "auto", watchedThreshold: 0.8 },
     extract: { title: { source: "title" } },
     ...partial,

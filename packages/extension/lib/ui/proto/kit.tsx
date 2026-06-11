@@ -212,6 +212,38 @@ export function TraktMark({
   );
 }
 
+/**
+ * The AniList provider mark — the bundled logo, with a blue "A" monogram fallback
+ * if the asset can't load. Mirrors {@link TraktMark} so the Account list stays a
+ * uniform provider list (one row each, NAMED — constraint #1 / CLAUDE.md UI).
+ */
+export function AniListMark({
+  class: cls = "size-8",
+  src = "/anilist.svg",
+}: { class?: string; src?: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <span
+        class={clsx(
+          "grid shrink-0 place-items-center rounded-lg bg-[#02A9FF] text-[14px] font-bold text-white",
+          cls,
+        )}
+      >
+        A
+      </span>
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt="AniList"
+      class={clsx("shrink-0 object-contain", cls)}
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 /** Consistent square icon button for row actions (edit / reorder / delete …). */
 export function IconBtn({
   name,

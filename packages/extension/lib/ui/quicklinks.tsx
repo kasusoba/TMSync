@@ -7,23 +7,38 @@ import { type QuickLinkItem, QuickLinksView } from "./proto/QuickLinksView";
 export type { QuickLinkItem };
 
 /**
- * Inject the quick-links block right after Trakt's own external-links list.
- * `getItems` is called on every (re)mount so the links stay fresh across Trakt's
- * in-page navigations (autoMount re-runs when `ul.external` reappears).
+ * Inject the quick-links block next to a tracker page's own external-links list.
+ * `getItems` is called on every (re)mount so the links stay fresh across the
+ * site's in-page navigations (autoMount re-runs when `anchor` reappears).
  *
- * Tailwind is injected into the shadow root via `cssInjectionMode: "ui"` on the
- * trakt content script (theme vars resolve through Tailwind's `:root, :host`).
+ * The anchor differs per tracker: Trakt's external links are `ul.external`;
+ * AniList's are `.external-links`. Tailwind is injected into the shadow root via
+ * `cssInjectionMode: "ui"` on the content script (theme vars resolve through
+ * Tailwind's `:root, :host`).
  */
 export async function mountQuickLinks(
   ctx: ContentScriptContext,
   getItems: () => QuickLinkItem[],
+  opts: {
+    /** CSS selector or a resolver fn (for text-matched anchors like a section). */
+    anchor?: string | (() => Element | null | undefined);
+    append?: "after" | "before" | "first" | "last";
+    /** Header label; null slots the block into an existing section, headerless. */
+    label?: string | null;
+    /** Extra spacing classes (margins) so the block doesn't touch host elements. */
+    class?: string;
+  } = {},
 ): Promise<void> {
   const ui = await createShadowRootUi(ctx, {
     name: "tmsync-quicklinks",
     position: "inline",
-    anchor: "ul.external",
-    append: "after",
-    onMount: (container) => render(<QuickLinksView variant="dark" items={getItems()} />, container),
+    anchor: opts.anchor ?? "ul.external",
+    append: opts.append ?? "after",
+    onMount: (container) =>
+      render(
+        <QuickLinksView variant="dark" items={getItems()} label={opts.label} class={opts.class} />,
+        container,
+      ),
     onRemove: (container) => container && render(null, container),
   });
   ui.autoMount();

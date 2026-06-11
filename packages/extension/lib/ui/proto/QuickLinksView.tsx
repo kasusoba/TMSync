@@ -10,17 +10,33 @@ export interface QuickLinkItem {
 }
 
 /**
- * The "Watch on …" block injected after Trakt's own external-links list. Wide
- * chip → the deep link (or search if that's all we have); a compact magnifier
- * appears only when both exist, so a site never takes two wide slots.
+ * The "Watch on …" block injected next to a tracker page's own provider list.
+ * Wide chip → the deep link (or search if that's all we have); a compact
+ * magnifier appears only when both exist, so a site never takes two wide slots.
+ * `label` is the small header; pass null to omit it (e.g. when slotting the
+ * block INTO an existing section so it reads as part of it).
  */
-export function QuickLinksView({ variant, items }: { variant: Variant; items: QuickLinkItem[] }) {
+export function QuickLinksView({
+  variant,
+  items,
+  label = "Watch on",
+  class: cls,
+}: {
+  variant: Variant;
+  items: QuickLinkItem[];
+  label?: string | null;
+  /** Extra spacing/layout classes for the host page (e.g. margins so it doesn't
+   * touch the page's own elements). */
+  class?: string;
+}) {
   const t = tokens(variant);
   return (
-    <div class="w-[280px] space-y-2">
-      <div class={clsx("text-[10px] font-semibold uppercase tracking-wider", t.faint)}>
-        Watch on
-      </div>
+    <div class={clsx("w-[280px] space-y-2", cls)}>
+      {label && (
+        <div class={clsx("text-[10px] font-semibold uppercase tracking-wider", t.faint)}>
+          {label}
+        </div>
+      )}
       <div class="flex flex-wrap gap-1.5">
         {items.map((i) => {
           const primary = i.direct ?? i.search;
@@ -29,6 +45,8 @@ export function QuickLinksView({ variant, items }: { variant: Variant; items: Qu
             <div class="inline-flex items-stretch gap-px" key={i.name}>
               <a
                 href={primary}
+                target="_blank"
+                rel="noopener noreferrer"
                 class={clsx(
                   "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-medium transition-colors",
                   t.ghost,
@@ -41,6 +59,8 @@ export function QuickLinksView({ variant, items }: { variant: Variant; items: Qu
               {i.direct && i.search && (
                 <a
                   href={i.search}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   title={`Search ${i.name}`}
                   class={clsx(
                     "grid w-8 place-items-center rounded-lg rounded-l-none transition-colors",

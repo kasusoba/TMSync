@@ -1,6 +1,7 @@
 import clsx from "clsx";
 import { useState } from "preact/hooks";
 import {
+  AniListMark,
   Btn,
   Icon,
   IconBtn,
@@ -211,6 +212,10 @@ export function OptionsView({ variant }: { variant: Variant }) {
             {active === "trakt" && (
               <>
                 <PaneHead t={t} title="Account" />
+                <p class={clsx("text-[12px]", t.sub)}>
+                  Two independent trackers. Movies &amp; non-anime TV route to Trakt; anime series
+                  to AniList — one item to one tracker, never both.
+                </p>
                 <div class={clsx("flex items-center gap-3 rounded-lg px-3 py-2.5", t.card)}>
                   <TraktMark />
                   <span class="min-w-0 flex-1">
@@ -222,6 +227,18 @@ export function OptionsView({ variant }: { variant: Variant }) {
                   </span>
                   <Btn t={t} tone="ghost">
                     Disconnect
+                  </Btn>
+                </div>
+                <div class={clsx("flex items-center gap-3 rounded-lg px-3 py-2.5", t.card)}>
+                  <AniListMark />
+                  <span class="min-w-0 flex-1">
+                    <span class={clsx("block text-[13px] font-semibold", t.heading)}>AniList</span>
+                    <span class={clsx("flex items-center gap-1.5 text-[11px]", t.sub)}>
+                      Not connected
+                    </span>
+                  </span>
+                  <Btn t={t} tone="primary">
+                    Connect
                   </Btn>
                 </div>
                 <div class={clsx("space-y-2 rounded-lg px-3 py-2.5", t.card)}>
