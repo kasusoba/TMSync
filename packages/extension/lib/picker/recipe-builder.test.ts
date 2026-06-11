@@ -11,8 +11,11 @@ import {
   emptyDraft,
   escapeRegex,
   previewDraft,
+  queryParamRegex,
   recipeToDraft,
+  splitTitle,
   suggestUrlPattern,
+  titleSegmentRegex,
   urlTokenRegex,
 } from "./recipe-builder";
 
@@ -42,6 +45,85 @@ describe("deriveQuickLink", () => {
   it("derives an anime template (slug) for AniList", () => {
     expect(deriveQuickLink("https://reanime.to/watch/frieren-eu9jz6", "anilist")).toEqual({
       anime: "https://reanime.to/watch/{slug}",
+    });
+  });
+});
+
+describe("page-title segments (SPA players, e.g. rivestream)", () => {
+  it("splits a title by its delimiter into trimmed parts", () => {
+    expect(splitTitle("Rive | Watch | The Super Mario Bros. Movie")).toEqual({
+      separator: "|",
+      parts: ["Rive", "Watch", "The Super Mario Bros. Movie"],
+    });
+    expect(splitTitle("Just A Title")).toEqual({ separator: "", parts: ["Just A Title"] });
+  });
+
+  it("titleSegmentRegex captures the Nth segment from the page title (via extract)", () => {
+    const doc = new DOMParser().parseFromString(
+      "<title>Rive | Watch | The Super Mario Bros. Movie</title>",
+      "text/html",
+    );
+    const recipe: Recipe = {
+      id: "r",
+      schemaVersion: 2,
+      name: "Rive",
+      match: { urlPattern: ".*" },
+      mediaType: "auto",
+      tracker: "trakt",
+      video: { selector: "video", frame: "iframe", watchedThreshold: 0.8 },
+      extract: {
+        title: {
+          source: "title",
+          regex: titleSegmentRegex("|", 2),
+          group: 1,
+          transforms: ["trim", "collapseSpaces"],
+        },
+      },
+    };
+    expect(extract(recipe, { document: doc, url: "https://rive/watch?type=movie&id=5" })).toEqual({
+      ok: true,
+      media: { mediaType: "movie", title: "The Super Mario Bros. Movie" },
+    });
+  });
+
+  it("queryParamRegex extracts season/episode by name (mediaType auto → show)", () => {
+    const doc = new DOMParser().parseFromString(
+      "<title>Rive | Watch | Euphoria | S1-E1</title>",
+      "text/html",
+    );
+    const recipe: Recipe = {
+      id: "r",
+      schemaVersion: 2,
+      name: "Rive",
+      match: { urlPattern: ".*" },
+      mediaType: "auto",
+      tracker: "trakt",
+      video: { selector: "video", frame: "iframe", watchedThreshold: 0.8 },
+      extract: {
+        title: {
+          source: "title",
+          regex: titleSegmentRegex("|", 2),
+          group: 1,
+          transforms: ["trim"],
+        },
+        season: {
+          source: "url",
+          regex: queryParamRegex("season"),
+          group: 1,
+          transforms: ["toInt"],
+        },
+        episode: {
+          source: "url",
+          regex: queryParamRegex("episode"),
+          group: 1,
+          transforms: ["toInt"],
+        },
+      },
+    };
+    const url = "https://rive/watch?type=tv&id=85552&season=1&episode=1";
+    expect(extract(recipe, { document: doc, url })).toEqual({
+      ok: true,
+      media: { mediaType: "show", title: "Euphoria", season: 1, episode: 1 },
     });
   });
 });

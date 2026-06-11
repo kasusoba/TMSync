@@ -9,7 +9,7 @@ export interface FieldRow {
   value: string | null;
   source?: "url" | "meta" | "jsonld" | "dom" | "title";
 }
-export type UrlPart = { text: string } | { num: string; ordinal: number };
+export type UrlPart = { text: string } | { num: string; ordinal: number; paramKey?: string };
 
 export interface PickerPanelProps {
   variant: Variant;
@@ -17,6 +17,8 @@ export interface PickerPanelProps {
   name: string;
   fields: FieldRow[];
   urlParts: UrlPart[];
+  /** Segments of the page <title> (for "use the Nth part of the tab title"). */
+  titleParts?: string[];
   /** Field label currently being picked, or null. */
   picking?: string | null;
   mediaType: "auto" | "movie" | "show";
@@ -35,7 +37,9 @@ export interface PickerPanelProps {
   /** Manual only: the current "remember-by" element value, if one is picked. */
   manualKeyValue?: string | null;
   onPick?: (key: FieldKey) => void;
-  onPickToken?: (ordinal: number) => void;
+  onPickToken?: (ordinal: number, paramKey?: string) => void;
+  /** Pick the Nth segment of the page <title> as the title field. */
+  onPickTitleSegment?: (index: number) => void;
   onClear?: (key: FieldKey) => void;
   onClose?: () => void;
   onSave?: () => void;
@@ -272,7 +276,8 @@ export function PickerPanel(p: PickerPanelProps) {
                       key={i}
                       type="button"
                       disabled={!p.picking}
-                      onClick={() => p.onPickToken?.(part.ordinal)}
+                      title={part.paramKey ? `${part.paramKey}=${part.num}` : undefined}
+                      onClick={() => p.onPickToken?.(part.ordinal, part.paramKey)}
                       class={clsx(
                         "mx-0.5 rounded px-1.5 py-0.5 text-[11px] transition-colors",
                         p.picking
@@ -280,7 +285,7 @@ export function PickerPanel(p: PickerPanelProps) {
                           : t.chip,
                       )}
                     >
-                      {part.num}
+                      {part.paramKey ? `${part.paramKey}=${part.num}` : part.num}
                     </button>
                   ) : (
                     // biome-ignore lint/suspicious/noArrayIndexKey: positional URL tokens are stable
@@ -289,6 +294,33 @@ export function PickerPanel(p: PickerPanelProps) {
                 )}
               </div>
             </div>
+
+            {/* From page title — pick a segment of the browser tab title, for SPA
+                players whose real title is only in document.title (og:title is a
+                static site name). Click a part to use it as the Title. */}
+            {(p.titleParts?.length ?? 0) > 1 && (
+              <div class="mb-3">
+                <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>
+                  From page title → click the part that is the title
+                </span>
+                <div class="flex flex-wrap gap-1">
+                  {p.titleParts?.map((seg, i) => (
+                    <button
+                      // biome-ignore lint/suspicious/noArrayIndexKey: positional title segments are stable
+                      key={i}
+                      type="button"
+                      onClick={() => p.onPickTitleSegment?.(i)}
+                      class={clsx(
+                        "max-w-full truncate rounded px-1.5 py-0.5 text-[11px] transition-colors hover:bg-ikura hover:text-white",
+                        t.chip,
+                      )}
+                    >
+                      {seg}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* type — N/A for AniList (always an anime series) */}
             <label class={clsx("mb-2 block", p.tracker === "anilist" && "hidden")}>

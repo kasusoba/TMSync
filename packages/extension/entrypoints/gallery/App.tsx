@@ -26,7 +26,8 @@ function urlParts(href: string): UrlPart[] {
   for (const m of href.matchAll(/\d+/g)) {
     const idx = m.index ?? 0;
     if (idx > last) parts.push({ text: href.slice(last, idx) });
-    parts.push({ num: m[0], ordinal: ordinal++ });
+    const paramKey = /[?&]([\w.-]+)=$/.exec(href.slice(0, idx))?.[1];
+    parts.push({ num: m[0], ordinal: ordinal++, paramKey });
     last = idx + m[0].length;
   }
   if (last < href.length) parts.push({ text: href.slice(last) });
@@ -193,6 +194,27 @@ export function App() {
               tracker="trakt"
               iframe={false}
               preview={{ ok: true, text: "show: Spider-Noir S1E1" }}
+            />
+          </Tile>
+          <Tile label="SPA player · title from tab title + query-param S/E" t={t}>
+            <PickerPanel
+              variant={variant}
+              mode="setup"
+              name="Rivestream"
+              fields={[
+                { key: "title", label: "Title", value: "Euphoria", source: "title" },
+                { key: "year", label: "Year", value: null },
+                { key: "season", label: "Season", value: "1", source: "url" },
+                { key: "episode", label: "Episode", value: "1", source: "url" },
+              ]}
+              urlParts={urlParts(
+                "https://www.rivestream.app/watch?type=tv&id=85552&season=1&episode=1",
+              )}
+              titleParts={["Rive", "Watch", "Euphoria", "S1-E1"]}
+              mediaType="auto"
+              tracker="trakt"
+              iframe
+              preview={{ ok: true, text: "show: Euphoria S1E1" }}
             />
           </Tile>
           <Tile label="Picking Title — page-click mode" t={t}>

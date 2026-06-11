@@ -13,8 +13,11 @@ import {
   buildRecipe,
   emptyDraft,
   previewDraft,
+  queryParamRegex,
   recipeMatchesHost,
   recipeToDraft,
+  splitTitle,
+  titleSegmentRegex,
   urlTokenRegex,
 } from "./recipe-builder";
 
@@ -48,9 +51,13 @@ interface Rect {
   height: number;
 }
 
-type UrlPart = { text: string } | { num: string; ordinal: number };
+type UrlPart = { text: string } | { num: string; ordinal: number; paramKey?: string };
 
-/** Split the current href into text + clickable numeric chips (in order). */
+/**
+ * Split the current href into text + clickable numeric chips (in order). A number
+ * that's a query-param value (`?…&season=1`) carries its `paramKey`, so the picker
+ * can generate a robust key-anchored regex instead of a positional one.
+ */
 function urlChips(): UrlPart[] {
   const href = location.href;
   const parts: UrlPart[] = [];
@@ -59,7 +66,8 @@ function urlChips(): UrlPart[] {
   for (const m of href.matchAll(/\d+/g)) {
     const idx = m.index ?? 0;
     if (idx > last) parts.push({ text: href.slice(last, idx) });
-    parts.push({ num: m[0], ordinal: ordinal++ });
+    const paramKey = /[?&]([\w.-]+)=$/.exec(href.slice(0, idx))?.[1];
+    parts.push({ num: m[0], ordinal: ordinal++, paramKey });
     last = idx + m[0].length;
   }
   if (last < href.length) parts.push({ text: href.slice(last) });
@@ -69,6 +77,8 @@ function urlChips(): UrlPart[] {
 export function PickerApp({ onClose }: { onClose: () => void }) {
   const ctx: EngineContext = useMemo(() => ({ document, url: location.href }), []);
   const parts = useMemo(urlChips, []);
+  // Segments of the page's <title> (for sites whose real title is only there).
+  const titleInfo = useMemo(() => splitTitle(document.title), []);
 
   const [draft, setDraft] = useState<RecipeDraft>(() => {
     const base = emptyDraft(ctx.url);
@@ -176,15 +186,31 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
     setStatus(null);
   }
 
-  /** Use the Nth number in the URL for this field (reliable for season/episode). */
-  function selectUrlToken(field: DraftFieldKey, ordinal: number) {
-    const regex = urlTokenRegex(ordinal);
+  /** Use a URL number for this field — a query-param value by NAME when possible
+   * (robust), else the Nth number positionally. */
+  function selectUrlToken(field: DraftFieldKey, ordinal: number, paramKey?: string) {
+    const regex = paramKey ? queryParamRegex(paramKey) : urlTokenRegex(ordinal);
     setDraft((d) => ({
       ...d,
       fields: { ...d.fields, [field]: { source: "url", regex, group: 1, transforms: ["toInt"] } },
     }));
     setPicking(null);
     setHighlight(null);
+    setStatus(null);
+  }
+
+  /** Use the Nth `separator`-delimited segment of the page <title> as the title —
+   * for SPA players whose only readable title is `document.title`. */
+  function selectTitleSegment(index: number) {
+    if (!titleInfo.separator) return;
+    const regex = titleSegmentRegex(titleInfo.separator, index);
+    setDraft((d) => ({
+      ...d,
+      fields: {
+        ...d.fields,
+        title: { source: "title", regex, group: 1, transforms: ["trim", "collapseSpaces"] },
+      },
+    }));
     setStatus(null);
   }
 
@@ -276,6 +302,7 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
               };
             })}
           urlParts={parts}
+          titleParts={titleInfo.parts}
           mediaType={draft.mediaType}
           tracker={draft.tracker}
           iframe={draft.video.frame === "iframe"}
@@ -293,9 +320,10 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
           status={status}
           canSave={draft.manual || !!draft.fields.title}
           onPick={(key) => setPicking(key)}
-          onPickToken={(ord) => {
-            if (picking && picking !== "manualKey") selectUrlToken(picking, ord);
+          onPickToken={(ord, paramKey) => {
+            if (picking && picking !== "manualKey") selectUrlToken(picking, ord, paramKey);
           }}
+          onPickTitleSegment={selectTitleSegment}
           onClear={clearField}
           onClose={onClose}
           onSave={save}

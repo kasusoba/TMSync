@@ -86,6 +86,48 @@ export function urlTokenRegex(ordinal: number): string {
 }
 
 /**
+ * Regex (for a `url` Field) capturing a query param's number by NAME — e.g.
+ * `?type=tv&id=85552&season=1&episode=1` → `[?&]season=(\d+)`. More robust than
+ * the positional {@link urlTokenRegex} when the value lives in a query string
+ * (where an id number would throw off positional counting).
+ */
+export function queryParamRegex(key: string): string {
+  return `[?&]${escapeRegex(key)}=(\\d+)`;
+}
+
+/** Separators a site uses in its page <title> (e.g. "Rive | Watch | Title"). */
+const TITLE_SEPARATORS = ["|", "·", "—", "–", "•"] as const;
+
+/**
+ * Split a page title into trimmed segments by its delimiter — so the picker can
+ * offer "use the Nth part of the tab title" when the real title is only in
+ * `document.title` (common on SPA players whose `og:title` is a static site name).
+ */
+export function splitTitle(title: string): { separator: string; parts: string[] } {
+  for (const sep of TITLE_SEPARATORS) {
+    if (title.includes(sep)) {
+      const parts = title
+        .split(sep)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (parts.length > 1) return { separator: sep, parts };
+    }
+  }
+  const only = title.trim();
+  return { separator: "", parts: only ? [only] : [] };
+}
+
+/**
+ * Regex (for a `title` Field) capturing the Nth `separator`-delimited segment of
+ * the page title — index-based, so it generalises across pages on the same site
+ * ("Rive | Watch | X" → index 2 captures X for any X).
+ */
+export function titleSegmentRegex(separator: string, index: number): string {
+  const s = escapeRegex(separator);
+  return `(?:[^${s}]*${s}){${index}}\\s*([^${s}]+)`;
+}
+
+/**
  * A urlPattern matching the hostname + first path segment (e.g.
  * "cineby\.at/movie"), so a movie recipe doesn't fire on the home/search pages.
  * Hostname-scoped rather than full-URL so it survives the dynamic id segment.
