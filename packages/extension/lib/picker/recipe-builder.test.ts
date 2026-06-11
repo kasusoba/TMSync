@@ -9,6 +9,7 @@ import {
   buildRecipe,
   countNumbers,
   deriveQuickLink,
+  detectTmdbIdField,
   emptyDraft,
   escapeRegex,
   previewDraft,
@@ -266,6 +267,57 @@ describe("player-frame URL picking (S/E inside a cross-origin embed, e.g. 1embed
   });
 });
 
+describe("TMDB id (auto-detect + resolve-by-id)", () => {
+  it("detects the id from a named query param", () => {
+    expect(detectTmdbIdField("https://www.rivestream.app/watch?type=movie&id=502356")).toEqual({
+      source: "url",
+      regex: queryParamRegex("id"),
+      group: 1,
+      transforms: ["toInt"],
+    });
+  });
+
+  it("detects the id from a /movie|/tv path segment (not the season/episode)", () => {
+    const field = detectTmdbIdField("https://cineby.at/tv/273240/1/2");
+    expect(field).toEqual({
+      source: "url",
+      regex: "/(?:movie|tv|watch|series|show)/(\\d+)",
+      group: 1,
+      transforms: ["toInt"],
+    });
+    // and it captures the id (273240), not the season/episode
+    const doc = new DOMParser().parseFromString("<title>x</title>", "text/html");
+    const recipe: Recipe = {
+      id: "r",
+      schemaVersion: 2,
+      name: "Cineby",
+      match: { urlPattern: ".*" },
+      mediaType: "movie",
+      tracker: "trakt",
+      video: { selector: "video", frame: "auto", watchedThreshold: 0.8 },
+      // biome-ignore lint/style/noNonNullAssertion: asserted defined just above
+      extract: { title: { source: "title" }, tmdbId: field! },
+    };
+    expect(
+      extract(recipe, { document: doc, url: "https://cineby.at/tv/273240/1/2" }),
+    ).toMatchObject({ ok: true, media: { tmdbId: 273240 } });
+  });
+
+  it("returns undefined when there's no id in the URL", () => {
+    expect(detectTmdbIdField("https://twoseven.xyz/room/abc")).toBeUndefined();
+  });
+
+  it("auto-detect includes the tmdbId field from the page URL", () => {
+    const ctx = { document: parse(movieHtml), url: "https://cineby.at/movie/693134" };
+    expect(autoDetectFields(ctx).tmdbId).toEqual({
+      source: "url",
+      regex: "/(?:movie|tv|watch|series|show)/(\\d+)",
+      group: 1,
+      transforms: ["toInt"],
+    });
+  });
+});
+
 describe("escapeRegex / suggestUrlPattern", () => {
   it("escapes regex metacharacters", () => {
     expect(escapeRegex("a.b+c")).toBe("a\\.b\\+c");
@@ -360,7 +412,8 @@ describe("buildRecipe + previewDraft", () => {
     const preview = previewDraft(draft, ctx);
     expect(preview).toEqual({
       ok: true,
-      media: { mediaType: "show", title: "The Pixel Frontier", season: 2, episode: 4 },
+      // tmdbId auto-detected from the "/watch/1" path segment.
+      media: { mediaType: "show", title: "The Pixel Frontier", season: 2, episode: 4, tmdbId: 1 },
     });
   });
 });

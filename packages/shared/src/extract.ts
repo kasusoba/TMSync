@@ -26,6 +26,7 @@ export function extract(recipe: Recipe, ctx: EngineContext): ExtractResult {
   const year = readInt(recipe.extract.year, ctx);
   const season = readInt(recipe.extract.season, ctx);
   const episode = readInt(recipe.extract.episode, ctx);
+  const tmdbId = readInt(recipe.extract.tmdbId, ctx);
 
   const media: ParsedMedia = {
     mediaType: resolveMediaType(recipe.mediaType, season, episode),
@@ -34,6 +35,7 @@ export function extract(recipe: Recipe, ctx: EngineContext): ExtractResult {
   if (year !== undefined) media.year = year;
   if (season !== undefined) media.season = season;
   if (episode !== undefined) media.episode = episode;
+  if (tmdbId !== undefined) media.tmdbId = tmdbId;
 
   return { ok: true, media };
 }

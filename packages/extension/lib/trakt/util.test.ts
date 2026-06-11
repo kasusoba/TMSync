@@ -81,6 +81,13 @@ describe("resolutionCacheKey", () => {
     const movie: ParsedMedia = { mediaType: "movie", title: "Dune", year: 2021 };
     expect(resolutionCacheKey(movie)).toBe("movie:dune:2021");
   });
+
+  it("keys on the TMDB id when present (independent of the scraped title)", () => {
+    const a: ParsedMedia = { mediaType: "movie", title: "Dune", year: 2021, tmdbId: 438631 };
+    const b: ParsedMedia = { mediaType: "movie", title: "completely different", tmdbId: 438631 };
+    expect(resolutionCacheKey(a)).toBe("movie:tmdb:438631");
+    expect(resolutionCacheKey(a)).toBe(resolutionCacheKey(b));
+  });
 });
 
 describe("buildRatingBody", () => {

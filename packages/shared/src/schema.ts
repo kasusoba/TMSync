@@ -104,6 +104,10 @@ export const Recipe = z.object({
       year: Field.optional(), // helps movie disambiguation
       season: Field.optional(), // shows
       episode: Field.optional(), // shows
+      // The TMDB id (usually from the URL, e.g. /movie/693134 or ?id=276161).
+      // When present the Trakt adapter resolves by id — exact, no remake/same-
+      // title ambiguity — and the scraped title is just a display fallback.
+      tmdbId: Field.optional(),
     })
     .optional(),
   // MANUAL recipes only: a field whose VALUE distinguishes the current content

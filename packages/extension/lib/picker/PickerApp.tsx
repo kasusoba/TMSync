@@ -27,6 +27,7 @@ import {
 const HOST_TAG = "tmsync-picker";
 const FIELD_LABELS: Record<DraftFieldKey, string> = {
   title: "Title",
+  tmdbId: "TMDB ID",
   year: "Year",
   season: "Season",
   episode: "Episode",

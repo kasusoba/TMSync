@@ -32,6 +32,8 @@ export interface RecipeDraft {
     year?: Field;
     season?: Field;
     episode?: Field;
+    /** TMDB id (Trakt only) — exact resolution, no title ambiguity. */
+    tmdbId?: Field;
   };
 }
 
@@ -161,6 +163,36 @@ export function titleSegmentRegex(separator: string, index: number): string {
 }
 
 /**
+ * Best-guess the TMDB-id field from a URL — these sites almost always carry it
+ * (`/movie/693134`, `/tv/276161/1/2`, `?id=502356`). Prefers a named query param,
+ * then the first number after a movie/tv/watch/series/show segment. The id is the
+ * strongest identity, so auto-filling it makes resolution exact by default.
+ */
+export function detectTmdbIdField(url: string): Field | undefined {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return undefined;
+  }
+  for (const key of ["tmdb", "tmdbid", "tmdb_id", "id"]) {
+    const v = u.searchParams.get(key);
+    if (v && /^\d+$/.test(v)) {
+      return { source: "url", regex: queryParamRegex(key), group: 1, transforms: ["toInt"] };
+    }
+  }
+  if (/\/(?:movie|tv|watch|series|show)\/\d+/i.test(u.pathname)) {
+    return {
+      source: "url",
+      regex: "/(?:movie|tv|watch|series|show)/(\\d+)",
+      group: 1,
+      transforms: ["toInt"],
+    };
+  }
+  return undefined;
+}
+
+/**
  * A urlPattern matching the hostname + first path segment (e.g.
  * "cineby\.at/movie"), so a movie recipe doesn't fire on the home/search pages.
  * Hostname-scoped rather than full-URL so it survives the dynamic id segment.
@@ -214,6 +246,7 @@ export function recipeToDraft(recipe: Recipe): RecipeDraft {
       year: recipe.extract?.year,
       season: recipe.extract?.season,
       episode: recipe.extract?.episode,
+      tmdbId: recipe.extract?.tmdbId,
     },
   };
 }
@@ -271,7 +304,8 @@ export function autoDetectFields(ctx: EngineContext): RecipeDraft["fields"] {
     ],
     ctx,
   );
-  return { title, year, season, episode };
+  const tmdbId = detectTmdbIdField(ctx.url);
+  return { title, year, season, episode, tmdbId };
 }
 
 export type BuildResult = { ok: true; recipe: Recipe } | { ok: false; error: string };
@@ -300,6 +334,7 @@ export function buildRecipe(draft: RecipeDraft, meta: { id: string; name: string
             year: draft.fields.year,
             season: draft.fields.season,
             episode: draft.fields.episode,
+            tmdbId: draft.fields.tmdbId,
           },
         }
       : null;

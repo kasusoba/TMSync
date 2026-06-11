@@ -43,6 +43,9 @@ export function buildScrobbleBody(
 export function resolutionCacheKey(media: ParsedMedia): string {
   const mediaType =
     media.season !== undefined || media.episode !== undefined ? "show" : media.mediaType;
+  // The TMDB id is the strongest identity — key on it so an id-resolved item
+  // never collides with (or is shadowed by) a title-resolved one of the same name.
+  if (media.tmdbId !== undefined) return `${mediaType}:tmdb:${media.tmdbId}`;
   return `${mediaType}:${media.title.trim().toLowerCase()}:${media.year ?? ""}`;
 }
 

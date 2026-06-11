@@ -85,12 +85,19 @@ export async function resolve(media: ParsedMedia): Promise<ResolvedIdentity | nu
   const type: "movie" | "show" =
     media.season !== undefined || media.episode !== undefined ? "show" : media.mediaType;
 
-  const query = new URLSearchParams({ query: media.title });
-  // Year filters results, so only use it for movies — a scraped show "year"
-  // is often the wrong (non-first-aired) year and would filter out the match.
-  if (type === "movie" && media.year !== undefined) query.set("years", String(media.year));
-
-  const res = await api(`/search/${type}?${query.toString()}`);
+  // Prefer an exact TMDB-id lookup when the page gave us one — no title search,
+  // so same-title remakes / id-namespaced shows can't be confused. `type`
+  // disambiguates (TMDB movie and tv ids are separate namespaces).
+  let res: Response;
+  if (media.tmdbId !== undefined) {
+    res = await api(`/search/tmdb/${media.tmdbId}?type=${type}`);
+  } else {
+    const query = new URLSearchParams({ query: media.title });
+    // Year filters results, so only use it for movies — a scraped show "year"
+    // is often the wrong (non-first-aired) year and would filter out the match.
+    if (type === "movie" && media.year !== undefined) query.set("years", String(media.year));
+    res = await api(`/search/${type}?${query.toString()}`);
+  }
   if (!res.ok) return null;
 
   const results = (await res.json()) as TraktSearchResult[];

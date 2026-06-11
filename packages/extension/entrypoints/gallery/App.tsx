@@ -250,6 +250,7 @@ export function App() {
               name="Popcorn Movies"
               fields={[
                 { key: "title", label: "Title", value: "Spider-Noir", source: "dom" },
+                { key: "tmdbId", label: "TMDB ID", value: "194764", source: "url" },
                 { key: "year", label: "Year", value: "2026", source: "dom" },
                 { key: "season", label: "Season", value: "1", source: "url" },
                 { key: "episode", label: "Episode", value: "1", source: "url" },

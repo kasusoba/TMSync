@@ -2,7 +2,7 @@ import type { Tracker } from "@/lib/tracker/types";
 import clsx from "clsx";
 import { Btn, Icon, IconBtn, Switch, type Variant, tokens } from "./kit";
 
-export type FieldKey = "title" | "year" | "season" | "episode";
+export type FieldKey = "title" | "tmdbId" | "year" | "season" | "episode";
 export interface FieldRow {
   key: FieldKey;
   label: string;

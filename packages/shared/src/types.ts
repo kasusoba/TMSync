@@ -8,6 +8,11 @@ export interface ParsedMedia {
   year?: number;
   season?: number;
   episode?: number;
+  /** TMDB id scraped from the page (usually the URL). When present the Trakt
+   * adapter resolves by id — exact, immune to same-title/remake ambiguity —
+   * instead of a title search. For shows it identifies the show; season/episode
+   * still come from their own fields. */
+  tmdbId?: number;
 }
 
 /**
