@@ -5,7 +5,7 @@ import { type BadgeState, type BadgeStatus, onMessage, sendMessage } from "@/mes
 import type { ParsedMedia } from "@tmsync/shared";
 import clsx from "clsx";
 import { render } from "preact";
-import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import type { ContentScriptContext } from "wxt/utils/content-script-context";
 import { createShadowRootUi } from "wxt/utils/content-script-ui/shadow-root";
 import { Btn, Icon, IconBtn, tokens } from "./proto/kit";
@@ -98,14 +98,19 @@ function BadgeRoot() {
   }, [prefs.mode]);
 
   // Keep the badge on-screen as its size changes (dot ↔ panel) or the window
-  // resizes — clamp the rendered top-left back into view.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: re-clamp on size/content change
-  useLayoutEffect(() => {
+  // resizes. Deferred via rAF (NOT a synchronous layout effect) so it yields each
+  // frame — it can never busy-loop the main thread even if a measurement is odd.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-clamp on size change only
+  useEffect(() => {
     if (!pos || !rootRef.current) return;
-    const r = rootRef.current.getBoundingClientRect();
-    const c = clampXY(pos.x, pos.y, r.width, r.height);
-    if (c.x !== pos.x || c.y !== pos.y) setPos(c);
-  }, [pos, minimized, panel, status]);
+    const id = requestAnimationFrame(() => {
+      if (!rootRef.current) return;
+      const r = rootRef.current.getBoundingClientRect();
+      const c = clampXY(pos.x, pos.y, r.width, r.height);
+      if (c.x !== pos.x || c.y !== pos.y) setPos(c);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [pos, minimized, panel]);
 
   // Drag the badge by a handle (the dot, or the panel's status bar). Below a small
   // threshold it's a click (expand/minimize); past it, a move that persists.
