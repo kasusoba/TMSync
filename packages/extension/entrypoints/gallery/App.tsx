@@ -14,7 +14,7 @@ import { OptionsView } from "@/lib/ui/proto/OptionsView";
 import { PickerPanel, type UrlPart } from "@/lib/ui/proto/PickerPanel";
 import { PopupView } from "@/lib/ui/proto/PopupView";
 import { QuickLinksView } from "@/lib/ui/proto/QuickLinksView";
-import { type Tokens, type Variant, tokens } from "@/lib/ui/proto/kit";
+import { Btn, Icon, type Tokens, type Variant, tokens } from "@/lib/ui/proto/kit";
 import clsx from "clsx";
 import { useState } from "preact/hooks";
 
@@ -151,6 +151,36 @@ export function App() {
               connected
               note="Enabled — reload the page to start."
               origins={[{ origin: "https://www.cineby.at", isTop: true, enabled: true }]}
+            />
+          </Tile>
+          <Tile label="Connected · now scrobbling (popup parity)" t={t}>
+            <PopupView
+              variant={variant}
+              connected
+              origins={[{ origin: "https://www.cineby.at", isTop: true, enabled: true }]}
+              nowPlaying={
+                <div class={clsx("space-y-2 rounded-xl p-3", t.card)}>
+                  <div class="flex items-center gap-2">
+                    <span class="size-2.5 shrink-0 rounded-full bg-emerald-500" />
+                    <span class="min-w-0 flex-1">
+                      <span class={clsx("block text-[12px] font-semibold", t.heading)}>
+                        TMSync · scrobbling
+                      </span>
+                      <span class={clsx("block truncate text-[12px]", t.sub)}>
+                        Dune: Part Two (2024)
+                      </span>
+                    </span>
+                  </div>
+                  <div class="flex gap-2">
+                    <Btn t={t} tone="ghost" class="flex-1">
+                      <Icon name="edit" class="text-[12px]" /> Rate / note
+                    </Btn>
+                    <Btn t={t} tone="ghost" class="flex-1">
+                      <Icon name="search" class="text-[12px]" /> Fix match
+                    </Btn>
+                  </div>
+                </div>
+              }
             />
           </Tile>
           <Tile label="Connected · per-site watch-on link editor" t={t}>

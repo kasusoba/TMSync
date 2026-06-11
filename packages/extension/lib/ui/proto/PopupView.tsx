@@ -58,6 +58,8 @@ export interface PopupViewProps {
   onScanFrames?: () => void;
   /** Author a recipe inside a (cross-origin) player frame — injects the picker there. */
   onSetupFrame?: (origin: string, frameId: number) => void;
+  /** "Now scrobbling" surface (status + prompts) for the active tab, when one exists. */
+  nowPlaying?: preact.ComponentChildren;
 }
 
 /** One provider row (mark + name + status + connect/disconnect). Uniform per provider. */
@@ -163,6 +165,10 @@ export function PopupView(p: PopupViewProps) {
         <header class="flex items-center gap-2">
           <span class={clsx("text-[15px] font-semibold tracking-tight", t.heading)}>TMSync</span>
         </header>
+
+        {/* Now scrobbling — status + any pending prompt for the active tab. The
+            toolbar icon is the ambient indicator; this is where you act. */}
+        {p.nowPlaying}
 
         {/* Account — a provider list: Trakt + AniList (independent, never synced). */}
         <Section title="Account" t={t}>

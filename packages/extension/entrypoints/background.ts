@@ -220,7 +220,7 @@ export default defineBackground(() => {
     all[`${data.recipeId}::${data.pageKey}`] = data.media;
     await manualSelections.setValue(all);
     // Re-resolve the tab so the session picks up the chosen media and scrobbles.
-    const tabId = sender.tab?.id;
+    const tabId = data.tabId ?? sender.tab?.id;
     if (tabId !== undefined) void sendMessage("recheck", undefined, tabId);
     return { ok: true };
   });
@@ -251,12 +251,15 @@ export default defineBackground(() => {
   onMessage("setEpisode", async ({ data, sender }) => {
     // A show page with no episode in its URL — remember the user's S/E for THIS
     // page URL, then re-resolve the tab so the session applies it and scrobbles.
-    const url = sender.tab?.url;
+    const tabId = data.tabId ?? sender.tab?.id;
+    // The override is keyed by the tab's URL; from the popup we look it up.
+    const url =
+      sender.tab?.url ??
+      (tabId !== undefined ? (await browser.tabs.get(tabId).catch(() => null))?.url : undefined);
     if (!url) return { ok: false };
     const all = await episodeOverrides.getValue();
     all[url] = { season: data.season, episode: data.episode };
     await episodeOverrides.setValue(all);
-    const tabId = sender.tab?.id;
     if (tabId !== undefined) void sendMessage("recheck", undefined, tabId);
     return { ok: true };
   });
@@ -277,8 +280,8 @@ export default defineBackground(() => {
     await manualContexts.setValue(all);
   });
 
-  onMessage("getManualContext", async ({ sender }) => {
-    const tabId = sender.tab?.id;
+  onMessage("getManualContext", async ({ data, sender }) => {
+    const tabId = data?.tabId ?? sender.tab?.id;
     if (tabId === undefined) return null;
     return (await manualContexts.getValue())[tabId] ?? null;
   });
@@ -304,7 +307,7 @@ export default defineBackground(() => {
       await resolutionCache.setValue(cache);
     }
     // Re-resolve the current session in the tab (replaces the wrong scrobble).
-    const tabId = sender.tab?.id;
+    const tabId = data.tabId ?? sender.tab?.id;
     if (tabId !== undefined) void sendMessage("recheck", undefined, tabId);
   });
 
@@ -322,7 +325,7 @@ export default defineBackground(() => {
         };
       }
       // Reflect it on the badge (and gate the rating prompt on completion).
-      const tabId = sender.tab?.id;
+      const tabId = data.tabId ?? sender.tab?.id;
       if (tabId !== undefined) {
         const ep = data.media.episode;
         void sendMessage(
@@ -504,8 +507,8 @@ export default defineBackground(() => {
     await tabSessions.setValue(all);
   });
 
-  onMessage("getTabMedia", async ({ sender }) => {
-    const tabId = sender.tab?.id;
+  onMessage("getTabMedia", async ({ data, sender }) => {
+    const tabId = data?.tabId ?? sender.tab?.id;
     if (tabId === undefined) return null;
     const session = (await tabSessions.getValue())[tabId];
     return session

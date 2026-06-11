@@ -128,8 +128,9 @@ export interface ProtocolMap {
   // --- per-tab session coordination (top frame ↔ player iframe ↔ background) ---
   /** The recipe-matching frame publishes the media so a cross-origin player iframe can pick it up. */
   publishMedia(data: TabMedia): void;
-  /** A player iframe asks for the media the top frame published for this tab. */
-  getTabMedia(): TabMedia | null;
+  /** The media the top frame published for a tab. A content script omits `tabId`
+   * (its own tab is inferred from the sender); the popup passes the active tabId. */
+  getTabMedia(q?: { tabId?: number }): TabMedia | null;
   /** Playing frame reports latest progress (reconciliation safety net). */
   updateProgress(progress: number): void;
   /** Playing frame signals a clean stop so the background won't re-reconcile. */
@@ -152,6 +153,8 @@ export interface ProtocolMap {
     pageKey: string;
     media: ParsedMedia;
     identity: ResolvedIdentity;
+    /** Popup supplies the active tabId; a content script omits it. */
+    tabId?: number;
   }): { ok: boolean };
   /** The remembered manual season/episode for this tab's URL, or null. Read via
    * the background because the override lives in `session` storage, which
@@ -169,25 +172,29 @@ export interface ProtocolMap {
   /** The user supplied the season/episode for a show URL that carries none
    * (e.g. a "?play=true" deep link). Persists it keyed by the tab's URL and
    * re-resolves the tab so scrobbling starts. */
-  setEpisode(q: { season: number; episode: number }): { ok: boolean };
+  setEpisode(q: { season: number; episode: number; tabId?: number }): { ok: boolean };
   /** Matcher frame publishes (or clears) this tab's manual context so the badge
    * knows which recipe + page key a pick belongs to. */
   publishManualContext(ctx: { recipeId: string; pageKey: string } | null): void;
-  /** Badge reads the manual context for its tab. */
-  getManualContext(): { recipeId: string; pageKey: string } | null;
+  /** Badge/popup reads the manual context for a tab (popup passes the active tabId). */
+  getManualContext(q?: { tabId?: number }): { recipeId: string; pageKey: string } | null;
 
   // --- corrections (fix a wrong match) ---
   /** Free-text Trakt search for the correction picker. */
   searchTrakt(q: { query: string; type?: "movie" | "show" }): TraktSearchOption[];
   /** Persist a correction for the scraped media and re-resolve the tab. */
-  saveCorrection(data: { media: ParsedMedia; identity: ResolvedIdentity }): void;
+  saveCorrection(data: { media: ParsedMedia; identity: ResolvedIdentity; tabId?: number }): void;
   /** Background → frames: a correction landed, re-resolve the current session. */
   recheck(): void;
 
   /** Confirm a rewatch of an already-COMPLETED AniList cour (the badge prompt).
    * Switches the entry to REPEATING and records this episode; on the final
    * episode it re-completes and bumps the repeat count. */
-  confirmRewatch(q: { media: ParsedMedia }): { ok: boolean; error?: string; completed?: boolean };
+  confirmRewatch(q: { media: ParsedMedia; tabId?: number }): {
+    ok: boolean;
+    error?: string;
+    completed?: boolean;
+  };
 
   // --- ratings & notes (Trakt: managed public comment per level; AniList: cour entry) ---
   /** Which rating levels the routed tracker supports for this media, plus the

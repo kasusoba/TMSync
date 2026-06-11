@@ -8,10 +8,21 @@ import {
   flattenFrameTree,
 } from "@/lib/diagnostics/frame-tree";
 import { deriveQuickLink } from "@/lib/picker/recipe-builder";
-import { type QuickLinkSite, quickLinks, tabFrameOrigins } from "@/lib/storage";
+import {
+  type QuickLinkSite,
+  quickLinks,
+  tabFrameOrigins,
+  tabSessions,
+  tabStatus,
+} from "@/lib/storage";
+import type { Tracker } from "@/lib/tracker/types";
 import { PopupView } from "@/lib/ui/proto/PopupView";
 import type { QuickLinkValue } from "@/lib/ui/proto/QuickLinkEditor";
+import { tokens } from "@/lib/ui/proto/kit";
+import { NowPlaying } from "@/lib/ui/scrobble-panels";
+import type { BadgeStatus } from "@/messaging";
 import { type AniListStatus, type TraktStatus, sendMessage } from "@/messaging";
+import type { ParsedMedia } from "@tmsync/shared";
 import { useEffect, useState } from "preact/hooks";
 import { browser } from "wxt/browser";
 
@@ -158,6 +169,29 @@ export function App() {
   // Frame inspector (diagnostics).
   const [inspecting, setInspecting] = useState(false);
   const [frameTree, setFrameTree] = useState<FrameNode[] | null>(null);
+  // "Now scrobbling" for the active tab (status + media for the prompts/panels).
+  const [now, setNow] = useState<{
+    status: BadgeStatus;
+    media: ParsedMedia | null;
+    tracker: Tracker;
+    tabId: number;
+  } | null>(null);
+
+  // Re-read just the scrobble status (after a prompt action, or on open).
+  const refreshNow = async () => {
+    const tabId = await activeTabId();
+    if (tabId === null) return setNow(null);
+    const [statuses, sessions] = await Promise.all([tabStatus.getValue(), tabSessions.getValue()]);
+    const st = statuses[tabId];
+    if (!st) return setNow(null);
+    const session = sessions[tabId];
+    setNow({
+      status: st,
+      media: session?.media ?? null,
+      tracker: session?.tracker ?? "trakt",
+      tabId,
+    });
+  };
 
   const refresh = async () => {
     const tabId = await activeTabId();
@@ -182,6 +216,7 @@ export function App() {
     setQlHost(hostname);
     setQlUrl(url);
     setQlSite(hostname ? (links.find((l) => l.id === `ql-${hostname}`) ?? null) : null);
+    await refreshNow();
   };
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: load once when the popup opens
@@ -423,6 +458,18 @@ export function App() {
       onToggleInspect={toggleInspect}
       onScanFrames={scanFrames}
       onSetupFrame={setupFrame}
+      nowPlaying={
+        now && (
+          <NowPlaying
+            status={now.status}
+            media={now.media}
+            tracker={now.tracker}
+            tabId={now.tabId}
+            t={tokens("dark")}
+            onRefresh={refreshNow}
+          />
+        )
+      }
     />
   );
 }
