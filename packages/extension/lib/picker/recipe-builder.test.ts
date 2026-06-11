@@ -88,6 +88,40 @@ describe("page-title segments (SPA players, e.g. rivestream)", () => {
     });
   });
 
+  it("splits a tab title on the spaced hyphen ('Michael - bCine')", () => {
+    expect(splitTitle("Michael - bCine")).toEqual({
+      separator: " - ",
+      parts: ["Michael", "bCine"],
+    });
+    // a hyphenated title must NOT be split by the bare hyphen
+    expect(splitTitle("Spider-Man")).toEqual({ separator: "", parts: ["Spider-Man"] });
+  });
+
+  it("titleSegmentRegex picks the movie from a '<title> - <site>' tab title", () => {
+    const doc = new DOMParser().parseFromString("<title>Michael - bCine</title>", "text/html");
+    const recipe: Recipe = {
+      id: "r",
+      schemaVersion: 2,
+      name: "bCine",
+      match: { urlPattern: ".*" },
+      mediaType: "movie",
+      tracker: "trakt",
+      video: { selector: "video", frame: "auto", watchedThreshold: 0.8 },
+      extract: {
+        title: {
+          source: "title",
+          regex: titleSegmentRegex(" - ", 0),
+          group: 1,
+          transforms: ["trim", "collapseSpaces"],
+        },
+      },
+    };
+    expect(extract(recipe, { document: doc, url: "https://bcine.ru/movie/936075" })).toEqual({
+      ok: true,
+      media: { mediaType: "movie", title: "Michael" },
+    });
+  });
+
   it("queryParamRegex extracts season/episode by name (mediaType auto → show)", () => {
     const doc = new DOMParser().parseFromString(
       "<title>Rive | Watch | Euphoria | S1-E1</title>",

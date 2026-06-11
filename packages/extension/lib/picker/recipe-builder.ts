@@ -123,8 +123,10 @@ export function queryParamRegex(key: string): string {
   return `[?&]${escapeRegex(key)}=(\\d+)`;
 }
 
-/** Separators a site uses in its page <title> (e.g. "Rive | Watch | Title"). */
-const TITLE_SEPARATORS = ["|", "·", "—", "–", "•"] as const;
+/** Separators a site uses in its page <title> (e.g. "Rive | Watch | Title", or
+ * "Michael - bCine"). The spaced ASCII hyphen comes last and is space-padded so
+ * it doesn't split hyphenated titles like "Spider-Man". */
+const TITLE_SEPARATORS = ["|", "·", "—", "–", "•", " - "] as const;
 
 /**
  * Split a page title into trimmed segments by its delimiter — so the picker can
@@ -148,11 +150,14 @@ export function splitTitle(title: string): { separator: string; parts: string[] 
 /**
  * Regex (for a `title` Field) capturing the Nth `separator`-delimited segment of
  * the page title — index-based, so it generalises across pages on the same site
- * ("Rive | Watch | X" → index 2 captures X for any X).
+ * ("Rive | Watch | X" → index 2 captures X; "X - bCine" → index 0 captures X).
+ * Splits on the LITERAL separator (lazy), so it works for multi-char separators
+ * like " - " (a char-class approach can't). Leading/trailing space is trimmed by
+ * the field's transforms.
  */
 export function titleSegmentRegex(separator: string, index: number): string {
   const s = escapeRegex(separator);
-  return `(?:[^${s}]*${s}){${index}}\\s*([^${s}]+)`;
+  return `^(?:.*?${s}){${index}}(.*?)(?:${s}|$)`;
 }
 
 /**
