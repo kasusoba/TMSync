@@ -224,3 +224,18 @@ export const tabFrameOrigins = storage.defineItem<Record<number, string[]>>(
 export const tabStatus = storage.defineItem<Record<number, BadgeStatus>>("session:tab_status", {
   fallback: {},
 });
+
+/**
+ * On-page badge preferences (a small user pref, so `sync`). The toolbar icon is
+ * always the ambient status; the in-page badge is optional and can get in the way
+ * of player controls, so let the user pick its mode + corner.
+ *   mode: "full" current behaviour · "dot" just the status dot · "off" hidden
+ *   position: which screen corner it anchors to (default bottom-left)
+ */
+export interface BadgePrefs {
+  mode: "full" | "dot" | "off";
+  position: "bottom-left" | "bottom-right" | "top-left" | "top-right";
+}
+export const badgePrefs = storage.defineItem<BadgePrefs>("sync:badge_prefs", {
+  fallback: { mode: "full", position: "bottom-left" },
+});

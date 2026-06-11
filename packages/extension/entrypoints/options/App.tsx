@@ -1,7 +1,9 @@
 import { RECIPES } from "@/config";
 import {
+  type BadgePrefs,
   type QuickLinkSite,
   type RemoteRecipes,
+  badgePrefs,
   corrections,
   customRecipes,
   quickLinks,
@@ -255,6 +257,7 @@ const SECTIONS: { id: string; label: string; icon: IconName }[] = [
   { id: "library", label: "Library", icon: "refresh" },
   { id: "recipes", label: "Your recipes", icon: "edit" },
   { id: "corrections", label: "Corrections", icon: "check" },
+  { id: "display", label: "Display", icon: "settings" },
 ];
 
 /**
@@ -316,10 +319,11 @@ export function App() {
   const [copied, setCopied] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportNote, setExportNote] = useState<string | null>(null);
+  const [badge, setBadge] = useState<BadgePrefs>({ mode: "full", position: "bottom-left" });
   const has = (s: string) => s.toLowerCase().includes(q.toLowerCase());
 
   const refresh = async () => {
-    const [s, al, sit, rec, ql, c, rem] = await Promise.all([
+    const [s, al, sit, rec, ql, c, rem, bp] = await Promise.all([
       sendMessage("getTraktStatus", undefined),
       sendMessage("getAniListStatus", undefined),
       sendMessage("listEnabledSites", undefined),
@@ -327,6 +331,7 @@ export function App() {
       quickLinks.getValue(),
       corrections.getValue(),
       remoteRecipes.getValue(),
+      badgePrefs.getValue(),
     ]);
     setStatus(s);
     setAnilist(al);
@@ -335,6 +340,13 @@ export function App() {
     setLinks(ql);
     setCorr(c);
     setRemote(rem);
+    setBadge(bp);
+  };
+
+  const updateBadge = async (patch: Partial<BadgePrefs>) => {
+    const next = { ...badge, ...patch };
+    setBadge(next);
+    await badgePrefs.setValue(next);
   };
 
   const refreshRecipes = async () => {
@@ -883,6 +895,66 @@ export function App() {
                     </div>
                   </>
                 )}
+              </>
+            )}
+
+            {active === "display" && (
+              <>
+                <PaneHead title="Display" />
+                <p class={clsx("mb-3 text-[12px] leading-relaxed", t.sub)}>
+                  The toolbar icon always shows scrobble status, and the popup mirrors it. The
+                  on-page badge is optional — hide it or move it off your player’s controls.
+                </p>
+
+                <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>
+                  On-page badge
+                </span>
+                <div class="mb-4 flex gap-1">
+                  {(
+                    [
+                      ["full", "Full"],
+                      ["dot", "Dot only"],
+                      ["off", "Off"],
+                    ] as const
+                  ).map(([value, label]) => (
+                    <button
+                      type="button"
+                      key={value}
+                      onClick={() => updateBadge({ mode: value })}
+                      class={clsx(
+                        "flex-1 rounded-md py-1.5 text-[12px] font-medium transition-colors",
+                        badge.mode === value ? "bg-ikura text-white" : t.ghost,
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>Position</span>
+                <div class="grid max-w-[260px] grid-cols-2 gap-1">
+                  {(
+                    [
+                      ["top-left", "Top left"],
+                      ["top-right", "Top right"],
+                      ["bottom-left", "Bottom left"],
+                      ["bottom-right", "Bottom right"],
+                    ] as const
+                  ).map(([value, label]) => (
+                    <button
+                      type="button"
+                      key={value}
+                      disabled={badge.mode === "off"}
+                      onClick={() => updateBadge({ position: value })}
+                      class={clsx(
+                        "rounded-md py-1.5 text-[12px] font-medium transition-colors disabled:opacity-40",
+                        badge.position === value ? "bg-ikura text-white" : t.ghost,
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </>
             )}
           </div>

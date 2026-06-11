@@ -1,4 +1,5 @@
 import "@/lib/ui/theme.css";
+import { type BadgePrefs, badgePrefs } from "@/lib/storage";
 import type { Tracker } from "@/lib/tracker/types";
 import { type BadgeState, type BadgeStatus, onMessage, sendMessage } from "@/messaging";
 import type { ParsedMedia } from "@tmsync/shared";
@@ -11,6 +12,14 @@ import { Btn, Icon, IconBtn, tokens } from "./proto/kit";
 import { Correction, EpisodePick, ManualPick, RateNote, RatingRow } from "./scrobble-panels";
 
 const t = tokens("dark");
+
+/** Tailwind anchor classes per corner pref. */
+const CORNER: Record<BadgePrefs["position"], string> = {
+  "bottom-left": "bottom-3.5 left-3.5",
+  "bottom-right": "bottom-3.5 right-3.5",
+  "top-left": "top-3.5 left-3.5",
+  "top-right": "top-3.5 right-3.5",
+};
 
 const STATE: Record<BadgeState, { color: string; glow: string; label: string }> = {
   idle: {
@@ -57,6 +66,19 @@ function BadgeRoot() {
   const [promptDismissed, setPromptDismissed] = useState(false);
   const [rewatchHidden, setRewatchHidden] = useState(false);
   const [manualMode, setManualMode] = useState(false);
+  // User pref: where/whether the in-page badge shows (the toolbar icon is always
+  // the ambient indicator). Live-updated so changing it takes effect immediately.
+  const [prefs, setPrefs] = useState<BadgePrefs>({ mode: "full", position: "bottom-left" });
+
+  useEffect(() => {
+    void badgePrefs.getValue().then(setPrefs);
+    return badgePrefs.watch((v) => v && setPrefs(v));
+  }, []);
+
+  // "Dot" mode keeps the badge collapsed to its status dot by default.
+  useEffect(() => {
+    if (prefs.mode === "dot") setMinimized(true);
+  }, [prefs.mode]);
 
   useEffect(() => {
     const off = onMessage("scrobbleStatus", ({ data }) => {
@@ -104,14 +126,16 @@ function BadgeRoot() {
   }, [status?.state, panel, minimized]);
 
   if (!status) return null;
+  if (prefs.mode === "off") return null; // hidden — rely on the toolbar icon + popup
 
   const s = STATE[status.state];
+  const corner = CORNER[prefs.position];
   const summary = `TMSync · ${status.detail ?? s.label}${status.title ? ` — ${status.title}` : ""}`;
 
   // Minimized: a status dot with a soft glow.
   if (minimized) {
     return (
-      <div class="fixed bottom-3.5 left-3.5 z-[2147483646] font-sans">
+      <div class={clsx("fixed z-[2147483646] font-sans", corner)}>
         <button
           type="button"
           class="grid place-items-center p-1.5"
@@ -140,7 +164,12 @@ function BadgeRoot() {
   };
 
   return (
-    <div class="tmsync-pop fixed bottom-3.5 left-3.5 z-[2147483646] flex max-w-[340px] flex-col gap-2 font-sans">
+    <div
+      class={clsx(
+        "tmsync-pop fixed z-[2147483646] flex max-w-[340px] flex-col gap-2 font-sans",
+        corner,
+      )}
+    >
       {panel === "review" && media && (
         <RateNote
           media={media}
