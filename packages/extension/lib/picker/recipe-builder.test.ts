@@ -7,12 +7,14 @@ import {
   type RecipeDraft,
   autoDetectFields,
   buildRecipe,
+  countNumbers,
   deriveQuickLink,
   emptyDraft,
   escapeRegex,
   previewDraft,
   queryParamRegex,
   recipeToDraft,
+  splitNumbers,
   splitTitle,
   suggestUrlPattern,
   titleSegmentRegex,
@@ -124,6 +126,56 @@ describe("page-title segments (SPA players, e.g. rivestream)", () => {
     expect(extract(recipe, { document: doc, url })).toEqual({
       ok: true,
       media: { mediaType: "show", title: "Euphoria", season: 1, episode: 1 },
+    });
+  });
+});
+
+describe("DOM number picking (one element packs several, e.g. '1x6 – Episode 6')", () => {
+  const TITLE = "Teach You a Lesson: 1x6 – Episode 6";
+
+  it("splitNumbers exposes each number with its positional ordinal", () => {
+    expect(countNumbers(TITLE)).toBe(3);
+    const nums = splitNumbers(TITLE).flatMap((p) => ("num" in p ? [p] : []));
+    expect(nums.map((n) => n.num)).toEqual(["1", "6", "6"]);
+    expect(nums.map((n) => n.ordinal)).toEqual([0, 1, 2]);
+  });
+
+  it("urlTokenRegex on a DOM field picks season=1 (ordinal 0) and episode=6 (ordinal 1)", () => {
+    const doc = new DOMParser().parseFromString(
+      `<div class="show">Teach You a Lesson</div><h1 class="ep">${TITLE}</h1>`,
+      "text/html",
+    );
+    const recipe: Recipe = {
+      id: "r",
+      schemaVersion: 2,
+      name: "Cinevibe",
+      match: { urlPattern: ".*" },
+      mediaType: "auto",
+      tracker: "trakt",
+      video: { selector: "video", frame: "auto", watchedThreshold: 0.8 },
+      extract: {
+        title: { source: "dom", selector: ".show", transforms: ["trim", "collapseSpaces"] },
+        season: {
+          source: "dom",
+          selector: ".ep",
+          regex: urlTokenRegex(0),
+          group: 1,
+          transforms: ["toInt"],
+        },
+        episode: {
+          source: "dom",
+          selector: ".ep",
+          regex: urlTokenRegex(1),
+          group: 1,
+          transforms: ["toInt"],
+        },
+      },
+    };
+    expect(
+      extract(recipe, { document: doc, url: "https://cinevibe.asia/watch/tv/276161" }),
+    ).toEqual({
+      ok: true,
+      media: { mediaType: "show", title: "Teach You a Lesson", season: 1, episode: 6 },
     });
   });
 });

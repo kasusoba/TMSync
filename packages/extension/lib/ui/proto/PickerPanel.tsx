@@ -19,6 +19,9 @@ export interface PickerPanelProps {
   urlParts: UrlPart[];
   /** Segments of the page <title> (for "use the Nth part of the tab title"). */
   titleParts?: string[];
+  /** A picked DOM element holds several numbers → ask which is the season/episode
+   * (e.g. "1x6 – Episode 6": season=1, episode=6). null when not awaiting a pick. */
+  domPick?: { field: "season" | "episode"; text: string; parts: UrlPart[] } | null;
   /** Field label currently being picked, or null. */
   picking?: string | null;
   mediaType: "auto" | "movie" | "show";
@@ -40,6 +43,8 @@ export interface PickerPanelProps {
   onPickToken?: (ordinal: number, paramKey?: string) => void;
   /** Pick the Nth segment of the page <title> as the title field. */
   onPickTitleSegment?: (index: number) => void;
+  /** Pick the Nth number of the just-picked DOM element (season/episode). */
+  onPickDomNumber?: (ordinal: number) => void;
   onClear?: (key: FieldKey) => void;
   onClose?: () => void;
   onSave?: () => void;
@@ -226,7 +231,10 @@ export function PickerPanel(p: PickerPanelProps) {
                     {f.label}
                   </span>
                   <span class="flex min-w-0 flex-1 items-center gap-1.5">
-                    <span class={clsx("truncate text-[12px]", f.value ? t.heading : t.faint)}>
+                    <span
+                      class={clsx("truncate text-[12px]", f.value ? t.heading : t.faint)}
+                      title={f.value ?? undefined}
+                    >
                       {f.value ?? "—"}
                     </span>
                     {f.source && (
@@ -260,6 +268,41 @@ export function PickerPanel(p: PickerPanelProps) {
                 </div>
               ))}
             </div>
+
+            {/* Which number? — the picked element packs several (e.g. "1x6 –
+                Episode 6"), so the user clicks the one that is the season/episode. */}
+            {p.domPick && (
+              <div class="mb-3">
+                <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>
+                  From the picked element → click the number for{" "}
+                  <span class="capitalize">{p.domPick.field}</span>
+                </span>
+                <div
+                  class={clsx(
+                    "rounded-lg px-2 py-1.5 font-mono text-[11px] leading-7 break-words",
+                    t.card,
+                    t.sub,
+                  )}
+                >
+                  {p.domPick.parts.map((part, i) =>
+                    "num" in part ? (
+                      <button
+                        // biome-ignore lint/suspicious/noArrayIndexKey: positional number tokens are stable
+                        key={i}
+                        type="button"
+                        onClick={() => p.onPickDomNumber?.(part.ordinal)}
+                        class="mx-0.5 rounded bg-amber-400/20 px-1.5 py-0.5 text-[11px] text-amber-600 ring-1 ring-amber-400/40 transition-colors hover:bg-amber-400/40 dark:text-amber-300"
+                      >
+                        {part.num}
+                      </button>
+                    ) : (
+                      // biome-ignore lint/suspicious/noArrayIndexKey: positional number tokens are stable
+                      <span key={i}>{part.text}</span>
+                    ),
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* URL tokens */}
             <div class="mb-3">

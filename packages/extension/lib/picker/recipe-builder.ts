@@ -85,6 +85,34 @@ export function urlTokenRegex(ordinal: number): string {
   return `(?:\\D*\\d+){${ordinal}}\\D*(\\d+)`;
 }
 
+/** A number chip in a picked string, with its positional ordinal (0-based). */
+export type NumberPart = { text: string } | { num: string; ordinal: number };
+
+/**
+ * Split arbitrary text into literal runs + numbered chips (in order) — so the
+ * picker can ask "which number is the episode?" when a DOM element packs several
+ * (e.g. "Teach You a Lesson: 1x6 – Episode 6" → season=1, episode=6, both via
+ * {@link urlTokenRegex} by ordinal). Same idea as the URL chips, on element text.
+ */
+export function splitNumbers(text: string): NumberPart[] {
+  const parts: NumberPart[] = [];
+  let last = 0;
+  let ordinal = 0;
+  for (const m of text.matchAll(/\d+/g)) {
+    const idx = m.index ?? 0;
+    if (idx > last) parts.push({ text: text.slice(last, idx) });
+    parts.push({ num: m[0], ordinal: ordinal++ });
+    last = idx + m[0].length;
+  }
+  if (last < text.length) parts.push({ text: text.slice(last) });
+  return parts;
+}
+
+/** How many distinct numbers a string holds — gates whether the picker must ask. */
+export function countNumbers(text: string): number {
+  return (text.match(/\d+/g) ?? []).length;
+}
+
 /**
  * Regex (for a `url` Field) capturing a query param's number by NAME — e.g.
  * `?type=tv&id=85552&season=1&episode=1` → `[?&]season=(\d+)`. More robust than

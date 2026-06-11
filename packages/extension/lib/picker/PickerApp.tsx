@@ -8,14 +8,17 @@ import { type EngineContext, type Field, readField, selectRecipe } from "@tmsync
 import { useEffect, useMemo, useState } from "preact/hooks";
 import {
   type DraftFieldKey,
+  type NumberPart,
   type RecipeDraft,
   autoDetectFields,
   buildRecipe,
+  countNumbers,
   emptyDraft,
   previewDraft,
   queryParamRegex,
   recipeMatchesHost,
   recipeToDraft,
+  splitNumbers,
   splitTitle,
   titleSegmentRegex,
   urlTokenRegex,
@@ -93,6 +96,14 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
   const [picking, setPicking] = useState<DraftFieldKey | "manualKey" | null>(null);
   const [highlight, setHighlight] = useState<Rect | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  // A DOM element was picked for season/episode but holds several numbers (e.g.
+  // "1x6 – Episode 6") — ask which one before committing the field.
+  const [domPick, setDomPick] = useState<{
+    field: "season" | "episode";
+    selector: string;
+    text: string;
+    parts: NumberPart[];
+  } | null>(null);
   // Set once we've loaded the user's OWN saved recipe for this site — we then
   // edit it in place (keep its id) instead of creating a duplicate.
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -177,12 +188,45 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
       setStatus(null);
       return;
     }
+    // Season/episode from an element that packs several numbers (e.g.
+    // "Teach You a Lesson: 1x6 – Episode 6"): toInt would grab the FIRST number,
+    // so season and episode would both read 1. Ask which number instead.
+    if (field === "season" || field === "episode") {
+      const text = (el.textContent ?? "").replace(/\s+/g, " ").trim();
+      if (countNumbers(text) > 1) {
+        setDomPick({ field, selector, text, parts: splitNumbers(text) });
+        setStatus(null);
+        return;
+      }
+    }
+
     const transforms: Field["transforms"] =
       field === "title" ? ["trim", "collapseSpaces"] : ["trim", "toInt"];
     setDraft((d) => ({
       ...d,
       fields: { ...d.fields, [field]: { source: "dom", selector, transforms } },
     }));
+    setStatus(null);
+  }
+
+  /** Commit a season/episode DOM field to the Nth number of the picked element. */
+  function selectDomNumber(ordinal: number) {
+    if (!domPick) return;
+    const { field, selector } = domPick;
+    setDraft((d) => ({
+      ...d,
+      fields: {
+        ...d.fields,
+        [field]: {
+          source: "dom",
+          selector,
+          regex: urlTokenRegex(ordinal),
+          group: 1,
+          transforms: ["toInt"],
+        },
+      },
+    }));
+    setDomPick(null);
     setStatus(null);
   }
 
@@ -303,6 +347,9 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
             })}
           urlParts={parts}
           titleParts={titleInfo.parts}
+          domPick={
+            domPick ? { field: domPick.field, text: domPick.text, parts: domPick.parts } : null
+          }
           mediaType={draft.mediaType}
           tracker={draft.tracker}
           iframe={draft.video.frame === "iframe"}
@@ -319,12 +366,19 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
           siteRecipeNote={editingId ? null : siteRecipeName}
           status={status}
           canSave={draft.manual || !!draft.fields.title}
-          onPick={(key) => setPicking(key)}
+          onPick={(key) => {
+            setDomPick(null); // a fresh pick supersedes a pending "which number?"
+            setPicking(key);
+          }}
           onPickToken={(ord, paramKey) => {
             if (picking && picking !== "manualKey") selectUrlToken(picking, ord, paramKey);
           }}
           onPickTitleSegment={selectTitleSegment}
-          onClear={clearField}
+          onPickDomNumber={selectDomNumber}
+          onClear={(key) => {
+            if (domPick?.field === key) setDomPick(null);
+            clearField(key);
+          }}
           onClose={onClose}
           onSave={save}
           onCopy={copyJson}

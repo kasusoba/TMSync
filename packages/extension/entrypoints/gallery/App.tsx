@@ -300,6 +300,36 @@ export function App() {
               preview={{ ok: false, error: "no title yet — pick one" }}
             />
           </Tile>
+          <Tile label="Picking Episode — which number? (1x6)" t={t}>
+            <PickerPanel
+              variant={variant}
+              mode="setup"
+              name="cinevibe.asia"
+              fields={[
+                { key: "title", label: "Title", value: "Teach You a Lesson", source: "meta" },
+                { key: "year", label: "Year", value: null },
+                { key: "season", label: "Season", value: "1", source: "dom" },
+                { key: "episode", label: "Episode", value: null },
+              ]}
+              urlParts={urlParts("cinevibe.asia/watch/tv/276161")}
+              domPick={{
+                field: "episode",
+                text: "Teach You a Lesson: 1x6 – Episode 6",
+                parts: [
+                  { text: "Teach You a Lesson: " },
+                  { num: "1", ordinal: 0 },
+                  { text: "x" },
+                  { num: "6", ordinal: 1 },
+                  { text: " – Episode " },
+                  { num: "6", ordinal: 2 },
+                ],
+              }}
+              mediaType="auto"
+              tracker="trakt"
+              iframe
+              preview={{ ok: false, error: "pick the episode number" }}
+            />
+          </Tile>
           <Tile label="Edit · loaded your saved recipe" t={t}>
             <PickerPanel
               variant={variant}
