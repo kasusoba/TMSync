@@ -126,6 +126,11 @@ export class SessionManager {
   /** Tracker the matched recipe routes to (constraint #1: one item, one tracker). */
   private tracker: Tracker = "trakt";
   private lastPublishedKey: string | null = null;
+  /** Top frame: a matched recipe is currently showing a badge for this tab. Lets
+   * us (a) clear the badge + stop the session when an SPA navigates AWAY to a
+   * non-scrobblable page, and (b) drop a scrobble's late UI reply once we've left
+   * (so it can't re-show "watching" after the badge was cleared). */
+  private badgeActive = false;
   /** Manual recipe matched but no selection yet — wait for the user's pick. */
   private manualAwaiting = false;
   /** Show page matched but its URL carries no episode — wait for the user to
@@ -233,9 +238,25 @@ export class SessionManager {
       this.localMedia = null;
       this.manualAwaiting = false;
       this.episodeAwaiting = false;
-      if (this.isTop) await sendMessage("publishManualContext", null);
+      if (this.isTop) {
+        await sendMessage("publishManualContext", null);
+        // SPA navigated away from a scrobblable page to one no recipe covers
+        // (e.g. flickystream player → its show detail page, no <video>). Nothing
+        // on a detached video fires play/pause/ended, so without this the badge
+        // would stay "scrobbling" forever. Commit the stop, drop the tab session
+        // (also stops a player iframe via recheck), and clear the badge — once.
+        if (this.badgeActive) {
+          this.badgeActive = false;
+          this.lastPublishedKey = null;
+          this.teardownSession();
+          await sendMessage("stopTabSession", undefined);
+          await sendMessage("reportScrobble", { state: "stopped", hide: true });
+        }
+      }
       return;
     }
+    // A recipe covers this page → the top frame owns a badge for it now.
+    if (this.isTop) this.badgeActive = true;
 
     // Manual recipe: nothing to scrape. The top frame derives the page key,
     // looks up a remembered pick, and otherwise prompts the user via the badge.
@@ -542,11 +563,15 @@ export class SessionManager {
       (action, progress) => {
         void sendMessage("scrobble", { action, media, progress, tracker, watchedThreshold }).then(
           (reply) => {
-            // We still tell the tracker to stop the outgoing episode — but if we've
-            // since shown the episode prompt (tearing down e.g. S1E2 to ask which
-            // episode a "?play=true" URL is on), this stop's late reply must not
-            // overwrite the prompt back to the old episode.
-            if (action === "stop" && this.episodeAwaiting) return;
+            // We still tell the tracker to stop the outgoing episode — but the
+            // scrobble call is async, so by the time it replies we may have shown
+            // the episode prompt (tearing down S1E2 to ask which episode a
+            // "?play=true" URL is on) or, in the top frame, navigated away entirely
+            // (badge cleared). In either case this late reply must not re-show the
+            // old status. (isTop-gated: an iframe player never sets badgeActive, so
+            // it must keep reporting its own normal stops.)
+            if (action === "stop" && (this.episodeAwaiting || (this.isTop && !this.badgeActive)))
+              return;
             void sendMessage("reportScrobble", statusFromReply(action, reply, media, tracker));
           },
         );

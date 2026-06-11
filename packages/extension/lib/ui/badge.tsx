@@ -663,6 +663,16 @@ function BadgeRoot() {
     // tracking state live, so the user always sees TMSync is working without it
     // popping back open on each play/pause/timeupdate.
     const off = onMessage("scrobbleStatus", ({ data }) => {
+      if (data.hide) {
+        // SPA navigated away from a scrobblable page — drop the badge and reset
+        // per-session UI so the next match starts clean.
+        setStatus(null);
+        setPanel(null);
+        setMedia(null);
+        setMinimized(false);
+        setPromptDismissed(false);
+        return;
+      }
       setStatus(data);
       setRewatchHidden(false); // a fresh status may carry a new rewatch prompt
     });

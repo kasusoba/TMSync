@@ -61,6 +61,9 @@ export interface BadgeStatus {
   rewatch?: boolean;
   /** AniList only: the last write finished the cour (gates the cour-rating prompt). */
   completed?: boolean;
+  /** Dismiss the badge entirely — sent when an SPA navigates away from a
+   * scrobblable page so a stale "watching" badge doesn't linger. */
+  hide?: boolean;
 }
 
 export interface TabMedia {
