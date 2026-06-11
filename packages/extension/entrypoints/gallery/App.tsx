@@ -155,6 +155,21 @@ export function App() {
               ]}
             />
           </Tile>
+          <Tile label="Connected · per-site watch-on link editor" t={t}>
+            <PopupView
+              variant={variant}
+              connected
+              origins={[{ origin: "https://www.cineby.at", isTop: true, enabled: true }]}
+              quickLinkHost="www.cineby.at"
+              quickLinkInitial={{
+                name: "Cineby",
+                tracker: "trakt",
+                movie: "https://www.cineby.at/movie/{tmdb}",
+                tv: "https://www.cineby.at/tv/{tmdb}/{season}/{episode}",
+              }}
+              quickLinkDerive={() => ({})}
+            />
+          </Tile>
           <Tile label="Connected · no streaming page" t={t}>
             <PopupView variant={variant} connected origins={[]} />
           </Tile>

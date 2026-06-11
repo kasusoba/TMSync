@@ -1,15 +1,21 @@
-import { tabFrameOrigins } from "@/lib/storage";
+import { deriveQuickLink } from "@/lib/picker/recipe-builder";
+import { type QuickLinkSite, quickLinks, tabFrameOrigins } from "@/lib/storage";
 import { PopupView } from "@/lib/ui/proto/PopupView";
+import type { QuickLinkValue } from "@/lib/ui/proto/QuickLinkEditor";
 import { type AniListStatus, type TraktStatus, sendMessage } from "@/messaging";
 import { useEffect, useState } from "preact/hooks";
 import { browser } from "wxt/browser";
 
-async function activeTabOrigin(): Promise<string | null> {
+async function activeTabUrl(): Promise<string | null> {
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
-  if (!tab?.url) return null;
+  return tab?.url ?? null;
+}
+
+function httpOrigin(url: string | null): string | null {
+  if (!url) return null;
   try {
-    const url = new URL(tab.url);
-    return url.protocol === "http:" || url.protocol === "https:" ? url.origin : null;
+    const u = new URL(url);
+    return u.protocol === "http:" || u.protocol === "https:" ? u.origin : null;
   } catch {
     return null;
   }
@@ -57,24 +63,34 @@ export function App() {
   const [enabled, setEnabled] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  // Per-site quick link for the active tab's host.
+  const [qlHost, setQlHost] = useState<string | null>(null);
+  const [qlUrl, setQlUrl] = useState<string | null>(null);
+  const [qlSite, setQlSite] = useState<QuickLinkSite | null>(null);
 
   const refresh = async () => {
     const tabId = await activeTabId();
-    const [s, al, o, found, sites] = await Promise.all([
+    const [s, al, url, found, sites, links] = await Promise.all([
       sendMessage("getTraktStatus", undefined),
       sendMessage("getAniListStatus", undefined),
-      activeTabOrigin(),
+      activeTabUrl(),
       tabId !== null ? collectOrigins(tabId) : Promise.resolve<string[]>([]),
       sendMessage("listEnabledSites", undefined),
+      quickLinks.getValue(),
     ]);
     // Merge the live snapshot with origins the content script accumulated over
     // the session — catches player iframes that loaded after the page settled.
     const stored = tabId !== null ? ((await tabFrameOrigins.getValue())[tabId] ?? []) : [];
+    const origin = httpOrigin(url);
+    const hostname = origin ? new URL(origin).hostname : null;
     setStatus(s);
     setAnilist(al);
-    setTopOrigin(o);
+    setTopOrigin(origin);
     setOrigins([...new Set([...found, ...stored])]);
     setEnabled(sites);
+    setQlHost(hostname);
+    setQlUrl(url);
+    setQlSite(hostname ? (links.find((l) => l.id === `ql-${hostname}`) ?? null) : null);
   };
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: load once when the popup opens
@@ -111,6 +127,41 @@ export function App() {
     setBusy(true);
     await sendMessage("disconnectAniList", undefined);
     await refresh();
+    setBusy(false);
+  };
+
+  const saveQuickLink = async (v: QuickLinkValue) => {
+    if (!qlHost) return;
+    setBusy(true);
+    const qid = `ql-${qlHost}`;
+    const entry: QuickLinkSite = {
+      id: qid,
+      name: v.name,
+      enabled: true,
+      source: "user",
+      tracker: v.tracker,
+      movie: v.movie,
+      tv: v.tv,
+      anime: v.anime,
+      search: v.search,
+    };
+    const links = await quickLinks.getValue();
+    const next = links.some((l) => l.id === qid)
+      ? links.map((l) => (l.id === qid ? { ...l, ...entry } : l))
+      : [...links, entry];
+    await quickLinks.setValue(next);
+    await refresh();
+    setNote(`Quick link saved for ${qlHost}.`);
+    setBusy(false);
+  };
+
+  const removeQuickLink = async () => {
+    if (!qlHost) return;
+    setBusy(true);
+    const links = await quickLinks.getValue();
+    await quickLinks.setValue(links.filter((l) => l.id !== `ql-${qlHost}`));
+    await refresh();
+    setNote(`Quick link removed for ${qlHost}.`);
     setBusy(false);
   };
 
@@ -183,6 +234,22 @@ export function App() {
       onDisable={disableOrigin}
       onSetup={setupSite}
       onOpenOptions={() => browser.runtime.openOptionsPage()}
+      quickLinkHost={qlHost}
+      quickLinkInitial={
+        qlSite
+          ? {
+              name: qlSite.name,
+              tracker: qlSite.tracker ?? "trakt",
+              movie: qlSite.movie,
+              tv: qlSite.tv,
+              anime: qlSite.anime,
+              search: qlSite.search,
+            }
+          : null
+      }
+      quickLinkDerive={(tracker) => (qlUrl ? deriveQuickLink(qlUrl, tracker) : {})}
+      onSaveQuickLink={saveQuickLink}
+      onRemoveQuickLink={removeQuickLink}
     />
   );
 }

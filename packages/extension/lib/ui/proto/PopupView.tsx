@@ -1,4 +1,7 @@
+import type { Tracker } from "@/lib/tracker/types";
+import type { LinkTemplates } from "@tmsync/shared";
 import clsx from "clsx";
+import { QuickLinkEditor, type QuickLinkValue } from "./QuickLinkEditor";
 import {
   AniListMark,
   Btn,
@@ -34,6 +37,15 @@ export interface PopupViewProps {
   onDisable?: (origin: string) => void;
   onSetup?: () => void;
   onOpenOptions?: () => void;
+  // --- per-site "watch on this site" quick link (independent of recipes) ---
+  /** Hostname of the active tab's top page; null = no eligible page. */
+  quickLinkHost?: string | null;
+  /** The site's saved quick link, if any (then we're editing). */
+  quickLinkInitial?: QuickLinkValue | null;
+  /** Best-guess templates from the active tab URL for a tracker. */
+  quickLinkDerive?: (tracker: Tracker) => LinkTemplates;
+  onSaveQuickLink?: (value: QuickLinkValue) => void;
+  onRemoveQuickLink?: () => void;
 }
 
 /** One provider row (mark + name + status + connect/disconnect). Uniform per provider. */
@@ -220,6 +232,27 @@ export function PopupView(p: PopupViewProps) {
             </div>
           )}
         </Section>
+
+        {/* Watch-on link — per-SITE, editable from any page (not tied to a recipe) */}
+        {p.quickLinkHost && (
+          <Section title="Watch-on link" t={t}>
+            <p class={clsx("text-[11px] leading-relaxed", t.sub)}>
+              A button on {p.quickLinkInitial?.tracker === "anilist" ? "anilist.co" : "Trakt"} pages
+              that opens <span class="font-mono">{p.quickLinkHost}</span>. Per-site — works from any
+              page here.
+            </p>
+            <QuickLinkEditor
+              key={p.quickLinkHost}
+              t={t}
+              host={p.quickLinkHost}
+              initial={p.quickLinkInitial}
+              derive={p.quickLinkDerive}
+              busy={p.busy}
+              onSave={(v) => p.onSaveQuickLink?.(v)}
+              onRemove={p.quickLinkInitial ? () => p.onRemoveQuickLink?.() : undefined}
+            />
+          </Section>
+        )}
 
         {p.note && <p class={clsx("rounded-lg px-3 py-2 text-[12px]", t.infoBox)}>{p.note}</p>}
 

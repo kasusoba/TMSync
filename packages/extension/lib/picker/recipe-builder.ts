@@ -38,13 +38,13 @@ export interface RecipeDraft {
 export type DraftFieldKey = keyof RecipeDraft["fields"];
 
 /**
- * Best-guess quick-link URL template(s) for the CURRENT page, so the picker can
- * offer to add a "watch on this site" link without a trip to the options page.
- * It's a starting point (heuristic, editable): the id/slug segment of the URL is
- * swapped for a placeholder, and for shows a trailing `…/{id}/{season}/{episode}`
- * or `…/{slug}/{s}-{e}` shape is recognised. AniList anime sites use `{slug}`.
+ * Best-guess quick-link URL template(s) from a page URL, so the popup can pre-fill
+ * a "watch on this site" link. It's a starting point (heuristic, editable): the
+ * id/slug segment is swapped for a placeholder, and for shows a trailing
+ * `…/{id}/{season}/{episode}` or `…/{slug}/{s}-{e}` shape is recognised. AniList
+ * anime sites use `{slug}`. `isShow` is a hint (the popup may not know).
  */
-export function deriveQuickLink(draft: RecipeDraft, url: string): LinkTemplates {
+export function deriveQuickLink(url: string, tracker: Tracker, isShow = false): LinkTemplates {
   let host: string;
   let path: string;
   try {
@@ -55,12 +55,8 @@ export function deriveQuickLink(draft: RecipeDraft, url: string): LinkTemplates 
     return {};
   }
   const base = `https://${host}`;
-  const isShow =
-    draft.mediaType === "show" ||
-    draft.fields.season !== undefined ||
-    draft.fields.episode !== undefined;
 
-  if (draft.tracker === "anilist") {
+  if (tracker === "anilist") {
     return { anime: `${base}${path.replace(/\/[^/]+$/, "/{slug}")}` };
   }
   if (isShow) {

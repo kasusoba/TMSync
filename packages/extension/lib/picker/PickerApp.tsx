@@ -1,23 +1,16 @@
 import "@/lib/ui/theme.css";
 import { loadRecipes } from "@/lib/recipes";
-import { customRecipes, quickLinks } from "@/lib/storage";
+import { customRecipes } from "@/lib/storage";
 import { PickerPanel } from "@/lib/ui/proto/PickerPanel";
 import { sendMessage } from "@/messaging";
 import { finder } from "@medv/finder";
-import {
-  type EngineContext,
-  type Field,
-  type LinkTemplates,
-  readField,
-  selectRecipe,
-} from "@tmsync/shared";
+import { type EngineContext, type Field, readField, selectRecipe } from "@tmsync/shared";
 import { useEffect, useMemo, useState } from "preact/hooks";
 import {
   type DraftFieldKey,
   type RecipeDraft,
   autoDetectFields,
   buildRecipe,
-  deriveQuickLink,
   emptyDraft,
   previewDraft,
   recipeMatchesHost,
@@ -96,13 +89,6 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
   // Name of a LIBRARY recipe that already covers this page (when the user has no
   // override yet) — saving here creates a local override that wins over it.
   const [libraryCovers, setLibraryCovers] = useState<string | null>(null);
-  // Quick-link bridge: optionally create a "watch on this site" link on save,
-  // pre-filled from the current URL (re-derived until the user edits it).
-  const [qlEnabled, setQlEnabled] = useState(false);
-  const [qlEdited, setQlEdited] = useState(false);
-  const [qlTemplates, setQlTemplates] = useState<LinkTemplates>(() =>
-    deriveQuickLink(draft, ctx.url),
-  );
 
   // Populate ONLY from the user's own custom recipe — never from the library, so
   // fixing a wrong library recipe starts fresh rather than inheriting its fields.
@@ -110,15 +96,7 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
   // local save will shadow it (loadRecipes dedupes by urlPattern, custom-first).
   useEffect(() => {
     void (async () => {
-      const [custom, links] = await Promise.all([customRecipes.getValue(), quickLinks.getValue()]);
-      // Quick links are per-SITE — load this host's existing one so it's editable
-      // from ANY page on the site (search page, listing, …), not only a media URL.
-      const ql = links.find((s) => s.id === `ql-${location.hostname}`);
-      if (ql) {
-        setQlEnabled(true);
-        setQlEdited(true); // keep the saved values; don't overwrite with a guess
-        setQlTemplates({ movie: ql.movie, tv: ql.tv, anime: ql.anime, search: ql.search });
-      }
+      const custom = await customRecipes.getValue();
       const saved = custom.find((r) => recipeMatchesHost(r, location.hostname));
       if (saved) {
         setDraft(recipeToDraft(saved));
@@ -126,26 +104,10 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
         setEditingId(saved.id);
         return; // editing own recipe — no need for the library note
       }
-      // No recipe here: reflect the quick link's tracker so the right URL fields show.
-      if (ql?.tracker) setDraft((d) => ({ ...d, tracker: ql.tracker as typeof d.tracker }));
       const match = selectRecipe(await loadRecipes(), ctx);
       if (match) setLibraryCovers(match.name);
     })();
   }, [ctx]);
-
-  // Re-derive the quick-link suggestion as the recipe shape changes — until the
-  // user edits it by hand (then we leave their version alone).
-  // biome-ignore lint/correctness/useExhaustiveDependencies: derive from draft shape
-  useEffect(() => {
-    if (!qlEdited) setQlTemplates(deriveQuickLink(draft, ctx.url));
-  }, [
-    draft.tracker,
-    draft.mediaType,
-    draft.fields.season,
-    draft.fields.episode,
-    qlEdited,
-    ctx.url,
-  ]);
 
   // Element-picking mode: highlight on hover, capture the next page click.
   useEffect(() => {
@@ -226,64 +188,19 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
   }
 
   async function save() {
-    // A recipe needs a title (or manual mode); a quick link is independent and can
-    // be saved on its own (it's per-SITE, not tied to this URL).
-    const wantRecipe = draft.manual || draft.fields.title !== undefined;
-    let savedRecipe = false;
-
-    if (wantRecipe) {
-      const id = editingId ?? `custom-${location.hostname}-${Date.now()}`;
-      const built = buildRecipe(draft, { id, name });
-      if (!built.ok) return setStatus(built.error);
-      // Replace the recipe being edited (same id) and any other for the same
-      // urlPattern — so we never leave a stale duplicate behind.
-      const list = (await customRecipes.getValue()).filter(
-        (r) => r.id !== built.recipe.id && r.match.urlPattern !== built.recipe.match.urlPattern,
-      );
-      await customRecipes.setValue([...list, built.recipe]);
-      setEditingId(built.recipe.id);
-      await sendMessage("registerSite", location.origin);
-      savedRecipe = true;
-    }
-
-    // Quick-link upsert for this host — independent of the recipe, so it works from
-    // any page on the site (a search page, a listing, …), not only a media URL.
-    if (qlEnabled) {
-      const links = await quickLinks.getValue();
-      const qid = `ql-${location.hostname}`;
-      const entry = {
-        id: qid,
-        name,
-        enabled: true,
-        source: "user" as const,
-        tracker: draft.tracker,
-        movie: qlTemplates.movie?.trim() || undefined,
-        tv: qlTemplates.tv?.trim() || undefined,
-        anime: qlTemplates.anime?.trim() || undefined,
-        search: qlTemplates.search?.trim() || undefined,
-      };
-      const nextLinks = links.some((s) => s.id === qid)
-        ? links.map((s) => (s.id === qid ? { ...s, ...entry } : s))
-        : [...links, entry];
-      await quickLinks.setValue(nextLinks);
-    }
-
-    if (!savedRecipe && !qlEnabled) {
-      return setStatus("Pick a title to scrobble, or turn on a quick link.");
-    }
-    setStatus(
-      savedRecipe && qlEnabled
-        ? "Saved recipe + quick link! Reload to start scrobbling."
-        : savedRecipe
-          ? "Saved! Reload the page to start scrobbling."
-          : "Quick link saved.",
+    const id = editingId ?? `custom-${location.hostname}-${Date.now()}`;
+    const built = buildRecipe(draft, { id, name });
+    if (!built.ok) return setStatus(built.error);
+    // Replace the recipe being edited (same id) and any other for the same
+    // urlPattern — so we never leave a stale duplicate behind.
+    const list = (await customRecipes.getValue()).filter(
+      (r) => r.id !== built.recipe.id && r.match.urlPattern !== built.recipe.match.urlPattern,
     );
+    await customRecipes.setValue([...list, built.recipe]);
+    setEditingId(built.recipe.id);
+    await sendMessage("registerSite", location.origin);
+    setStatus("Saved! Reload the page to start scrobbling.");
   }
-
-  const onQuickLinkChange = (field: "movie" | "tv" | "anime" | "search", value: string) => {
-    setQlEdited(true);
-    setQlTemplates((t) => ({ ...t, [field]: value }));
-  };
 
   async function copyJson() {
     const built = buildRecipe(draft, { id: `custom-${location.hostname}`, name });
@@ -364,7 +281,7 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
           }
           banner={!editingId && libraryCovers ? { kind: "library", name: libraryCovers } : null}
           status={status}
-          canSave={draft.manual || !!draft.fields.title || qlEnabled}
+          canSave={draft.manual || !!draft.fields.title}
           onPick={(key) => setPicking(key)}
           onPickToken={(ord) => {
             if (picking && picking !== "manualKey") selectUrlToken(picking, ord);
@@ -374,10 +291,6 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
           onSave={save}
           onCopy={copyJson}
           onNameChange={setName}
-          quickLinkEnabled={qlEnabled}
-          quickLink={qlTemplates}
-          onQuickLinkToggle={setQlEnabled}
-          onQuickLinkChange={onQuickLinkChange}
           onMediaTypeChange={(v) => setDraft((d) => ({ ...d, mediaType: v }))}
           onTrackerChange={(tracker) =>
             setDraft((d) => {

@@ -21,39 +21,28 @@ function parse(html: string): Document {
 }
 
 describe("deriveQuickLink", () => {
-  const draft = (over: Partial<RecipeDraft> = {}): RecipeDraft => ({
-    ...emptyDraft("https://x/"),
-    ...over,
-  });
-
   it("derives a movie template from a numeric id", () => {
-    expect(
-      deriveQuickLink(draft({ mediaType: "movie" }), "https://cineby.at/movie/693134"),
-    ).toEqual({ movie: "https://cineby.at/movie/{tmdb}" });
+    expect(deriveQuickLink("https://cineby.at/movie/693134", "trakt")).toEqual({
+      movie: "https://cineby.at/movie/{tmdb}",
+    });
   });
 
   it("derives a tv template from a /{id}/{season}/{episode} path", () => {
-    expect(
-      deriveQuickLink(draft({ mediaType: "show" }), "https://cineby.at/tv/273240/1/2"),
-    ).toEqual({ tv: "https://cineby.at/tv/{tmdb}/{season}/{episode}" });
+    expect(deriveQuickLink("https://cineby.at/tv/273240/1/2", "trakt", true)).toEqual({
+      tv: "https://cineby.at/tv/{tmdb}/{season}/{episode}",
+    });
   });
 
   it("derives a tv template from a /{slug}/{s}-{e} path", () => {
     expect(
-      deriveQuickLink(
-        draft({ mediaType: "show" }),
-        "https://popcornmovies.org/episode/the-rookie/2-4",
-      ),
+      deriveQuickLink("https://popcornmovies.org/episode/the-rookie/2-4", "trakt", true),
     ).toEqual({ tv: "https://popcornmovies.org/episode/{slug}/{season}-{episode}" });
   });
 
-  it("derives an anime template (slug) for an AniList recipe", () => {
-    expect(
-      deriveQuickLink(
-        draft({ tracker: "anilist", mediaType: "show" }),
-        "https://reanime.to/watch/frieren-eu9jz6",
-      ),
-    ).toEqual({ anime: "https://reanime.to/watch/{slug}" });
+  it("derives an anime template (slug) for AniList", () => {
+    expect(deriveQuickLink("https://reanime.to/watch/frieren-eu9jz6", "anilist")).toEqual({
+      anime: "https://reanime.to/watch/{slug}",
+    });
   });
 });
 
