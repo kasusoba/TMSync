@@ -15,7 +15,7 @@ import {
 } from "@/lib/anilist/client";
 import { ANILIST } from "@/lib/anilist/config";
 import { bundledLinks } from "@/lib/recipes";
-import { actionBadgeFor } from "@/lib/scrobble/action-badge";
+import { statusDotColor } from "@/lib/scrobble/action-badge";
 import {
   type QuickLinkSite,
   anilistNotes,
@@ -718,18 +718,70 @@ async function anilistDeleteNote(media: ParsedMedia): Promise<{ ok: boolean; err
 // MV3 (Chrome + Firefox 109+) expose `action`; Firefox MV2 uses `browserAction`.
 const tabAction = browser.action ?? browser.browserAction;
 
-/** Reflect a scrobble status on the tab's toolbar icon (ambient, off-page). */
-function setActionBadge(tabId: number, status: BadgeStatus | null): void {
-  const { text, color } = actionBadgeFor(status);
-  try {
-    void tabAction.setBadgeText({ tabId, text });
-    if (text) {
-      void tabAction.setBadgeBackgroundColor({ tabId, color });
-      void tabAction.setBadgeTextColor?.({ tabId, color: "#ffffff" });
-    }
-  } catch {
-    // action API unavailable (shouldn't happen) — status still lives in storage
+// Cache the brand icon bitmaps (per size) so we only fetch/decode them once.
+// Literal paths — WXT types getURL to the known public files only.
+const ICON_URL: Record<number, string> = {
+  16: browser.runtime.getURL("/icon/16.png"),
+  32: browser.runtime.getURL("/icon/32.png"),
+};
+const baseIconCache = new Map<number, Promise<ImageBitmap>>();
+function baseIcon(size: number): Promise<ImageBitmap> {
+  let p = baseIconCache.get(size);
+  if (!p) {
+    const url = ICON_URL[size] ?? ICON_URL[32];
+    p = fetch(url as string)
+      .then((r) => r.blob())
+      .then((b) => createImageBitmap(b));
+    baseIconCache.set(size, p);
   }
+  return p;
+}
+
+/** The brand icon with a status dot composited in the corner (clean at icon size,
+ * unlike a text glyph). `dot === null` ⇒ the plain icon. */
+async function drawIcon(size: number, dot: string | null): Promise<ImageData> {
+  const canvas = new OffscreenCanvas(size, size);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("no 2d context");
+  ctx.clearRect(0, 0, size, size);
+  ctx.drawImage(await baseIcon(size), 0, 0, size, size);
+  if (dot) {
+    const r = size * 0.3;
+    const cx = size - r - size * 0.02;
+    const cy = size - r - size * 0.02;
+    ctx.beginPath(); // white ring so the dot reads against the icon
+    ctx.arc(cx, cy, r + Math.max(1, size * 0.06), 0, Math.PI * 2);
+    ctx.fillStyle = "#ffffff";
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fillStyle = dot;
+    ctx.fill();
+  }
+  return ctx.getImageData(0, 0, size, size);
+}
+
+/** Reflect a scrobble status on the tab's toolbar icon (ambient, off-page): a
+ * status-coloured dot on the brand mark. Falls back to a coloured badge dot if
+ * canvas/setIcon isn't available. */
+function setActionBadge(tabId: number, status: BadgeStatus | null): void {
+  const dot = statusDotColor(status);
+  void tabAction.setBadgeText({ tabId, text: "" }); // retire the old text glyph
+  void (async () => {
+    try {
+      const [i16, i32] = await Promise.all([drawIcon(16, dot), drawIcon(32, dot)]);
+      // setIcon's imageData typing differs across action/browserAction polyfills.
+      const setIcon = tabAction.setIcon as (d: {
+        tabId: number;
+        imageData: Record<number, ImageData>;
+      }) => Promise<void>;
+      await setIcon({ tabId, imageData: { 16: i16, 32: i32 } });
+    } catch {
+      // No OffscreenCanvas (older Firefox) — fall back to a coloured badge dot.
+      void tabAction.setBadgeText({ tabId, text: dot ? "●" : "" });
+      if (dot) void tabAction.setBadgeBackgroundColor({ tabId, color: dot });
+    }
+  })();
 }
 
 /** Drop a tab's mirrored status + clear its toolbar badge. */

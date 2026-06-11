@@ -1,23 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { actionBadgeFor } from "./action-badge";
+import { statusDotColor } from "./action-badge";
 
-describe("actionBadgeFor", () => {
-  it("maps playback states to a glyph", () => {
-    expect(actionBadgeFor({ state: "watching" }).text).toBe("▶");
-    expect(actionBadgeFor({ state: "paused" }).text).toBe("II");
-    expect(actionBadgeFor({ state: "scrobbled" }).text).toBe("✓");
-    expect(actionBadgeFor({ state: "error" }).text).toBe("!");
+describe("statusDotColor", () => {
+  it("maps playback states to a dot colour", () => {
+    expect(statusDotColor({ state: "watching" })).toBe("#10b981");
+    expect(statusDotColor({ state: "paused" })).toBe("#f59e0b");
+    expect(statusDotColor({ state: "scrobbled" })).toBe("#0ea5e9");
+    expect(statusDotColor({ state: "error" })).toBe("#f43f5e");
   });
 
-  it("shows no badge when idle/stopped or absent", () => {
-    expect(actionBadgeFor({ state: "idle" }).text).toBe("");
-    expect(actionBadgeFor({ state: "stopped" }).text).toBe("");
-    expect(actionBadgeFor(null).text).toBe("");
+  it("shows no dot when idle/stopped or absent", () => {
+    expect(statusDotColor({ state: "idle" })).toBeNull();
+    expect(statusDotColor({ state: "stopped" })).toBeNull();
+    expect(statusDotColor(null)).toBeNull();
   });
 
-  it("overrides with a '?' when the user must act, regardless of state", () => {
-    expect(actionBadgeFor({ state: "idle", needEpisode: true }).text).toBe("?");
-    expect(actionBadgeFor({ state: "idle", pick: true }).text).toBe("?");
-    expect(actionBadgeFor({ state: "scrobbled", rewatch: true }).text).toBe("?");
+  it("uses the attention colour when the user must act, regardless of state", () => {
+    expect(statusDotColor({ state: "idle", needEpisode: true })).toBe("#f97316");
+    expect(statusDotColor({ state: "idle", pick: true })).toBe("#f97316");
+    expect(statusDotColor({ state: "scrobbled", rewatch: true })).toBe("#f97316");
   });
 });
