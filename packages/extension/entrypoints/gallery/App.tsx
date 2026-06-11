@@ -174,6 +174,73 @@ export function App() {
           <Tile label="Connected · no streaming page" t={t}>
             <PopupView variant={variant} connected origins={[]} />
           </Tile>
+          <Tile label="Connected · frame inspector (nested player)" t={t}>
+            <PopupView
+              variant={variant}
+              connected
+              inspecting
+              origins={[
+                { origin: "https://www.rivestream.app", isTop: true, enabled: true },
+                { origin: "https://vsrc.su", isTop: false, enabled: true },
+              ]}
+              frameTree={[
+                {
+                  frameId: 0,
+                  url: "https://www.rivestream.app/watch?id=5",
+                  origin: "https://www.rivestream.app",
+                  isTop: true,
+                  reached: true,
+                  enabled: true,
+                  title: "Rive",
+                  videos: [],
+                  hasVideo: false,
+                  hasActiveVideo: false,
+                  children: [],
+                  depth: 0,
+                },
+                {
+                  frameId: 12,
+                  url: "https://vsrc.su/embed/5",
+                  origin: "https://vsrc.su",
+                  isTop: false,
+                  reached: true,
+                  enabled: true,
+                  title: "",
+                  videos: [],
+                  hasVideo: false,
+                  hasActiveVideo: false,
+                  children: [],
+                  depth: 1,
+                },
+                {
+                  frameId: 34,
+                  url: "https://cloudstream.pro/e/abc",
+                  origin: "https://cloudstream.pro",
+                  isTop: false,
+                  reached: true,
+                  enabled: true,
+                  title: "",
+                  videos: [
+                    {
+                      paused: false,
+                      duration: 5400,
+                      currentTime: 318,
+                      readyState: 4,
+                      hasSrc: true,
+                      muted: false,
+                      loop: false,
+                      width: 1280,
+                      height: 720,
+                    },
+                  ],
+                  hasVideo: true,
+                  hasActiveVideo: true,
+                  children: [],
+                  depth: 2,
+                },
+              ]}
+            />
+          </Tile>
         </Group>
 
         {/* PICKER */}

@@ -1,6 +1,8 @@
+import type { FrameNode } from "@/lib/diagnostics/frame-tree";
 import type { Tracker } from "@/lib/tracker/types";
 import type { LinkTemplates } from "@tmsync/shared";
 import clsx from "clsx";
+import { FrameInspector } from "./FrameInspector";
 import { QuickLinkEditor, type QuickLinkValue } from "./QuickLinkEditor";
 import {
   AniListMark,
@@ -46,6 +48,13 @@ export interface PopupViewProps {
   quickLinkDerive?: (tracker: Tracker) => LinkTemplates;
   onSaveQuickLink?: (value: QuickLinkValue) => void;
   onRemoveQuickLink?: () => void;
+  // --- frame inspector (diagnostics) — rebuild the page's iframe tree in-extension ---
+  /** Whether the inspector is open. */
+  inspecting?: boolean;
+  /** Flattened frame tree (pre-order); null = open but not yet scanned. */
+  frameTree?: FrameNode[] | null;
+  onToggleInspect?: () => void;
+  onScanFrames?: () => void;
 }
 
 /** One provider row (mark + name + status + connect/disconnect). Uniform per provider. */
@@ -142,7 +151,18 @@ export function PopupView(p: PopupViewProps) {
         </Section>
 
         {/* Sites on this page */}
-        <Section title="On this page" t={t}>
+        <Section
+          title="On this page"
+          t={t}
+          right={
+            origins.length > 0 && (
+              <Btn t={t} tone="link" onClick={p.onToggleInspect}>
+                <Icon name="search" class="text-[12px]" />
+                {p.inspecting ? "Hide frames" : "Inspect frames"}
+              </Btn>
+            )
+          }
+        >
           {origins.length === 0 ? (
             <p class={clsx("rounded-xl px-3 py-4 text-center text-[12px]", t.card, t.sub)}>
               No streaming page in the active tab.
@@ -229,6 +249,17 @@ export function PopupView(p: PopupViewProps) {
                 Player in another frame? Press play so it loads, then reopen this popup to enable
                 it.
               </p>
+
+              {p.inspecting && (
+                <FrameInspector
+                  t={t}
+                  nodes={p.frameTree ?? null}
+                  busy={p.busy}
+                  onRescan={p.onScanFrames}
+                  onEnable={p.onEnable}
+                  onDisable={p.onDisable}
+                />
+              )}
             </div>
           )}
         </Section>

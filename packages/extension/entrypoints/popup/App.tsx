@@ -1,3 +1,9 @@
+import {
+  type FrameNode,
+  type RawFrame,
+  buildFrameTree,
+  flattenFrameTree,
+} from "@/lib/diagnostics/frame-tree";
 import { deriveQuickLink } from "@/lib/picker/recipe-builder";
 import { type QuickLinkSite, quickLinks, tabFrameOrigins } from "@/lib/storage";
 import { PopupView } from "@/lib/ui/proto/PopupView";
@@ -55,6 +61,57 @@ async function collectOrigins(tabId: number): Promise<string[]> {
   }
 }
 
+/**
+ * Inject into EVERY reachable frame of the active tab and have each report its
+ * videos + child-iframe srcs. `allFrames` reaches the top frame (via activeTab)
+ * and any enabled cross-origin frame (via its granted host permission); each
+ * result carries the `frameId`. Unreachable deeper frames still surface as a
+ * parent's iframe src (stitched by buildFrameTree). Rebuilds the page's frame
+ * tree without DevTools (which these sites block).
+ */
+async function collectFrames(tabId: number): Promise<RawFrame[]> {
+  try {
+    const results = await browser.scripting.executeScript({
+      target: { tabId, allFrames: true },
+      func: () => {
+        const videos = Array.from(document.querySelectorAll("video")).map((v) => ({
+          paused: v.paused,
+          duration: Number.isFinite(v.duration) ? v.duration : 0,
+          currentTime: v.currentTime || 0,
+          readyState: v.readyState,
+          hasSrc: !!(v.currentSrc || v.getAttribute("src")),
+          muted: v.muted,
+          loop: v.loop,
+          width: v.videoWidth || 0,
+          height: v.videoHeight || 0,
+        }));
+        const iframeSrcs: string[] = [];
+        for (const f of Array.from(document.querySelectorAll("iframe"))) {
+          try {
+            const u = new URL((f as HTMLIFrameElement).src, location.href);
+            if (u.protocol === "http:" || u.protocol === "https:") iframeSrcs.push(u.href);
+          } catch {
+            // empty/unparseable iframe src — skip
+          }
+        }
+        return {
+          url: location.href,
+          origin: location.origin,
+          isTop: window === window.top,
+          title: document.title,
+          videos,
+          iframeSrcs,
+        };
+      },
+    });
+    return results
+      .filter((r) => r.result)
+      .map((r) => ({ frameId: r.frameId ?? 0, ...(r.result as Omit<RawFrame, "frameId">) }));
+  } catch {
+    return [];
+  }
+}
+
 export function App() {
   const [status, setStatus] = useState<TraktStatus | null>(null);
   const [anilist, setAnilist] = useState<AniListStatus | null>(null);
@@ -67,6 +124,9 @@ export function App() {
   const [qlHost, setQlHost] = useState<string | null>(null);
   const [qlUrl, setQlUrl] = useState<string | null>(null);
   const [qlSite, setQlSite] = useState<QuickLinkSite | null>(null);
+  // Frame inspector (diagnostics).
+  const [inspecting, setInspecting] = useState(false);
+  const [frameTree, setFrameTree] = useState<FrameNode[] | null>(null);
 
   const refresh = async () => {
     const tabId = await activeTabId();
@@ -165,6 +225,34 @@ export function App() {
     setBusy(false);
   };
 
+  // Map the active tab's frames into a tree. Only enabled origins (+ the top
+  // frame) are reachable, so enabling one and rescanning reveals what's nested
+  // inside it — that's how a deep player frame is found.
+  const scanFrames = async () => {
+    setBusy(true);
+    const tabId = await activeTabId();
+    if (tabId === null) {
+      setFrameTree([]);
+      setBusy(false);
+      return;
+    }
+    const [raw, sites] = await Promise.all([
+      collectFrames(tabId),
+      sendMessage("listEnabledSites", undefined),
+    ]);
+    setFrameTree(flattenFrameTree(buildFrameTree(raw, sites)));
+    setBusy(false);
+  };
+
+  const toggleInspect = async () => {
+    if (inspecting) {
+      setInspecting(false);
+      return;
+    }
+    setInspecting(true);
+    await scanFrames();
+  };
+
   const enableOrigin = async (origin: string) => {
     setBusy(true);
     setNote(null);
@@ -177,6 +265,8 @@ export function App() {
       setNote("Permission denied");
     }
     await refresh();
+    // Re-map: a newly-enabled frame is now reachable, so its children appear.
+    if (inspecting) await scanFrames();
     setBusy(false);
   };
 
@@ -185,6 +275,7 @@ export function App() {
     await sendMessage("unregisterSite", origin);
     await browser.permissions.remove({ origins: [`${origin}/*`] });
     await refresh();
+    if (inspecting) await scanFrames();
     setBusy(false);
   };
 
@@ -250,6 +341,10 @@ export function App() {
       quickLinkDerive={(tracker) => (qlUrl ? deriveQuickLink(qlUrl, tracker) : {})}
       onSaveQuickLink={saveQuickLink}
       onRemoveQuickLink={removeQuickLink}
+      inspecting={inspecting}
+      frameTree={frameTree}
+      onToggleInspect={toggleInspect}
+      onScanFrames={scanFrames}
     />
   );
 }
