@@ -541,15 +541,29 @@ export class SessionManager {
 
   private observeForVideo(): void {
     if (this.videoObserver) return;
-    this.videoObserver = new MutationObserver(() => {
+    // Debounce: findVideo() scans the whole document, and on a busy SPA (React
+    // re-renders, ad/carousel churn) the subtree observer fires constantly — an
+    // unthrottled scan here saturated the main thread ("page not responding"),
+    // and on a landing page whose only <video> is a muted background trailer
+    // (excluded by findVideo) it never stops. A short debounce keeps it cheap.
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const check = () => {
+      timer = null;
       if (this.findVideo()) {
         this.videoObserver?.disconnect();
         this.videoObserver = null;
         void this.ensurePlaying();
       }
+    };
+    this.videoObserver = new MutationObserver(() => {
+      if (timer) return;
+      timer = setTimeout(check, 400);
     });
     this.videoObserver.observe(document.documentElement, { childList: true, subtree: true });
-    this.ctx.onInvalidated(() => this.videoObserver?.disconnect());
+    this.ctx.onInvalidated(() => {
+      if (timer) clearTimeout(timer);
+      this.videoObserver?.disconnect();
+    });
   }
 
   private startSession(video: HTMLVideoElement, media: ParsedMedia): void {
