@@ -228,14 +228,16 @@ export const tabStatus = storage.defineItem<Record<number, BadgeStatus>>("sessio
 /**
  * On-page badge preferences (a small user pref, so `sync`). The toolbar icon is
  * always the ambient status; the in-page badge is optional and can get in the way
- * of player controls, so let the user hide it or drag it elsewhere.
+ * of player controls, so let the user hide it or drag it to another edge.
  *   mode: "full" current behaviour · "dot" just the status dot · "off" hidden
- *   position: the dragged top-left {x,y} in viewport px, or null = default corner
- *     (bottom-left). Clamped into the viewport on render.
+ *   position: which screen edge it's docked to + `offset` (0–1) along that edge,
+ *     or null = default (bottom-left). Edge-docked so it never lands off-screen
+ *     and survives a window resize. The fraction is computed purely in render —
+ *     no setState-in-layout-effect (that loop once froze the whole tab).
  */
 export interface BadgePrefs {
   mode: "full" | "dot" | "off";
-  position: { x: number; y: number } | null;
+  position: { edge: "left" | "right" | "top" | "bottom"; offset: number } | null;
 }
 export const badgePrefs = storage.defineItem<BadgePrefs>("sync:badge_prefs", {
   fallback: { mode: "full", position: null },

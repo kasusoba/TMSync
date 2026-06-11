@@ -933,9 +933,10 @@ export function App() {
 
                 <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>Position</span>
                 <p class={clsx("mb-2 text-[12px] leading-relaxed", t.sub)}>
-                  Drag the badge (grab the status bar, or the dot) to move it anywhere on the page.
+                  Drag the badge (grab the status bar, or the dot) — it snaps to the nearest screen
+                  edge.
                   {badge.position
-                    ? ` Currently moved to ${Math.round(badge.position.x)}, ${Math.round(badge.position.y)}.`
+                    ? ` Currently docked to the ${badge.position.edge} edge.`
                     : " Currently at the default bottom-left."}
                 </p>
                 <Btn

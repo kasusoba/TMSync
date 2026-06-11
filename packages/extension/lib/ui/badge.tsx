@@ -15,16 +15,43 @@ const t = tokens("dark");
 
 /** Default anchor when the user hasn't dragged it (position === null). */
 const DEFAULT_CORNER = "bottom-3.5 left-3.5";
+const EDGE_GAP = "14px"; // distance from the docked edge
 
 type XY = { x: number; y: number };
+type Edge = "left" | "right" | "top" | "bottom";
+type EdgePos = { edge: Edge; offset: number };
 
-/** Keep a dragged top-left inside the viewport, given the element's size. */
-function clampXY(x: number, y: number, w: number, h: number): XY {
-  const m = 6;
-  return {
-    x: Math.min(Math.max(m, x), Math.max(m, window.innerWidth - w - m)),
-    y: Math.min(Math.max(m, y), Math.max(m, window.innerHeight - h - m)),
-  };
+/** Nearest screen edge to a drop point, plus the offset (0–1) ALONG that edge. */
+function snapToEdge(x: number, y: number): EdgePos {
+  const d = { left: x, right: window.innerWidth - x, top: y, bottom: window.innerHeight - y };
+  const edge = (Object.keys(d) as Edge[]).reduce((a, b) => (d[a] <= d[b] ? a : b));
+  const frac = (n: number, total: number) => Math.min(1, Math.max(0, n / total));
+  const offset =
+    edge === "left" || edge === "right" ? frac(y, window.innerHeight) : frac(x, window.innerWidth);
+  return { edge, offset };
+}
+
+/**
+ * Inline style for a docked position — computed PURELY in render (no setState),
+ * so it can never feed a re-render loop. The cross-axis fraction is clamped, and
+ * the badge grows toward screen-centre (anchor the start half from the start, the
+ * end half from the end) so a tall expanded panel stays on-screen.
+ */
+function edgeStyle(p: EdgePos): Record<string, string> {
+  const off = Math.min(0.96, Math.max(0.02, p.offset));
+  const start = `${(off * 100).toFixed(2)}%`;
+  const end = `${((1 - off) * 100).toFixed(2)}%`;
+  const nearStart = off < 0.5;
+  switch (p.edge) {
+    case "left":
+      return nearStart ? { left: EDGE_GAP, top: start } : { left: EDGE_GAP, bottom: end };
+    case "right":
+      return nearStart ? { right: EDGE_GAP, top: start } : { right: EDGE_GAP, bottom: end };
+    case "top":
+      return nearStart ? { top: EDGE_GAP, left: start } : { top: EDGE_GAP, right: end };
+    default: // bottom
+      return nearStart ? { bottom: EDGE_GAP, left: start } : { bottom: EDGE_GAP, right: end };
+  }
 }
 
 const STATE: Record<BadgeState, { color: string; glow: string; label: string }> = {
@@ -75,8 +102,11 @@ function BadgeRoot() {
   // User pref: whether the in-page badge shows + its dragged position (the toolbar
   // icon is always the ambient indicator). Live-updated so changes apply at once.
   const [prefs, setPrefs] = useState<BadgePrefs>({ mode: "full", position: null });
-  // Live dragged top-left; null = use the default corner. Seeded from prefs.
-  const [pos, setPos] = useState<XY | null>(null);
+  // Docked position (edge + offset); null = default corner. Seeded from prefs.
+  const [pos, setPos] = useState<EdgePos | null>(null);
+  // While dragging, the badge follows the cursor freely (top-left px); it snaps to
+  // the nearest edge on drop. Pure render — no clamp-in-effect (that froze the tab).
+  const [drag, setDrag] = useState<XY | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const dragged = useRef(false); // suppress the click that follows a drag
 
@@ -97,44 +127,35 @@ function BadgeRoot() {
     if (prefs.mode === "dot") setMinimized(true);
   }, [prefs.mode]);
 
-  // Keep the badge on-screen as its size changes (dot ↔ panel) or the window
-  // resizes. Deferred via rAF (NOT a synchronous layout effect) so it yields each
-  // frame — it can never busy-loop the main thread even if a measurement is odd.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: re-clamp on size change only
-  useEffect(() => {
-    if (!pos || !rootRef.current) return;
-    const id = requestAnimationFrame(() => {
-      if (!rootRef.current) return;
-      const r = rootRef.current.getBoundingClientRect();
-      const c = clampXY(pos.x, pos.y, r.width, r.height);
-      if (c.x !== pos.x || c.y !== pos.y) setPos(c);
-    });
-    return () => cancelAnimationFrame(id);
-  }, [pos, minimized, panel]);
-
   // Drag the badge by a handle (the dot, or the panel's status bar). Below a small
-  // threshold it's a click (expand/minimize); past it, a move that persists.
+  // threshold it's a click (expand/minimize); past it, a drag that snaps to the
+  // nearest edge on release and persists.
   const startDrag = (e: PointerEvent) => {
     if (e.button !== 0 || !rootRef.current) return;
     const r = rootRef.current.getBoundingClientRect();
     const start = { sx: e.clientX, sy: e.clientY, bx: r.left, by: r.top, w: r.width, h: r.height };
     let moved = false;
-    let last: XY = { x: r.left, y: r.top };
+    let center: XY = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
     const onMove = (ev: PointerEvent) => {
       const dx = ev.clientX - start.sx;
       const dy = ev.clientY - start.sy;
       if (!moved && Math.hypot(dx, dy) > 4) moved = true;
       if (moved) {
-        last = clampXY(start.bx + dx, start.by + dy, start.w, start.h);
-        setPos(last);
+        const x = Math.min(Math.max(0, start.bx + dx), window.innerWidth - start.w);
+        const y = Math.min(Math.max(0, start.by + dy), window.innerHeight - start.h);
+        setDrag({ x, y });
+        center = { x: x + start.w / 2, y: y + start.h / 2 };
       }
     };
     const onUp = () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      setDrag(null);
       if (moved) {
         dragged.current = true;
-        void badgePrefs.setValue({ ...prefs, position: last });
+        const snapped = snapToEdge(center.x, center.y); // snap by the badge's centre
+        setPos(snapped);
+        void badgePrefs.setValue({ ...prefs, position: snapped });
       }
     };
     window.addEventListener("pointermove", onMove);
@@ -198,9 +219,13 @@ function BadgeRoot() {
   if (prefs.mode === "off") return null; // hidden — rely on the toolbar icon + popup
 
   const s = STATE[status.state];
-  // Dragged position takes over; otherwise anchor to the default corner.
-  const posStyle = pos ? { left: `${pos.x}px`, top: `${pos.y}px` } : undefined;
-  const anchor = pos ? "" : DEFAULT_CORNER;
+  // While dragging: follow the cursor. Docked: edge style. Otherwise: default corner.
+  const posStyle = drag
+    ? { left: `${drag.x}px`, top: `${drag.y}px` }
+    : pos
+      ? edgeStyle(pos)
+      : undefined;
+  const anchor = drag || pos ? "" : DEFAULT_CORNER;
   const summary = `TMSync · ${status.detail ?? s.label}${status.title ? ` — ${status.title}` : ""}`;
 
   // Minimized: a status dot with a soft glow. The dot is also the drag handle.
