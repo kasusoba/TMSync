@@ -189,7 +189,11 @@ export class SessionManager {
     });
 
     void this.reconcile();
-    if (this.isTop) this.watchPlayerFrames();
+    // Run in EVERY frame, not just the top: aggregator embeds nest iframes (rive →
+    // vsrc.su → the real video host), and a frame can only see its OWN children.
+    // Each frame reporting its child origins is what surfaces a deeply-nested
+    // player in the popup so the user can enable it. (The badge hint stays top-only.)
+    this.watchPlayerFrames();
   }
 
   /** AbortSignal tied to the content-script lifetime (frame-level listeners). */
@@ -448,11 +452,13 @@ export class SessionManager {
   }
 
   /**
-   * Top-frame only: watch for cross-origin player iframes. Two jobs:
-   *  - Always accumulate every cross-origin iframe origin seen (debounced, only
-   *    when new) so the popup can offer late-loading player frames to enable.
-   *  - When the recipe says the player is in an iframe and none is enabled yet,
-   *    push an actionable badge hint (main feedback channel where no console).
+   * Watch for cross-origin player iframes (runs in EVERY frame). Two jobs:
+   *  - Always accumulate every cross-origin iframe origin THIS frame can see
+   *    (debounced, only when new) so the popup can offer player frames to enable —
+   *    including ones nested inside an already-enabled aggregator frame, which the
+   *    top frame can't see across the origin boundary.
+   *  - Top frame only: when the recipe says the player is in an iframe and none is
+   *    enabled yet, push an actionable badge hint (main feedback channel, no console).
    */
   private watchPlayerFrames(): void {
     const scan = async () => {
@@ -465,9 +471,9 @@ export class SessionManager {
         void sendMessage("reportFrameOrigins", origins);
       }
 
-      // Only hint when the recipe expects an iframe player — avoids false hints
-      // from ad/analytics iframes on ordinary sites.
-      if (this.frame !== "iframe") return;
+      // Badge hint: top frame owns the badge, and only when the matched recipe
+      // expects an iframe player — avoids false hints from ad/analytics iframes.
+      if (!this.isTop || this.frame !== "iframe") return;
       const enabled = new Set(await sendMessage("listEnabledSites", undefined));
       // If any cross-origin frame is already enabled, the player is set up — the
       // rest are almost certainly ads; stay quiet.
