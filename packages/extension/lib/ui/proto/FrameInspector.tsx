@@ -10,6 +10,8 @@ export interface FrameInspectorProps {
   onRescan?: () => void;
   onEnable?: (origin: string) => void;
   onDisable?: (origin: string) => void;
+  /** Author a recipe inside this frame (injects the picker into it). */
+  onSetupFrame?: (origin: string, frameId: number) => void;
 }
 
 function host(origin: string, url: string): string {
@@ -115,20 +117,41 @@ export function FrameInspector(p: FrameInspectorProps) {
                 </span>
               </span>
               {n.origin && n.origin !== "null" ? (
-                n.enabled ? (
-                  <Btn t={t} tone="ghost" disabled={p.busy} onClick={() => p.onDisable?.(n.origin)}>
-                    <Icon name="check" class="text-[12px] text-emerald-500" />
-                  </Btn>
-                ) : (
-                  <Btn
-                    t={t}
-                    tone="primary"
-                    disabled={p.busy}
-                    onClick={() => p.onEnable?.(n.origin)}
-                  >
-                    Enable
-                  </Btn>
-                )
+                <span class="flex shrink-0 items-center gap-1">
+                  {/* Author a recipe inside this frame — for embeds whose title/
+                      episode text is only reachable from inside the iframe. */}
+                  {!n.isTop && n.frameId !== null && p.onSetupFrame && (
+                    <Btn
+                      t={t}
+                      tone="ghost"
+                      disabled={p.busy}
+                      title="Set up a recipe inside this frame"
+                      onClick={() => p.onSetupFrame?.(n.origin, n.frameId as number)}
+                    >
+                      <Icon name="target" class="text-[12px] text-ikura" />
+                      Set up
+                    </Btn>
+                  )}
+                  {n.enabled ? (
+                    <Btn
+                      t={t}
+                      tone="ghost"
+                      disabled={p.busy}
+                      onClick={() => p.onDisable?.(n.origin)}
+                    >
+                      <Icon name="check" class="text-[12px] text-emerald-500" />
+                    </Btn>
+                  ) : (
+                    <Btn
+                      t={t}
+                      tone="primary"
+                      disabled={p.busy}
+                      onClick={() => p.onEnable?.(n.origin)}
+                    >
+                      Enable
+                    </Btn>
+                  )}
+                </span>
               ) : null}
             </div>
           ))}

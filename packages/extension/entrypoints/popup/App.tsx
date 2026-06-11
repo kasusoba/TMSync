@@ -349,6 +349,38 @@ export function App() {
     window.close(); // get out of the way so the picker is visible
   };
 
+  // Author a recipe INSIDE a (cross-origin) player frame: the picker can't reach
+  // across the frame boundary, so inject it into the frame itself. The recipe it
+  // builds matches the embed's own URL and reads its own DOM/URL — and because
+  // the embed is shared, that recipe works on every site using it.
+  const setupFrame = async (origin: string, frameId: number) => {
+    setBusy(true);
+    setNote(null);
+    const granted = await browser.permissions.request({ origins: [`${origin}/*`] });
+    if (!granted) {
+      setNote("Permission denied");
+      setBusy(false);
+      return;
+    }
+    await sendMessage("registerSite", origin);
+    const tabId = await activeTabId();
+    if (tabId === null) {
+      setNote("No active tab");
+      setBusy(false);
+      return;
+    }
+    try {
+      await browser.scripting.executeScript({
+        target: { tabId, frameIds: [frameId] },
+        files: ["/content-scripts/picker.js"],
+      });
+      window.close(); // the picker now renders inside the player frame
+    } catch (e) {
+      setNote(`Couldn't open the picker in that frame: ${e instanceof Error ? e.message : e}`);
+      setBusy(false);
+    }
+  };
+
   return (
     <PopupView
       variant="dark"
@@ -390,6 +422,7 @@ export function App() {
       frameTree={frameTree}
       onToggleInspect={toggleInspect}
       onScanFrames={scanFrames}
+      onSetupFrame={setupFrame}
     />
   );
 }

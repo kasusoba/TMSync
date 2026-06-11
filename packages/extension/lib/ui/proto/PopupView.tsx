@@ -56,6 +56,8 @@ export interface PopupViewProps {
   frameTree?: FrameNode[] | null;
   onToggleInspect?: () => void;
   onScanFrames?: () => void;
+  /** Author a recipe inside a (cross-origin) player frame — injects the picker there. */
+  onSetupFrame?: (origin: string, frameId: number) => void;
 }
 
 /** One provider row (mark + name + status + connect/disconnect). Uniform per provider. */
@@ -265,6 +267,7 @@ export function PopupView(p: PopupViewProps) {
                   onRescan={p.onScanFrames}
                   onEnable={p.onEnable}
                   onDisable={p.onDisable}
+                  onSetupFrame={p.onSetupFrame}
                 />
               ) : (
                 <p class={clsx("px-1 text-[11px] leading-relaxed", t.faint)}>

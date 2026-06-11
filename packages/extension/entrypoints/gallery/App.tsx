@@ -176,6 +176,7 @@ export function App() {
               variant={variant}
               connected
               inspecting
+              onSetupFrame={() => {}}
               origins={[
                 { origin: "https://www.rivestream.app", isTop: true, enabled: true },
                 { origin: "https://vsrc.su", isTop: false, enabled: true },
