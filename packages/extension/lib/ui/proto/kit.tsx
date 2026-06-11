@@ -38,7 +38,7 @@ export function tokens(v: Variant): Tokens {
       heading: "text-zinc-50",
       sub: "text-zinc-400",
       faint: "text-zinc-500",
-      card: "bg-white/[0.04] ring-1 ring-white/10",
+      card: "bg-white/5 ring-1 ring-white/10",
       divider: "border-white/10",
       primary: "bg-ikura text-white hover:bg-ikura-600 active:bg-ikura-700",
       ghost: "bg-white/5 text-zinc-200 ring-1 ring-white/10 hover:bg-white/10",
