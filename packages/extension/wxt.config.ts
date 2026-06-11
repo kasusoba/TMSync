@@ -30,6 +30,9 @@ export default defineConfig({
       "https://anilist.co/*",
       "https://graphql.anilist.co/*",
       "https://raw.githubusercontent.com/*",
+      // E2E only: lets the perf test register the content script on the local
+      // fixture server without the popup gesture. Never in a shipped build.
+      ...(process.env.E2E ? ["http://localhost/*", "http://127.0.0.1/*"] : []),
     ],
     // Constraint #5: NO broad host_permissions at install. We request per-origin
     // streaming-site access on a user gesture, then registerContentScripts.

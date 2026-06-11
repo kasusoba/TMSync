@@ -14,7 +14,8 @@
     "postinstall": "wxt prepare",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:e2e": "E2E=1 wxt build && playwright test"
   },
   "dependencies": {
     "@medv/finder": "^4.0.2",

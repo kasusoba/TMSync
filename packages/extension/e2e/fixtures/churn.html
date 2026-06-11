@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <!-- og:title → the recipe extracts a title → a session is published → the
+       session looks for a real <video>, finds only the excluded background
+       trailer below, and falls into observeForVideo(): the hot path that froze. -->
+  <meta property="og:title" content="Churn Movie" />
+  <title>Churn Movie</title>
+</head>
+<body>
+  <h1>Churn Movie</h1>
+  <!-- A muted, looping, autoplaying background trailer — findVideo() excludes it,
+       so the session keeps searching while the DOM churns. -->
+  <video muted loop autoplay playsinline width="320" height="180"></video>
+  <div id="app"></div>
+  <script>
+    // Simulate a heavy SPA: rewrite a big subtree every animation frame, forever.
+    // This is what hammered the unthrottled MutationObserver.
+    const app = document.getElementById("app");
+    function churn() {
+      app.replaceChildren();
+      const frag = document.createDocumentFragment();
+      for (let i = 0; i < 300; i++) {
+        const d = document.createElement("div");
+        d.className = "row-" + i;
+        d.textContent = "node " + i + " @ " + performance.now().toFixed(0);
+        frag.appendChild(d);
+      }
+      app.appendChild(frag);
+      requestAnimationFrame(churn);
+    }
+    requestAnimationFrame(churn);
+    // Heartbeat — advances only while the main thread runs; the test asserts it ticks.
+    window.__beat = 0;
+    setInterval(() => { window.__beat++; }, 50);
+  </script>
+</body>
+</html>
