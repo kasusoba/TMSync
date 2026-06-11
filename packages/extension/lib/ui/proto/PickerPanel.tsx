@@ -344,8 +344,9 @@ export function PickerPanel(p: PickerPanelProps) {
 
             {/* From page title — pick a segment of the browser tab title, for SPA
                 players whose real title is only in document.title (og:title is a
-                static site name). Click a part to use it as the Title. */}
-            {(p.titleParts?.length ?? 0) > 1 && (
+                static site name). Only while picking the Title, since segments
+                only feed that field (shown elsewhere it just reads as noise). */}
+            {p.picking === "Title" && (p.titleParts?.length ?? 0) > 1 && (
               <div class="mb-3">
                 <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>
                   From page title → click the part that is the title

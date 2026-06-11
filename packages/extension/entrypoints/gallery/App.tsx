@@ -274,26 +274,26 @@ export function App() {
               urlParts={urlParts(
                 "https://www.rivestream.app/watch?type=tv&id=85552&season=1&episode=1",
               )}
-              titleParts={["Rive", "Watch", "Euphoria", "S1-E1"]}
               mediaType="auto"
               tracker="trakt"
               iframe
               preview={{ ok: true, text: "show: Euphoria S1E1" }}
             />
           </Tile>
-          <Tile label="Picking Title — page-click mode" t={t}>
+          <Tile label="Picking Title — page-click + tab-title parts" t={t}>
             <PickerPanel
               variant={variant}
               mode="setup"
-              name="Cineby"
+              name="bCine"
               picking="Title"
               fields={[
-                { key: "title", label: "Title", value: null },
+                { key: "title", label: "Title", value: "bCine", source: "meta" },
                 { key: "year", label: "Year", value: null },
                 { key: "season", label: "Season", value: null },
                 { key: "episode", label: "Episode", value: null },
               ]}
-              urlParts={urlParts("www.cineby.at/tv/273240/1/1")}
+              urlParts={urlParts("bcine.ru/tv/276161")}
+              titleParts={["Teach You a Lesson", "bCine"]}
               mediaType="auto"
               tracker="trakt"
               iframe

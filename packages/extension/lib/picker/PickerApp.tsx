@@ -188,36 +188,63 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
   // Element-picking mode: highlight on hover, capture the next page click.
   useEffect(() => {
     if (!picking) return;
+    // The element we'd commit. Captured continuously on hover/press because a
+    // player's control bar auto-hides the instant you click — so the element
+    // under the cursor at PRESS time is far more reliable than at click time.
+    let target: Element | null = null;
+
     const onMove = (e: MouseEvent) => {
-      if (inOurUi(e)) return setHighlight(null);
+      if (inOurUi(e)) {
+        setHighlight(null);
+        return;
+      }
       // Highlight the element we'd actually pick (the tight text box under the
-      // player overlay), not the topmost full-page catcher — so the box tracks
-      // the real target and the user can aim precisely.
+      // player overlay), not the topmost full-page catcher.
       const el = candidateAt(e.clientX, e.clientY);
+      target = el;
       if (!el) return setHighlight(null);
       const r = el.getBoundingClientRect();
       setHighlight({ top: r.top, left: r.left, width: r.width, height: r.height });
     };
+
+    // Swallow the player's own press handlers (seek/pause) so a pick doesn't
+    // also scrub the video, and lock in the target before the controls vanish.
+    const swallowPress = (e: Event) => {
+      if (inOurUi(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const me = e as MouseEvent;
+      target = candidateAt(me.clientX, me.clientY) ?? target;
+    };
+
     const onClick = (e: MouseEvent) => {
       if (inOurUi(e)) return;
       e.preventDefault();
       e.stopPropagation();
-      const el = candidateAt(e.clientX, e.clientY);
+      const el = target ?? candidateAt(e.clientX, e.clientY);
       if (el) selectField(picking, el);
       setPicking(null);
       setHighlight(null);
     };
+
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setPicking(null);
         setHighlight(null);
       }
     };
+
     window.addEventListener("mousemove", onMove, true);
+    window.addEventListener("pointerdown", swallowPress, true);
+    window.addEventListener("mousedown", swallowPress, true);
+    window.addEventListener("mouseup", swallowPress, true);
     window.addEventListener("click", onClick, true);
     window.addEventListener("keydown", onKey, true);
     return () => {
       window.removeEventListener("mousemove", onMove, true);
+      window.removeEventListener("pointerdown", swallowPress, true);
+      window.removeEventListener("mousedown", swallowPress, true);
+      window.removeEventListener("mouseup", swallowPress, true);
       window.removeEventListener("click", onClick, true);
       window.removeEventListener("keydown", onKey, true);
     };
