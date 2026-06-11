@@ -285,7 +285,7 @@ export function PickerPanel(p: PickerPanelProps) {
                           : t.chip,
                       )}
                     >
-                      {part.paramKey ? `${part.paramKey}=${part.num}` : part.num}
+                      {part.num}
                     </button>
                   ) : (
                     // biome-ignore lint/suspicious/noArrayIndexKey: positional URL tokens are stable
