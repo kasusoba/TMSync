@@ -145,15 +145,12 @@ export function App() {
               origins={[{ origin: "https://www.cineby.at", isTop: true, enabled: false }]}
             />
           </Tile>
-          <Tile label="Connected · enabled + player frame" t={t}>
+          <Tile label="Connected · enabled site" t={t}>
             <PopupView
               variant={variant}
               connected
               note="Enabled — reload the page to start."
-              origins={[
-                { origin: "https://www.cineby.at", isTop: true, enabled: true },
-                { origin: "https://onlyflix.to", isTop: false, enabled: false },
-              ]}
+              origins={[{ origin: "https://www.cineby.at", isTop: true, enabled: true }]}
             />
           </Tile>
           <Tile label="Connected · per-site watch-on link editor" t={t}>

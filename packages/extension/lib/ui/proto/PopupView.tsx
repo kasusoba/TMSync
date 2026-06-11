@@ -2,6 +2,7 @@ import type { FrameNode } from "@/lib/diagnostics/frame-tree";
 import type { Tracker } from "@/lib/tracker/types";
 import type { LinkTemplates } from "@tmsync/shared";
 import clsx from "clsx";
+import { useState } from "preact/hooks";
 import { FrameInspector } from "./FrameInspector";
 import { QuickLinkEditor, type QuickLinkValue } from "./QuickLinkEditor";
 import {
@@ -102,9 +103,57 @@ function host(origin: string): string {
   return origin.replace(/^https?:\/\//, "");
 }
 
+/** One enable/disable row for an origin (the top site; deeper frames live in the inspector). */
+function OriginRowView({
+  t,
+  o,
+  busy,
+  onEnable,
+  onDisable,
+}: {
+  t: Tokens;
+  o: OriginRow;
+  busy?: boolean;
+  onEnable?: (origin: string) => void;
+  onDisable?: (origin: string) => void;
+}) {
+  return (
+    <div class={clsx("flex items-center justify-between rounded-xl px-3 py-2", t.card)}>
+      <span class="flex min-w-0 items-center gap-2">
+        <code class={clsx("truncate font-mono text-[12px]", t.heading)} title={o.origin}>
+          {host(o.origin)}
+        </code>
+        {!o.isTop && (
+          <span
+            class={clsx(
+              "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium",
+              t.chip,
+            )}
+          >
+            <Icon name="frame" class="text-[10px]" />
+            frame
+          </span>
+        )}
+      </span>
+      {o.enabled ? (
+        <Btn t={t} tone="ghost" disabled={busy} onClick={() => onDisable?.(o.origin)}>
+          <Icon name="check" class="text-[13px] text-emerald-500" />
+          Enabled
+        </Btn>
+      ) : (
+        <Btn t={t} tone="primary" disabled={busy} onClick={() => onEnable?.(o.origin)}>
+          Enable
+        </Btn>
+      )}
+    </div>
+  );
+}
+
 export function PopupView(p: PopupViewProps) {
   const t = tokens(p.variant);
   const origins = p.origins ?? [];
+  const topRow = origins.find((o) => o.isTop) ?? origins[0] ?? null;
+  const [watchOpen, setWatchOpen] = useState(false);
   return (
     <div class={clsx("w-[360px] p-4 antialiased", t.page)}>
       <div class={clsx("rounded-2xl p-4 space-y-5", t.panel)}>
@@ -150,12 +199,13 @@ export function PopupView(p: PopupViewProps) {
           )}
         </Section>
 
-        {/* Sites on this page */}
+        {/* On this page — the top site row + (on demand) the frame inspector, which
+            is the single source for nested/player frames (no redundant flat list). */}
         <Section
           title="On this page"
           t={t}
           right={
-            origins.length > 0 && (
+            topRow && (
               <Btn t={t} tone="link" onClick={p.onToggleInspect}>
                 <Icon name="search" class="text-[12px]" />
                 {p.inspecting ? "Hide frames" : "Inspect frames"}
@@ -163,65 +213,26 @@ export function PopupView(p: PopupViewProps) {
             )
           }
         >
-          {origins.length === 0 ? (
+          {!topRow ? (
             <p class={clsx("rounded-xl px-3 py-4 text-center text-[12px]", t.card, t.sub)}>
               No streaming page in the active tab.
             </p>
           ) : (
             <div class="space-y-1.5">
-              {origins.map((o) => (
-                <div
-                  key={o.origin}
-                  class={clsx("flex items-center justify-between rounded-xl px-3 py-2", t.card)}
-                >
-                  <span class="flex min-w-0 items-center gap-2">
-                    <code
-                      class={clsx("truncate font-mono text-[12px]", t.heading)}
-                      title={o.origin}
-                    >
-                      {host(o.origin)}
-                    </code>
-                    {!o.isTop && (
-                      <span
-                        class={clsx(
-                          "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium",
-                          t.chip,
-                        )}
-                      >
-                        <Icon name="frame" class="text-[10px]" />
-                        frame
-                      </span>
-                    )}
-                  </span>
-                  {o.enabled ? (
-                    <Btn
-                      t={t}
-                      tone="ghost"
-                      disabled={p.busy}
-                      onClick={() => p.onDisable?.(o.origin)}
-                    >
-                      <Icon name="check" class="text-[13px] text-emerald-500" />
-                      Enabled
-                    </Btn>
-                  ) : (
-                    <Btn
-                      t={t}
-                      tone="primary"
-                      disabled={p.busy}
-                      onClick={() => p.onEnable?.(o.origin)}
-                    >
-                      Enable
-                    </Btn>
-                  )}
-                </div>
-              ))}
+              <OriginRowView
+                t={t}
+                o={topRow}
+                busy={p.busy}
+                onEnable={p.onEnable}
+                onDisable={p.onDisable}
+              />
 
               <button
                 type="button"
                 disabled={p.busy}
                 onClick={p.onSetup}
                 class={clsx(
-                  "group mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition disabled:opacity-50",
+                  "group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition disabled:opacity-50",
                   t.card,
                   "hover:ring-2 hover:ring-ikura",
                 )}
@@ -245,12 +256,8 @@ export function PopupView(p: PopupViewProps) {
                   )}
                 />
               </button>
-              <p class={clsx("px-1 text-[11px] leading-relaxed", t.faint)}>
-                Player in another frame? Press play so it loads, then reopen this popup to enable
-                it.
-              </p>
 
-              {p.inspecting && (
+              {p.inspecting ? (
                 <FrameInspector
                   t={t}
                   nodes={p.frameTree ?? null}
@@ -259,29 +266,60 @@ export function PopupView(p: PopupViewProps) {
                   onEnable={p.onEnable}
                   onDisable={p.onDisable}
                 />
+              ) : (
+                <p class={clsx("px-1 text-[11px] leading-relaxed", t.faint)}>
+                  Player in an embedded frame and not scrobbling?{" "}
+                  <button
+                    type="button"
+                    onClick={p.onToggleInspect}
+                    class={clsx("underline underline-offset-2", t.link)}
+                  >
+                    Inspect frames
+                  </button>{" "}
+                  to find and enable it.
+                </p>
               )}
             </div>
           )}
         </Section>
 
-        {/* Watch-on link — per-SITE, editable from any page (not tied to a recipe) */}
+        {/* Watch-on link — per-SITE, editable from any page (not tied to a recipe).
+            Collapsed by default: it's a secondary feature, so it shouldn't pad the popup. */}
         {p.quickLinkHost && (
-          <Section title="Watch-on link" t={t}>
-            <p class={clsx("text-[11px] leading-relaxed", t.sub)}>
-              A button on {p.quickLinkInitial?.tracker === "anilist" ? "anilist.co" : "Trakt"} pages
-              that opens <span class="font-mono">{p.quickLinkHost}</span>. Per-site — works from any
-              page here.
-            </p>
-            <QuickLinkEditor
-              key={p.quickLinkHost}
-              t={t}
-              host={p.quickLinkHost}
-              initial={p.quickLinkInitial}
-              derive={p.quickLinkDerive}
-              busy={p.busy}
-              onSave={(v) => p.onSaveQuickLink?.(v)}
-              onRemove={p.quickLinkInitial ? () => p.onRemoveQuickLink?.() : undefined}
-            />
+          <Section
+            title="Watch-on link"
+            t={t}
+            right={
+              <Btn t={t} tone="link" onClick={() => setWatchOpen((v) => !v)}>
+                {watchOpen ? "Hide" : p.quickLinkInitial ? "Edit" : "Add"}
+              </Btn>
+            }
+          >
+            {watchOpen ? (
+              <>
+                <p class={clsx("text-[11px] leading-relaxed", t.sub)}>
+                  A button on {p.quickLinkInitial?.tracker === "anilist" ? "anilist.co" : "Trakt"}{" "}
+                  pages that opens <span class="font-mono">{p.quickLinkHost}</span>. Per-site —
+                  works from any page here.
+                </p>
+                <QuickLinkEditor
+                  key={p.quickLinkHost}
+                  t={t}
+                  host={p.quickLinkHost}
+                  initial={p.quickLinkInitial}
+                  derive={p.quickLinkDerive}
+                  busy={p.busy}
+                  onSave={(v) => p.onSaveQuickLink?.(v)}
+                  onRemove={p.quickLinkInitial ? () => p.onRemoveQuickLink?.() : undefined}
+                />
+              </>
+            ) : (
+              <p class={clsx("text-[11px] leading-relaxed", t.faint)}>
+                {p.quickLinkInitial
+                  ? `Button added — opens ${p.quickLinkHost} from ${p.quickLinkInitial.tracker === "anilist" ? "anilist.co" : "Trakt"}.`
+                  : `Add a button on Trakt/AniList pages that opens ${p.quickLinkHost}.`}
+              </p>
+            )}
           </Section>
         )}
 

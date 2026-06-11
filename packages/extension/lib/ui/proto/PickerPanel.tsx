@@ -65,17 +65,21 @@ export function PickerPanel(p: PickerPanelProps) {
     p.canSave ?? (p.manual || p.fields.some((f) => f.key === "title" && f.value !== null));
 
   return (
-    <div class="space-y-2">
+    // Fixed-width, position-relative shell: the picker is anchored to the right
+    // edge of the screen, so the "click to pick" pill MUST float (absolute) above
+    // the panel — letting it grow the shell would swing the left edge out and
+    // shove the panel sideways every time you press Pick.
+    <div class="relative w-[320px]">
       {p.picking && (
-        <div class="flex justify-center">
-          <span class="inline-flex items-center gap-2 rounded-full bg-ikura px-3.5 py-1.5 text-[12px] font-medium text-white shadow-lg shadow-black/20">
-            <Icon name="target" class="text-[14px]" />
+        <div class="absolute inset-x-0 bottom-full mb-2 flex justify-center">
+          <span class="inline-flex max-w-full items-center justify-center gap-2 rounded-2xl bg-ikura px-3.5 py-1.5 text-center text-[12px] font-medium leading-snug text-white shadow-lg shadow-black/20">
+            <Icon name="target" class="shrink-0 text-[14px]" />
             Click the {p.picking} on the page — or a number in the URL · Esc to cancel
           </span>
         </div>
       )}
 
-      <div class={clsx("w-[320px] rounded-2xl p-3.5 shadow-2xl shadow-black/30", t.panel)}>
+      <div class={clsx("w-full rounded-2xl p-3.5 shadow-2xl shadow-black/30", t.panel)}>
         {/* header */}
         <header class="mb-3 flex items-center justify-between">
           <div class="flex items-center gap-2">
