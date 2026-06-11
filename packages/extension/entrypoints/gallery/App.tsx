@@ -300,6 +300,42 @@ export function App() {
               preview={{ ok: false, error: "no title yet — pick one" }}
             />
           </Tile>
+          <Tile label="Picking Episode — from player frame URL (embed)" t={t}>
+            <PickerPanel
+              variant={variant}
+              mode="setup"
+              name="bCine"
+              picking="Episode"
+              fields={[
+                { key: "title", label: "Title", value: "Teach You a Lesson", source: "title" },
+                { key: "year", label: "Year", value: null },
+                { key: "season", label: "Season", value: "1", source: "dom" },
+                { key: "episode", label: "Episode", value: null },
+              ]}
+              urlParts={urlParts("bcine.ru/tv/276161")}
+              playerFrames={[
+                {
+                  src: "https://1embed.cc/embed/tv/276161/1/6?auto_play=1",
+                  parts: [
+                    { text: "https://" },
+                    { num: "1", ordinal: 0 },
+                    { text: "embed.cc/embed/tv/" },
+                    { num: "276161", ordinal: 1 },
+                    { text: "/" },
+                    { num: "1", ordinal: 2 },
+                    { text: "/" },
+                    { num: "6", ordinal: 3 },
+                    { text: "?auto_play=" },
+                    { num: "1", ordinal: 4 },
+                  ],
+                },
+              ]}
+              mediaType="auto"
+              tracker="trakt"
+              iframe
+              preview={{ ok: false, error: "pick the episode number" }}
+            />
+          </Tile>
           <Tile label="Picking Episode — which number? (1x6)" t={t}>
             <PickerPanel
               variant={variant}

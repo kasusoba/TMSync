@@ -128,6 +128,29 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
   const parts = useMemo(urlChips, []);
   // Segments of the page's <title> (for sites whose real title is only there).
   const titleInfo = useMemo(() => splitTitle(document.title), []);
+  // Cross-origin player iframes: the season/episode often live in the embed's
+  // src (e.g. .../embed/tv/276161/1/6), which the top frame CAN read even though
+  // the player UI inside the iframe is unreachable. Offer those numbers to pick.
+  const playerFrames = useMemo<{ selector: string; src: string; parts: NumberPart[] }[]>(() => {
+    const out: { selector: string; src: string; parts: NumberPart[] }[] = [];
+    for (const f of Array.from(document.querySelectorAll("iframe"))) {
+      const raw = (f as HTMLIFrameElement).getAttribute("src");
+      if (!raw) continue;
+      let url: URL;
+      try {
+        url = new URL(raw, location.href);
+      } catch {
+        continue;
+      }
+      // cross-origin embeds with at least one number — same-origin/number-less
+      // frames are almost never the player and would just add noise.
+      if (url.protocol !== "http:" && url.protocol !== "https:") continue;
+      if (url.origin === location.origin || !/\d/.test(raw)) continue;
+      const selector = safeFinder(f);
+      if (selector && out.length < 4) out.push({ selector, src: raw, parts: splitNumbers(raw) });
+    }
+    return out;
+  }, []);
 
   const [draft, setDraft] = useState<RecipeDraft>(() => {
     const base = emptyDraft(ctx.url);
@@ -319,6 +342,30 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
     setStatus(null);
   }
 
+  /** Use the Nth number of a player iframe's `src` for the field being picked —
+   * for embeds that carry the season/episode in their URL (a DOM field reading
+   * the `src` attribute, so it re-reads live at scrobble time). */
+  function selectFrameToken(selector: string, ordinal: number) {
+    if (!picking || picking === "manualKey") return;
+    setDraft((d) => ({
+      ...d,
+      fields: {
+        ...d.fields,
+        [picking]: {
+          source: "dom",
+          selector,
+          attr: "src",
+          regex: urlTokenRegex(ordinal),
+          group: 1,
+          transforms: ["toInt"],
+        },
+      },
+    }));
+    setPicking(null);
+    setHighlight(null);
+    setStatus(null);
+  }
+
   /** Use the Nth `separator`-delimited segment of the page <title> as the title —
    * for SPA players whose only readable title is `document.title`. */
   function selectTitleSegment(index: number) {
@@ -426,6 +473,7 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
           domPick={
             domPick ? { field: domPick.field, text: domPick.text, parts: domPick.parts } : null
           }
+          playerFrames={playerFrames.map((f) => ({ src: f.src, parts: f.parts }))}
           mediaType={draft.mediaType}
           tracker={draft.tracker}
           iframe={draft.video.frame === "iframe"}
@@ -451,6 +499,10 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
           }}
           onPickTitleSegment={selectTitleSegment}
           onPickDomNumber={selectDomNumber}
+          onPickFrameToken={(frameIndex, ordinal) => {
+            const frame = playerFrames[frameIndex];
+            if (frame) selectFrameToken(frame.selector, ordinal);
+          }}
           onClear={(key) => {
             if (domPick?.field === key) setDomPick(null);
             clearField(key);

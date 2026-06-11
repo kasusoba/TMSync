@@ -214,6 +214,58 @@ describe("DOM number picking (one element packs several, e.g. '1x6 – Episode 6
   });
 });
 
+describe("player-frame URL picking (S/E inside a cross-origin embed, e.g. 1embed.cc)", () => {
+  it("reads season/episode from a player iframe's src attribute by ordinal", () => {
+    // bcine.ru/tv/276161 hides S/E; the 1embed.cc iframe src carries it:
+    // numbers are [1 (1embed), 276161, 1 (season), 6 (episode), 1 (auto_play)].
+    // (readDom just does querySelector + getAttribute, so a non-<iframe> element
+    // carrying the same `src` exercises the identical path — and avoids happy-dom
+    // trying to network-fetch a real iframe during the test.)
+    const doc = new DOMParser().parseFromString(
+      `<title>Teach You a Lesson - bCine</title>
+       <div class="player" src="https://1embed.cc/embed/tv/276161/1/6?color=ffffff&auto_play=1"></div>`,
+      "text/html",
+    );
+    const recipe: Recipe = {
+      id: "r",
+      schemaVersion: 2,
+      name: "bCine",
+      match: { urlPattern: ".*" },
+      mediaType: "auto",
+      tracker: "trakt",
+      video: { selector: "video", frame: "iframe", watchedThreshold: 0.8 },
+      extract: {
+        title: {
+          source: "title",
+          regex: titleSegmentRegex(" - ", 0),
+          group: 1,
+          transforms: ["trim", "collapseSpaces"],
+        },
+        season: {
+          source: "dom",
+          selector: ".player",
+          attr: "src",
+          regex: urlTokenRegex(2),
+          group: 1,
+          transforms: ["toInt"],
+        },
+        episode: {
+          source: "dom",
+          selector: ".player",
+          attr: "src",
+          regex: urlTokenRegex(3),
+          group: 1,
+          transforms: ["toInt"],
+        },
+      },
+    };
+    expect(extract(recipe, { document: doc, url: "https://bcine.ru/tv/276161" })).toEqual({
+      ok: true,
+      media: { mediaType: "show", title: "Teach You a Lesson", season: 1, episode: 6 },
+    });
+  });
+});
+
 describe("escapeRegex / suggestUrlPattern", () => {
   it("escapes regex metacharacters", () => {
     expect(escapeRegex("a.b+c")).toBe("a\\.b\\+c");

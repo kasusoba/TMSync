@@ -22,6 +22,9 @@ export interface PickerPanelProps {
   /** A picked DOM element holds several numbers → ask which is the season/episode
    * (e.g. "1x6 – Episode 6": season=1, episode=6). null when not awaiting a pick. */
   domPick?: { field: "season" | "episode"; text: string; parts: UrlPart[] } | null;
+  /** Cross-origin player-iframe URLs whose numbers can be picked for a field —
+   * for embeds that carry the season/episode in their src (e.g. 1embed.cc). */
+  playerFrames?: { src: string; parts: UrlPart[] }[];
   /** Field label currently being picked, or null. */
   picking?: string | null;
   mediaType: "auto" | "movie" | "show";
@@ -45,6 +48,8 @@ export interface PickerPanelProps {
   onPickTitleSegment?: (index: number) => void;
   /** Pick the Nth number of the just-picked DOM element (season/episode). */
   onPickDomNumber?: (ordinal: number) => void;
+  /** Pick the Nth number of a player iframe's src (frame index, number ordinal). */
+  onPickFrameToken?: (frameIndex: number, ordinal: number) => void;
   onClear?: (key: FieldKey) => void;
   onClose?: () => void;
   onSave?: () => void;
@@ -341,6 +346,48 @@ export function PickerPanel(p: PickerPanelProps) {
                 )}
               </div>
             </div>
+
+            {/* From player frame URL — a cross-origin embed (e.g. 1embed.cc) whose
+                src carries the season/episode the top page hides. Shown only while
+                picking season/episode, since it's a number source. */}
+            {(p.picking === "Season" || p.picking === "Episode") &&
+              (p.playerFrames?.length ?? 0) > 0 && (
+                <div class="mb-3">
+                  <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>
+                    From player frame URL → click a number for {p.picking}
+                  </span>
+                  <div class="space-y-1.5">
+                    {p.playerFrames?.map((frame, fi) => (
+                      <div
+                        // biome-ignore lint/suspicious/noArrayIndexKey: positional frame list is stable
+                        key={fi}
+                        class={clsx(
+                          "rounded-lg px-2 py-1.5 font-mono text-[11px] leading-7 break-all",
+                          t.card,
+                          t.sub,
+                        )}
+                      >
+                        {frame.parts.map((part, i) =>
+                          "num" in part ? (
+                            <button
+                              // biome-ignore lint/suspicious/noArrayIndexKey: positional tokens are stable
+                              key={i}
+                              type="button"
+                              onClick={() => p.onPickFrameToken?.(fi, part.ordinal)}
+                              class="mx-0.5 rounded bg-amber-400/20 px-1.5 py-0.5 text-[11px] text-amber-600 ring-1 ring-amber-400/40 transition-colors hover:bg-amber-400/40 dark:text-amber-300"
+                            >
+                              {part.num}
+                            </button>
+                          ) : (
+                            // biome-ignore lint/suspicious/noArrayIndexKey: positional tokens are stable
+                            <span key={i}>{part.text}</span>
+                          ),
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
             {/* From page title — pick a segment of the browser tab title, for SPA
                 players whose real title is only in document.title (og:title is a
