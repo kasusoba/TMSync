@@ -1,3 +1,4 @@
+import type { BadgeStatus } from "@/messaging";
 import type { LinkTemplates, ParsedMedia, Recipe } from "@tmsync/shared";
 import { storage } from "wxt/utils/storage";
 import type { AniListIdentity, AniListTokens } from "./anilist/types";
@@ -213,3 +214,13 @@ export const tabFrameOrigins = storage.defineItem<Record<number, string[]>>(
   "session:tab_frame_origins",
   { fallback: {} },
 );
+
+/**
+ * Latest scrobble status per tab — so the popup can show "now scrobbling" + any
+ * pending prompt (the toolbar icon is the ambient surface; the popup is where you
+ * act). Mirrors what the in-page badge receives. Session-scoped; cleared when the
+ * session is dismissed (hide) or the tab is removed.
+ */
+export const tabStatus = storage.defineItem<Record<number, BadgeStatus>>("session:tab_status", {
+  fallback: {},
+});

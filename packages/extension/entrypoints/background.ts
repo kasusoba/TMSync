@@ -15,6 +15,7 @@ import {
 } from "@/lib/anilist/client";
 import { ANILIST } from "@/lib/anilist/config";
 import { bundledLinks } from "@/lib/recipes";
+import { actionBadgeFor } from "@/lib/scrobble/action-badge";
 import {
   type QuickLinkSite,
   anilistNotes,
@@ -33,6 +34,7 @@ import {
   resolutionCache,
   tabFrameOrigins,
   tabSessions,
+  tabStatus,
 } from "@/lib/storage";
 import { getAdapter } from "@/lib/tracker";
 import { connect, disconnect, getRedirectUri, isConnected } from "@/lib/trakt/auth";
@@ -50,7 +52,7 @@ import {
 } from "@/lib/trakt/client";
 import type { ReviewLevel } from "@/lib/trakt/types";
 import { buildRatingBody, resolutionCacheKey, reviewKey } from "@/lib/trakt/util";
-import { onMessage, sendMessage } from "@/messaging";
+import { type BadgeStatus, onMessage, sendMessage } from "@/messaging";
 import { type LibraryLink, type ParsedMedia, type Recipe, parseLibrary } from "@tmsync/shared";
 import { browser } from "wxt/browser";
 
@@ -533,10 +535,17 @@ export default defineBackground(() => {
     await clearTabSession(tabId);
   });
 
-  // Playing frame → relay to the top frame's badge.
-  onMessage("reportScrobble", ({ data, sender }) => {
+  // Playing frame → relay to the top frame's badge, mirror to per-tab storage
+  // (so the popup can show it), and reflect the state on the toolbar icon.
+  onMessage("reportScrobble", async ({ data, sender }) => {
     const tabId = sender.tab?.id;
-    if (tabId !== undefined) void sendMessage("scrobbleStatus", data, { tabId, frameId: 0 });
+    if (tabId === undefined) return;
+    void sendMessage("scrobbleStatus", data, { tabId, frameId: 0 });
+    const all = await tabStatus.getValue();
+    if (data.hide) delete all[tabId];
+    else all[tabId] = data;
+    await tabStatus.setValue(all);
+    setActionBadge(tabId, data.hide ? null : data);
   });
 
   // Top frame reports iframe origins it has seen; accumulate the union per tab so
@@ -554,7 +563,8 @@ export default defineBackground(() => {
 
   // Reconcile a stop if a tab dies before a clean one (point: lost stops).
   browser.tabs.onRemoved.addListener(async (tabId) => {
-    // The tab is gone — drop its accumulated player-frame origins.
+    // The tab is gone — drop its accumulated player-frame origins + status.
+    await clearTabStatus(tabId);
     const frames = await tabFrameOrigins.getValue();
     if (frames[tabId]) {
       delete frames[tabId];
@@ -588,6 +598,13 @@ export default defineBackground(() => {
     } catch {
       // not connected / network — nothing to reconcile
     }
+  });
+
+  // A real navigation/reload starts a fresh page — clear any stale toolbar badge
+  // + mirrored status. (SPA history changes don't report `loading`, so they're
+  // left to the content script's reconcile/hide, avoiding a flicker.)
+  browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
+    if (changeInfo.status === "loading") void clearTabStatus(tabId);
   });
 });
 
@@ -692,6 +709,33 @@ async function anilistDeleteNote(media: ParsedMedia): Promise<{ ok: boolean; err
       ok: false,
       error: e instanceof AniListNotConnectedError ? "Not connected to AniList" : errMsg(e),
     };
+  }
+}
+
+// MV3 (Chrome + Firefox 109+) expose `action`; Firefox MV2 uses `browserAction`.
+const tabAction = browser.action ?? browser.browserAction;
+
+/** Reflect a scrobble status on the tab's toolbar icon (ambient, off-page). */
+function setActionBadge(tabId: number, status: BadgeStatus | null): void {
+  const { text, color } = actionBadgeFor(status);
+  try {
+    void tabAction.setBadgeText({ tabId, text });
+    if (text) {
+      void tabAction.setBadgeBackgroundColor({ tabId, color });
+      void tabAction.setBadgeTextColor?.({ tabId, color: "#ffffff" });
+    }
+  } catch {
+    // action API unavailable (shouldn't happen) — status still lives in storage
+  }
+}
+
+/** Drop a tab's mirrored status + clear its toolbar badge. */
+async function clearTabStatus(tabId: number): Promise<void> {
+  setActionBadge(tabId, null);
+  const all = await tabStatus.getValue();
+  if (all[tabId]) {
+    delete all[tabId];
+    await tabStatus.setValue(all);
   }
 }
 
