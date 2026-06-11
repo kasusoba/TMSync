@@ -34,6 +34,11 @@ export default defineConfig({
     // Constraint #5: NO broad host_permissions at install. We request per-origin
     // streaming-site access on a user gesture, then registerContentScripts.
     optional_host_permissions: ["*://*/*"],
+    // `webNavigation` powers the frame inspector: getAllFrames reveals each
+    // frame's REAL committed URL (streaming embeds redirect, e.g. vsrc.su →
+    // cloudnestra.com, so the iframe `src` attribute lies). Optional + requested
+    // on the "Inspect frames" gesture, so it's not in the install footprint.
+    optional_permissions: ["webNavigation"],
     // Stable extension identity (so the OAuth redirect URI is fixed).
     ...(browser === "firefox"
       ? { browser_specific_settings: { gecko: { id: "tmsync@tmsync.app" } } }

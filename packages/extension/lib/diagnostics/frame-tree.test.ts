@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  type NavFrame,
   type RawFrame,
   type VideoInfo,
   buildFrameTree,
+  buildFrameTreeFromNav,
   findPlayerFrame,
   flattenFrameTree,
 } from "./frame-tree";
@@ -133,5 +135,47 @@ describe("buildFrameTree", () => {
       "https://a.example",
       "https://orphan.example",
     ]);
+  });
+});
+
+describe("buildFrameTreeFromNav (webNavigation — real committed URLs)", () => {
+  it("shows the REAL redirected origin, not the iframe src attribute", () => {
+    // The iframe src says vsrc.su, but the frame redirected to cloudnestra — which
+    // is what getAllFrames reports. We can't inject there (no perm) → not reached,
+    // and that's the origin the user must actually enable.
+    const nav: NavFrame[] = [
+      { frameId: 0, parentFrameId: -1, url: "https://www.rivestream.app/watch?id=5" },
+      { frameId: 12, parentFrameId: 0, url: "https://cloudnestra.com/rcp/abc" },
+    ];
+    const roots = buildFrameTreeFromNav(
+      nav,
+      [{ frameId: 0, title: "Rive", videos: [] }], // only top reached
+      ["https://www.rivestream.app", "https://vsrc.su"], // vsrc.su enabled but irrelevant
+    );
+    const top = roots[0]!;
+    expect(top.isTop).toBe(true);
+    const player = top.children[0]!;
+    expect(player.origin).toBe("https://cloudnestra.com");
+    expect(player.reached).toBe(false);
+    expect(player.enabled).toBe(false); // enabling vsrc.su did nothing — this is the real one
+    expect(player.depth).toBe(1);
+  });
+
+  it("re-parents an http player across a dropped about:blank ad frame", () => {
+    const nav: NavFrame[] = [
+      { frameId: 0, parentFrameId: -1, url: "https://top.example/" },
+      { frameId: 5, parentFrameId: 0, url: "about:blank" }, // ad shell, dropped
+      { frameId: 9, parentFrameId: 5, url: "https://player.example/e" },
+    ];
+    const roots = buildFrameTreeFromNav(
+      nav,
+      [{ frameId: 9, title: "", videos: [vid({ paused: false, readyState: 4 })] }],
+      [],
+    );
+    const top = roots[0]!;
+    // about:blank is gone; the player hangs directly off the top frame.
+    expect(top.children).toHaveLength(1);
+    expect(top.children[0]!.origin).toBe("https://player.example");
+    expect(findPlayerFrame(roots)?.origin).toBe("https://player.example");
   });
 });

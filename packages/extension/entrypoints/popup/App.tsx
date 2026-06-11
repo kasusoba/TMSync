@@ -1,7 +1,10 @@
 import {
   type FrameNode,
+  type FrameVideoReport,
+  type NavFrame,
   type RawFrame,
   buildFrameTree,
+  buildFrameTreeFromNav,
   flattenFrameTree,
 } from "@/lib/diagnostics/frame-tree";
 import { deriveQuickLink } from "@/lib/picker/recipe-builder";
@@ -109,6 +112,34 @@ async function collectFrames(tabId: number): Promise<RawFrame[]> {
       .map((r) => ({ frameId: r.frameId ?? 0, ...(r.result as Omit<RawFrame, "frameId">) }));
   } catch {
     return [];
+  }
+}
+
+/** Optional `webNavigation` permission, requested on the inspect gesture. Calling
+ * request when already granted is a no-op that returns true. */
+async function ensureWebNav(): Promise<boolean> {
+  try {
+    return await browser.permissions.request({ permissions: ["webNavigation"] });
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Every frame's REAL committed URL + exact parent, via webNavigation — sees
+ * through redirect-chain embeds (the iframe `src` attribute lies). null when the
+ * permission isn't granted (caller falls back to src-attribute stitching).
+ */
+async function getAllFrames(tabId: number): Promise<NavFrame[] | null> {
+  try {
+    const frames = await browser.webNavigation.getAllFrames({ tabId });
+    return (frames ?? []).map((f) => ({
+      frameId: f.frameId,
+      parentFrameId: f.parentFrameId,
+      url: f.url,
+    }));
+  } catch {
+    return null;
   }
 }
 
@@ -225,10 +256,13 @@ export function App() {
     setBusy(false);
   };
 
-  // Map the active tab's frames into a tree. Only enabled origins (+ the top
-  // frame) are reachable, so enabling one and rescanning reveals what's nested
-  // inside it — that's how a deep player frame is found.
+  // Map the active tab's frames into a tree. webNavigation gives each frame's
+  // real committed URL (so a redirect-chain embed shows its true origin, not the
+  // misleading iframe src); executeScript adds video state where reachable.
+  // Enabling the real player origin and rescanning then reaches it.
   const scanFrames = async () => {
+    // Request webNavigation first, while the click is still a fresh user gesture.
+    const haveNav = await ensureWebNav();
     setBusy(true);
     const tabId = await activeTabId();
     if (tabId === null) {
@@ -240,7 +274,18 @@ export function App() {
       collectFrames(tabId),
       sendMessage("listEnabledSites", undefined),
     ]);
-    setFrameTree(flattenFrameTree(buildFrameTree(raw, sites)));
+    const nav = haveNav ? await getAllFrames(tabId) : null;
+    if (nav) {
+      const reports: FrameVideoReport[] = raw.map((f) => ({
+        frameId: f.frameId,
+        title: f.title,
+        videos: f.videos,
+      }));
+      setFrameTree(flattenFrameTree(buildFrameTreeFromNav(nav, reports, sites)));
+    } else {
+      // Fallback (permission denied): stitch by the iframe src attribute.
+      setFrameTree(flattenFrameTree(buildFrameTree(raw, sites)));
+    }
     setBusy(false);
   };
 
