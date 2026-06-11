@@ -5,7 +5,7 @@ import { type BadgeState, type BadgeStatus, onMessage, sendMessage } from "@/mes
 import type { ParsedMedia } from "@tmsync/shared";
 import clsx from "clsx";
 import { render } from "preact";
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import type { ContentScriptContext } from "wxt/utils/content-script-context";
 import { createShadowRootUi } from "wxt/utils/content-script-ui/shadow-root";
 import { Btn, Icon, IconBtn, tokens } from "./proto/kit";
@@ -104,11 +104,11 @@ function BadgeRoot() {
   const [prefs, setPrefs] = useState<BadgePrefs>({ mode: "full", position: null });
   // Docked position (edge + offset); null = default corner. Seeded from prefs.
   const [pos, setPos] = useState<EdgePos | null>(null);
-  // While dragging, the badge follows the cursor freely (top-left px); it snaps to
-  // the nearest edge on drop. Pure render — no clamp-in-effect (that froze the tab).
-  const [drag, setDrag] = useState<XY | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const dragged = useRef(false); // suppress the click that follows a drag
+  // FLIP: the badge's on-screen rect at drop time, so the layout effect can glide
+  // it from where you let go to the snapped edge.
+  const flipFrom = useRef<DOMRect | null>(null);
 
   useEffect(() => {
     void badgePrefs.getValue().then((v) => {
@@ -127,36 +127,66 @@ function BadgeRoot() {
     if (prefs.mode === "dot") setMinimized(true);
   }, [prefs.mode]);
 
-  // Drag the badge by a handle (the dot, or the panel's status bar). Below a small
-  // threshold it's a click (expand/minimize); past it, a drag that snaps to the
-  // nearest edge on release and persists.
+  // Glide to the snapped edge (FLIP): after the new docked position renders,
+  // invert to where the badge was let go, then spring to the new spot. No
+  // setState here — pure DOM, so it can't loop.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: animate when pos changes
+  useLayoutEffect(() => {
+    const el = rootRef.current;
+    const from = flipFrom.current;
+    flipFrom.current = null;
+    if (!el || !from) return;
+    const to = el.getBoundingClientRect();
+    const dx = from.left - to.left;
+    const dy = from.top - to.top;
+    if (!dx && !dy) return;
+    el.style.transition = "none";
+    el.style.transform = `translate(${dx}px, ${dy}px)`;
+    requestAnimationFrame(() => {
+      if (!rootRef.current) return;
+      rootRef.current.style.transition = "transform 380ms cubic-bezier(0.34, 1.32, 0.5, 1)";
+      rootRef.current.style.transform = "";
+    });
+  }, [pos]);
+
+  // Drag the badge by a handle (the dot, or the panel's status bar). We write the
+  // transform straight to the DOM during the move (no re-render → buttery), then
+  // snap to the nearest edge on release and let the FLIP effect animate it.
   const startDrag = (e: PointerEvent) => {
     if (e.button !== 0 || !rootRef.current) return;
-    const r = rootRef.current.getBoundingClientRect();
-    const start = { sx: e.clientX, sy: e.clientY, bx: r.left, by: r.top, w: r.width, h: r.height };
+    const el = rootRef.current;
+    const r = el.getBoundingClientRect();
+    const c0 = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
     let moved = false;
-    let center: XY = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    let center: XY = c0;
+    el.style.transition = "none";
+    el.style.willChange = "transform";
     const onMove = (ev: PointerEvent) => {
-      const dx = ev.clientX - start.sx;
-      const dy = ev.clientY - start.sy;
+      const dx = ev.clientX - e.clientX;
+      const dy = ev.clientY - e.clientY;
       if (!moved && Math.hypot(dx, dy) > 4) moved = true;
       if (moved) {
-        const x = Math.min(Math.max(0, start.bx + dx), window.innerWidth - start.w);
-        const y = Math.min(Math.max(0, start.by + dy), window.innerHeight - start.h);
-        setDrag({ x, y });
-        center = { x: x + start.w / 2, y: y + start.h / 2 };
+        el.style.transform = `translate(${dx}px, ${dy}px) scale(1.06)`; // a little "lift"
+        center = { x: c0.x + dx, y: c0.y + dy };
       }
     };
     const onUp = () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
-      setDrag(null);
-      if (moved) {
-        dragged.current = true;
-        const snapped = snapToEdge(center.x, center.y); // snap by the badge's centre
-        setPos(snapped);
-        void badgePrefs.setValue({ ...prefs, position: snapped });
+      el.style.willChange = "";
+      if (!moved) {
+        el.style.transform = "";
+        return;
       }
+      dragged.current = true;
+      const snapped = snapToEdge(center.x, center.y); // snap by the badge's centre
+      // Drop the scale "lift" but keep the translate, so the FLIP starts exactly
+      // where the dot/panel visually is (not its slightly-larger scaled box).
+      el.style.transform = `translate(${center.x - c0.x}px, ${center.y - c0.y}px)`;
+      flipFrom.current = el.getBoundingClientRect();
+      el.style.transform = ""; // back to the base position; FLIP glides from `from`
+      setPos(snapped);
+      void badgePrefs.setValue({ ...prefs, position: snapped });
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
@@ -219,13 +249,10 @@ function BadgeRoot() {
   if (prefs.mode === "off") return null; // hidden — rely on the toolbar icon + popup
 
   const s = STATE[status.state];
-  // While dragging: follow the cursor. Docked: edge style. Otherwise: default corner.
-  const posStyle = drag
-    ? { left: `${drag.x}px`, top: `${drag.y}px` }
-    : pos
-      ? edgeStyle(pos)
-      : undefined;
-  const anchor = drag || pos ? "" : DEFAULT_CORNER;
+  // Docked: edge style. Otherwise the default corner. (During a drag the transform
+  // is written straight to the DOM, so the base position stays put under it.)
+  const posStyle = pos ? edgeStyle(pos) : undefined;
+  const anchor = pos ? "" : DEFAULT_CORNER;
   const summary = `TMSync · ${status.detail ?? s.label}${status.title ? ` — ${status.title}` : ""}`;
 
   // Minimized: a status dot with a soft glow. The dot is also the drag handle.
