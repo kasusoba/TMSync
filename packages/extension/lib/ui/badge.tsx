@@ -31,27 +31,43 @@ function snapToEdge(x: number, y: number): EdgePos {
   return { edge, offset };
 }
 
+/** Within this fraction of an edge's end, dock flush into the corner. */
+const CORNER_ZONE = 0.08;
+
 /**
  * Inline style for a docked position — computed PURELY in render (no setState),
- * so it can never feed a re-render loop. The cross-axis fraction is clamped, and
- * the badge grows toward screen-centre (anchor the start half from the start, the
- * end half from the end) so a tall expanded panel stays on-screen.
+ * so it can never feed a re-render loop. The cross-axis is corner-flush at the
+ * extremes (so all four corners are reachable), and a % along the edge otherwise
+ * — anchored toward screen-centre so a tall expanded panel stays on-screen.
  */
 function edgeStyle(p: EdgePos): Record<string, string> {
-  const off = Math.min(0.96, Math.max(0.02, p.offset));
-  const start = `${(off * 100).toFixed(2)}%`;
-  const end = `${((1 - off) * 100).toFixed(2)}%`;
-  const nearStart = off < 0.5;
-  switch (p.edge) {
-    case "left":
-      return nearStart ? { left: EDGE_GAP, top: start } : { left: EDGE_GAP, bottom: end };
-    case "right":
-      return nearStart ? { right: EDGE_GAP, top: start } : { right: EDGE_GAP, bottom: end };
-    case "top":
-      return nearStart ? { top: EDGE_GAP, left: start } : { top: EDGE_GAP, right: end };
-    default: // bottom
-      return nearStart ? { bottom: EDGE_GAP, left: start } : { bottom: EDGE_GAP, right: end };
+  const off = Math.min(1, Math.max(0, p.offset));
+  const G = EDGE_GAP;
+  const edgeAnchor: Record<string, string> =
+    p.edge === "left"
+      ? { left: G }
+      : p.edge === "right"
+        ? { right: G }
+        : p.edge === "top"
+          ? { top: G }
+          : { bottom: G };
+  const horizontal = p.edge === "top" || p.edge === "bottom"; // cross-axis is x
+  let cross: Record<string, string>;
+  if (off < CORNER_ZONE) cross = horizontal ? { left: G } : { top: G };
+  else if (off > 1 - CORNER_ZONE) cross = horizontal ? { right: G } : { bottom: G };
+  else {
+    const start = `${(off * 100).toFixed(2)}%`;
+    const end = `${((1 - off) * 100).toFixed(2)}%`;
+    const nearStart = off < 0.5;
+    cross = horizontal
+      ? nearStart
+        ? { left: start }
+        : { right: end }
+      : nearStart
+        ? { top: start }
+        : { bottom: end };
   }
+  return { ...edgeAnchor, ...cross };
 }
 
 const STATE: Record<BadgeState, { color: string; glow: string; label: string }> = {
@@ -155,19 +171,19 @@ function BadgeRoot() {
   const startDrag = (e: PointerEvent) => {
     if (e.button !== 0 || !rootRef.current) return;
     const el = rootRef.current;
-    const r = el.getBoundingClientRect();
-    const c0 = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
     let moved = false;
-    let center: XY = c0;
+    let dx = 0;
+    let dy = 0;
+    let pointer: XY = { x: e.clientX, y: e.clientY };
     el.style.transition = "none";
     el.style.willChange = "transform";
     const onMove = (ev: PointerEvent) => {
-      const dx = ev.clientX - e.clientX;
-      const dy = ev.clientY - e.clientY;
+      dx = ev.clientX - e.clientX;
+      dy = ev.clientY - e.clientY;
       if (!moved && Math.hypot(dx, dy) > 4) moved = true;
       if (moved) {
         el.style.transform = `translate(${dx}px, ${dy}px) scale(1.06)`; // a little "lift"
-        center = { x: c0.x + dx, y: c0.y + dy };
+        pointer = { x: ev.clientX, y: ev.clientY };
       }
     };
     const onUp = () => {
@@ -179,10 +195,10 @@ function BadgeRoot() {
         return;
       }
       dragged.current = true;
-      const snapped = snapToEdge(center.x, center.y); // snap by the badge's centre
+      const snapped = snapToEdge(pointer.x, pointer.y); // snap to where you point
       // Drop the scale "lift" but keep the translate, so the FLIP starts exactly
       // where the dot/panel visually is (not its slightly-larger scaled box).
-      el.style.transform = `translate(${center.x - c0.x}px, ${center.y - c0.y}px)`;
+      el.style.transform = `translate(${dx}px, ${dy}px)`;
       flipFrom.current = el.getBoundingClientRect();
       el.style.transform = ""; // back to the base position; FLIP glides from `from`
       setPos(snapped);
