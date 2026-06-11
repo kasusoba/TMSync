@@ -206,7 +206,7 @@ export function PopupView(p: PopupViewProps) {
           t={t}
           right={
             topRow && (
-              <Btn t={t} tone="link" onClick={p.onToggleInspect}>
+              <Btn t={t} tone="ghost" onClick={p.onToggleInspect}>
                 <Icon name="search" class="text-[12px]" />
                 {p.inspecting ? "Hide frames" : "Inspect frames"}
               </Btn>
@@ -268,15 +268,9 @@ export function PopupView(p: PopupViewProps) {
                 />
               ) : (
                 <p class={clsx("px-1 text-[11px] leading-relaxed", t.faint)}>
-                  Player in an embedded frame and not scrobbling?{" "}
-                  <button
-                    type="button"
-                    onClick={p.onToggleInspect}
-                    class={clsx("underline underline-offset-2", t.link)}
-                  >
-                    Inspect frames
-                  </button>{" "}
-                  to find and enable it.
+                  Player in an embedded frame and not scrobbling? Use{" "}
+                  <span class={clsx("font-medium", t.sub)}>Inspect frames</span> above to find and
+                  enable it.
                 </p>
               )}
             </div>
@@ -290,8 +284,15 @@ export function PopupView(p: PopupViewProps) {
             title="Watch-on link"
             t={t}
             right={
-              <Btn t={t} tone="link" onClick={() => setWatchOpen((v) => !v)}>
-                {watchOpen ? "Hide" : p.quickLinkInitial ? "Edit" : "Add"}
+              <Btn t={t} tone="ghost" onClick={() => setWatchOpen((v) => !v)}>
+                {watchOpen ? (
+                  "Hide"
+                ) : (
+                  <>
+                    <Icon name={p.quickLinkInitial ? "edit" : "plus"} class="text-[12px]" />
+                    {p.quickLinkInitial ? "Edit" : "Add"}
+                  </>
+                )}
               </Btn>
             }
           >
