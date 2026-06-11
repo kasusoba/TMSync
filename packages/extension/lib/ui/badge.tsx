@@ -5,7 +5,7 @@ import { type BadgeState, type BadgeStatus, onMessage, sendMessage } from "@/mes
 import type { ParsedMedia } from "@tmsync/shared";
 import clsx from "clsx";
 import { render } from "preact";
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import type { ContentScriptContext } from "wxt/utils/content-script-context";
 import { createShadowRootUi } from "wxt/utils/content-script-ui/shadow-root";
 import { Btn, Icon, IconBtn, tokens } from "./proto/kit";
@@ -13,13 +13,19 @@ import { Correction, EpisodePick, ManualPick, RateNote, RatingRow } from "./scro
 
 const t = tokens("dark");
 
-/** Tailwind anchor classes per corner pref. */
-const CORNER: Record<BadgePrefs["position"], string> = {
-  "bottom-left": "bottom-3.5 left-3.5",
-  "bottom-right": "bottom-3.5 right-3.5",
-  "top-left": "top-3.5 left-3.5",
-  "top-right": "top-3.5 right-3.5",
-};
+/** Default anchor when the user hasn't dragged it (position === null). */
+const DEFAULT_CORNER = "bottom-3.5 left-3.5";
+
+type XY = { x: number; y: number };
+
+/** Keep a dragged top-left inside the viewport, given the element's size. */
+function clampXY(x: number, y: number, w: number, h: number): XY {
+  const m = 6;
+  return {
+    x: Math.min(Math.max(m, x), Math.max(m, window.innerWidth - w - m)),
+    y: Math.min(Math.max(m, y), Math.max(m, window.innerHeight - h - m)),
+  };
+}
 
 const STATE: Record<BadgeState, { color: string; glow: string; label: string }> = {
   idle: {
@@ -66,19 +72,77 @@ function BadgeRoot() {
   const [promptDismissed, setPromptDismissed] = useState(false);
   const [rewatchHidden, setRewatchHidden] = useState(false);
   const [manualMode, setManualMode] = useState(false);
-  // User pref: where/whether the in-page badge shows (the toolbar icon is always
-  // the ambient indicator). Live-updated so changing it takes effect immediately.
-  const [prefs, setPrefs] = useState<BadgePrefs>({ mode: "full", position: "bottom-left" });
+  // User pref: whether the in-page badge shows + its dragged position (the toolbar
+  // icon is always the ambient indicator). Live-updated so changes apply at once.
+  const [prefs, setPrefs] = useState<BadgePrefs>({ mode: "full", position: null });
+  // Live dragged top-left; null = use the default corner. Seeded from prefs.
+  const [pos, setPos] = useState<XY | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const dragged = useRef(false); // suppress the click that follows a drag
 
   useEffect(() => {
-    void badgePrefs.getValue().then(setPrefs);
-    return badgePrefs.watch((v) => v && setPrefs(v));
+    void badgePrefs.getValue().then((v) => {
+      setPrefs(v);
+      setPos(v.position);
+    });
+    return badgePrefs.watch((v) => {
+      if (!v) return;
+      setPrefs(v);
+      setPos(v.position);
+    });
   }, []);
 
   // "Dot" mode keeps the badge collapsed to its status dot by default.
   useEffect(() => {
     if (prefs.mode === "dot") setMinimized(true);
   }, [prefs.mode]);
+
+  // Keep the badge on-screen as its size changes (dot ↔ panel) or the window
+  // resizes — clamp the rendered top-left back into view.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-clamp on size/content change
+  useLayoutEffect(() => {
+    if (!pos || !rootRef.current) return;
+    const r = rootRef.current.getBoundingClientRect();
+    const c = clampXY(pos.x, pos.y, r.width, r.height);
+    if (c.x !== pos.x || c.y !== pos.y) setPos(c);
+  }, [pos, minimized, panel, status]);
+
+  // Drag the badge by a handle (the dot, or the panel's status bar). Below a small
+  // threshold it's a click (expand/minimize); past it, a move that persists.
+  const startDrag = (e: PointerEvent) => {
+    if (e.button !== 0 || !rootRef.current) return;
+    const r = rootRef.current.getBoundingClientRect();
+    const start = { sx: e.clientX, sy: e.clientY, bx: r.left, by: r.top, w: r.width, h: r.height };
+    let moved = false;
+    let last: XY = { x: r.left, y: r.top };
+    const onMove = (ev: PointerEvent) => {
+      const dx = ev.clientX - start.sx;
+      const dy = ev.clientY - start.sy;
+      if (!moved && Math.hypot(dx, dy) > 4) moved = true;
+      if (moved) {
+        last = clampXY(start.bx + dx, start.by + dy, start.w, start.h);
+        setPos(last);
+      }
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      if (moved) {
+        dragged.current = true;
+        void badgePrefs.setValue({ ...prefs, position: last });
+      }
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+
+  // True (and resets) if the just-finished pointer interaction was a drag — so the
+  // synthetic click after a drag doesn't also expand/minimize.
+  const consumeDrag = () => {
+    if (!dragged.current) return false;
+    dragged.current = false;
+    return true;
+  };
 
   useEffect(() => {
     const off = onMessage("scrobbleStatus", ({ data }) => {
@@ -129,18 +193,24 @@ function BadgeRoot() {
   if (prefs.mode === "off") return null; // hidden — rely on the toolbar icon + popup
 
   const s = STATE[status.state];
-  const corner = CORNER[prefs.position];
+  // Dragged position takes over; otherwise anchor to the default corner.
+  const posStyle = pos ? { left: `${pos.x}px`, top: `${pos.y}px` } : undefined;
+  const anchor = pos ? "" : DEFAULT_CORNER;
   const summary = `TMSync · ${status.detail ?? s.label}${status.title ? ` — ${status.title}` : ""}`;
 
-  // Minimized: a status dot with a soft glow.
+  // Minimized: a status dot with a soft glow. The dot is also the drag handle.
   if (minimized) {
     return (
-      <div class={clsx("fixed z-[2147483646] font-sans", corner)}>
+      <div ref={rootRef} class={clsx("fixed z-[2147483646] font-sans", anchor)} style={posStyle}>
         <button
           type="button"
-          class="grid place-items-center p-1.5"
-          onClick={() => setMinimized(false)}
-          title={summary}
+          class="grid cursor-grab touch-none place-items-center p-1.5 active:cursor-grabbing"
+          onPointerDown={startDrag}
+          onClick={() => {
+            if (consumeDrag()) return;
+            setMinimized(false);
+          }}
+          title={`${summary} — drag to move`}
           aria-label={summary}
         >
           <span class={clsx("tmsync-dot size-3.5 rounded-full", s.color, s.glow)} />
@@ -165,10 +235,12 @@ function BadgeRoot() {
 
   return (
     <div
+      ref={rootRef}
       class={clsx(
         "tmsync-pop fixed z-[2147483646] flex max-w-[340px] flex-col gap-2 font-sans",
-        corner,
+        anchor,
       )}
+      style={posStyle}
     >
       {panel === "review" && media && (
         <RateNote
@@ -286,27 +358,30 @@ function BadgeRoot() {
         </div>
       )}
 
+      {/* The status bar doubles as the drag handle (drag to reposition). */}
       <div
         class={clsx(
-          "inline-flex items-center gap-2.5 rounded-xl py-2 pr-2 pl-3 shadow-xl shadow-black/30",
+          "inline-flex cursor-grab touch-none items-center gap-2.5 rounded-xl py-2 pr-2 pl-3 shadow-xl shadow-black/30 active:cursor-grabbing",
           t.panel,
         )}
+        onPointerDown={startDrag}
       >
         <span class={clsx("size-2.5 shrink-0 rounded-full", s.color)} />
         <button
           type="button"
-          class="min-w-0 flex-1 text-left"
-          onClick={() =>
+          class="min-w-0 flex-1 cursor-pointer text-left"
+          onClick={() => {
+            if (consumeDrag()) return;
             setPanel((p) =>
               p ? null : status.pick ? "manual" : status.needEpisode ? "episode" : "review",
-            )
-          }
+            );
+          }}
           title={
             status.pick
               ? "Pick what you’re watching"
               : status.needEpisode
                 ? "Set the episode you’re watching"
-                : "Rate, note, or fix the match"
+                : "Rate, note, or fix the match · drag the bar to move"
           }
         >
           <span class={clsx("block text-[12px] font-semibold", t.heading)}>
@@ -316,7 +391,15 @@ function BadgeRoot() {
             <span class={clsx("block truncate text-[12px]", t.sub)}>{status.title}</span>
           )}
         </button>
-        <IconBtn t={t} name="minimize" title="Minimize" onClick={() => setMinimized(true)} />
+        <IconBtn
+          t={t}
+          name="minimize"
+          title="Minimize"
+          onClick={() => {
+            if (consumeDrag()) return;
+            setMinimized(true);
+          }}
+        />
       </div>
     </div>
   );

@@ -319,7 +319,7 @@ export function App() {
   const [copied, setCopied] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportNote, setExportNote] = useState<string | null>(null);
-  const [badge, setBadge] = useState<BadgePrefs>({ mode: "full", position: "bottom-left" });
+  const [badge, setBadge] = useState<BadgePrefs>({ mode: "full", position: null });
   const has = (s: string) => s.toLowerCase().includes(q.toLowerCase());
 
   const refresh = async () => {
@@ -932,29 +932,21 @@ export function App() {
                 </div>
 
                 <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>Position</span>
-                <div class="grid max-w-[260px] grid-cols-2 gap-1">
-                  {(
-                    [
-                      ["top-left", "Top left"],
-                      ["top-right", "Top right"],
-                      ["bottom-left", "Bottom left"],
-                      ["bottom-right", "Bottom right"],
-                    ] as const
-                  ).map(([value, label]) => (
-                    <button
-                      type="button"
-                      key={value}
-                      disabled={badge.mode === "off"}
-                      onClick={() => updateBadge({ position: value })}
-                      class={clsx(
-                        "rounded-md py-1.5 text-[12px] font-medium transition-colors disabled:opacity-40",
-                        badge.position === value ? "bg-ikura text-white" : t.ghost,
-                      )}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
+                <p class={clsx("mb-2 text-[12px] leading-relaxed", t.sub)}>
+                  Drag the badge (grab the status bar, or the dot) to move it anywhere on the page.
+                  {badge.position
+                    ? ` Currently moved to ${Math.round(badge.position.x)}, ${Math.round(badge.position.y)}.`
+                    : " Currently at the default bottom-left."}
+                </p>
+                <Btn
+                  t={t}
+                  tone="ghost"
+                  disabled={badge.mode === "off" || badge.position === null}
+                  onClick={() => updateBadge({ position: null })}
+                >
+                  <Icon name="refresh" class="text-[12px]" />
+                  Reset to default
+                </Btn>
               </>
             )}
           </div>
