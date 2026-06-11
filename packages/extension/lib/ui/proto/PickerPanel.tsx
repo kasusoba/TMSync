@@ -25,6 +25,8 @@ export interface PickerPanelProps {
   iframe: boolean;
   preview: { ok: true; text: string } | { ok: false; error: string };
   banner?: { kind: "library"; name: string } | null;
+  /** Name of a recipe that exists for this site but doesn't cover the current URL. */
+  siteRecipeNote?: string | null;
   status?: string | null;
   /** Override the save/copy enabled state (default: title currently resolves). */
   canSave?: boolean;
@@ -87,6 +89,13 @@ export function PickerPanel(p: PickerPanelProps) {
           <div class={clsx("mb-3 rounded-lg px-2.5 py-2 text-[11px] leading-snug", t.infoBox)}>
             A library recipe (“{p.banner.name}”) already covers this page. Saving creates your local
             override — it wins over the library one.
+          </div>
+        )}
+
+        {p.siteRecipeNote && (
+          <div class={clsx("mb-3 rounded-lg px-2.5 py-2 text-[11px] leading-snug", t.infoBox)}>
+            You already have a recipe for “{p.siteRecipeNote}” — it applies on its watch pages, not
+            this one. (Quick links live in the popup, not here.)
           </div>
         )}
 

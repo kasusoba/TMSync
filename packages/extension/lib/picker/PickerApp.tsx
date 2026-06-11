@@ -89,6 +89,9 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
   // Name of a LIBRARY recipe that already covers this page (when the user has no
   // override yet) — saving here creates a local override that wins over it.
   const [libraryCovers, setLibraryCovers] = useState<string | null>(null);
+  // Name of an existing recipe for THIS SITE that doesn't cover the current URL
+  // (so we note it rather than misleadingly entering "edit" on, say, a search page).
+  const [siteRecipeName, setSiteRecipeName] = useState<string | null>(null);
 
   // Populate ONLY from the user's own custom recipe — never from the library, so
   // fixing a wrong library recipe starts fresh rather than inheriting its fields.
@@ -97,13 +100,19 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     void (async () => {
       const custom = await customRecipes.getValue();
-      const saved = custom.find((r) => recipeMatchesHost(r, location.hostname));
-      if (saved) {
-        setDraft(recipeToDraft(saved));
-        setName(saved.name);
-        setEditingId(saved.id);
+      // Enter EDIT mode only when the user's own recipe actually applies to THIS
+      // page — so a non-matching URL (a search/listing page) shows a fresh
+      // "Set up site", not a misleading "Update recipe" for a different path.
+      const own = selectRecipe(custom, ctx);
+      if (own) {
+        setDraft(recipeToDraft(own));
+        setName(own.name);
+        setEditingId(own.id);
         return; // editing own recipe — no need for the library note
       }
+      // A recipe exists for this site but not this URL — note it instead of editing it.
+      const siteRecipe = custom.find((r) => recipeMatchesHost(r, location.hostname));
+      if (siteRecipe) setSiteRecipeName(siteRecipe.name);
       const match = selectRecipe(await loadRecipes(), ctx);
       if (match) setLibraryCovers(match.name);
     })();
@@ -280,6 +289,7 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
                 : { ok: false, error: preview.error }
           }
           banner={!editingId && libraryCovers ? { kind: "library", name: libraryCovers } : null}
+          siteRecipeNote={editingId ? null : siteRecipeName}
           status={status}
           canSave={draft.manual || !!draft.fields.title}
           onPick={(key) => setPicking(key)}
