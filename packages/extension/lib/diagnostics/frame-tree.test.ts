@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  type FrameNode,
   type NavFrame,
   type RawFrame,
   type VideoInfo,
@@ -8,6 +9,12 @@ import {
   findPlayerFrame,
   flattenFrameTree,
 } from "./frame-tree";
+
+/** Narrow `T | undefined` to `T`, failing the test if absent — avoids `!`. */
+function defined<T>(v: T | undefined): T {
+  if (v === undefined) throw new Error("expected a defined value");
+  return v;
+}
 
 function vid(p: Partial<VideoInfo> = {}): VideoInfo {
   return {
@@ -53,19 +60,19 @@ describe("buildFrameTree", () => {
       }),
     ];
     const roots = buildFrameTree(frames, ["https://www.rivestream.app", "https://vsrc.su"]);
-    const top = roots[0]!;
+    const top = defined(roots[0]);
 
     expect(top.isTop).toBe(true);
     expect(top.origin).toBe("https://www.rivestream.app");
     expect(top.children).toHaveLength(1);
 
-    const aggregator = top.children[0]!;
+    const aggregator = defined(top.children[0]);
     expect(aggregator.origin).toBe("https://vsrc.su");
     expect(aggregator.reached).toBe(true);
     expect(aggregator.enabled).toBe(true);
     expect(aggregator.depth).toBe(1);
 
-    const player = aggregator.children[0]!;
+    const player = defined(aggregator.children[0]);
     expect(player.origin).toBe("https://deepcdn.xyz");
     expect(player.reached).toBe(false); // we couldn't inject — the actionable leaf
     expect(player.enabled).toBe(false);
@@ -83,10 +90,10 @@ describe("buildFrameTree", () => {
       }),
       frame({ frameId: 3, url: "https://player.example/e/9" }),
     ];
-    const top = buildFrameTree(frames, [])[0]!;
+    const top = defined(buildFrameTree(frames, [])[0]);
     expect(top.children).toHaveLength(1);
-    expect(top.children[0]!.reached).toBe(true);
-    expect(top.children[0]!.frameId).toBe(3);
+    expect(top.children[0]?.reached).toBe(true);
+    expect(top.children[0]?.frameId).toBe(3);
   });
 
   it("flags the frame with a playing, non-background video as the player", () => {
@@ -106,7 +113,7 @@ describe("buildFrameTree", () => {
       }),
     ];
     const roots = buildFrameTree(frames, []);
-    const top = roots[0]!;
+    const top = defined(roots[0]);
     expect(top.hasActiveVideo).toBe(false); // background trailer excluded
 
     const player = findPlayerFrame(roots);
@@ -127,7 +134,7 @@ describe("buildFrameTree", () => {
       frame({ frameId: 4, url: "https://a.example/1" }),
     ];
     const roots = buildFrameTree(frames, []);
-    expect(roots[0]!.isTop).toBe(true);
+    expect(roots[0]?.isTop).toBe(true);
 
     const flat = flattenFrameTree(roots);
     expect(flat.map((n) => n.origin)).toEqual([
@@ -152,9 +159,9 @@ describe("buildFrameTreeFromNav (webNavigation — real committed URLs)", () => 
       [{ frameId: 0, title: "Rive", videos: [] }], // only top reached
       ["https://www.rivestream.app", "https://vsrc.su"], // vsrc.su enabled but irrelevant
     );
-    const top = roots[0]!;
+    const top = defined(roots[0]);
     expect(top.isTop).toBe(true);
-    const player = top.children[0]!;
+    const player = defined(top.children[0]);
     expect(player.origin).toBe("https://cloudnestra.com");
     expect(player.reached).toBe(false);
     expect(player.enabled).toBe(false); // enabling vsrc.su did nothing — this is the real one
@@ -172,10 +179,10 @@ describe("buildFrameTreeFromNav (webNavigation — real committed URLs)", () => 
       [{ frameId: 9, title: "", videos: [vid({ paused: false, readyState: 4 })] }],
       [],
     );
-    const top = roots[0]!;
+    const top = defined(roots[0]);
     // about:blank is gone; the player hangs directly off the top frame.
     expect(top.children).toHaveLength(1);
-    expect(top.children[0]!.origin).toBe("https://player.example");
+    expect(top.children[0]?.origin).toBe("https://player.example");
     expect(findPlayerFrame(roots)?.origin).toBe("https://player.example");
   });
 });
