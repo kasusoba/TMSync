@@ -100,14 +100,19 @@ export const Recipe = z.object({
   // in-page instead; see `manualKey`. A recipe with no `extract` is manual.
   extract: z
     .object({
-      title: Field,
+      // Optional because a TMDB id can stand in as the identity (below). A recipe
+      // still needs ONE of title/tmdbId — enforced by the refine.
+      title: Field.optional(),
       year: Field.optional(), // helps movie disambiguation
       season: Field.optional(), // shows
       episode: Field.optional(), // shows
       // The TMDB id (usually from the URL, e.g. /movie/693134 or ?id=276161).
       // When present the Trakt adapter resolves by id — exact, no remake/same-
-      // title ambiguity — and the scraped title is just a display fallback.
+      // title ambiguity — so the title is optional (and a mere display fallback).
       tmdbId: Field.optional(),
+    })
+    .refine((e) => e.title !== undefined || e.tmdbId !== undefined, {
+      message: "a recipe needs a title or a TMDB id to resolve",
     })
     .optional(),
   // MANUAL recipes only: a field whose VALUE distinguishes the current content

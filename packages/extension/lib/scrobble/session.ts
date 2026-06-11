@@ -19,7 +19,8 @@ const TAB_MEDIA_POLL_TRIES = 8;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function mediaKey(m: ParsedMedia): string {
-  return `${m.mediaType}:${m.title}:${m.season ?? ""}:${m.episode ?? ""}`;
+  const id = m.tmdbId !== undefined ? `tmdb${m.tmdbId}` : m.title;
+  return `${m.mediaType}:${id}:${m.season ?? ""}:${m.episode ?? ""}`;
 }
 
 /**
@@ -34,8 +35,11 @@ function episodeSuffix(m: ParsedMedia): string {
 }
 
 function label(m: ParsedMedia): string {
+  // A title-less, id-only recipe shows the id until the tracker resolves a real
+  // title (which then replaces this in the badge).
+  const name = m.title || (m.tmdbId !== undefined ? `TMDB ${m.tmdbId}` : "");
   const yr = m.year ? ` (${m.year})` : "";
-  return `${m.title}${episodeSuffix(m)}${yr}`;
+  return `${name}${episodeSuffix(m)}${yr}`;
 }
 
 /** Title as the tracker matched it, keeping the scraped episode (transparency). */

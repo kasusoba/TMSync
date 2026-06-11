@@ -307,6 +307,30 @@ describe("TMDB id (auto-detect + resolve-by-id)", () => {
     expect(detectTmdbIdField("https://twoseven.xyz/room/abc")).toBeUndefined();
   });
 
+  it("builds + extracts an id-ONLY recipe (no title needed)", () => {
+    // The 1embed case: the in-frame title is junk, so the user drops it and relies
+    // on the id. Title is optional once a tmdbId is present.
+    const draft: RecipeDraft = {
+      ...emptyDraft("https://bcine.ru/movie/936075"),
+      fields: { tmdbId: detectTmdbIdField("https://bcine.ru/movie/936075") },
+    };
+    const built = buildRecipe(draft, { id: "m", name: "bCine" });
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    expect(built.recipe.extract?.title).toBeUndefined();
+
+    const doc = new DOMParser().parseFromString("<title>x</title>", "text/html");
+    expect(extract(built.recipe, { document: doc, url: "https://bcine.ru/movie/936075" })).toEqual({
+      ok: true,
+      media: { mediaType: "movie", title: "", tmdbId: 936075 },
+    });
+  });
+
+  it("rejects a recipe with neither a title nor an id", () => {
+    const draft: RecipeDraft = { ...emptyDraft("https://x/watch"), fields: {} };
+    expect(buildRecipe(draft, { id: "x", name: "X" })).toMatchObject({ ok: false });
+  });
+
   it("auto-detect includes the tmdbId field from the page URL", () => {
     const ctx = { document: parse(movieHtml), url: "https://cineby.at/movie/693134" };
     expect(autoDetectFields(ctx).tmdbId).toEqual({

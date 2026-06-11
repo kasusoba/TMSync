@@ -326,7 +326,7 @@ export function buildRecipe(draft: RecipeDraft, meta: { id: string; name: string
   // page's distinguishing string (filename / room title).
   const candidate = draft.manual
     ? { ...base, ...(draft.manualKey ? { manualKey: draft.manualKey } : {}) }
-    : draft.fields.title
+    : draft.fields.title || draft.fields.tmdbId
       ? {
           ...base,
           extract: {
@@ -339,7 +339,7 @@ export function buildRecipe(draft: RecipeDraft, meta: { id: string; name: string
         }
       : null;
 
-  if (!candidate) return { ok: false, error: "Pick a title first." };
+  if (!candidate) return { ok: false, error: "Pick a title or a TMDB id first." };
 
   const parsed = RecipeSchema.safeParse(candidate);
   if (!parsed.success) {

@@ -417,8 +417,12 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
   }
 
   const preview = previewDraft(draft, ctx);
+  const previewName = preview.ok
+    ? preview.media.title ||
+      (preview.media.tmdbId !== undefined ? `TMDB ${preview.media.tmdbId}` : "")
+    : "";
   const previewText = preview.ok
-    ? `${preview.media.mediaType}: ${preview.media.title}${
+    ? `${preview.media.mediaType}: ${previewName}${
         preview.media.year ? ` (${preview.media.year})` : ""
       }${
         preview.media.season !== undefined
@@ -490,7 +494,7 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
           banner={!editingId && libraryCovers ? { kind: "library", name: libraryCovers } : null}
           siteRecipeNote={editingId ? null : siteRecipeName}
           status={status}
-          canSave={draft.manual || !!draft.fields.title}
+          canSave={draft.manual || !!draft.fields.title || !!draft.fields.tmdbId}
           onPick={(key) => {
             setDomPick(null); // a fresh pick supersedes a pending "which number?"
             setPicking(key);

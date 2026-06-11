@@ -105,7 +105,7 @@ export function FrameInspector(p: FrameInspectorProps) {
                 >
                   {host(n.origin, n.url)}
                 </code>
-                <span class="flex items-center gap-1.5">
+                <span class="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
                   {n.isTop && <span class={clsx("text-[10px]", t.faint)}>top</span>}
                   {!n.isTop && (
                     <span class={clsx("inline-flex items-center gap-0.5 text-[10px]", t.faint)}>
@@ -128,8 +128,7 @@ export function FrameInspector(p: FrameInspectorProps) {
                       title="Set up a recipe inside this frame"
                       onClick={() => p.onSetupFrame?.(n.origin, n.frameId as number)}
                     >
-                      <Icon name="target" class="text-[12px] text-ikura" />
-                      Set up
+                      <Icon name="target" class="text-[13px] text-ikura" />
                     </Btn>
                   )}
                   {n.enabled ? (

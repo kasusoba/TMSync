@@ -19,18 +19,19 @@ export function extract(recipe: Recipe, ctx: EngineContext): ExtractResult {
   }
 
   const title = readField(recipe.extract.title, ctx);
-  if (!title) {
-    return { ok: false, error: "could not read a title from this page" };
+  const tmdbId = readInt(recipe.extract.tmdbId, ctx);
+  // A TMDB id can stand in for the title as the identity. Need at least one.
+  if (!title && tmdbId === undefined) {
+    return { ok: false, error: "could not read a title or TMDB id from this page" };
   }
 
   const year = readInt(recipe.extract.year, ctx);
   const season = readInt(recipe.extract.season, ctx);
   const episode = readInt(recipe.extract.episode, ctx);
-  const tmdbId = readInt(recipe.extract.tmdbId, ctx);
 
   const media: ParsedMedia = {
     mediaType: resolveMediaType(recipe.mediaType, season, episode),
-    title,
+    title: title ?? "",
   };
   if (year !== undefined) media.year = year;
   if (season !== undefined) media.season = season;
