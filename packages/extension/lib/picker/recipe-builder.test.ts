@@ -326,6 +326,32 @@ describe("TMDB id (auto-detect + resolve-by-id)", () => {
     });
   });
 
+  it("drops season/episode from a movie recipe (would resolve as a show otherwise)", () => {
+    // Regression: a movie page (bcine /movie/4977 = the film Paprika) whose draft
+    // picked up a stray season/episode would resolve tmdb id 4977 in the *tv*
+    // namespace (a 1979 series). A movie must never carry season/episode.
+    const draft: RecipeDraft = {
+      ...emptyDraft("https://bcine.ru/movie/4977"),
+      mediaType: "movie",
+      fields: {
+        tmdbId: detectTmdbIdField("https://bcine.ru/movie/4977"),
+        season: { source: "url", regex: urlTokenRegex(0), group: 1, transforms: ["toInt"] },
+        episode: { source: "url", regex: urlTokenRegex(0), group: 1, transforms: ["toInt"] },
+      },
+    };
+    const built = buildRecipe(draft, { id: "m", name: "bCine" });
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    expect(built.recipe.extract?.season).toBeUndefined();
+    expect(built.recipe.extract?.episode).toBeUndefined();
+
+    const doc = new DOMParser().parseFromString("<title>x</title>", "text/html");
+    expect(extract(built.recipe, { document: doc, url: "https://bcine.ru/movie/4977" })).toEqual({
+      ok: true,
+      media: { mediaType: "movie", title: "", tmdbId: 4977 },
+    });
+  });
+
   it("rejects a recipe with neither a title nor an id", () => {
     const draft: RecipeDraft = { ...emptyDraft("https://x/watch"), fields: {} };
     expect(buildRecipe(draft, { id: "x", name: "X" })).toMatchObject({ ok: false });

@@ -458,12 +458,16 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
               : null
           }
           fields={(Object.keys(FIELD_LABELS) as DraftFieldKey[])
-            // AniList resolves by title → cour and passes episode as-is: season is
-            // never used, and year isn't part of the AniList search. Hide both so
-            // an anime recipe only asks for what it needs (title + episode).
-            .filter((key) =>
-              draft.tracker === "anilist" ? key === "title" || key === "episode" : true,
-            )
+            .filter((key) => {
+              // AniList resolves by title → cour and passes episode as-is: season
+              // is never used, and year isn't part of the AniList search. Hide both
+              // so an anime recipe only asks for what it needs (title + episode).
+              if (draft.tracker === "anilist") return key === "title" || key === "episode";
+              // A movie has no season/episode — offering those rows invites picking
+              // a stray number (e.g. the id) that flips resolution to the tv namespace.
+              if (draft.mediaType === "movie") return key !== "season" && key !== "episode";
+              return true;
+            })
             .map((key) => {
               const field = draft.fields[key];
               return {

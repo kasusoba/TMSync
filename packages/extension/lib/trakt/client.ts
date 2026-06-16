@@ -82,8 +82,12 @@ export async function resolve(media: ParsedMedia): Promise<ResolvedIdentity | nu
   const cached = cache[key];
   if (cached) return cached;
 
-  const type: "movie" | "show" =
-    media.season !== undefined || media.episode !== undefined ? "show" : media.mediaType;
+  // extract() already settled movie-vs-show: an explicit recipe `mediaType`
+  // wins; only "auto" falls back to season/episode presence. Trust it. Re-
+  // deriving from season/episode here would push an explicit `movie` recipe
+  // that scraped a stray number into TMDB's *tv* id namespace — e.g. tmdb id
+  // 4977 is the film Paprika as a movie but a 1979 series as a show.
+  const type: "movie" | "show" = media.mediaType;
 
   // Prefer an exact TMDB-id lookup when the page gave us one — no title search,
   // so same-title remakes / id-namespaced shows can't be confused. `type`

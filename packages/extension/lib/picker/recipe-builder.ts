@@ -322,6 +322,10 @@ export function buildRecipe(draft: RecipeDraft, meta: { id: string; name: string
     video: { selector: draft.video.selector, frame: draft.video.frame },
   };
 
+  // A movie has no season/episode — drop them even if a stale draft (or a
+  // mis-pick) carries them, so the recipe can't later be resolved as a show.
+  const isMovie = draft.mediaType === "movie";
+
   // Manual recipe: no extract. An optional manualKey remembers a pick by the
   // page's distinguishing string (filename / room title).
   const candidate = draft.manual
@@ -332,8 +336,8 @@ export function buildRecipe(draft: RecipeDraft, meta: { id: string; name: string
           extract: {
             title: draft.fields.title,
             year: draft.fields.year,
-            season: draft.fields.season,
-            episode: draft.fields.episode,
+            season: isMovie ? undefined : draft.fields.season,
+            episode: isMovie ? undefined : draft.fields.episode,
             tmdbId: draft.fields.tmdbId,
           },
         }
