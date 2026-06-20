@@ -1,3 +1,4 @@
+import type { ParsedMedia } from "@tmsync/shared";
 import { anilistAdapter } from "../anilist/adapter";
 import { traktAdapter } from "../trakt/adapter";
 import type { TrackerAdapter } from "./adapter";
@@ -9,4 +10,16 @@ export type { RatingLevel, RecordPhase, RecordResult, Tracker, TrackedItem } fro
 /** The adapter for a tracker. Routing's single source of truth (constraint #1). */
 export function getAdapter(tracker: Tracker): TrackerAdapter {
   return tracker === "anilist" ? anilistAdapter : traktAdapter;
+}
+
+/**
+ * The tracker an item actually routes to, decided by TYPE (constraint #1):
+ * movies — anime or not — always go to Trakt, even on an `anilist` (anime) site,
+ * which has no movie scrobble path. Series follow the recipe's tracker. This lets
+ * one `mediaType: "auto"` recipe on a mixed anime site (where movie & series pages
+ * are indistinguishable by URL/DOM) send series → AniList and movies → Trakt,
+ * keyed off whether an episode was scraped.
+ */
+export function routeTracker(tracker: Tracker, mediaType: ParsedMedia["mediaType"]): Tracker {
+  return mediaType === "movie" ? "trakt" : tracker;
 }

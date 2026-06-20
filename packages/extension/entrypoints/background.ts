@@ -36,7 +36,7 @@ import {
   tabSessions,
   tabStatus,
 } from "@/lib/storage";
-import { getAdapter } from "@/lib/tracker";
+import { getAdapter, routeTracker } from "@/lib/tracker";
 import { connect, disconnect, getRedirectUri, isConnected } from "@/lib/trakt/auth";
 import {
   TraktNotConnectedError,
@@ -150,7 +150,7 @@ export default defineBackground(() => {
     if (tabId !== undefined && !(await claimScrobbleOwner(tabId, frameId, data.action))) {
       return { ok: true, resolved: true }; // another frame owns this tab's scrobble
     }
-    const adapter = getAdapter(data.tracker ?? "trakt");
+    const adapter = getAdapter(routeTracker(data.tracker ?? "trakt", data.media.mediaType));
     let item: Awaited<ReturnType<typeof adapter.resolve>>;
     try {
       item = await adapter.resolve(data.media);
@@ -184,7 +184,7 @@ export default defineBackground(() => {
   // unauthenticated for both trackers, so transparency holds even pre-connect.
   onMessage("resolveMedia", async ({ data }) => {
     try {
-      const adapter = getAdapter(data.tracker ?? "trakt");
+      const adapter = getAdapter(routeTracker(data.tracker ?? "trakt", data.media.mediaType));
       const item = await adapter.resolve(data.media);
       if (!item) return { resolved: false };
       return { resolved: true, title: item.title, year: item.year, mediaType: item.mediaType };

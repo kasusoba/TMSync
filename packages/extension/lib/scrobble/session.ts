@@ -1,3 +1,4 @@
+import { routeTracker } from "@/lib/tracker";
 import type { Tracker } from "@/lib/tracker/types";
 import { type BadgeStatus, type ScrobbleReply, onMessage, sendMessage } from "@/messaging";
 import {
@@ -315,7 +316,8 @@ export class SessionManager {
     this.videoSelector = recipe.video.selector;
     this.frame = recipe.video.frame;
     this.watchedThreshold = recipe.video.watchedThreshold;
-    this.tracker = recipe.tracker;
+    // Route by TYPE: a movie on an anilist (anime) site still goes to Trakt.
+    this.tracker = routeTracker(recipe.tracker, media.mediaType);
 
     // Avoid churn from the head observer firing on unrelated mutations.
     const key = mediaKey(media);
@@ -388,6 +390,8 @@ export class SessionManager {
 
     this.manualAwaiting = false;
     this.localMedia = media;
+    // A manually-picked movie still routes to Trakt (constraint #1).
+    this.tracker = routeTracker(recipe.tracker, media.mediaType);
     const key = `manual:${pageKey}:${mediaKey(media)}`;
     if (key === this.lastPublishedKey) return;
     this.lastPublishedKey = key;
