@@ -31,7 +31,7 @@ export function QuickLinksView({
 }) {
   const t = tokens(variant);
   return (
-    <div class={clsx("w-[280px] space-y-2", cls)}>
+    <div class={clsx("w-full max-w-[280px] space-y-2", cls)}>
       {label && (
         <div class={clsx("text-[10px] font-semibold uppercase tracking-wider", t.faint)}>
           {label}

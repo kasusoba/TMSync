@@ -34,11 +34,17 @@ export async function mountQuickLinks(
     position: "inline",
     anchor: opts.anchor ?? "ul.external",
     append: opts.append ?? "after",
-    onMount: (container) =>
+    onMount: (container, _shadow, host) => {
+      // The shadow host is a custom element → display:inline by default, so a
+      // fixed-width child spills out of a narrow column (e.g. Trakt's poster
+      // sidebar). Make it a full-width block so the links wrap to the column.
+      host.style.display = "block";
+      host.style.width = "100%";
       render(
         <QuickLinksView variant="dark" items={getItems()} label={opts.label} class={opts.class} />,
         container,
-      ),
+      );
+    },
     onRemove: (container) => container && render(null, container),
   });
   ui.autoMount();
