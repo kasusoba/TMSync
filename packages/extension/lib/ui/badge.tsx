@@ -8,6 +8,7 @@ import { render } from "preact";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import type { ContentScriptContext } from "wxt/utils/content-script-context";
 import { createShadowRootUi } from "wxt/utils/content-script-ui/shadow-root";
+import { useKeyShield } from "./key-shield";
 import { Btn, Icon, IconBtn, tokens } from "./proto/kit";
 import { Correction, EpisodePick, ManualPick, RateNote, RatingRow } from "./scrobble-panels";
 
@@ -254,43 +255,13 @@ function BadgeRoot() {
     void sendMessage("getTabMedia", undefined).then((tab) => {
       if (!tab) return;
       setTracker(tab.tracker);
-      setMedia((prev) =>
-        mediaIdentity(prev) === mediaIdentity(tab.media) ? prev : tab.media,
-      );
+      setMedia((prev) => (mediaIdentity(prev) === mediaIdentity(tab.media) ? prev : tab.media));
     });
   }, [status]);
 
-  // Shield page/extension keyboard shortcuts from keys typed inside the badge
-  // (rating, note, search…). Element-level stopPropagation (stopKeys) only stops
-  // BUBBLE-phase listeners; site players and especially OTHER extensions often
-  // bind keydown in the CAPTURE phase on document/window, which fires BEFORE the
-  // event reaches our input — so a bubble stop is too late (this is exactly the
-  // case MALSync's document-level stop also misses). A window capture-phase
-  // listener runs first of all, and DOM propagation is shared across isolated
-  // worlds, so stopping here blocks those handlers too.
-  //
-  // We only swallow PRINTABLE single-character keys (a, k, space… — what fires
-  // letter shortcuts) and only when the event originates inside our shadow host.
-  // Control keys (Enter/Escape/Tab) pass through so our own panel handlers still
-  // work (e.g. Enter-to-search); element-level stopKeys then keeps THOSE from
-  // leaking on the bubble back up. Typing is unaffected: stopPropagation never
-  // cancels the default action, and our inputs update from the `input` event.
-  useEffect(() => {
-    const shield = (e: KeyboardEvent) => {
-      if (e.key.length !== 1) return; // control keys pass through to our handlers
-      const root = rootRef.current;
-      const host =
-        root && root.getRootNode() instanceof ShadowRoot
-          ? (root.getRootNode() as ShadowRoot).host
-          : root;
-      if (host && e.composedPath().includes(host)) e.stopImmediatePropagation();
-    };
-    const types = ["keydown", "keyup", "keypress"] as const;
-    for (const type of types) window.addEventListener(type, shield, true);
-    return () => {
-      for (const type of types) window.removeEventListener(type, shield, true);
-    };
-  }, []);
+  // Keep keys typed in the badge (rating/note/search) from firing page & other-
+  // extension shortcuts — see useKeyShield.
+  useKeyShield(rootRef);
 
   // Track whether this is a manual-mode site, so "wrong match?" re-opens the
   // manual picker (changing the remembered pick) rather than the correction UI.

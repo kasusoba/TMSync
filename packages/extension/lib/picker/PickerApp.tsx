@@ -1,11 +1,12 @@
 import "@/lib/ui/theme.css";
 import { loadRecipes } from "@/lib/recipes";
 import { customRecipes } from "@/lib/storage";
+import { useKeyShield } from "@/lib/ui/key-shield";
 import { PickerPanel } from "@/lib/ui/proto/PickerPanel";
 import { sendMessage } from "@/messaging";
 import { finder } from "@medv/finder";
 import { type EngineContext, type Field, readField, selectRecipe } from "@tmsync/shared";
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import {
   type DraftFieldKey,
   type NumberPart,
@@ -125,6 +126,10 @@ function urlChips(): UrlPart[] {
 }
 
 export function PickerApp({ onClose }: { onClose: () => void }) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  // Keep keys typed in the picker (recipe name, search…) from firing page &
+  // other-extension shortcuts — see useKeyShield.
+  useKeyShield(rootRef);
   const ctx: EngineContext = useMemo(() => ({ document, url: location.href }), []);
   const parts = useMemo(urlChips, []);
   // Segments of the page's <title> (for sites whose real title is only there).
@@ -432,7 +437,10 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
     : "";
 
   return (
-    <div class="pointer-events-none fixed inset-0 z-[2147483647] font-sans text-zinc-100">
+    <div
+      ref={rootRef}
+      class="pointer-events-none fixed inset-0 z-[2147483647] font-sans text-zinc-100"
+    >
       {highlight && (
         <div
           class="pointer-events-none fixed rounded-sm bg-trakt/10 ring-2 ring-trakt"
