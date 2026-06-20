@@ -18,6 +18,15 @@ const DEFAULT_CORNER = "bottom-3.5 left-3.5";
 const EDGE_GAP = "14px"; // distance from the docked edge
 
 type XY = { x: number; y: number };
+
+/** Identity of the item being rated — mirrors mediaKey() in session.ts. Lets the
+ * badge tell a real episode change (SPA nav) from a same-episode status update,
+ * so refreshing `media` only swaps the object when the episode actually changed. */
+function mediaIdentity(m: ParsedMedia | null): string {
+  if (!m) return "";
+  const id = m.tmdbId !== undefined ? `tmdb${m.tmdbId}` : m.title;
+  return `${m.mediaType}:${id}:${m.season ?? ""}:${m.episode ?? ""}`;
+}
 type Edge = "left" | "right" | "top" | "bottom";
 type EdgePos = { edge: Edge; offset: number };
 
@@ -234,17 +243,22 @@ function BadgeRoot() {
     return () => off();
   }, []);
 
-  // Pull the tab's media + tracker once a session exists (needed for rating/note/fix).
+  // Pull the tab's media + tracker whenever the status changes (needed for
+  // rating/note/fix). An SPA episode change publishes a new item AND a fresh
+  // status, so re-fetching here keeps the rate/note panel on the CURRENT episode
+  // — the panels key off `media`, so without this they stay on the previous one.
+  // Only swap the object when the episode identity actually changed, so a
+  // same-episode status update (play/pause) never clobbers a note being typed.
   useEffect(() => {
-    if (status && !media) {
-      void sendMessage("getTabMedia", undefined).then((tab) => {
-        if (tab) {
-          setMedia(tab.media);
-          setTracker(tab.tracker);
-        }
-      });
-    }
-  }, [status, media]);
+    if (!status) return;
+    void sendMessage("getTabMedia", undefined).then((tab) => {
+      if (!tab) return;
+      setTracker(tab.tracker);
+      setMedia((prev) =>
+        mediaIdentity(prev) === mediaIdentity(tab.media) ? prev : tab.media,
+      );
+    });
+  }, [status]);
 
   // Track whether this is a manual-mode site, so "wrong match?" re-opens the
   // manual picker (changing the remembered pick) rather than the correction UI.
