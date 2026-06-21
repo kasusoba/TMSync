@@ -10,8 +10,8 @@ import {
 import { deriveQuickLink } from "@/lib/picker/recipe-builder";
 import {
   type BadgePrefs,
-  badgePrefs,
   type QuickLinkSite,
+  badgePrefs,
   quickLinks,
   tabFrameOrigins,
   tabSessions,
