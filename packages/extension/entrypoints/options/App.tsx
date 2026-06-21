@@ -24,7 +24,7 @@ import {
 import { type AniListStatus, type TraktStatus, sendMessage } from "@/messaging";
 import type { Recipe } from "@tmsync/shared";
 import clsx from "clsx";
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { browser } from "wxt/browser";
 
 const t = tokens("dark");
@@ -111,28 +111,35 @@ function Filter({
   );
 }
 
-/** One editable quick-link site: favourite toggle + reorder + its URL templates. */
+/** One editable quick-link site: favourite toggle + drag-reorder + its URL templates. */
 function QuickLinkRow({
   site,
   busy,
-  first,
-  last,
   startOpen,
+  dragging,
   onSave,
   onDelete,
   onToggle,
-  onMove,
+  onDragStart,
+  onDragEnter,
+  onDragEnd,
+  onDrop,
 }: {
   site: QuickLinkSite;
   busy: boolean;
-  first: boolean;
-  last: boolean;
   startOpen: boolean;
+  /** True while this row is the one being dragged (dimmed). */
+  dragging: boolean;
   onSave: (site: QuickLinkSite) => Promise<void>;
   onDelete: (id: string) => void;
   onToggle: (id: string) => void;
-  onMove: (id: string, dir: -1 | 1) => void;
+  // Drag-to-reorder (HTML5 DnD): handle starts the drag; the row is a drop target.
+  onDragStart: () => void;
+  onDragEnter: () => void;
+  onDragEnd: () => void;
+  onDrop: () => void;
 }) {
+  const rowRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(startOpen);
   const [name, setName] = useState(site.name);
   const [tracker, setTracker] = useState<Tracker>(site.tracker ?? "trakt");
@@ -174,8 +181,42 @@ function QuickLinkRow({
   );
 
   return (
-    <div class={clsx("rounded-lg px-3 py-2", t.card)}>
+    <div
+      ref={rowRef}
+      class={clsx("rounded-lg px-3 py-2 transition-opacity", t.card, dragging && "opacity-40")}
+      onDragEnter={(e) => {
+        e.preventDefault();
+        onDragEnter();
+      }}
+      onDragOver={(e) => e.preventDefault()} // required for the row to be a drop target
+      onDrop={(e) => {
+        e.preventDefault();
+        onDrop();
+      }}
+    >
       <div class="flex items-center gap-3">
+        {/* Drag handle — grab to reorder (HTML5 DnD; the row is the drag image). */}
+        <span
+          draggable
+          title="Drag to reorder"
+          class={clsx("-ml-1 shrink-0 cursor-grab touch-none active:cursor-grabbing", t.faint)}
+          onDragStart={(e) => {
+            e.dataTransfer?.setData("text/plain", site.id); // Firefox needs payload
+            if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+            if (rowRef.current) e.dataTransfer?.setDragImage(rowRef.current, 12, 12);
+            onDragStart();
+          }}
+          onDragEnd={onDragEnd}
+        >
+          <svg viewBox="0 0 24 24" class="size-[15px]" fill="currentColor" aria-hidden="true">
+            <circle cx="9" cy="6" r="1.6" />
+            <circle cx="15" cy="6" r="1.6" />
+            <circle cx="9" cy="12" r="1.6" />
+            <circle cx="15" cy="12" r="1.6" />
+            <circle cx="9" cy="18" r="1.6" />
+            <circle cx="15" cy="18" r="1.6" />
+          </svg>
+        </span>
         <Switch on={site.enabled} t={t} onClick={() => onToggle(site.id)} />
         {/* tracker indicator — which pages this link shows on */}
         {(site.tracker ?? "trakt") === "anilist" ? (
@@ -189,8 +230,6 @@ function QuickLinkRow({
             <span class={clsx("ml-1.5 text-[11px]", t.faint)}>· library</span>
           )}
         </span>
-        <IconBtn t={t} name="up" title="Move up" onClick={() => !first && onMove(site.id, -1)} />
-        <IconBtn t={t} name="down" title="Move down" onClick={() => !last && onMove(site.id, 1)} />
         <IconBtn t={t} name="edit" title="Edit" onClick={() => setOpen((v) => !v)} />
         <IconBtn t={t} name="trash" title="Delete" danger onClick={() => onDelete(site.id)} />
       </div>
@@ -409,17 +448,36 @@ export function App() {
     await quickLinks.setValue(next);
     setLinks(next);
   };
-  const moveLink = async (id: string, dir: -1 | 1) => {
-    const next = [...(await quickLinks.getValue())];
-    const i = next.findIndex((s) => s.id === id);
-    const j = i + dir;
-    const a = next[i];
-    const b = next[j];
-    if (!a || !b) return;
-    next[i] = b;
-    next[j] = a;
-    await quickLinks.setValue(next);
-    setLinks(next);
+  // Drag-to-reorder. The list reflows live as you drag (YouTube-style): dragging a
+  // row over another moves it there in local state immediately; the new order is
+  // persisted once on drop/dragend. `dragIdRef` tracks the dragged id without a
+  // stale closure; `linksRef` holds the latest order for the async persist.
+  const [dragId, setDragId] = useState<string | null>(null);
+  const dragIdRef = useRef<string | null>(null);
+  const linksRef = useRef(links);
+  linksRef.current = links;
+  const onLinkDragStart = (id: string) => {
+    dragIdRef.current = id;
+    setDragId(id);
+  };
+  const onLinkDragEnter = (overId: string) => {
+    const drag = dragIdRef.current;
+    if (!drag || drag === overId) return;
+    setLinks((cur) => {
+      const from = cur.findIndex((s) => s.id === drag);
+      const to = cur.findIndex((s) => s.id === overId);
+      if (from < 0 || to < 0 || from === to) return cur;
+      const next = [...cur];
+      const [moved] = next.splice(from, 1);
+      if (!moved) return cur;
+      next.splice(to, 0, moved);
+      return next;
+    });
+  };
+  const onLinkDragEnd = async () => {
+    dragIdRef.current = null;
+    setDragId(null);
+    await quickLinks.setValue(linksRef.current);
   };
   const addLink = async () => {
     const id = `ql-${Date.now()}`;
@@ -661,8 +719,8 @@ export function App() {
                   }
                 />
                 <p class={clsx("text-[12px]", t.sub)}>
-                  “Watch on …” buttons on Trakt movie/show pages. Toggle a site on to show it; order
-                  = display order.
+                  “Watch on …” buttons on Trakt movie/show pages. Toggle a site on to show it; drag
+                  the handle to set display order.
                 </p>
                 {links.length > 3 && <Filter q={q} setQ={setQ} placeholder="Filter quick links…" />}
                 {links.length === 0 ? (
@@ -671,19 +729,21 @@ export function App() {
                   </p>
                 ) : (
                   <div class="space-y-1.5">
-                    {links.map((s, i) =>
+                    {links.map((s) =>
                       has(s.name) ? (
                         <QuickLinkRow
                           key={s.id}
                           site={s}
                           busy={busy}
-                          first={i === 0}
-                          last={i === links.length - 1}
                           startOpen={s.id === justAdded}
+                          dragging={dragId === s.id}
                           onSave={saveLink}
                           onDelete={deleteLink}
                           onToggle={toggleLink}
-                          onMove={moveLink}
+                          onDragStart={() => onLinkDragStart(s.id)}
+                          onDragEnter={() => onLinkDragEnter(s.id)}
+                          onDragEnd={onLinkDragEnd}
+                          onDrop={onLinkDragEnd}
                         />
                       ) : null,
                     )}

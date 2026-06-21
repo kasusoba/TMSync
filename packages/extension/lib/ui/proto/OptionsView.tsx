@@ -299,8 +299,8 @@ export function OptionsView({ variant }: { variant: Variant }) {
                   }
                 />
                 <p class={clsx("text-[12px]", t.sub)}>
-                  “Watch on …” buttons on Trakt pages. Toggle a site on to show it; order = display
-                  order.
+                  “Watch on …” buttons on Trakt pages. Toggle a site on to show it; drag the handle
+                  to set display order.
                 </p>
                 <Filter t={t} q={q} setQ={setQ} placeholder="Filter quick links…" />
                 <div class="space-y-1.5">
@@ -309,6 +309,24 @@ export function OptionsView({ variant }: { variant: Variant }) {
                     return (
                       <div class={clsx("rounded-lg px-3 py-2", t.card)} key={l.name}>
                         <div class="flex items-center gap-3">
+                          <span
+                            title="Drag to reorder"
+                            class={clsx("-ml-1 shrink-0 cursor-grab", t.faint)}
+                          >
+                            <svg
+                              viewBox="0 0 24 24"
+                              class="size-[15px]"
+                              fill="currentColor"
+                              aria-hidden="true"
+                            >
+                              <circle cx="9" cy="6" r="1.6" />
+                              <circle cx="15" cy="6" r="1.6" />
+                              <circle cx="9" cy="12" r="1.6" />
+                              <circle cx="15" cy="12" r="1.6" />
+                              <circle cx="9" cy="18" r="1.6" />
+                              <circle cx="15" cy="18" r="1.6" />
+                            </svg>
+                          </span>
                           <Switch on={l.on} t={t} />
                           <span class="flex-1 truncate">
                             <span class={clsx("text-[13px] font-medium", t.heading)}>{l.name}</span>
@@ -316,8 +334,6 @@ export function OptionsView({ variant }: { variant: Variant }) {
                               <span class={clsx("ml-1.5 text-[11px]", t.faint)}>· library</span>
                             )}
                           </span>
-                          <IconBtn t={t} name="up" title="Move up" />
-                          <IconBtn t={t} name="down" title="Move down" />
                           <IconBtn
                             t={t}
                             name="edit"
