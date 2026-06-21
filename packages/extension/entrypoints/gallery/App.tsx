@@ -183,6 +183,15 @@ export function App() {
               }
             />
           </Tile>
+          <Tile label="Connected · on-page badge toggle" t={t}>
+            <PopupView
+              variant={variant}
+              connected
+              origins={[{ origin: "https://www.cineby.at", isTop: true, enabled: true }]}
+              badgeMode="full"
+              onBadgeMode={() => {}}
+            />
+          </Tile>
           <Tile label="Connected · per-site watch-on link editor" t={t}>
             <PopupView
               variant={variant}

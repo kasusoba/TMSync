@@ -9,6 +9,8 @@ import {
 } from "@/lib/diagnostics/frame-tree";
 import { deriveQuickLink } from "@/lib/picker/recipe-builder";
 import {
+  type BadgePrefs,
+  badgePrefs,
   type QuickLinkSite,
   quickLinks,
   tabFrameOrigins,
@@ -166,6 +168,8 @@ export function App() {
   const [qlHost, setQlHost] = useState<string | null>(null);
   const [qlUrl, setQlUrl] = useState<string | null>(null);
   const [qlSite, setQlSite] = useState<QuickLinkSite | null>(null);
+  // On-page badge visibility (Full / Dot / Off) — quick toggle mirrored from Options.
+  const [badgeMode, setBadgeMode] = useState<BadgePrefs["mode"]>("full");
   // Frame inspector (diagnostics).
   const [inspecting, setInspecting] = useState(false);
   const [frameTree, setFrameTree] = useState<FrameNode[] | null>(null);
@@ -195,13 +199,14 @@ export function App() {
 
   const refresh = async () => {
     const tabId = await activeTabId();
-    const [s, al, url, found, sites, links] = await Promise.all([
+    const [s, al, url, found, sites, links, badge] = await Promise.all([
       sendMessage("getTraktStatus", undefined),
       sendMessage("getAniListStatus", undefined),
       activeTabUrl(),
       tabId !== null ? collectOrigins(tabId) : Promise.resolve<string[]>([]),
       sendMessage("listEnabledSites", undefined),
       quickLinks.getValue(),
+      badgePrefs.getValue(),
     ]);
     // Merge the live snapshot with origins the content script accumulated over
     // the session — catches player iframes that loaded after the page settled.
@@ -216,7 +221,16 @@ export function App() {
     setQlHost(hostname);
     setQlUrl(url);
     setQlSite(hostname ? (links.find((l) => l.id === `ql-${hostname}`) ?? null) : null);
+    setBadgeMode(badge.mode);
     await refreshNow();
+  };
+
+  // Flip the on-page badge visibility. Preserve the dragged position; the badge
+  // live-updates via badgePrefs.watch, so no reload is needed.
+  const changeBadgeMode = async (mode: BadgePrefs["mode"]) => {
+    setBadgeMode(mode); // optimistic
+    const prev = await badgePrefs.getValue();
+    await badgePrefs.setValue({ ...prev, mode });
   };
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: load once when the popup opens
@@ -453,6 +467,8 @@ export function App() {
       quickLinkDerive={(tracker) => (qlUrl ? deriveQuickLink(qlUrl, tracker) : {})}
       onSaveQuickLink={saveQuickLink}
       onRemoveQuickLink={removeQuickLink}
+      badgeMode={badgeMode}
+      onBadgeMode={changeBadgeMode}
       inspecting={inspecting}
       frameTree={frameTree}
       onToggleInspect={toggleInspect}

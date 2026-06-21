@@ -60,7 +60,19 @@ export interface PopupViewProps {
   onSetupFrame?: (origin: string, frameId: number) => void;
   /** "Now scrobbling" surface (status + prompts) for the active tab, when one exists. */
   nowPlaying?: preact.ComponentChildren;
+  // --- on-page badge visibility (quick toggle; full control still in Options) ---
+  /** Current on-page badge mode. Omit to hide the control. */
+  badgeMode?: BadgeMode;
+  onBadgeMode?: (mode: BadgeMode) => void;
 }
+
+export type BadgeMode = "full" | "dot" | "off";
+
+const BADGE_MODES: [BadgeMode, string][] = [
+  ["full", "Full"],
+  ["dot", "Dot"],
+  ["off", "Off"],
+];
 
 /** One provider row (mark + name + status + connect/disconnect). Uniform per provider. */
 function ProviderRow({
@@ -330,6 +342,37 @@ export function PopupView(p: PopupViewProps) {
                   : `Add a button on Trakt/AniList pages that opens ${p.quickLinkHost}.`}
               </p>
             )}
+          </Section>
+        )}
+
+        {/* On-page badge — quick show/hide so it's not buried in Options. Full =
+            panel · Dot = status dot only · Off = hidden (toolbar icon still shows
+            status). Mirrors the Options Display control. */}
+        {p.badgeMode && (
+          <Section
+            title="On-page badge"
+            t={t}
+            right={
+              <span class={clsx("text-[11px]", t.faint)}>
+                {p.badgeMode === "off" ? "Hidden" : p.badgeMode === "dot" ? "Dot only" : "Shown"}
+              </span>
+            }
+          >
+            <div class="flex gap-1">
+              {BADGE_MODES.map(([value, label]) => (
+                <button
+                  type="button"
+                  key={value}
+                  onClick={() => p.onBadgeMode?.(value)}
+                  class={clsx(
+                    "flex-1 rounded-md py-1.5 text-[12px] font-medium transition-colors",
+                    p.badgeMode === value ? "bg-ikura text-white" : t.ghost,
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </Section>
         )}
 

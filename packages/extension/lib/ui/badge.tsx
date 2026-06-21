@@ -11,6 +11,7 @@ import { createShadowRootUi } from "wxt/utils/content-script-ui/shadow-root";
 import { useKeyShield } from "./key-shield";
 import { Btn, Icon, IconBtn, tokens } from "./proto/kit";
 import { Correction, EpisodePick, ManualPick, RateNote, RatingRow } from "./scrobble-panels";
+import { keepAboveModals } from "./top-layer";
 
 const t = tokens("dark");
 
@@ -484,10 +485,19 @@ function BadgeRoot() {
         <IconBtn
           t={t}
           name="minimize"
-          title="Minimize"
+          title="Minimize to a dot"
           onClick={() => {
             if (consumeDrag()) return;
             setMinimized(true);
+          }}
+        />
+        <IconBtn
+          t={t}
+          name="eye-off"
+          title="Hide the on-page badge (turn it back on from the toolbar popup)"
+          onClick={() => {
+            if (consumeDrag()) return;
+            void badgePrefs.setValue({ ...prefs, mode: "off" });
           }}
         />
       </div>
@@ -496,12 +506,23 @@ function BadgeRoot() {
 }
 
 export async function mountBadge(ctx: ContentScriptContext): Promise<void> {
+  // Keep the badge above site modals: sites that play inside a <dialog>.showModal()
+  // (browser top layer) would otherwise bury it behind the player AND make it
+  // inert. keepAboveModals re-parents our host into the active modal so the badge
+  // stays visible and clickable, moving it back to <body> when the modal closes.
+  let dropTopLayer = () => {};
   const ui = await createShadowRootUi(ctx, {
     name: "tmsync-badge",
     position: "overlay",
     anchor: "body",
-    onMount: (container) => render(<BadgeRoot />, container),
-    onRemove: (container) => container && render(null, container),
+    onMount: (container, _shadow, host) => {
+      render(<BadgeRoot />, container);
+      dropTopLayer = keepAboveModals(host);
+    },
+    onRemove: (container) => {
+      dropTopLayer();
+      container && render(null, container);
+    },
   });
   ui.mount();
 }
