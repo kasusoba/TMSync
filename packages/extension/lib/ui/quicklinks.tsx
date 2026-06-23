@@ -28,7 +28,7 @@ export async function mountQuickLinks(
     /** Extra spacing classes (margins) so the block doesn't touch host elements. */
     class?: string;
   } = {},
-): Promise<void> {
+) {
   const ui = await createShadowRootUi(ctx, {
     name: "tmsync-quicklinks",
     position: "inline",
@@ -48,4 +48,6 @@ export async function mountQuickLinks(
     onRemove: (container) => container && render(null, container),
   });
   ui.autoMount();
+  // Returned so SPA hosts (AniList) can remove + re-mount on client-side nav.
+  return ui;
 }

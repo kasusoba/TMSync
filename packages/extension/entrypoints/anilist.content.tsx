@@ -3,35 +3,59 @@ import { type QuickLinkItem, mountQuickLinks } from "@/lib/ui/quicklinks";
 import { type AniListPageMedia, buildAniListSiteLinks } from "@tmsync/shared";
 
 /**
- * Runs on anilist.co anime pages (static, specific host — the AniList analogue of
- * trakt.content). Reads the anime's id + title from the page and injects "watch
- * on <site>" links for every ENABLED AniList quick-link site, deep-linked to the
- * series (or a title search). Mirrors the Trakt quick-links feature.
+ * Runs on anilist.co (the AniList analogue of trakt.content). Reads an anime's id
+ * + title from the page and injects "watch on <site>" links for every ENABLED
+ * AniList quick-link site, deep-linked to the series (or a title search). Mirrors
+ * the Trakt quick-links feature.
+ *
+ * AniList is a Vue SPA: navigating to an anime page client-side never triggers a
+ * fresh content-script injection, so a `/anime/*`-only match would only work after
+ * a full reload. We match the whole host and (re)mount on `wxt:locationchange`
+ * instead — so links appear and refresh as you navigate, no reload needed.
  */
 export default defineContentScript({
-  matches: ["*://anilist.co/anime/*", "*://www.anilist.co/anime/*"],
+  matches: ["*://anilist.co/*", "*://www.anilist.co/*"],
   cssInjectionMode: "ui",
   async main(ctx) {
     const sites = (await quickLinks.getValue()).filter((s) => s.enabled && s.tracker === "anilist");
     if (sites.length === 0) return; // nothing to show
 
-    await mountQuickLinks(
-      ctx,
-      () => {
-        const media = parseAniListPage();
-        if (!media) return [];
-        const items: QuickLinkItem[] = [];
-        for (const s of sites) {
-          const links = buildAniListSiteLinks(s, media);
-          if (links.direct || links.search) items.push({ name: s.name, ...links });
-        }
-        return items;
-      },
-      // Top of the left info column (above the rankings), so it's visible without
-      // scrolling to the "External & Streaming links" block near the bottom. mb-4
-      // keeps it off the rankings element below.
-      { anchor: ".sidebar", append: "first", class: "mb-4" },
-    );
+    const getItems = (): QuickLinkItem[] => {
+      const media = parseAniListPage();
+      if (!media) return [];
+      const items: QuickLinkItem[] = [];
+      for (const s of sites) {
+        const links = buildAniListSiteLinks(s, media);
+        if (links.direct || links.search) items.push({ name: s.name, ...links });
+      }
+      return items;
+    };
+
+    const onAnimePage = () => /\/anime\/\d+/.test(location.pathname);
+
+    // One quick-links UI at a time; re-created per anime page so its links match
+    // the page. `gen` discards a mount whose navigation was superseded mid-await.
+    let ui: Awaited<ReturnType<typeof mountQuickLinks>> | undefined;
+    let gen = 0;
+    const sync = async () => {
+      const my = ++gen;
+      ui?.remove();
+      ui = undefined;
+      if (!onAnimePage()) return;
+      const created = await mountQuickLinks(ctx, getItems, {
+        // Top of the left info column (above the rankings), so it's visible without
+        // scrolling to the "External & Streaming links" block near the bottom. mb-4
+        // keeps it off the rankings element below.
+        anchor: ".sidebar",
+        append: "first",
+        class: "mb-4",
+      });
+      if (my !== gen) return created.remove(); // navigated again while mounting
+      ui = created;
+    };
+
+    await sync();
+    ctx.addEventListener(window, "wxt:locationchange", () => void sync());
   },
 });
 
