@@ -2,14 +2,18 @@ import preact from "@preact/preset-vite";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "wxt";
 
-// Stable identity so the OAuth redirect URI never changes across reloads:
-//   Chrome ID  : aplaigellojlejhdjkklgihlmbmdaebk
-//   Redirect   : https://aplaigellojlejhdjkklgihlmbmdaebk.chromiumapp.org/
+// Stable identity so the OAuth redirect URI never changes across reloads.
+// This is the Chrome Web Store item's OWN public key, so the local unpacked
+// build gets the SAME id as the published extension — one redirect URI covers
+// dev and prod:
+//   Chrome ID  : hkfpacmhbiccimikfleemmhfemdnjfpf
+//   Redirect   : https://hkfpacmhbiccimikfleemmhfemdnjfpf.chromiumapp.org/
 //   Firefox    : tmsync@tmsync.app  (browser.identity.getRedirectURL() derives from it)
-// The value below is the PUBLIC key (DER, base64) — safe to commit; the private
-// .pem stays in .keys/ (gitignored).
+// The value below is the PUBLIC key (DER, base64) — safe to commit. The matching
+// private key is held by the Chrome Web Store, not us (we upload a zip; the store
+// signs it), so there's no .pem to keep.
 const CHROME_KEY =
-  "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsnTrCTOs9IeUqPjL4Bzed2fMXEWfWzE8jRjLefx0bEyNhtySxrDHm8qZEq6sZ7RjDKVBLmrM5D3IIDm6wQNtC8HucQSow/oN333P5+No8RdXUsJwqN21uMYrr79VwotQp3/61JrtWlbUWFZmjaCuSPQvNFUPvoEYAn6OuK9K2dzYiGjro46KBVeBSbeXgbm+L4Bhv4ilq4wPAbHtfXg/BrA5sbCF/bf3TUJK5LeFoYvF/hJEW2RkkRY5pKXkUB4bNiDXgCTDIPGuw/kSiVtHo8AEKXWVHX27e8XY56PHPEIkMZHdo6GLPp069f7r+eIpeCB0xzbLDC4SX4luC53mUwIDAQAB";
+  "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnHwVw4cwX6aSFK+k5dw4oSnqAiHJy7skS0+pAeT1L3xv29dVaMnz2ENO0l8pA4vGo4pUd+97SmMFJ6aj2gKj8Uq0Cw5c1Ke1E+vMneV4eFhb3jqlRPIuavihIBlSK27bR/WNm3mIUgeguKcyl7nF6NqWBKei8NcDEfthzZD/9zHwTEE/ep6TsN9E6PhO7DzpXUs8K1qsh/kpa9EL18vgpxzEnA9G6Ma/RVevJFnqPOxpJ79sSmQbk6kaVzlI3VtSr3fzPK/wYsNSGgHRp1Oy5f+x+SJ2f3Omb0LRBdKGnZcRCOBArl5G2xxcHwZln0TAIXHN0tsbMO4SPUdPSZJDawIDAQAB";
 
 // See ../../CLAUDE.md for the settled constraints encoded here.
 export default defineConfig({
