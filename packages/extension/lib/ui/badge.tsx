@@ -126,6 +126,11 @@ function BadgeRoot() {
   const [promptDismissed, setPromptDismissed] = useState(false);
   const [rewatchHidden, setRewatchHidden] = useState(false);
   const [manualMode, setManualMode] = useState(false);
+  // Hide the badge while the page is in native fullscreen (player gone immersive) —
+  // an overlay over fullscreen video is intrusive. Tracked separately from prefs so
+  // it auto-restores on exit. In the top frame, a fullscreen iframe player still
+  // reports as `document.fullscreenElement`, so this covers cross-origin players too.
+  const [fullscreen, setFullscreen] = useState(false);
   // User pref: whether the in-page badge shows + its dragged position (the toolbar
   // icon is always the ambient indicator). Live-updated so changes apply at once.
   const [prefs, setPrefs] = useState<BadgePrefs>({ mode: "full", position: null });
@@ -260,6 +265,14 @@ function BadgeRoot() {
     });
   }, [status]);
 
+  // Track native fullscreen so we can get out of the way while a video is fullscreen.
+  useEffect(() => {
+    const sync = () => setFullscreen(document.fullscreenElement !== null);
+    sync();
+    document.addEventListener("fullscreenchange", sync, true);
+    return () => document.removeEventListener("fullscreenchange", sync, true);
+  }, []);
+
   // Keep keys typed in the badge (rating/note/search) from firing page & other-
   // extension shortcuts — see useKeyShield.
   useKeyShield(rootRef);
@@ -281,6 +294,7 @@ function BadgeRoot() {
 
   if (!status) return null;
   if (prefs.mode === "off") return null; // hidden — rely on the toolbar icon + popup
+  if (fullscreen) return null; // stay out of the way of fullscreen video
 
   const s = STATE[status.state];
   // Docked: edge style. Otherwise the default corner. (During a drag the transform
