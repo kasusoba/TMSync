@@ -168,6 +168,38 @@ export async function scrobble(
   return { ok: true, status: res.status, action: data.action };
 }
 
+// --- watched progress (read; drives the popup "last watched / next up" line) ---
+
+interface TraktProgressEpisode {
+  number: number;
+  completed: boolean;
+  last_watched_at: string | null;
+}
+interface TraktProgressSeason {
+  number: number;
+  episodes: TraktProgressEpisode[];
+}
+export interface TraktWatchedProgress {
+  /** Episodes aired so far. */
+  aired: number;
+  /** Episodes the user has watched. */
+  completed: number;
+  seasons: TraktProgressSeason[];
+  /** Next episode to watch (first uncompleted aired one), or null if caught up. */
+  next_episode: { season: number; number: number } | null;
+}
+
+/**
+ * GET /shows/:id/progress/watched — the viewer's per-episode watched set plus the
+ * next-to-watch pointer. Specials (season 0) are excluded by default. Auth
+ * required; returns null on any non-2xx (e.g. not connected handled by caller).
+ */
+export async function watchedProgress(showId: number): Promise<TraktWatchedProgress | null> {
+  const res = await api(`/shows/${showId}/progress/watched`, {}, true);
+  if (!res.ok) return null;
+  return (await res.json()) as TraktWatchedProgress;
+}
+
 // --- ratings (1–10) ---
 
 /** POST /sync/ratings (set) or /sync/ratings/remove. Returns ok + status. */

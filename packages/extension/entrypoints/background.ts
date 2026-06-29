@@ -522,6 +522,22 @@ export default defineBackground(() => {
       : null;
   });
 
+  onMessage("getWatchedState", async ({ data, sender }) => {
+    const tabId = data?.tabId ?? sender.tab?.id;
+    if (tabId === undefined) return null;
+    const session = (await tabSessions.getValue())[tabId];
+    if (!session) return null;
+    try {
+      const tracker = routeTracker(session.tracker, session.media.mediaType);
+      const adapter = getAdapter(tracker);
+      const item = await adapter.resolve(session.media);
+      if (!item) return null;
+      return await adapter.watchedState(item);
+    } catch {
+      return null; // reads degrade quietly — the popup just omits the line
+    }
+  });
+
   onMessage("updateProgress", async ({ data, sender }) => {
     const tabId = sender.tab?.id;
     if (tabId === undefined) return;

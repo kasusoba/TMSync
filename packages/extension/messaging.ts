@@ -1,5 +1,5 @@
 import type { ScoreFormat } from "@/lib/anilist/types";
-import type { RatingLevel, Tracker } from "@/lib/tracker/types";
+import type { RatingLevel, Tracker, WatchedState } from "@/lib/tracker/types";
 import type { ResolvedIdentity, ScrobbleAction, TraktSearchOption } from "@/lib/trakt/types";
 import type { ParsedMedia } from "@tmsync/shared";
 import { defineExtensionMessaging } from "@webext-core/messaging";
@@ -131,6 +131,10 @@ export interface ProtocolMap {
   /** The media the top frame published for a tab. A content script omits `tabId`
    * (its own tab is inferred from the sender); the popup passes the active tabId. */
   getTabMedia(q?: { tabId?: number }): TabMedia | null;
+  /** The viewer's watched progress for this tab's resolved show — "last watched /
+   * next up" for the popup. Resolves (cached) then reads the routed tracker; null
+   * for movies, unresolved titles, or when not connected. */
+  getWatchedState(q?: { tabId?: number }): WatchedState | null;
   /** Playing frame reports latest progress (reconciliation safety net). */
   updateProgress(progress: number): void;
   /** Playing frame signals a clean stop so the background won't re-reconcile. */

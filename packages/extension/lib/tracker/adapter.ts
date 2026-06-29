@@ -1,5 +1,12 @@
 import type { ParsedMedia } from "@tmsync/shared";
-import type { RatingLevel, RecordPhase, RecordResult, TrackedItem, Tracker } from "./types";
+import type {
+  RatingLevel,
+  RecordPhase,
+  RecordResult,
+  TrackedItem,
+  Tracker,
+  WatchedState,
+} from "./types";
 
 /**
  * One seam, two implementations (Trakt, AniList). Adding AniList must not touch
@@ -39,4 +46,11 @@ export interface TrackerAdapter {
    * rating is unsupported. The shared badge renders only these affordances.
    */
   ratingLevels(media: ParsedMedia): RatingLevel[];
+
+  /**
+   * The viewer's watched progress for a resolved show (the popup's "last watched /
+   * next up" line). Returns null when unsupported (movies), not connected, or no
+   * data — a read, so it never writes. Requires auth.
+   */
+  watchedState(item: TrackedItem): Promise<WatchedState | null>;
 }

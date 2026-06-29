@@ -1,6 +1,12 @@
 import type { ParsedMedia } from "@tmsync/shared";
 import type { TrackerAdapter } from "../tracker/adapter";
-import type { RatingLevel, RecordPhase, RecordResult, TrackedItem } from "../tracker/types";
+import type {
+  RatingLevel,
+  RecordPhase,
+  RecordResult,
+  TrackedItem,
+  WatchedState,
+} from "../tracker/types";
 import { isConnected } from "./auth";
 import {
   AniListNotConnectedError,
@@ -108,6 +114,31 @@ export const anilistAdapter: TrackerAdapter = {
   ratingLevels(_media: ParsedMedia): RatingLevel[] {
     // AniList rates the cour entry only — no per-episode, no franchise-wide score.
     return ["cour"];
+  },
+
+  async watchedState(item: TrackedItem): Promise<WatchedState | null> {
+    if (item.tracker !== "anilist") return null;
+    let entry: Awaited<ReturnType<typeof getListEntry>>;
+    try {
+      entry = await getListEntry(item.id);
+    } catch (e) {
+      if (e instanceof AniListNotConnectedError) return null; // not connected → nothing to show
+      throw e;
+    }
+    // AniList stores a single high-water mark — no gaps are representable. No entry
+    // yet ⇒ nothing watched. `next` is the episode after `progress` unless the cour
+    // is fully caught up (a known total reached / COMPLETED).
+    const progress = entry?.progress ?? 0;
+    const total = item.episodes;
+    const caughtUp = entry?.status === "COMPLETED" || (total !== null && progress >= total);
+    return {
+      tracker: "anilist",
+      total,
+      watchedCount: progress,
+      lastWatched: progress > 0 ? { number: progress } : null,
+      next: caughtUp ? null : { number: progress + 1 },
+      hasGaps: false,
+    };
   },
 };
 

@@ -72,3 +72,31 @@ export interface RecordResult {
  * entry). "cour" is the single AniList anime-entry level (no per-episode score).
  */
 export type RatingLevel = "movie" | "show" | "season" | "episode" | "cour";
+
+/** A single episode reference. `season` is omitted for AniList (linear cour). */
+export interface WatchedEpisode {
+  season?: number;
+  number: number;
+}
+
+/**
+ * The viewer's watched progress for a resolved show — drives the popup
+ * "last watched / next up" line. Normalized across the two trackers' very
+ * different storage models: Trakt keeps a true per-episode SET (gaps possible —
+ * watched 1,3 not 2), AniList keeps only a high-water-mark COUNT (no gaps). Both
+ * reduce to this shape; `hasGaps` flags the Trakt-only case where `next` points
+ * *behind* `lastWatched`.
+ */
+export interface WatchedState {
+  tracker: Tracker;
+  /** Episodes that exist to watch (aired count for Trakt; cour total for AniList); null if unknown/ongoing. */
+  total: number | null;
+  /** How many episodes are watched. */
+  watchedCount: number;
+  /** Most recent watch (by time on Trakt; = progress on AniList); null if none. */
+  lastWatched: WatchedEpisode | null;
+  /** First unwatched episode in order; null when fully caught up / completed. */
+  next: WatchedEpisode | null;
+  /** Trakt only: `next` sits before `lastWatched` (an earlier episode is unwatched). Always false for AniList. */
+  hasGaps: boolean;
+}

@@ -1,4 +1,4 @@
-import type { RatingLevel, Tracker } from "@/lib/tracker/types";
+import type { RatingLevel, Tracker, WatchedEpisode, WatchedState } from "@/lib/tracker/types";
 import type { ResolvedIdentity, ReviewLevel, TraktSearchOption } from "@/lib/trakt/types";
 import { type BadgeState, type BadgeStatus, sendMessage } from "@/messaging";
 import type { ParsedMedia } from "@tmsync/shared";
@@ -660,6 +660,28 @@ const STATE_DOT: Record<BadgeState, string> = {
  * isn't a tab). `onRefresh` lets the popup re-read status after a tab-affecting
  * action so the surface reflects the new state.
  */
+function epLabel(e: WatchedEpisode): string {
+  return e.season !== undefined ? `S${e.season}E${e.number}` : `Ep ${e.number}`;
+}
+
+/**
+ * One-line "where am I in this show" summary for the popup. The two trackers'
+ * shapes differ (AniList = linear count; Trakt = a set that can have gaps), so the
+ * phrasing differs too — see WatchedState. Returns null when there's nothing useful.
+ */
+function watchedSummary(w: WatchedState): string | null {
+  if (w.tracker === "anilist") {
+    if (w.watchedCount === 0) return w.next ? `Not started · next ${epLabel(w.next)}` : null;
+    return `Watched ${w.watchedCount}${w.total !== null ? ` / ${w.total}` : ""}`;
+  }
+  const parts: string[] = [];
+  if (w.lastWatched) parts.push(`Last ${epLabel(w.lastWatched)}`);
+  if (w.next) parts.push(`next ${epLabel(w.next)}`);
+  else if (w.lastWatched) parts.push("caught up");
+  if (parts.length === 0) return null;
+  return parts.join(" · ") + (w.hasGaps ? " · gaps" : "");
+}
+
 export function NowPlaying({
   status,
   media,
@@ -677,10 +699,23 @@ export function NowPlaying({
 }) {
   const [panel, setPanel] = useState<null | "review" | "fix" | "manual" | "episode">(null);
   const [rewatchBusy, setRewatchBusy] = useState(false);
+  const [watched, setWatched] = useState<WatchedState | null>(null);
   const done = () => {
     setPanel(null);
     onRefresh?.();
   };
+
+  // Pull the viewer's watched progress for the "last watched / next up" line.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-fetch when the scrobble state changes so a fresh watch updates the line
+  useEffect(() => {
+    let alive = true;
+    void sendMessage("getWatchedState", { tabId }).then((w) => {
+      if (alive) setWatched(w);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [tabId, status.state]);
 
   if (panel === "review" && media) {
     return (
@@ -729,6 +764,15 @@ export function NowPlaying({
           {status.title && (
             <span class={clsx("block truncate text-[12px]", t.sub)}>{status.title}</span>
           )}
+          {watched &&
+            (() => {
+              const line = watchedSummary(watched);
+              return line ? (
+                <span class={clsx("mt-0.5 block truncate text-[11px] opacity-70", t.sub)}>
+                  {line}
+                </span>
+              ) : null;
+            })()}
         </span>
       </div>
 

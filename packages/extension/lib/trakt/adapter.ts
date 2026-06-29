@@ -1,8 +1,20 @@
 import type { ParsedMedia } from "@tmsync/shared";
 import type { TrackerAdapter } from "../tracker/adapter";
-import type { RatingLevel, RecordPhase, RecordResult, TrackedItem } from "../tracker/types";
+import type {
+  RatingLevel,
+  RecordPhase,
+  RecordResult,
+  TrackedItem,
+  WatchedEpisode,
+  WatchedState,
+} from "../tracker/types";
 import { isConnected } from "./auth";
-import { TraktNotConnectedError, scrobble, resolve as traktResolve } from "./client";
+import {
+  TraktNotConnectedError,
+  scrobble,
+  resolve as traktResolve,
+  watchedProgress,
+} from "./client";
 import type { ResolvedIdentity } from "./types";
 import { buildScrobbleBody } from "./util";
 
@@ -67,4 +79,48 @@ export const traktAdapter: TrackerAdapter = {
     const isShow = media.season !== undefined || media.episode !== undefined;
     return isShow ? ["episode", "season", "show"] : ["movie"];
   },
+
+  async watchedState(item: TrackedItem): Promise<WatchedState | null> {
+    // Movies have no episode progress; the show endpoint only applies to shows.
+    if (item.tracker !== "trakt" || item.mediaType !== "show") return null;
+    let prog: Awaited<ReturnType<typeof watchedProgress>>;
+    try {
+      prog = await watchedProgress(item.id);
+    } catch (e) {
+      if (e instanceof TraktNotConnectedError) return null;
+      throw e;
+    }
+    if (!prog) return null;
+    // Trakt keeps a true per-episode set — derive "last watched" by the most recent
+    // timestamp (NOT the highest number; a rewatch of an earlier episode counts).
+    let last: { ref: WatchedEpisode; at: number } | null = null;
+    for (const s of prog.seasons) {
+      for (const ep of s.episodes) {
+        if (!ep.completed || !ep.last_watched_at) continue;
+        const at = Date.parse(ep.last_watched_at);
+        if (!last || at > last.at) last = { ref: { season: s.number, number: ep.number }, at };
+      }
+    }
+    const next = prog.next_episode
+      ? { season: prog.next_episode.season, number: prog.next_episode.number }
+      : null;
+    const lastWatched = last?.ref ?? null;
+    // A gap exists when the next-to-watch episode sits before the last one watched.
+    const hasGaps = next !== null && lastWatched !== null && isBefore(next, lastWatched);
+    return {
+      tracker: "trakt",
+      total: prog.aired ?? null,
+      watchedCount: prog.completed,
+      lastWatched,
+      next,
+      hasGaps,
+    };
+  },
 };
+
+/** True if episode `a` comes strictly before `b` in (season, number) order. */
+function isBefore(a: WatchedEpisode, b: WatchedEpisode): boolean {
+  const as = a.season ?? 0;
+  const bs = b.season ?? 0;
+  return as !== bs ? as < bs : a.number < b.number;
+}
