@@ -27,12 +27,12 @@ jobs:
       (github.event.action == 'opened' && contains(github.event.issue.labels.*.name, 'contribution'))
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: pnpm/action-setup@v6 # version comes from package.json "packageManager"
+      - uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
@@ -46,7 +46,7 @@ jobs:
         run: pnpm exec biome format --write recipes/ || true
 
       - name: Open pull request
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v7
         with:
           branch: contribution/issue-${{ github.event.issue.number }}
           delete-branch: true
