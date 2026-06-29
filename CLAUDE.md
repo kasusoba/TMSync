@@ -3,9 +3,9 @@
 Operating guide for Claude Code on this repo. Read before generating or editing code. These decisions are **settled**; do not relitigate or "improve" them without being asked.
 
 ## Project in one paragraph
-TMSync is a cross-browser (Chrome + Firefox) WebExtension that passively scrobbles what the user watches on arbitrary streaming sites (including gray-market ones with no API) to the right tracker: **movies and non-anime TV → Trakt**, **anime series → AniList**. It detects the media from the page using **declarative recipes** (data, not code), resolves it against the routed tracker, and records progress. Site definitions can be added on the fly via an in-page element picker. See `TMSync-PRD.md` for the "what/why".
+TMSync is a cross-browser (Chrome + Firefox) WebExtension that passively scrobbles what the user watches on arbitrary streaming sites (including gray-market ones with no API) to the right tracker: **movies and non-anime TV → Trakt**, **anime series → AniList**. It detects the media from the page using **declarative recipes** (data, not code), resolves it against the routed tracker, and records progress. Site definitions can be added on the fly via an in-page element picker. See `docs/TMSync-PRD.md` for the "what/why".
 
-> **Direction note (2026-06):** the owner deliberately reversed the original "Trakt only / no anime" scope to add AniList for anime. This is intentional, not drift. The Trakt path stays exactly as it was; AniList lives behind the tracker-adapter seam (see **Tracker adapters**). Where this doc and the old constraints disagree, this doc wins. **Build order + progress live in `ANIME-PLAN.md`.**
+> **Direction note (2026-06):** the owner deliberately reversed the original "Trakt only / no anime" scope to add AniList for anime. This is intentional, not drift. The Trakt path stays exactly as it was; AniList lives behind the tracker-adapter seam (see **Tracker adapters**). Where this doc and the old constraints disagree, this doc wins. **Build order + progress live in `docs/ANIME-PLAN.md`.**
 
 ## Hard constraints (never violate)
 1. **Exactly two trackers, routed — never synced.** Trakt and AniList only. An item goes to **one** tracker decided by type: anime series → AniList; movies (anime or not) and non-anime TV → Trakt. There is **no cross-tracker (Trakt↔AniList) ID/episode mapping** — that's the nasty problem the routing rule deliberately avoids. No third tracker (no Simkl/MAL/Kitsu/Letterboxd). Each tracker is one implementation behind the adapter seam (see **Tracker adapters**).
@@ -40,7 +40,9 @@ TMSync is a cross-browser (Chrome + Firefox) WebExtension that passively scrobbl
 │  ├─ trakt/          # public Trakt recipe list (movies + non-anime TV) — the shareable one
 │  └─ anime/          # separate AniList recipe list (dedicated anime sites) — kept apart so the
 │                     #   public Trakt list stays clean for sharing; routed via the recipe `tracker` field
-├─ TMSync-PRD.md
+├─ docs/              # design notes: TMSync-PRD, ANIME-PLAN, STORAGE-SYNC, DISCORD-RP
+├─ CONTRIBUTING.md
+├─ README.md
 └─ CLAUDE.md
 ```
 

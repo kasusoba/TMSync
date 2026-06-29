@@ -12,7 +12,7 @@ name: Apply contribution
 
 on:
   issues:
-    types: [labeled]
+    types: [opened, labeled]
 
 permissions:
   contents: write
@@ -20,7 +20,11 @@ permissions:
 
 jobs:
   apply:
-    if: github.event.label.name == 'contribution'
+    # Fire when the "contribution" label is added, OR when an issue is opened
+    # already carrying it (creating-with-label doesn't reliably emit `labeled`).
+    if: >
+      (github.event.action == 'labeled' && github.event.label.name == 'contribution') ||
+      (github.event.action == 'opened' && contains(github.event.issue.labels.*.name, 'contribution'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

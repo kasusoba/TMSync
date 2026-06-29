@@ -51,7 +51,7 @@ request, no server involved. See [`CONTRIBUTING.md`](./CONTRIBUTING.md).
 ## For developers
 
 Cross-browser WebExtension that passively scrobbles **movies & TV shows to Trakt** using
-declarative **recipes** (data, not code). See [`TMSync-PRD.md`](./TMSync-PRD.md) for the
+declarative **recipes** (data, not code). See [`docs/TMSync-PRD.md`](./docs/TMSync-PRD.md) for the
 what/why and [`CLAUDE.md`](./CLAUDE.md) for the settled architecture and constraints.
 
 ### Monorepo layout
