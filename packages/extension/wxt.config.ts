@@ -20,7 +20,8 @@ export default defineConfig({
   srcDir: ".",
   manifest: ({ browser }) => ({
     name: "TMSync",
-    description: "Passively scrobble movies & TV to Trakt on any streaming site.",
+    description:
+      "Passively scrobble movies & TV to Trakt and anime to AniList on any streaming site.",
     // `identity` for Trakt OAuth; `activeTab` lets the popup read the current
     // tab's URL (on the action click) to offer "enable on this site".
     permissions: ["storage", "alarms", "scripting", "identity", "activeTab"],
