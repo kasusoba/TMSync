@@ -252,6 +252,21 @@ export function recipeToDraft(recipe: Recipe): RecipeDraft {
 }
 
 /**
+ * A friendly default recipe name from a hostname. For a bare domain or a `www.`
+ * one, Capitalize the second-level label ("www.miruro.to" / "cineby.at" →
+ * "Miruro" / "Cineby"). When a real subdomain remains ("watch.example.com"), keep
+ * the full hostname — the bare label alone would be ambiguous. (Compound TLDs like
+ * "example.co.uk" fall into the keep-full branch; rare for these sites.)
+ */
+export function defaultRecipeName(hostname: string): string {
+  const bare = hostname.replace(/^www\./i, "");
+  const labels = bare.split(".");
+  if (labels.length > 2) return hostname; // has a subdomain → keep the host as-is
+  const label = labels[0] || hostname;
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+/**
  * Whether a saved recipe belongs to this host — used to reload it into the
  * picker for editing, even from a non-media page (homepage) where its urlPattern
  * wouldn't match the current URL. Checks the hostnames hint, then falls back to

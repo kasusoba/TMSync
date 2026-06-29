@@ -14,6 +14,7 @@ import {
   autoDetectFields,
   buildRecipe,
   countNumbers,
+  defaultRecipeName,
   emptyDraft,
   previewDraft,
   queryParamRegex,
@@ -167,7 +168,7 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
     // own <video> is found at play time.
     return base;
   });
-  const [name, setName] = useState(location.hostname);
+  const [name, setName] = useState(defaultRecipeName(location.hostname));
   const [picking, setPicking] = useState<DraftFieldKey | "manualKey" | null>(null);
   const [highlight, setHighlight] = useState<Rect | null>(null);
   const [status, setStatus] = useState<string | null>(null);

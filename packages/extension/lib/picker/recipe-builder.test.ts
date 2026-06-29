@@ -8,6 +8,7 @@ import {
   autoDetectFields,
   buildRecipe,
   countNumbers,
+  defaultRecipeName,
   deriveQuickLink,
   detectTmdbIdField,
   emptyDraft,
@@ -25,6 +26,17 @@ import {
 function parse(html: string): Document {
   return new DOMParser().parseFromString(html, "text/html");
 }
+
+describe("defaultRecipeName", () => {
+  it("capitalizes the domain for bare/www hosts", () => {
+    expect(defaultRecipeName("www.miruro.to")).toBe("Miruro");
+    expect(defaultRecipeName("cineby.at")).toBe("Cineby");
+    expect(defaultRecipeName("popcornmovies.org")).toBe("Popcornmovies");
+  });
+  it("keeps the full host when a real subdomain is present", () => {
+    expect(defaultRecipeName("watch.example.com")).toBe("watch.example.com");
+  });
+});
 
 describe("deriveQuickLink", () => {
   it("derives a movie template from a numeric id", () => {
