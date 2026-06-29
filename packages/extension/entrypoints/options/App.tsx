@@ -306,8 +306,7 @@ const SECTIONS: { id: string; label: string; icon: IconName }[] = [
   { id: "account", label: "Account", icon: "play" },
   { id: "sites", label: "Sites", icon: "frame" },
   { id: "links", label: "Quick links", icon: "link" },
-  { id: "library", label: "Library", icon: "refresh" },
-  { id: "recipes", label: "Your recipes", icon: "edit" },
+  { id: "recipes", label: "Recipes", icon: "edit" },
   { id: "corrections", label: "Corrections", icon: "check" },
   { id: "backup", label: "Backup", icon: "copy" },
   { id: "display", label: "Display", icon: "settings" },
@@ -622,8 +621,7 @@ export function App() {
   const counts: Record<string, number> = {
     sites: sites.length,
     links: links.length,
-    library: remote?.recipes.length ?? 0,
-    recipes: recipes.length,
+    recipes: recipes.length + (remote?.recipes.length ?? 0),
     corrections: corrEntries.length,
   };
 
@@ -852,41 +850,19 @@ export function App() {
               </>
             )}
 
-            {active === "library" && (
+            {active === "recipes" && (
               <>
                 <PaneHead
-                  title="Recipe library"
+                  title="Recipes"
                   right={
                     <Btn t={t} tone="ghost" disabled={busy} onClick={refreshRecipes}>
                       <Icon name="refresh" class="text-[12px]" /> Refresh
                     </Btn>
                   }
                 />
-                <p class={clsx("text-[12px]", t.sub)}>
-                  {remote
-                    ? `${remote.recipes.length} recipe${remote.recipes.length === 1 ? "" : "s"} · updated ${new Date(remote.fetchedAt).toLocaleString()}`
-                    : "Not fetched yet — it syncs automatically in the background."}
-                </p>
-                {remote && remote.recipes.length > 3 && (
-                  <Filter q={q} setQ={setQ} placeholder="Filter library…" />
-                )}
-                <div class="space-y-1.5">
-                  {remote?.recipes
-                    .filter((r) => has(r.name) || has(r.match.urlPattern))
-                    .map((r) => (
-                      <div class={clsx("rounded-lg px-3 py-2", t.card)} key={r.id}>
-                        <span class={clsx("block text-[13px] font-medium", t.heading)}>
-                          {r.name}
-                        </span>
-                        <code class={clsx("block truncate font-mono text-[11px]", t.faint)}>
-                          {r.match.urlPattern}
-                        </code>
-                      </div>
-                    ))}
-                </div>
-                <p class={clsx("text-[11px] leading-relaxed", t.faint)}>
-                  Shared through the project repo (no server) and merged with your own (yours win).
-                  Add a site by opening a PR —{" "}
+                <p class={clsx("text-[12px] leading-relaxed", t.sub)}>
+                  Your own recipes and the shared library, together. Yours win where they overlap.
+                  Add a site with “Set up this site” in the popup, or{" "}
                   <a
                     href={RECIPES.contributeUrl}
                     target="_blank"
@@ -897,91 +873,122 @@ export function App() {
                   </a>
                   .
                 </p>
-                {recipeNote && (
-                  <p class={clsx("rounded-lg px-3 py-2 text-[12px]", t.infoBox)}>{recipeNote}</p>
+                {recipes.length + (remote?.recipes.length ?? 0) > 3 && (
+                  <Filter q={q} setQ={setQ} placeholder="Filter recipes…" />
                 )}
-              </>
-            )}
 
-            {active === "recipes" && (
-              <>
-                <PaneHead title="Your recipes" />
+                {/* Your recipes (editable) */}
+                <div class={clsx("flex items-center gap-2 px-1 pt-1 text-[11px]", t.faint)}>
+                  <span class="font-medium uppercase tracking-wide">Yours</span>
+                  <span class="h-px flex-1 bg-current opacity-20" />
+                  <span>{recipes.length}</span>
+                </div>
                 {recipes.length === 0 ? (
-                  <p class={clsx("rounded-lg px-3 py-4 text-center text-[12px]", t.card, t.sub)}>
-                    No custom recipes. Use “Set up this site” in the popup to author one.
+                  <p class={clsx("rounded-lg px-3 py-3 text-center text-[12px]", t.card, t.sub)}>
+                    No custom recipes yet. Use “Set up this site” in the popup to author one.
                   </p>
                 ) : (
-                  <>
-                    {recipes.length > 3 && (
-                      <Filter q={q} setQ={setQ} placeholder="Filter recipes…" />
-                    )}
-                    <div class="space-y-3">
-                      {[...recipeGroups.entries()].map(([hostname, group]) => {
-                        const items = group.filter(
-                          (r) => has(r.name) || has(r.match.urlPattern) || has(hostname),
-                        );
-                        if (items.length === 0) return null;
-                        return (
-                          <div key={hostname}>
-                            <div
-                              class={clsx(
-                                "mb-1.5 flex items-center justify-between px-1 text-[11px]",
-                                t.faint,
-                              )}
-                            >
-                              <code class="font-mono">{hostname}</code>
-                              <span>
-                                {items.length} recipe{items.length > 1 ? "s" : ""}
-                              </span>
-                            </div>
-                            <div class="space-y-1.5">
-                              {items.map((r) => (
-                                <div
-                                  key={r.id}
-                                  class={clsx(
-                                    "flex items-center justify-between gap-2 rounded-lg px-3 py-2",
-                                    t.card,
-                                  )}
-                                >
-                                  <div class="min-w-0">
-                                    <span class={clsx("block text-[13px] font-medium", t.heading)}>
-                                      {r.name}
-                                    </span>
-                                    <code
-                                      class={clsx("block truncate font-mono text-[11px]", t.faint)}
-                                    >
-                                      {r.match.urlPattern}
-                                    </code>
-                                  </div>
-                                  <div class="flex shrink-0 items-center">
-                                    <IconBtn
-                                      t={t}
-                                      name="external"
-                                      title="Contribute to library"
-                                      onClick={() => openContribution(contributeRecipe(r))}
-                                    />
-                                    <IconBtn
-                                      t={t}
-                                      name={copied === r.id ? "check" : "copy"}
-                                      title={copied === r.id ? "Copied!" : "Copy JSON"}
-                                      onClick={() => copyRecipe(r)}
-                                    />
-                                    <IconBtn
-                                      t={t}
-                                      name="trash"
-                                      title="Delete"
-                                      danger
-                                      onClick={() => deleteRecipe(r.id)}
-                                    />
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
+                  <div class="space-y-3">
+                    {[...recipeGroups.entries()].map(([hostname, group]) => {
+                      const items = group.filter(
+                        (r) => has(r.name) || has(r.match.urlPattern) || has(hostname),
+                      );
+                      if (items.length === 0) return null;
+                      return (
+                        <div key={hostname}>
+                          <div
+                            class={clsx(
+                              "mb-1.5 flex items-center justify-between px-1 text-[11px]",
+                              t.faint,
+                            )}
+                          >
+                            <code class="font-mono">{hostname}</code>
+                            <span>
+                              {items.length} recipe{items.length > 1 ? "s" : ""}
+                            </span>
                           </div>
-                        );
-                      })}
-                    </div>
-                  </>
+                          <div class="space-y-1.5">
+                            {items.map((r) => (
+                              <div
+                                key={r.id}
+                                class={clsx(
+                                  "flex items-center justify-between gap-2 rounded-lg px-3 py-2",
+                                  t.card,
+                                )}
+                              >
+                                <div class="min-w-0">
+                                  <span class={clsx("block text-[13px] font-medium", t.heading)}>
+                                    {r.name}
+                                  </span>
+                                  <code
+                                    class={clsx("block truncate font-mono text-[11px]", t.faint)}
+                                  >
+                                    {r.match.urlPattern}
+                                  </code>
+                                </div>
+                                <div class="flex shrink-0 items-center">
+                                  <IconBtn
+                                    t={t}
+                                    name="external"
+                                    title="Contribute to library"
+                                    onClick={() => openContribution(contributeRecipe(r))}
+                                  />
+                                  <IconBtn
+                                    t={t}
+                                    name={copied === r.id ? "check" : "copy"}
+                                    title={copied === r.id ? "Copied!" : "Copy JSON"}
+                                    onClick={() => copyRecipe(r)}
+                                  />
+                                  <IconBtn
+                                    t={t}
+                                    name="trash"
+                                    title="Delete"
+                                    danger
+                                    onClick={() => deleteRecipe(r.id)}
+                                  />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Library (read-only, from the repo) */}
+                <div class={clsx("flex items-center gap-2 px-1 pt-3 text-[11px]", t.faint)}>
+                  <span class="font-medium uppercase tracking-wide">Library</span>
+                  <span class="h-px flex-1 bg-current opacity-20" />
+                  <span>{remote?.recipes.length ?? 0}</span>
+                </div>
+                <p class={clsx("px-1 text-[11px]", t.faint)}>
+                  {remote
+                    ? `Shared via the repo · updated ${new Date(remote.fetchedAt).toLocaleString()}`
+                    : "Not fetched yet — it syncs automatically in the background."}
+                </p>
+                {remote && remote.recipes.length > 0 ? (
+                  <div class="space-y-1.5">
+                    {remote.recipes
+                      .filter((r) => has(r.name) || has(r.match.urlPattern))
+                      .map((r) => (
+                        <div class={clsx("rounded-lg px-3 py-2", t.card)} key={r.id}>
+                          <span class={clsx("block text-[13px] font-medium", t.heading)}>
+                            {r.name}
+                          </span>
+                          <code class={clsx("block truncate font-mono text-[11px]", t.faint)}>
+                            {r.match.urlPattern}
+                          </code>
+                        </div>
+                      ))}
+                  </div>
+                ) : (
+                  <p class={clsx("rounded-lg px-3 py-3 text-center text-[12px]", t.card, t.sub)}>
+                    The shared library is empty — contribute a site to seed it.
+                  </p>
+                )}
+                {recipeNote && (
+                  <p class={clsx("rounded-lg px-3 py-2 text-[12px]", t.infoBox)}>{recipeNote}</p>
                 )}
               </>
             )}
