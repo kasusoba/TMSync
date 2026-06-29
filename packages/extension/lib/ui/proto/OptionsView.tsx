@@ -154,12 +154,11 @@ const SECTIONS: { id: string; label: string; icon: IconName; count?: number }[] 
   { id: "trakt", label: "Account", icon: "play" },
   { id: "sites", label: "Sites", icon: "frame", count: SITES.length },
   { id: "links", label: "Quick links", icon: "link", count: QUICK_LINKS.length },
-  { id: "library", label: "Library", icon: "refresh", count: LIBRARY.length },
   {
     id: "recipes",
-    label: "Your recipes",
+    label: "Recipes",
     icon: "edit",
-    count: RECIPES.reduce((a, g) => a + g.items.length, 0),
+    count: RECIPES.reduce((a, g) => a + g.items.length, 0) + LIBRARY.length,
   },
   { id: "corrections", label: "Corrections", icon: "check", count: CORRECTIONS.length },
 ];
@@ -390,46 +389,33 @@ export function OptionsView({ variant }: { variant: Variant }) {
               </>
             )}
 
-            {active === "library" && (
+            {active === "recipes" && (
               <>
                 <PaneHead
                   t={t}
-                  title="Recipe library"
+                  title="Recipes"
                   right={
                     <Btn t={t} tone="ghost">
                       <Icon name="refresh" class="text-[12px]" /> Refresh
                     </Btn>
                   }
                 />
-                <p class={clsx("text-[12px]", t.sub)}>
-                  {LIBRARY.length} recipes · updated just now
-                </p>
-                <Filter t={t} q={q} setQ={setQ} placeholder="Filter library…" />
-                <div class="space-y-1.5">
-                  {LIBRARY.filter(([n, p]) => has(n) || has(p)).map(([name, patt]) => (
-                    <Card t={t} key={patt}>
-                      <span class={clsx("block text-[13px] font-medium", t.heading)}>{name}</span>
-                      <code class={clsx("block truncate font-mono text-[11px]", t.faint)}>
-                        {patt}
-                      </code>
-                    </Card>
-                  ))}
-                </div>
-                <p class={clsx("text-[11px] leading-relaxed", t.faint)}>
-                  Shared through the project repo (no server) and merged with your own (yours win).
-                  Add a site by opening a PR —{" "}
+                <p class={clsx("text-[12px] leading-relaxed", t.sub)}>
+                  Your own recipes and the shared library, together. Yours win where they overlap.
+                  Add a site with “Set up this site” in the popup, or{" "}
                   <a href="#contribute" class={clsx("underline underline-offset-2", t.link)}>
                     contribute here
                   </a>
                   .
                 </p>
-              </>
-            )}
-
-            {active === "recipes" && (
-              <>
-                <PaneHead t={t} title="Your recipes" />
                 <Filter t={t} q={q} setQ={setQ} placeholder="Filter recipes…" />
+
+                {/* Your recipes (editable) */}
+                <div class={clsx("flex items-center gap-2 px-1 pt-1 text-[11px]", t.faint)}>
+                  <span class="font-medium uppercase tracking-wide">Yours</span>
+                  <span class="h-px flex-1 bg-current opacity-20" />
+                  <span>{RECIPES.reduce((a, g) => a + g.items.length, 0)}</span>
+                </div>
                 <div class="space-y-3">
                   {RECIPES.map((g) => {
                     const items = g.items.filter(([n, p]) => has(n) || has(p) || has(g.host));
@@ -465,6 +451,7 @@ export function OptionsView({ variant }: { variant: Variant }) {
                                 </code>
                               </div>
                               <div class="flex shrink-0 items-center">
+                                <IconBtn t={t} name="external" title="Contribute to library" />
                                 <IconBtn t={t} name="copy" title="Copy JSON" />
                                 <IconBtn t={t} name="trash" title="Delete" danger />
                               </div>
@@ -474,6 +461,26 @@ export function OptionsView({ variant }: { variant: Variant }) {
                       </div>
                     );
                   })}
+                </div>
+
+                {/* Library (read-only, from the repo) */}
+                <div class={clsx("flex items-center gap-2 px-1 pt-3 text-[11px]", t.faint)}>
+                  <span class="font-medium uppercase tracking-wide">Library</span>
+                  <span class="h-px flex-1 bg-current opacity-20" />
+                  <span>{LIBRARY.length}</span>
+                </div>
+                <p class={clsx("px-1 text-[11px]", t.faint)}>
+                  Shared via the repo · updated just now
+                </p>
+                <div class="space-y-1.5">
+                  {LIBRARY.filter(([n, p]) => has(n) || has(p)).map(([name, patt]) => (
+                    <Card t={t} key={patt}>
+                      <span class={clsx("block text-[13px] font-medium", t.heading)}>{name}</span>
+                      <code class={clsx("block truncate font-mono text-[11px]", t.faint)}>
+                        {patt}
+                      </code>
+                    </Card>
+                  ))}
                 </div>
               </>
             )}
