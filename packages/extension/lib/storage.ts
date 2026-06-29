@@ -7,8 +7,19 @@ import type { ResolvedIdentity, TraktTokens } from "./trakt/types";
 
 /**
  * All persisted state lives here. The background SW is stateless (constraint
- * #4): it reads everything from storage on each wake. `local` for caches/tokens,
- * never `sync` for secrets.
+ * #4): it reads everything from storage on each wake.
+ *
+ * Storage layers (see STORAGE-SYNC.md):
+ *  - `sync:`  user-owned deltas that follow the user across devices via the
+ *             browser account — custom recipes, user quick links, corrections,
+ *             manual picks, badge prefs. NEVER secrets (tokens) or large caches.
+ *  - `local:` per-device — tokens (secrets), caches/mirrors, granted origins,
+ *             the resolution/crosswalk data (regenerable).
+ *  - `session:` ephemeral per-tab session state.
+ *
+ * Quota note: `browser.storage.sync` caps items at ~8 KB each / ~100 KB total.
+ * The synced items are single keys today (a handful of small entries fits easily);
+ * if corrections/recipes ever grow large, move to per-item keys (STORAGE-SYNC.md).
  */
 
 export const traktTokens = storage.defineItem<TraktTokens | null>("local:trakt_tokens", {
@@ -53,7 +64,7 @@ export const enabledOrigins = storage.defineItem<string[]>("local:enabled_origin
 });
 
 /** Recipes authored locally via the element picker (merged with the bundled list). */
-export const customRecipes = storage.defineItem<Recipe[]>("local:custom_recipes", {
+export const customRecipes = storage.defineItem<Recipe[]>("sync:custom_recipes", {
   fallback: [],
 });
 
@@ -88,7 +99,7 @@ export interface QuickLinkSite extends LinkTemplates {
    * "user"/undefined = created or fully owned by the user. */
   source?: "library" | "user";
 }
-export const quickLinks = storage.defineItem<QuickLinkSite[]>("local:quick_links", {
+export const quickLinks = storage.defineItem<QuickLinkSite[]>("sync:quick_links", {
   fallback: [],
 });
 
@@ -97,7 +108,7 @@ export const quickLinks = storage.defineItem<QuickLinkSite[]>("local:quick_links
  * Authoritative over search results (so a wrong auto-match stays fixed).
  */
 export const corrections = storage.defineItem<Record<string, ResolvedIdentity>>(
-  "local:corrections",
+  "sync:corrections",
   { fallback: {} },
 );
 
@@ -148,7 +159,7 @@ export const notes = storage.defineItem<Record<string, StoredNote>>("local:notes
  * (see corrections) so it resolves to the exact Trakt entry the user picked.
  */
 export const manualSelections = storage.defineItem<Record<string, ParsedMedia>>(
-  "local:manual_selections",
+  "sync:manual_selections",
   { fallback: {} },
 );
 

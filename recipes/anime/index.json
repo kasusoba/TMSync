@@ -1,33 +1,3 @@
 {
-  "recipes": [
-    {
-      "id": "reanime-watch",
-      "schemaVersion": 2,
-      "name": "reanime.to",
-      "tracker": "anilist",
-      "mediaType": "show",
-      "match": {
-        "urlPattern": "reanime\\.to/watch",
-        "hostnames": ["reanime.to"]
-      },
-      "video": {
-        "selector": "video",
-        "frame": "iframe",
-        "watchedThreshold": 0.8
-      },
-      "extract": {
-        "title": {
-          "source": "dom",
-          "selector": ".text-center > .leading-tight",
-          "transforms": ["trim", "collapseSpaces"]
-        },
-        "episode": {
-          "source": "url",
-          "regex": "(?:\\D*\\d+){1}\\D*(\\d+)",
-          "group": 1,
-          "transforms": ["toInt"]
-        }
-      }
-    }
-  ]
+  "recipes": []
 }

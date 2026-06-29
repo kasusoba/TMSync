@@ -32,7 +32,7 @@ It's the *browser vendor's* sync (Google/Firefox account), **not** a TMSync back
 2. **Best-effort.** Only active when the user is signed into the browser with sync on; otherwise silently local. ⇒ Export/Import is the universal fallback, not optional.
 3. **Host permissions don't sync** (constraint #5 — per-device, user-gesture grants). ⇒ synced config drives a *"these sites are set up on your other device — click to enable here"* one-click re-grant; `enabled_origins` itself stays local (it reflects actual grants on this device).
 4. **Last-write-wins per item** across devices (browser.sync default) — acceptable.
-5. **Migration:** a one-time `local → sync` copy-up on upgrade, so existing single-device data isn't dropped.
+5. **Migration:** none for now. Early stage / single user with a handful of entries → the owner accepts wiping and recreating, so flipping the key from `local:` to `sync:` (which orphans the old `local:` data) is fine. A one-time `local → sync` copy-up can be added later if needed.
 
 ## Export / Import (manual portability)
 - Serializes the **Sync layer** (user deltas) + the crosswalk — explicitly **not** library (re-fetched) and **not** tokens/caches.
@@ -68,5 +68,5 @@ Goal: a contributed item is **merge-ready** — lands in the right repo file wit
 
 ## Sequencing (decided 2026-06-29)
 1. **Export/Import JSON** — fastest relief, universal, defines the "user deltas" set concretely.
-2. **Migrate user-authored config to `browser.storage.sync`** — per-item keys + `local→sync` migration + re-grant UX for origins. Sync set: **custom recipes, quicklinks, corrections, manual picks** (not rating/note mirrors).
+2. **Migrate user-authored config to `browser.storage.sync`** — DONE (2026-06-29): flipped `custom_recipes`, `quick_links`, `corrections`, `manual_selections` to `sync:` single keys (no migration shim — accepted wipe at this stage). Sync set: **custom recipes, quicklinks, corrections, manual picks** (not rating/note mirrors). Follow-ups (deferred): per-item keys for quota safety + a "set up these sites here" re-grant prompt (host permissions don't sync).
 3. **Build the crosswalk** (recipe-canonical-id capture + local map + smarter `{slug}` source) on the finalized storage model.
