@@ -1,0 +1,56 @@
+name: Apply contribution
+
+# Turn a "contribution"-labelled issue (filed by the TMSync extension's contribute
+# button) into a ready-to-merge PR: parse the self-describing JSON payload, route
+# each entry into the right recipe list, format with biome, and open a PR closing
+# the issue. A human just reviews + merges. No backend (constraint #7) — this is
+# repo CI, not a hosted server.
+#
+# NOTE: this hasn't been exercised against a live issue yet — verify permissions
+# (Settings → Actions → "Allow GitHub Actions to create and approve pull requests")
+# and the first run before relying on it.
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  apply:
+    if: github.event.label.name == 'contribution'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Apply contribution payload
+        id: apply
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: node scripts/apply-contribution.mjs
+
+      - name: Format recipe lists
+        run: pnpm exec biome format --write recipes/ || true
+
+      - name: Open pull request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: contribution/issue-${{ github.event.issue.number }}
+          delete-branch: true
+          title: "Contribution from #${{ github.event.issue.number }}: ${{ github.event.issue.title }}"
+          body: |
+            Closes #${{ github.event.issue.number }}
+
+            Auto-generated from a TMSync contribution issue. Review and merge.
+
+            ${{ steps.apply.outputs.summary }}
+          labels: contribution
