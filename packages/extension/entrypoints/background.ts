@@ -884,6 +884,7 @@ async function fetchRemoteRecipes(
       etag: res.headers.get("etag") ?? undefined,
     });
     await mergeLibraryLinks(library.links);
+    await graduateRecipes(library.recipes);
     return { ok: true, count: library.recipes.length };
   } catch (e) {
     return { ok: false, count: 0, error: errMsg(e) };
@@ -891,10 +892,37 @@ async function fetchRemoteRecipes(
 }
 
 /**
+ * Recipe graduation: once a custom recipe's identical twin appears in the library
+ * (the user's contribution landed), retire the local copy so it stops shadowing +
+ * consuming the synced set. A diverged custom recipe is kept (user edits win).
+ */
+async function graduateRecipes(libraryRecipes: Recipe[]): Promise<void> {
+  const libById = new Map(libraryRecipes.map((r) => [r.id, JSON.stringify(r)]));
+  const custom = await customRecipes.getValue();
+  const kept = custom.filter((r) => libById.get(r.id) !== JSON.stringify(r));
+  if (kept.length !== custom.length) await customRecipes.setValue(kept);
+}
+
+/** True if a user link is identical to its library version (so it can graduate
+ *  cleanly). A diverged user copy keeps shadowing instead. */
+function linkMatchesLibrary(cur: QuickLinkSite, l: LibraryLink): boolean {
+  return (
+    cur.name === l.name &&
+    (cur.tracker ?? "trakt") === l.tracker &&
+    cur.movie === l.movie &&
+    cur.tv === l.tv &&
+    cur.anime === l.anime &&
+    cur.search === l.search
+  );
+}
+
+/**
  * Merge shared library links into the user's quick-links store. New ones arrive
  * DISABLED (the user enables favourites); existing library-sourced entries get
- * their templates/name refreshed but keep the user's enabled choice. User-owned
- * entries are never touched.
+ * their templates/name refreshed but keep the user's enabled choice. A user-owned
+ * entry whose id now appears in the library (i.e. their contribution landed) and
+ * matches it GRADUATES to a library entry, keeping its enabled toggle; a diverged
+ * user entry is left untouched (it shadows the library version).
  */
 async function mergeLibraryLinks(links: LibraryLink[]): Promise<void> {
   if (links.length === 0) return;
@@ -903,29 +931,24 @@ async function mergeLibraryLinks(links: LibraryLink[]): Promise<void> {
   let changed = false;
   for (const l of links) {
     const cur = byId.get(l.id);
+    const fields = {
+      name: l.name,
+      tracker: l.tracker,
+      movie: l.movie,
+      tv: l.tv,
+      anime: l.anime,
+      search: l.search,
+    };
     if (!cur) {
-      byId.set(l.id, {
-        id: l.id,
-        name: l.name,
-        enabled: false,
-        source: "library",
-        tracker: l.tracker,
-        movie: l.movie,
-        tv: l.tv,
-        anime: l.anime,
-        search: l.search,
-      });
+      byId.set(l.id, { id: l.id, enabled: false, source: "library", ...fields });
       changed = true;
     } else if (cur.source === "library") {
-      byId.set(l.id, {
-        ...cur,
-        name: l.name,
-        tracker: l.tracker,
-        movie: l.movie,
-        tv: l.tv,
-        anime: l.anime,
-        search: l.search,
-      });
+      byId.set(l.id, { ...cur, ...fields });
+      changed = true;
+    } else if (linkMatchesLibrary(cur, l)) {
+      // Graduate: the user's contributed link is now in the library, unchanged —
+      // adopt it (keep their enabled toggle), freeing it from the synced set.
+      byId.set(l.id, { ...cur, source: "library", ...fields });
       changed = true;
     }
   }

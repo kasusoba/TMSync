@@ -1,6 +1,13 @@
 import { RECIPES } from "@/config";
 import { applyBackup, buildBackup, parseBackup } from "@/lib/portability/backup";
 import {
+  type Contribution,
+  blankIssueUrl,
+  contributeAll,
+  contributeQuickLink,
+  contributeRecipe,
+} from "@/lib/portability/contribute";
+import {
   type BadgePrefs,
   type QuickLinkSite,
   type RemoteRecipes,
@@ -121,6 +128,7 @@ function QuickLinkRow({
   onSave,
   onDelete,
   onToggle,
+  onContribute,
   onDragStart,
   onDragEnter,
   onDragEnd,
@@ -134,6 +142,7 @@ function QuickLinkRow({
   onSave: (site: QuickLinkSite) => Promise<void>;
   onDelete: (id: string) => void;
   onToggle: (id: string) => void;
+  onContribute: () => void;
   // Drag-to-reorder (HTML5 DnD): handle starts the drag; the row is a drop target.
   onDragStart: () => void;
   onDragEnter: () => void;
@@ -231,6 +240,9 @@ function QuickLinkRow({
             <span class={clsx("ml-1.5 text-[11px]", t.faint)}>· library</span>
           )}
         </span>
+        {site.source !== "library" && (
+          <IconBtn t={t} name="external" title="Contribute to library" onClick={onContribute} />
+        )}
         <IconBtn t={t} name="edit" title="Edit" onClick={() => setOpen((v) => !v)} />
         <IconBtn t={t} name="trash" title="Delete" danger onClick={() => onDelete(site.id)} />
       </div>
@@ -524,6 +536,21 @@ export function App() {
     setExporting(false);
   };
 
+  // --- contribute site config to the central repo (prefilled GitHub issue) ---
+  const openContribution = async (c: Contribution) => {
+    if (c.tooLong) {
+      // Too long to prefill — copy the payload and open a blank issue to paste it.
+      try {
+        await navigator.clipboard.writeText(c.json);
+      } catch {
+        // clipboard blocked — ignore; the user can still file manually
+      }
+      window.open(blankIssueUrl, "_blank", "noreferrer");
+    } else {
+      window.open(c.url, "_blank", "noreferrer");
+    }
+  };
+
   // --- backup (export / import the user-owned deltas) ---
   const exportBackup = async () => {
     setBackupBusy(true);
@@ -792,6 +819,7 @@ export function App() {
                           onSave={saveLink}
                           onDelete={deleteLink}
                           onToggle={toggleLink}
+                          onContribute={() => openContribution(contributeQuickLink(s))}
                           onDragStart={() => onLinkDragStart(s.id)}
                           onDragEnter={() => onLinkDragEnter(s.id)}
                           onDragEnd={onLinkDragEnd}
@@ -926,6 +954,12 @@ export function App() {
                                     </code>
                                   </div>
                                   <div class="flex shrink-0 items-center">
+                                    <IconBtn
+                                      t={t}
+                                      name="external"
+                                      title="Contribute to library"
+                                      onClick={() => openContribution(contributeRecipe(r))}
+                                    />
                                     <IconBtn
                                       t={t}
                                       name={copied === r.id ? "check" : "copy"}
@@ -1063,6 +1097,36 @@ export function App() {
                 {backupNote && (
                   <p class={clsx("rounded-lg px-3 py-2 text-[12px]", t.infoBox)}>{backupNote}</p>
                 )}
+
+                <PaneHead title="Contribute" />
+                <p class={clsx("text-[12px] leading-relaxed", t.sub)}>
+                  Share your recipes &amp; quick links with everyone by opening a prefilled GitHub
+                  issue — no watch data is included, only site config. (You can also contribute a
+                  single entry from its row.)
+                </p>
+                <div class={clsx("flex items-center gap-3 rounded-lg px-3 py-2.5", t.card)}>
+                  <span class="min-w-0 flex-1">
+                    <span class={clsx("block text-[13px] font-medium", t.heading)}>
+                      Contribute everything
+                    </span>
+                    <span class={clsx("block text-[11px]", t.sub)}>
+                      {recipes.length} recipe{recipes.length === 1 ? "" : "s"} ·{" "}
+                      {links.filter((l) => l.source !== "library").length} quick link
+                      {links.filter((l) => l.source !== "library").length === 1 ? "" : "s"}
+                    </span>
+                  </span>
+                  <Btn
+                    t={t}
+                    tone="ghost"
+                    disabled={
+                      recipes.length === 0 &&
+                      links.filter((l) => l.source !== "library").length === 0
+                    }
+                    onClick={() => openContribution(contributeAll(recipes, links))}
+                  >
+                    <Icon name="external" class="text-[12px]" /> Contribute all
+                  </Btn>
+                </div>
               </>
             )}
 
