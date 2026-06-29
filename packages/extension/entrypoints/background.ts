@@ -868,24 +868,28 @@ async function fetchRemoteRecipes(
     if (!force && current && Date.now() - current.fetchedAt < RECIPES.refreshMs) {
       return { ok: true, count: current.recipes.length };
     }
-    const headers: Record<string, string> = {};
-    if (current?.etag) headers["If-None-Match"] = current.etag;
-    const res = await fetch(RECIPES.url, { headers });
-    if (res.status === 304 && current) {
-      await remoteRecipes.setValue({ ...current, fetchedAt: Date.now() });
-      return { ok: true, count: current.recipes.length };
+    // Fetch BOTH lists — the public Trakt list and the separate anime (AniList)
+    // list — so contributed anime recipes reach the library too. They're kept in
+    // separate files (CLAUDE.md) but merged into one effective remote list here.
+    const [traktRes, animeRes] = await Promise.all([fetch(RECIPES.url), fetch(RECIPES.animeUrl)]);
+    if (!traktRes.ok && !animeRes.ok) {
+      return {
+        ok: false,
+        count: current?.recipes.length ?? 0,
+        error: `HTTP ${traktRes.status}/${animeRes.status}`,
+      };
     }
-    if (!res.ok)
-      return { ok: false, count: current?.recipes.length ?? 0, error: `HTTP ${res.status}` };
-    const library = parseLibrary((await res.json()) as unknown);
-    await remoteRecipes.setValue({
-      recipes: library.recipes,
-      fetchedAt: Date.now(),
-      etag: res.headers.get("etag") ?? undefined,
-    });
-    await mergeLibraryLinks(library.links);
-    await graduateRecipes(library.recipes);
-    return { ok: true, count: library.recipes.length };
+    const trakt = traktRes.ok
+      ? parseLibrary((await traktRes.json()) as unknown)
+      : { recipes: [], links: [] };
+    const anime = animeRes.ok
+      ? parseLibrary((await animeRes.json()) as unknown)
+      : { recipes: [], links: [] };
+    const recipes = [...trakt.recipes, ...anime.recipes];
+    await remoteRecipes.setValue({ recipes, fetchedAt: Date.now() });
+    await mergeLibraryLinks([...trakt.links, ...anime.links]);
+    await graduateRecipes(recipes);
+    return { ok: true, count: recipes.length };
   } catch (e) {
     return { ok: false, count: 0, error: errMsg(e) };
   }
