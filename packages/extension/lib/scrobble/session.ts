@@ -1,3 +1,4 @@
+import { animeCrosswalk } from "@/lib/storage";
 import { routeTracker } from "@/lib/tracker";
 import type { Tracker } from "@/lib/tracker/types";
 import { type BadgeStatus, type ScrobbleReply, onMessage, sendMessage } from "@/messaging";
@@ -352,6 +353,27 @@ export class SessionManager {
             detail: `not found on ${trackerName} — click to fix`,
           },
     );
+
+    // Anime crosswalk: when this anime site declares how to read its stable series
+    // slug (`canonical`), remember `(host, AniList id) → slug` so AniList quick
+    // links can later deep-link the EXACT page instead of a guessed title-slug.
+    if (
+      this.tracker === "anilist" &&
+      recipe.canonical &&
+      resolved.resolved &&
+      resolved.id !== undefined
+    ) {
+      const slug = readField(recipe.canonical, { document, url: location.href });
+      if (slug) {
+        const host = new URL(location.href).hostname;
+        const k = `${host}:${resolved.id}`;
+        const map = await animeCrosswalk.getValue();
+        if (map[k] !== slug) {
+          map[k] = slug;
+          await animeCrosswalk.setValue(map);
+        }
+      }
+    }
   }
 
   /**

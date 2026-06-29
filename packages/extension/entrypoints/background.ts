@@ -187,7 +187,13 @@ export default defineBackground(() => {
       const adapter = getAdapter(routeTracker(data.tracker ?? "trakt", data.media.mediaType));
       const item = await adapter.resolve(data.media);
       if (!item) return { resolved: false };
-      return { resolved: true, title: item.title, year: item.year, mediaType: item.mediaType };
+      return {
+        resolved: true,
+        id: item.id,
+        title: item.title,
+        year: item.year,
+        mediaType: item.mediaType,
+      };
     } catch {
       return { resolved: false };
     }

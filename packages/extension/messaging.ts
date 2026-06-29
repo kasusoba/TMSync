@@ -110,6 +110,9 @@ export interface ProtocolMap {
    * badge show the matched title before the user presses play (transparency). */
   resolveMedia(q: { media: ParsedMedia; tracker?: Tracker }): {
     resolved: boolean;
+    /** The resolved tracker item id (Trakt id / AniList Media id) — lets the
+     * content script key the anime crosswalk by the matched AniList entry. */
+    id?: number;
     title?: string;
     year?: number;
     mediaType?: "movie" | "show";

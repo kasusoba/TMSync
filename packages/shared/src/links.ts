@@ -105,14 +105,25 @@ export function buildSiteLinks(links: LinkTemplates, media: TraktPageMedia): Sit
  * Build the outbound links for an anime site from its templates and an AniList
  * page's media: the `anime` deep link (if fillable) and the title-based `search`
  * link. Placeholders: {anilistId}, {title} (URL-encoded English/romaji), {romaji}
- * (URL-encoded), {slug} (clean, hyphen-joined).
+ * (URL-encoded), {slug}, {canonical}.
+ *
+ * `canonical` is the site's REAL series slug, captured from a prior watch (the
+ * crosswalk). When present it fills both `{canonical}` and `{slug}` — so a
+ * `…/{slug}` template hits the exact page instead of a guessed title-slug. Absent
+ * ⇒ `{slug}` falls back to slugify(title), which most anime sites won't match, so
+ * the link is typically skipped in favour of `search`.
  */
-export function buildAniListSiteLinks(links: LinkTemplates, media: AniListPageMedia): SiteLinks {
+export function buildAniListSiteLinks(
+  links: LinkTemplates,
+  media: AniListPageMedia,
+  canonical?: string,
+): SiteLinks {
   const params = {
     anilistId: media.anilistId,
     title: media.title !== undefined ? encodeURIComponent(media.title) : undefined,
     romaji: media.romaji !== undefined ? encodeURIComponent(media.romaji) : undefined,
-    slug: media.title !== undefined ? slugify(media.title) : undefined,
+    slug: canonical ?? (media.title !== undefined ? slugify(media.title) : undefined),
+    canonical,
   };
   const out: SiteLinks = {};
   if (links.anime) {

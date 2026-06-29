@@ -1,6 +1,16 @@
-import { quickLinks } from "@/lib/storage";
+import { animeCrosswalk, quickLinks } from "@/lib/storage";
 import { type QuickLinkItem, mountQuickLinks } from "@/lib/ui/quicklinks";
 import { type AniListPageMedia, buildAniListSiteLinks } from "@tmsync/shared";
+
+/** Hostname of a quick-link site from its `anime` template (for crosswalk lookup). */
+function siteHost(animeTemplate?: string): string | undefined {
+  if (!animeTemplate) return undefined;
+  try {
+    return new URL(animeTemplate).hostname;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Runs on anilist.co (the AniList analogue of trakt.content). Reads an anime's id
@@ -25,12 +35,21 @@ export default defineContentScript({
     const sites = (await quickLinks.getValue()).filter((s) => s.enabled && s.tracker === "anilist");
     if (sites.length === 0) return; // nothing to show
 
+    // Crosswalk: real per-site slugs learned from past watches. Refreshed per page
+    // (in sync) since a recent watch may have just captured the one we need.
+    let crosswalk = await animeCrosswalk.getValue();
+
     const getItems = (): QuickLinkItem[] => {
       const media = parseAniListPage();
       if (!media) return [];
       const items: QuickLinkItem[] = [];
       for (const s of sites) {
-        const links = buildAniListSiteLinks(s, media);
+        const host = siteHost(s.anime);
+        const canonical =
+          host && media.anilistId !== undefined
+            ? crosswalk[`${host}:${media.anilistId}`]
+            : undefined;
+        const links = buildAniListSiteLinks(s, media, canonical);
         if (links.direct || links.search) items.push({ name: s.name, ...links });
       }
       return items;
@@ -47,6 +66,7 @@ export default defineContentScript({
       ui?.remove();
       ui = undefined;
       if (animeId() === null) return; // not an anime page
+      crosswalk = await animeCrosswalk.getValue(); // pick up slugs learned since last page
       const created = await mountQuickLinks(ctx, getItems, {
         // Top of the left info column (above the rankings), so it's visible without
         // scrolling to the "External & Streaming links" block near the bottom. mb-4

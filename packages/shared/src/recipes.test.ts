@@ -45,9 +45,10 @@ describe("recipes/anime/index.json", () => {
   const animePath = resolve(process.cwd(), "../../recipes/anime/index.json");
   const raw = JSON.parse(readFileSync(animePath, "utf8"));
 
+  // The central list is rebuilt from scratch (may be empty); validate whatever
+  // is shipped rather than requiring content.
   it("parses and routes every anime recipe to AniList", () => {
     const lib = parseLibrary(raw);
-    expect(lib.recipes.length).toBeGreaterThan(0);
     expect(lib.recipes).toHaveLength(raw.recipes.length);
     expect(lib.recipes.every((r) => r.tracker === "anilist")).toBe(true);
   });

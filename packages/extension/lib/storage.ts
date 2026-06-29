@@ -58,6 +58,18 @@ export const resolutionCache = storage.defineItem<Record<string, ResolvedIdentit
   { fallback: {} },
 );
 
+/**
+ * Anime quick-link crosswalk: `${host}:${anilistId}` → the site's REAL series
+ * slug/identifier, captured (via a recipe's `canonical` field) whenever TMSync
+ * resolves a page on that anime site. Reused to deep-link AniList quick links to
+ * the exact page instead of a guessed title-slug (anime sites append unguessable
+ * junk to URLs). Local + regenerable on the next watch — the no-backend analogue
+ * of MALSync's central id→url map (see STORAGE-SYNC.md / the quicklink crosswalk).
+ */
+export const animeCrosswalk = storage.defineItem<Record<string, string>>("local:anime_crosswalk", {
+  fallback: {},
+});
+
 /** Origins where the user granted host access and we registered the content script. */
 export const enabledOrigins = storage.defineItem<string[]>("local:enabled_origins", {
   fallback: [],

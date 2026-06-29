@@ -120,6 +120,14 @@ export const Recipe = z.object({
   // re-applied when the same thing plays again. NOT resolved against Trakt — it
   // is purely a cache key. Absent ⇒ the engine falls back to document.title.
   manualKey: Field.optional(),
+  // ANIME quick-links only: how to read this site's STABLE series slug/identifier
+  // from the page (MALSync's getIdentifier idea, kept declarative). When present,
+  // TMSync captures `(host, AniList id) → this value` on each watch (the local
+  // "crosswalk") and reuses it to fill the `{slug}`/`{canonical}` placeholder in
+  // the site's anime quick link — so the link hits the EXACT page instead of a
+  // guessed title-slug. Anime sites often append unguessable junk to URLs; this
+  // is how we route around that without a backend. Absent ⇒ fall back to search.
+  canonical: Field.optional(),
 });
 
 export type Recipe = z.infer<typeof Recipe>;
