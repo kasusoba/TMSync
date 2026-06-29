@@ -1,4 +1,5 @@
 import { RECIPES } from "@/config";
+import { applyBackup, buildBackup, parseBackup } from "@/lib/portability/backup";
 import {
   type BadgePrefs,
   type QuickLinkSite,
@@ -296,6 +297,7 @@ const SECTIONS: { id: string; label: string; icon: IconName }[] = [
   { id: "library", label: "Library", icon: "refresh" },
   { id: "recipes", label: "Your recipes", icon: "edit" },
   { id: "corrections", label: "Corrections", icon: "check" },
+  { id: "backup", label: "Backup", icon: "copy" },
   { id: "display", label: "Display", icon: "settings" },
 ];
 
@@ -358,6 +360,9 @@ export function App() {
   const [copied, setCopied] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportNote, setExportNote] = useState<string | null>(null);
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [backupNote, setBackupNote] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [badge, setBadge] = useState<BadgePrefs>({ mode: "full", position: null });
   const has = (s: string) => s.toLowerCase().includes(q.toLowerCase());
 
@@ -517,6 +522,53 @@ export function App() {
       setExportNote(`Couldn’t export: ${out.error ?? "unknown error"}`);
     }
     setExporting(false);
+  };
+
+  // --- backup (export / import the user-owned deltas) ---
+  const exportBackup = async () => {
+    setBackupBusy(true);
+    setBackupNote(null);
+    try {
+      const backup = await buildBackup();
+      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `tmsync-backup-${new Date(backup.exportedAt).toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setBackupNote("Exported your data to a file.");
+    } catch {
+      setBackupNote("Couldn’t export.");
+    }
+    setBackupBusy(false);
+  };
+
+  const importBackup = async (file: File) => {
+    setBackupBusy(true);
+    setBackupNote(null);
+    try {
+      const backup = parseBackup(JSON.parse(await file.text()));
+      if (!backup) {
+        setBackupNote("That doesn’t look like a TMSync backup file.");
+        setBackupBusy(false);
+        return;
+      }
+      const s = await applyBackup(backup);
+      await refresh();
+      const parts = [
+        `${s.recipes} recipe${s.recipes === 1 ? "" : "s"}`,
+        `${s.quickLinks} quick link${s.quickLinks === 1 ? "" : "s"}`,
+        `${s.corrections} correction${s.corrections === 1 ? "" : "s"}`,
+        `${s.manualSelections} manual pick${s.manualSelections === 1 ? "" : "s"}`,
+      ];
+      setBackupNote(
+        `Imported ${parts.join(", ")}${s.skippedRecipes ? ` · skipped ${s.skippedRecipes} invalid recipe${s.skippedRecipes === 1 ? "" : "s"}` : ""}.`,
+      );
+    } catch {
+      setBackupNote("Couldn’t read that file.");
+    }
+    setBackupBusy(false);
   };
 
   const deleteCorrection = (key: string) =>
@@ -954,6 +1006,62 @@ export function App() {
                         ))}
                     </div>
                   </>
+                )}
+              </>
+            )}
+
+            {active === "backup" && (
+              <>
+                <PaneHead title="Backup &amp; restore" />
+                <p class={clsx("text-[12px] leading-relaxed", t.sub)}>
+                  Save your TMSync data — custom recipes, your quick links, corrections and manual
+                  picks — to a file, and import it on another device. Your tracker logins and caches
+                  aren’t included.
+                </p>
+                <div class={clsx("flex items-center gap-3 rounded-lg px-3 py-2.5", t.card)}>
+                  <span class="min-w-0 flex-1">
+                    <span class={clsx("block text-[13px] font-medium", t.heading)}>
+                      Export to file
+                    </span>
+                    <span class={clsx("block text-[11px]", t.sub)}>
+                      Downloads a JSON backup of your data.
+                    </span>
+                  </span>
+                  <Btn t={t} tone="ghost" disabled={backupBusy} onClick={exportBackup}>
+                    <Icon name="external" class="text-[12px]" /> Export
+                  </Btn>
+                </div>
+                <div class={clsx("flex items-center gap-3 rounded-lg px-3 py-2.5", t.card)}>
+                  <span class="min-w-0 flex-1">
+                    <span class={clsx("block text-[13px] font-medium", t.heading)}>
+                      Import from file
+                    </span>
+                    <span class={clsx("block text-[11px]", t.sub)}>
+                      Merges a backup into this device — your items win, nothing is deleted.
+                    </span>
+                  </span>
+                  <Btn
+                    t={t}
+                    tone="ghost"
+                    disabled={backupBusy}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Icon name="copy" class="text-[12px]" /> Import
+                  </Btn>
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="application/json,.json"
+                  class="hidden"
+                  onChange={(e) => {
+                    const f = (e.target as HTMLInputElement).files?.[0];
+                    if (f) void importBackup(f);
+                    (e.target as HTMLInputElement).value = "";
+                  }}
+                />
+                {backupNote && (
+                  <p class={clsx("rounded-lg px-3 py-2 text-[12px]", t.infoBox)}>{backupNote}</p>
                 )}
               </>
             )}

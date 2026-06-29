@@ -35,6 +35,9 @@ importers:
       preact:
         specifier: ^10.25.4
         version: 10.29.2
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
     devDependencies:
       '@preact/preset-vite':
         specifier: ^2.10.1
