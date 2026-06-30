@@ -35,9 +35,17 @@ export default defineConfig({
       "https://anilist.co/*",
       "https://graphql.anilist.co/*",
       "https://raw.githubusercontent.com/*",
+      // TMDB poster lookup for Discord Rich Presence (display art only — never a
+      // tracker; constraint #1). Metadata fetch host; the image CDN URL is handed
+      // to Discord to render, so image.tmdb.org needs no permission here.
+      "https://api.themoviedb.org/*",
+      // Discord RP "plugin" transport (docs/DISCORD-RP.md): the background SW POSTs
+      // presence to the local Vencord plugin's http server on 127.0.0.1:6473. A
+      // specific loopback host (not broad), so the manifest hook keeps it.
+      "http://127.0.0.1/*",
       // E2E only: lets the perf test register the content script on the local
       // fixture server without the popup gesture. Never in a shipped build.
-      ...(process.env.E2E ? ["http://localhost/*", "http://127.0.0.1/*"] : []),
+      ...(process.env.E2E ? ["http://localhost/*"] : []),
     ],
     // Constraint #5: NO broad host_permissions at install. We request per-origin
     // streaming-site access on a user gesture, then registerContentScripts.
@@ -50,7 +58,14 @@ export default defineConfig({
     // Stable extension identity (so the OAuth redirect URI is fixed).
     ...(browser === "firefox"
       ? { browser_specific_settings: { gecko: { id: "tmsync@tmsync.app" } } }
-      : { key: CHROME_KEY }),
+      : {
+          key: CHROME_KEY,
+          // Discord Rich Presence (docs/DISCORD-RP.md): let lolamtisch's relay
+          // extension poll us via cross-extension messaging. An id allowlist keeps
+          // web pages out while admitting only that relay. Firefox needs no
+          // equivalent — it doesn't gate extension-to-extension messaging here.
+          externally_connectable: { ids: ["agnaejlkbiiggajjmnpmeheigkflbnoo"] },
+        }),
   }),
   hooks: {
     // Guard for constraint #5. WXT derives broad host access from the content

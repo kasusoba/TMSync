@@ -49,6 +49,10 @@ export interface ResolvedIdentity {
   traktId: number;
   title: string;
   year?: number;
+  /** URL slug + TMDB id, captured free from the search result. TMDB id powers the
+   * Discord RP poster lookup; slug is kept for building Trakt links. */
+  slug?: string;
+  tmdbId?: number;
 }
 
 /** A simplified search result for the correction picker. */

@@ -55,4 +55,6 @@ export interface AniListIdentity {
   episodes: number | null;
   /** MAL id, if any — bridges to MAL-keyed data later; not used in v1. */
   idMal?: number;
+  /** Cover image URL (the Discord RP poster); from `Media.coverImage`. */
+  coverUrl?: string;
 }

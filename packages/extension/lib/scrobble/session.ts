@@ -1,4 +1,4 @@
-import { animeCrosswalk } from "@/lib/storage";
+import { animeCrosswalk, discordRpPrefs } from "@/lib/storage";
 import { routeTracker } from "@/lib/tracker";
 import type { Tracker } from "@/lib/tracker/types";
 import { type BadgeStatus, type ScrobbleReply, onMessage, sendMessage } from "@/messaging";
@@ -21,8 +21,15 @@ const TAB_MEDIA_POLL_TRIES = 8;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function mediaKey(m: ParsedMedia): string {
-  const id = m.tmdbId !== undefined ? `tmdb${m.tmdbId}` : m.title;
-  return `${m.mediaType}:${id}:${m.season ?? ""}:${m.episode ?? ""}`;
+  // Key by BOTH the tmdb id (when present) AND the title. Keying by tmdbId alone
+  // locked the badge on SPAs that render the title late: the first extract fires
+  // before the title exists, publishes with an empty title (tmdbId stands in), and
+  // a tmdbId-only key then dedupes away the re-publish once the real title loads —
+  // fatal for AniList, which resolves by title, not tmdbId (the page stayed stuck
+  // on "TMDB 197754"). Trakt tmdb-only recipes carry no title, so their key is
+  // still stable (`…::…`) and this changes nothing for them.
+  const id = m.tmdbId !== undefined ? `tmdb${m.tmdbId}` : "";
+  return `${m.mediaType}:${id}:${m.title}:${m.season ?? ""}:${m.episode ?? ""}`;
 }
 
 /**
@@ -47,6 +54,13 @@ function label(m: ParsedMedia): string {
 /** Title as the tracker matched it, keeping the scraped episode (transparency). */
 function resolvedLabel(title: string, year: number | undefined, m: ParsedMedia): string {
   return `${title}${year ? ` (${year})` : ""}${episodeSuffix(m)}`;
+}
+
+/** Discord RP line 2: "S2E5" / "Episode 7"; movies have none (the sink falls back). */
+function presenceSubtitle(m: ParsedMedia): string | undefined {
+  if (m.season !== undefined) return `S${m.season}E${m.episode ?? "?"}`;
+  if (m.episode !== undefined) return `Episode ${m.episode}`;
+  return undefined;
 }
 
 function statusFromReply(
@@ -149,6 +163,11 @@ export class SessionManager {
   private readonly seenFrameOrigins = new Set<string>();
   private currentKey: string | null = null;
   private currentVideo: HTMLVideoElement | null = null;
+  /** Media of the running session (its own or pulled from the tab) — for presence. */
+  private currentMedia: ParsedMedia | null = null;
+  /** Discord Rich Presence toggle (experimental). Gates all presence reporting so
+   * users without the feature never pay the per-tick messaging. */
+  private presenceEnabled = false;
   private controller: ScrobbleController | null = null;
   private abort: AbortController | null = null;
   private reconcileTimer: ReturnType<typeof setTimeout> | null = null;
@@ -169,6 +188,17 @@ export class SessionManager {
       signal: this.frameSignal(),
     });
     this.ctx.onInvalidated(() => this.teardownSession());
+
+    // Discord RP gate: read the pref and react to toggles live (so flipping it in
+    // options takes effect mid-watch). Off by default — the feature is experimental.
+    void discordRpPrefs.getValue().then((p) => {
+      this.presenceEnabled = p.enabled;
+    });
+    const unwatchPresence = discordRpPrefs.watch((p) => {
+      this.presenceEnabled = p.enabled;
+      if (!p.enabled) this.reportPresence("clear");
+    });
+    this.ctx.onInvalidated(() => unwatchPresence());
 
     // SPA sites often set the real title/og:title AFTER initial load (e.g. cineby
     // shows the site name first). Re-extract when <head> metadata changes.
@@ -319,6 +349,17 @@ export class SessionManager {
     this.watchedThreshold = recipe.video.watchedThreshold;
     // Route by TYPE: a movie on an anilist (anime) site still goes to Trakt.
     this.tracker = routeTracker(recipe.tracker, media.mediaType);
+
+    // AniList resolves by TITLE only — a scraped tmdbId can't stand in for it. On
+    // an SPA the URL's tmdbId is present immediately but the title (`.title span`)
+    // renders later, so an early extract yields an empty title + a tmdbId. Without
+    // this guard we'd publish a useless "TMDB <id>" entry that AniList can't resolve
+    // (and the dedup key would lock the badge there). Wait for the title instead —
+    // a later reconcile (head/title mutation) re-runs this with the real title.
+    if (this.tracker === "anilist" && !media.title) {
+      this.localMedia = null;
+      return;
+    }
 
     // Avoid churn from the head observer firing on unrelated mutations.
     const key = mediaKey(media);
@@ -598,6 +639,7 @@ export class SessionManager {
     const abort = new AbortController();
     this.abort = abort;
     this.currentVideo = video;
+    this.currentMedia = media;
     this.currentKey = mediaKey(media);
 
     const tracker = this.tracker;
@@ -629,12 +671,24 @@ export class SessionManager {
     const on = (target: EventTarget, type: string, fn: () => void) =>
       target.addEventListener(type, fn, { signal: abort.signal });
 
-    on(video, "play", () => controller.play());
-    on(video, "pause", () => controller.pause());
-    on(video, "ended", () => controller.ended());
+    on(video, "play", () => {
+      controller.play();
+      this.reportPresence("play");
+    });
+    on(video, "pause", () => {
+      controller.pause();
+      this.reportPresence("pause");
+    });
+    on(video, "ended", () => {
+      controller.ended();
+      this.reportPresence("clear");
+    });
     // New media loaded into the same element (SPA episode swap) → reconcile.
     on(video, "loadstart", this.scheduleReconcile);
-    on(window, "pagehide", () => controller.leave());
+    on(window, "pagehide", () => {
+      controller.leave();
+      this.reportPresence("clear");
+    });
 
     let lastPersist = 0;
     on(video, "timeupdate", () => {
@@ -645,10 +699,16 @@ export class SessionManager {
       if (now - lastPersist < PROGRESS_PERSIST_MS) return;
       lastPersist = now;
       void sendMessage("updateProgress", controller.progress());
+      // Refresh presence on the same cadence so the elapsed/remaining bar stays
+      // honest after seeks (start/end are absolute epochs computed from currentTime).
+      if (!video.paused) this.reportPresence("play");
     });
 
     // If playback is already underway when we attach (late injection), kick a start.
-    if (!video.paused && !video.ended) controller.play();
+    if (!video.paused && !video.ended) {
+      controller.play();
+      this.reportPresence("play");
+    }
   }
 
   private teardownSession(): void {
@@ -660,7 +720,45 @@ export class SessionManager {
       this.abort.abort(); // remove this session's listeners
       this.abort = null;
     }
+    // Drop the Discord presence for the outgoing session (a new one re-reports on
+    // its first play). Single choke point for nav-away / episode-swap / invalidate.
+    this.reportPresence("clear");
     this.currentVideo = null;
+    this.currentMedia = null;
     this.currentKey = null;
+  }
+
+  /**
+   * Emit TMSync's neutral presence event for the running session (or null to
+   * clear). Gated on the experimental toggle. `play`/`pause` set the live progress
+   * bar from the video's currentTime/duration; `clear` tears the presence down.
+   * Background stamps the tab and stores it for the relay poll (docs/DISCORD-RP.md).
+   */
+  private reportPresence(phase: "play" | "pause" | "clear"): void {
+    if (!this.presenceEnabled) return;
+    const video = this.currentVideo;
+    const media = this.currentMedia;
+    if (phase === "clear" || !video || !media) {
+      void sendMessage("reportPresence", null);
+      return;
+    }
+    const paused = phase === "pause";
+    let startEpochMs: number | undefined;
+    let endEpochMs: number | undefined;
+    if (!paused && Number.isFinite(video.duration) && video.duration > 0) {
+      const now = Date.now();
+      startEpochMs = now - video.currentTime * 1000;
+      endEpochMs = now + (video.duration - video.currentTime) * 1000;
+    }
+    // Scraped-title fallback only — the background overrides title (and adds the
+    // poster) from the resolved extras it stored for this tab, so a player iframe
+    // that never resolved anything still shows the real data.
+    void sendMessage("reportPresence", {
+      title: media.title || (media.tmdbId !== undefined ? `TMDB ${media.tmdbId}` : "Watching"),
+      subtitle: presenceSubtitle(media),
+      paused,
+      startEpochMs,
+      endEpochMs,
+    });
   }
 }

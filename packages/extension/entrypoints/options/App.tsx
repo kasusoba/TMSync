@@ -7,6 +7,7 @@ import {
   contributeQuickLink,
   contributeRecipe,
 } from "@/lib/portability/contribute";
+import { presenceConfigured } from "@/lib/presence/config";
 import {
   type BadgePrefs,
   type QuickLinkSite,
@@ -14,6 +15,7 @@ import {
   badgePrefs,
   corrections,
   customRecipes,
+  discordRpPrefs,
   quickLinks,
   remoteRecipes,
 } from "@/lib/storage";
@@ -375,10 +377,14 @@ export function App() {
   const [backupNote, setBackupNote] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [badge, setBadge] = useState<BadgePrefs>({ mode: "full", position: null });
+  const [discordRp, setDiscordRp] = useState<{ enabled: boolean; transport: "relay" | "plugin" }>({
+    enabled: false,
+    transport: "plugin",
+  });
   const has = (s: string) => s.toLowerCase().includes(q.toLowerCase());
 
   const refresh = async () => {
-    const [s, al, sit, rec, ql, c, rem, bp] = await Promise.all([
+    const [s, al, sit, rec, ql, c, rem, bp, drp] = await Promise.all([
       sendMessage("getTraktStatus", undefined),
       sendMessage("getAniListStatus", undefined),
       sendMessage("listEnabledSites", undefined),
@@ -387,6 +393,7 @@ export function App() {
       corrections.getValue(),
       remoteRecipes.getValue(),
       badgePrefs.getValue(),
+      discordRpPrefs.getValue(),
     ]);
     setStatus(s);
     setAnilist(al);
@@ -396,12 +403,21 @@ export function App() {
     setCorr(c);
     setRemote(rem);
     setBadge(bp);
+    setDiscordRp({ enabled: drp.enabled, transport: drp.transport ?? "plugin" });
   };
 
   const updateBadge = async (patch: Partial<BadgePrefs>) => {
     const next = { ...badge, ...patch };
     setBadge(next);
     await badgePrefs.setValue(next);
+  };
+
+  const updateDiscordRp = async (patch: Partial<{ enabled: boolean; transport: "relay" | "plugin" }>) => {
+    const next = { ...discordRp, ...patch };
+    setDiscordRp(next);
+    await discordRpPrefs.setValue(next);
+    // Background re-evaluates: clears the inactive transport, starts the active one.
+    await sendMessage("setPresenceEnabled", next.enabled);
   };
 
   const refreshRecipes = async () => {
@@ -1187,6 +1203,84 @@ export function App() {
                   <Icon name="refresh" class="text-[12px]" />
                   Reset to default
                 </Btn>
+
+                <span class={clsx("mt-6 mb-1 block text-[11px] font-medium", t.faint)}>
+                  Experimental
+                </span>
+                <div class={clsx("flex items-center gap-3 rounded-lg px-3 py-2.5", t.card)}>
+                  <span class="min-w-0 flex-1">
+                    <span class={clsx("block text-[13px] font-semibold", t.heading)}>
+                      Discord Rich Presence
+                    </span>
+                    <span class={clsx("block text-[11px] leading-relaxed", t.sub)}>
+                      Show “Watching …” on your Discord profile. Needs a local helper running (see
+                      the transport options below).
+                    </span>
+                  </span>
+                  <Switch
+                    on={discordRp.enabled}
+                    t={t}
+                    onClick={() => void updateDiscordRp({ enabled: !discordRp.enabled })}
+                  />
+                </div>
+
+                {discordRp.enabled && (
+                  <>
+                    <span class={clsx("mt-3 mb-1 block text-[11px] font-medium", t.faint)}>
+                      Transport
+                    </span>
+                    <div class="mb-1 flex gap-1">
+                      {(
+                        [
+                          ["plugin", "Vencord plugin"],
+                          ["relay", "Relay + helper"],
+                        ] as const
+                      ).map(([value, label]) => (
+                        <button
+                          type="button"
+                          key={value}
+                          onClick={() => void updateDiscordRp({ transport: value })}
+                          class={clsx(
+                            "flex-1 rounded-md py-1.5 text-[12px] font-medium transition-colors",
+                            discordRp.transport === value ? "bg-ikura text-white" : t.ghost,
+                          )}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <p class={clsx("text-[11px] leading-relaxed", t.sub)}>
+                      {discordRp.transport === "plugin" ? (
+                        <>
+                          Install the “Rich Presence for browser extensions” Vencord plugin (runs
+                          inside Discord — works on Apple Silicon, no separate app).
+                        </>
+                      ) : (
+                        <>
+                          Needs lolamtisch’s{" "}
+                          <a
+                            href="https://github.com/lolamtisch/Discord-RPC-Extension"
+                            target="_blank"
+                            rel="noreferrer"
+                            class={clsx("underline underline-offset-2", t.link)}
+                          >
+                            Discord Rich Presence
+                          </a>{" "}
+                          relay extension + its Node helper. Apple Silicon: run the helper from
+                          source.
+                        </>
+                      )}
+                    </p>
+                  </>
+                )}
+
+                {!presenceConfigured() && (
+                  <p class={clsx("mt-1.5 text-[11px] leading-relaxed", t.faint)}>
+                    No Discord application is bundled in this build (set
+                    <code class="px-1">WXT_DISCORD_CLIENT_ID</code>), so presence stays inert even
+                    when enabled.
+                  </p>
+                )}
               </>
             )}
           </div>

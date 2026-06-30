@@ -16,6 +16,20 @@ export const TRAKT = {
 } as const;
 
 /**
+ * TMDB is used for ONE thing only: fetching a poster image URL for Discord Rich
+ * Presence (experimental — docs/DISCORD-RP.md). It is NOT a tracker and never
+ * touches resolution/scrobbling (constraint #1: Trakt + AniList only; "TMDB-as-
+ * tracker" is explicitly forbidden). Optional — without a key, RP falls back to
+ * the bundled brand art. AniList posters come free from its own API (no key).
+ */
+export const TMDB = {
+  apiKey: import.meta.env.WXT_TMDB_API_KEY,
+  apiBase: "https://api.themoviedb.org",
+  /** Image CDN — the URL is handed to Discord to render; we never fetch it. */
+  imageBase: "https://image.tmdb.org/t/p",
+} as const;
+
+/**
  * Phase-1 recipe distribution: a versioned JSON list fetched from the repo/CDN
  * (no backend — constraint #7), contributed by PR. Override the URL with
  * WXT_RECIPES_URL. The fetch is a plain public GET — no watch data leaves the

@@ -114,6 +114,8 @@ export async function resolve(media: ParsedMedia): Promise<ResolvedIdentity | nu
     traktId: obj.ids.trakt,
     title: obj.title,
     year: obj.year,
+    slug: obj.ids.slug,
+    tmdbId: obj.ids.tmdb,
   };
   await resolutionCache.setValue({ ...cache, [key]: identity });
   return identity;

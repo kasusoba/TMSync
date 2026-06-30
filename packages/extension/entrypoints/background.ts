@@ -14,6 +14,10 @@ import {
   viewerScoreFormat,
 } from "@/lib/anilist/client";
 import { ANILIST } from "@/lib/anilist/config";
+import { RELAY_ID } from "@/lib/presence/config";
+import { discordRelaySink } from "@/lib/presence/discord-relay";
+import { pushToPlugin } from "@/lib/presence/discord-plugin";
+import { clearPresence, focusedPresence, putPresence } from "@/lib/presence/snapshot";
 import { bundledLinks } from "@/lib/recipes";
 import { statusDotColor } from "@/lib/scrobble/action-badge";
 import {
@@ -29,6 +33,8 @@ import {
   notes,
   quickLinks,
   ratings,
+  discordRpPrefs,
+  presenceExtras,
   remoteRatings,
   remoteRecipes,
   resolutionCache,
@@ -37,7 +43,9 @@ import {
   tabStatus,
 } from "@/lib/storage";
 import { getAdapter, routeTracker } from "@/lib/tracker";
+import type { TrackedItem } from "@/lib/tracker/types";
 import { connect, disconnect, getRedirectUri, isConnected } from "@/lib/trakt/auth";
+import { tmdbPoster } from "@/lib/trakt/images";
 import {
   TraktNotConnectedError,
   commentItem,
@@ -85,6 +93,29 @@ export default defineBackground(() => {
   browser.alarms.onAlarm.addListener((alarm) => {
     if (alarm.name === "tmsync-recipes") void fetchRemoteRecipes(true);
   });
+
+  // Discord Rich Presence (experimental — docs/DISCORD-RP.md). On a cold SW start,
+  // (re)establish the active transport: the relay needs registering; the plugin
+  // path is push-based so there's nothing to do until something plays.
+  void dispatchPresence();
+  // The relay polls us every ~15 s via cross-extension messaging; answer each poll
+  // with the focused tab's presence — but ONLY when the relay is the chosen
+  // transport, else `{}` (so relay + plugin never both show). @webext-core/messaging
+  // doesn't carry external senders, so this is a raw listener; only our relay's id.
+  browser.runtime.onMessageExternal.addListener((_message, sender, sendResponse) => {
+    if (sender.id !== RELAY_ID) return false;
+    void (async () => {
+      const { enabled, transport } = await discordRpPrefs.getValue();
+      const onRelay = enabled && (transport ?? "plugin") === "relay";
+      sendResponse(discordRelaySink.poll(onRelay ? await focusedPresence() : null));
+    })();
+    return true; // async sendResponse
+  });
+
+  // Plugin transport is push-based + focus-aware: when the user switches tabs,
+  // re-push the (now) focused tab's presence so the plugin tracks focus like the
+  // relay's poll would. No-op unless the plugin transport is active.
+  browser.tabs.onActivated.addListener(() => void dispatchPresence());
 
   onMessage("refreshRecipes", async () => {
     const out = await fetchRemoteRecipes(true);
@@ -182,11 +213,21 @@ export default defineBackground(() => {
   // Pre-resolution for the badge: resolve identity (cached) without recording so
   // the user sees the matched tracker title before play. Reads work
   // unauthenticated for both trackers, so transparency holds even pre-connect.
-  onMessage("resolveMedia", async ({ data }) => {
+  onMessage("resolveMedia", async ({ data, sender }) => {
     try {
       const adapter = getAdapter(routeTracker(data.tracker ?? "trakt", data.media.mediaType));
       const item = await adapter.resolve(data.media);
       if (!item) return { resolved: false };
+      // Stash the resolved title + poster + link for this tab so the background can
+      // enrich presence reports — including from a PLAYER IFRAME that never resolved
+      // anything itself (it just pulls the published media). Keyed by tabId.
+      const tabId = sender.tab?.id;
+      if (tabId !== undefined) {
+        const extras = await buildPresenceExtras(item);
+        const all = await presenceExtras.getValue();
+        all[tabId] = { title: item.title, ...extras };
+        await presenceExtras.setValue(all);
+      }
       return {
         resolved: true,
         id: item.id,
@@ -343,7 +384,7 @@ export default defineBackground(() => {
             completed: result.completed,
           },
           { tabId, frameId: 0 },
-        );
+        ).catch(() => {});
       }
       return { ok: true, completed: result.completed };
     } catch (e) {
@@ -565,7 +606,8 @@ export default defineBackground(() => {
   onMessage("reportScrobble", async ({ data, sender }) => {
     const tabId = sender.tab?.id;
     if (tabId === undefined) return;
-    void sendMessage("scrobbleStatus", data, { tabId, frameId: 0 });
+    // Tab may have closed between the report and this push — swallow "No tab with id".
+    void sendMessage("scrobbleStatus", data, { tabId, frameId: 0 }).catch(() => {});
     const all = await tabStatus.getValue();
     if (data.hide) delete all[tabId];
     else all[tabId] = data;
@@ -586,10 +628,50 @@ export default defineBackground(() => {
     }
   });
 
+  // Discord RP: the playing frame reports its live presence (or null to clear).
+  // Stamp the sender's tab and store it for the relay poll. Re-register on the
+  // first report of a session so playback re-announces us even if the relay
+  // forgot us (its extension reloaded) — cheap + idempotent.
+  onMessage("reportPresence", async ({ data, sender }) => {
+    const tabId = sender.tab?.id;
+    if (tabId === undefined) return;
+    if (data) {
+      // Merge the resolved extras for this tab (title/poster/link) over the
+      // content-reported snapshot — this is what gives a player iframe the real
+      // title + poster instead of the scraped id.
+      const extras = (await presenceExtras.getValue())[tabId];
+      await putPresence(tabId, {
+        ...data,
+        title: extras?.title || data.title,
+        posterUrl: extras?.posterUrl,
+      });
+    } else {
+      await clearPresence(tabId);
+    }
+    // Send the (now-updated) focused presence to the active transport.
+    void dispatchPresence();
+  });
+
+  // Options flipped the toggle or changed the transport. Clear the plugin first
+  // (covers a disable, or switching away from the plugin), then start whatever's
+  // now active. The relay self-clears via its `{}` poll when not chosen.
+  onMessage("setPresenceEnabled", async () => {
+    await pushToPlugin(null);
+    await dispatchPresence();
+  });
+
   // Reconcile a stop if a tab dies before a clean one (point: lost stops).
   browser.tabs.onRemoved.addListener(async (tabId) => {
     // The tab is gone — drop its accumulated player-frame origins + status.
     await clearTabStatus(tabId);
+    // ...and its Discord presence (pagehide may not have landed before teardown)
+    // plus the resolved presence extras for the tab.
+    await clearPresence(tabId);
+    const px = await presenceExtras.getValue();
+    if (px[tabId]) {
+      delete px[tabId];
+      await presenceExtras.setValue(px);
+    }
     const frames = await tabFrameOrigins.getValue();
     if (frames[tabId]) {
       delete frames[tabId];
@@ -788,7 +870,8 @@ async function drawIcon(size: number, dot: string | null): Promise<ImageData> {
  * canvas/setIcon isn't available. */
 function setActionBadge(tabId: number, status: BadgeStatus | null): void {
   const dot = statusDotColor(status);
-  void tabAction.setBadgeText({ tabId, text: "" }); // retire the old text glyph
+  // All tabAction calls below can race a tab close → "No tab with id"; ignore it.
+  void tabAction.setBadgeText({ tabId, text: "" }).catch(() => {}); // retire the old text glyph
   void (async () => {
     try {
       const [i16, i32] = await Promise.all([drawIcon(16, dot), drawIcon(32, dot)]);
@@ -800,8 +883,8 @@ function setActionBadge(tabId: number, status: BadgeStatus | null): void {
       await setIcon({ tabId, imageData: { 16: i16, 32: i32 } });
     } catch {
       // No OffscreenCanvas (older Firefox) — fall back to a coloured badge dot.
-      void tabAction.setBadgeText({ tabId, text: dot ? "●" : "" });
-      if (dot) void tabAction.setBadgeBackgroundColor({ tabId, color: dot });
+      void tabAction.setBadgeText({ tabId, text: dot ? "●" : "" }).catch(() => {});
+      if (dot) void tabAction.setBadgeBackgroundColor({ tabId, color: dot }).catch(() => {});
     }
   })();
 }
@@ -814,6 +897,32 @@ async function clearTabStatus(tabId: number): Promise<void> {
     delete all[tabId];
     await tabStatus.setValue(all);
   }
+}
+
+/**
+ * Send the current (focused-tab) presence to whichever transport is active:
+ *  - relay  → (re)register with lolamtisch's relay; it then polls us.
+ *  - plugin → POST the focused presence to the local Vencord plugin.
+ *  - disabled → POST null to clear the plugin (the relay self-clears via `{}`).
+ * Called on cold start, every presence report, and on tab focus changes.
+ */
+async function dispatchPresence(): Promise<void> {
+  const { enabled, transport } = await discordRpPrefs.getValue();
+  if (enabled && (transport ?? "plugin") === "relay") {
+    await discordRelaySink.register();
+  } else {
+    await pushToPlugin(enabled ? await focusedPresence() : null);
+  }
+}
+
+/**
+ * Build the Discord RP display extras for a resolved item: the poster image URL.
+ * AniList carries its own cover; Trakt looks up a TMDB poster (optional key,
+ * cached). Best-effort — any failure just omits the art (brand asset fallback).
+ */
+async function buildPresenceExtras(item: TrackedItem): Promise<{ posterUrl?: string }> {
+  if (item.tracker === "anilist") return { posterUrl: item.coverUrl };
+  return { posterUrl: await tmdbPoster(item.tmdbId, item.mediaType) };
 }
 
 async function clearTabSession(tabId: number): Promise<void> {

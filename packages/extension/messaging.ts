@@ -1,4 +1,5 @@
 import type { ScoreFormat } from "@/lib/anilist/types";
+import type { PresenceState } from "@/lib/presence/types";
 import type { RatingLevel, Tracker, WatchedState } from "@/lib/tracker/types";
 import type { ResolvedIdentity, ScrobbleAction, TraktSearchOption } from "@/lib/trakt/types";
 import type { ParsedMedia } from "@tmsync/shared";
@@ -148,6 +149,15 @@ export interface ProtocolMap {
   reportFrameOrigins(origins: string[]): void;
   /** Background → top frame: update the badge. */
   scrobbleStatus(status: BadgeStatus): void;
+
+  // --- Discord Rich Presence (experimental — docs/DISCORD-RP.md) ---
+  /** Playing frame reports its live Rich Presence (or null = nothing to show).
+   * Background stamps the sender's tab and stores it; the relay poll reads the
+   * focused tab's snapshot. Gated on the toggle, so it only fires when enabled. */
+  reportPresence(state: PresenceState | null): void;
+  /** Options → background: the Discord RP toggle flipped. On enable, (re)register
+   * with the relay so it starts polling without waiting for a browser restart. */
+  setPresenceEnabled(enabled: boolean): void;
 
   // --- manual mode (sites with no readable title) ---
   /** The remembered manual pick for (recipeId, pageKey), or null. */
