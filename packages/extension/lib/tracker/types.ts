@@ -21,10 +21,6 @@ export type TrackedItem =
       id: number;
       title: string;
       year?: number;
-      /** Trakt URL slug + TMDB id, free from the search result. TMDB id powers the
-       * Discord RP poster lookup; slug is kept for building Trakt links. */
-      slug?: string;
-      tmdbId?: number;
     }
   | {
       tracker: "anilist";
@@ -36,8 +32,6 @@ export type TrackedItem =
       year?: number;
       /** Total episodes on the AniList entry; null when unknown/ongoing. */
       episodes: number | null;
-      /** Cover image URL (the Discord RP poster); from `Media.coverImage`. */
-      coverUrl?: string;
     };
 
 /** A progress phase from the content-side scrobble state machine. */

@@ -35,16 +35,9 @@ export default defineConfig({
       "https://anilist.co/*",
       "https://graphql.anilist.co/*",
       "https://raw.githubusercontent.com/*",
-      // TMDB poster lookup for Discord Rich Presence (display art only — never a
-      // tracker; constraint #1). Metadata fetch host; the image CDN URL is handed
-      // to Discord to render, so image.tmdb.org needs no permission here.
-      "https://api.themoviedb.org/*",
-      // NB: the aura RP transport POSTs to a user-supplied remote endpoint, so its
-      // origin is granted at runtime via optional_host_permissions on a gesture
-      // (docs/DISCORD-RP.md) — never a fixed host here.
       // E2E only: lets the perf test register the content script on the local
       // fixture server without the popup gesture. Never in a shipped build.
-      ...(process.env.E2E ? ["http://localhost/*"] : []),
+      ...(process.env.E2E ? ["http://localhost/*", "http://127.0.0.1/*"] : []),
     ],
     // Constraint #5: NO broad host_permissions at install. We request per-origin
     // streaming-site access on a user gesture, then registerContentScripts.

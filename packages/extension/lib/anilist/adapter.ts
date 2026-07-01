@@ -78,7 +78,6 @@ export const anilistAdapter: TrackerAdapter = {
       title: identity.title,
       year: identity.year,
       episodes: identity.episodes,
-      coverUrl: identity.coverUrl,
     };
   },
 

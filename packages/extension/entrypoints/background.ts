@@ -14,8 +14,6 @@ import {
   viewerScoreFormat,
 } from "@/lib/anilist/client";
 import { ANILIST } from "@/lib/anilist/config";
-import { pushToAura } from "@/lib/presence/aura";
-import { clearPresence, focusedPresence, putPresence } from "@/lib/presence/snapshot";
 import { bundledLinks } from "@/lib/recipes";
 import { statusDotColor } from "@/lib/scrobble/action-badge";
 import {
@@ -24,13 +22,11 @@ import {
   anilistRatings,
   corrections,
   customRecipes,
-  discordRpPrefs,
   enabledOrigins,
   episodeOverrides,
   manualContexts,
   manualSelections,
   notes,
-  presenceExtras,
   quickLinks,
   ratings,
   remoteRatings,
@@ -41,7 +37,6 @@ import {
   tabStatus,
 } from "@/lib/storage";
 import { getAdapter, routeTracker } from "@/lib/tracker";
-import type { TrackedItem } from "@/lib/tracker/types";
 import { connect, disconnect, getRedirectUri, isConnected } from "@/lib/trakt/auth";
 import {
   TraktNotConnectedError,
@@ -55,7 +50,6 @@ import {
   search,
   updateComment,
 } from "@/lib/trakt/client";
-import { tmdbPoster } from "@/lib/trakt/images";
 import type { ReviewLevel } from "@/lib/trakt/types";
 import { buildRatingBody, resolutionCacheKey, reviewKey } from "@/lib/trakt/util";
 import { type BadgeStatus, onMessage, sendMessage } from "@/messaging";
@@ -91,15 +85,6 @@ export default defineBackground(() => {
   browser.alarms.onAlarm.addListener((alarm) => {
     if (alarm.name === "tmsync-recipes") void fetchRemoteRecipes(true);
   });
-
-  // Discord Rich Presence (experimental — docs/DISCORD-RP.md). Push-based: on a
-  // cold SW start there's nothing to send until something plays, but re-push so a
-  // still-playing tab re-establishes presence after the SW was evicted.
-  void dispatchPresence();
-
-  // Focus-aware: presence shows the focused tab, so re-push when the user switches
-  // tabs. No-op unless RP is enabled.
-  browser.tabs.onActivated.addListener(() => void dispatchPresence());
 
   onMessage("refreshRecipes", async () => {
     const out = await fetchRemoteRecipes(true);
@@ -197,21 +182,11 @@ export default defineBackground(() => {
   // Pre-resolution for the badge: resolve identity (cached) without recording so
   // the user sees the matched tracker title before play. Reads work
   // unauthenticated for both trackers, so transparency holds even pre-connect.
-  onMessage("resolveMedia", async ({ data, sender }) => {
+  onMessage("resolveMedia", async ({ data }) => {
     try {
       const adapter = getAdapter(routeTracker(data.tracker ?? "trakt", data.media.mediaType));
       const item = await adapter.resolve(data.media);
       if (!item) return { resolved: false };
-      // Stash the resolved title + poster + link for this tab so the background can
-      // enrich presence reports — including from a PLAYER IFRAME that never resolved
-      // anything itself (it just pulls the published media). Keyed by tabId.
-      const tabId = sender.tab?.id;
-      if (tabId !== undefined) {
-        const extras = await buildPresenceExtras(item);
-        const all = await presenceExtras.getValue();
-        all[tabId] = { title: item.title, ...extras };
-        await presenceExtras.setValue(all);
-      }
       return {
         resolved: true,
         id: item.id,
@@ -612,53 +587,10 @@ export default defineBackground(() => {
     }
   });
 
-  // Discord RP: the playing frame reports its live presence (or null to clear).
-  // Stamp the sender's tab and store it for the relay poll. Re-register on the
-  // first report of a session so playback re-announces us even if the relay
-  // forgot us (its extension reloaded) — cheap + idempotent.
-  onMessage("reportPresence", async ({ data, sender }) => {
-    const tabId = sender.tab?.id;
-    if (tabId === undefined) return;
-    if (data) {
-      // Merge the resolved extras for this tab (title/poster/link) over the
-      // content-reported snapshot — this is what gives a player iframe the real
-      // title + poster instead of the scraped id.
-      const extras = (await presenceExtras.getValue())[tabId];
-      await putPresence(tabId, {
-        ...data,
-        title: extras?.title || data.title,
-        posterUrl: extras?.posterUrl,
-      });
-    } else {
-      await clearPresence(tabId);
-    }
-    // Push the (now-updated) focused presence to aura.
-    void dispatchPresence();
-  });
-
-  // Options flipped the toggle (or changed the aura endpoint). Clear first so a
-  // disable/reconfigure can't leave a stale session up, then push the current state.
-  onMessage("setPresenceEnabled", async () => {
-    await pushToAura(null);
-    await dispatchPresence();
-  });
-
   // Reconcile a stop if a tab dies before a clean one (point: lost stops).
   browser.tabs.onRemoved.addListener(async (tabId) => {
     // The tab is gone — drop its accumulated player-frame origins + status.
     await clearTabStatus(tabId);
-    // ...and its Discord presence (pagehide may not have landed before teardown)
-    // plus the resolved presence extras for the tab.
-    await clearPresence(tabId);
-    // Tell aura to re-evaluate now that this tab's snapshot is gone: it pushes the
-    // focused tab's presence, or null when nothing else is playing. Without this the
-    // stored activity keeps heartbeating on aura until its TTL (the closed-tab bug).
-    await dispatchPresence();
-    const px = await presenceExtras.getValue();
-    if (px[tabId]) {
-      delete px[tabId];
-      await presenceExtras.setValue(px);
-    }
     const frames = await tabFrameOrigins.getValue();
     if (frames[tabId]) {
       delete frames[tabId];
@@ -884,26 +816,6 @@ async function clearTabStatus(tabId: number): Promise<void> {
     delete all[tabId];
     await tabStatus.setValue(all);
   }
-}
-
-/**
- * Push the current (focused-tab) presence to the user's aura Worker — or null to
- * clear it when RP is disabled. Called on cold start, every presence report, and
- * on tab focus changes.
- */
-async function dispatchPresence(): Promise<void> {
-  const { enabled } = await discordRpPrefs.getValue();
-  await pushToAura(enabled ? await focusedPresence() : null);
-}
-
-/**
- * Build the Discord RP display extras for a resolved item: the poster image URL.
- * AniList carries its own cover; Trakt looks up a TMDB poster (optional key,
- * cached). Best-effort — any failure just omits the art (brand asset fallback).
- */
-async function buildPresenceExtras(item: TrackedItem): Promise<{ posterUrl?: string }> {
-  if (item.tracker === "anilist") return { posterUrl: item.coverUrl };
-  return { posterUrl: await tmdbPoster(item.tmdbId, item.mediaType) };
 }
 
 async function clearTabSession(tabId: number): Promise<void> {

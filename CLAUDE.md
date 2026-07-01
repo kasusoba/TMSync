@@ -40,7 +40,7 @@ TMSync is a cross-browser (Chrome + Firefox) WebExtension that passively scrobbl
 │  ├─ trakt/          # public Trakt recipe list (movies + non-anime TV) — the shareable one
 │  └─ anime/          # separate AniList recipe list (dedicated anime sites) — kept apart so the
 │                     #   public Trakt list stays clean for sharing; routed via the recipe `tracker` field
-├─ docs/              # design notes: TMSync-PRD, ANIME-PLAN, STORAGE-SYNC, DISCORD-RP
+├─ docs/              # design notes: TMSync-PRD, ANIME-PLAN, STORAGE-SYNC
 ├─ CONTRIBUTING.md
 ├─ README.md
 └─ CLAUDE.md

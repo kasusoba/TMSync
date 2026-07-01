@@ -22,7 +22,6 @@ interface MediaNode {
   episodes?: number | null;
   startDate?: { year?: number | null } | null;
   title?: { romaji?: string | null; english?: string | null } | null;
-  coverImage?: { extraLarge?: string | null; large?: string | null } | null;
 }
 
 /** Pick a display title + map a `Media` node to our identity. Pure (unit-tested). */
@@ -34,7 +33,6 @@ export function mediaToIdentity(node: MediaNode): AniListIdentity {
     year: node.startDate?.year ?? undefined,
     episodes: node.episodes ?? null,
     idMal: node.idMal ?? undefined,
-    coverUrl: node.coverImage?.extraLarge ?? node.coverImage?.large ?? undefined,
   };
 }
 
@@ -81,7 +79,6 @@ query ($search: String) {
     id idMal episodes
     startDate { year }
     title { romaji english }
-    coverImage { extraLarge large }
   }
 }`;
 

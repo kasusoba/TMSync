@@ -43,8 +43,6 @@ export const traktAdapter: TrackerAdapter = {
       id: identity.traktId,
       title: identity.title,
       year: identity.year,
-      slug: identity.slug,
-      tmdbId: identity.tmdbId ?? media.tmdbId,
     };
   },
 

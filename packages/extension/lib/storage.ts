@@ -2,7 +2,6 @@ import type { BadgeStatus } from "@/messaging";
 import type { LinkTemplates, ParsedMedia, Recipe } from "@tmsync/shared";
 import { storage } from "wxt/utils/storage";
 import type { AniListIdentity, AniListTokens } from "./anilist/types";
-import type { PresenceState } from "./presence/types";
 import type { Tracker } from "./tracker/types";
 import type { ResolvedIdentity, TraktTokens } from "./trakt/types";
 
@@ -34,11 +33,9 @@ export const anilistTokens = storage.defineItem<AniListTokens | null>("local:ani
   fallback: null,
 });
 
-/** AniList resolution cache keyed by anilistCacheKey(media). `_v2`: the cached
- * shape gained `coverUrl` (Discord RP poster) — the bump drops pre-poster entries
- * so they re-resolve with a cover instead of serving a coverless cache forever. */
+/** AniList resolution cache keyed by anilistCacheKey(media). */
 export const anilistResolutionCache = storage.defineItem<Record<string, AniListIdentity>>(
-  "local:anilist_resolution_cache_v2",
+  "local:anilist_resolution_cache",
   { fallback: {} },
 );
 
@@ -55,12 +52,9 @@ export const anilistNotes = storage.defineItem<Record<number, string>>("local:an
   fallback: {},
 });
 
-/** Resolution cache keyed by resolutionCacheKey(media). `_v2`: the cached identity
- * gained `slug`/`tmdbId` (Discord RP poster + "View on Trakt" button) — the bump
- * drops pre-existing entries so they re-resolve with those ids rather than serving
- * a stale slug-less cache (which silently suppressed the RP button). */
+/** Resolution cache keyed by resolutionCacheKey(media). */
 export const resolutionCache = storage.defineItem<Record<string, ResolvedIdentity>>(
-  "local:resolution_cache_v2",
+  "local:resolution_cache",
   { fallback: {} },
 );
 
@@ -270,76 +264,4 @@ export interface BadgePrefs {
 }
 export const badgePrefs = storage.defineItem<BadgePrefs>("sync:badge_prefs", {
   fallback: { mode: "full", position: null },
-});
-
-// --- Discord Rich Presence (experimental, off-by-default — docs/DISCORD-RP.md) ---
-
-/**
- * Per-tab live presence snapshot written by the frame that owns the <video> and
- * read by the relay poll for the focused tab. Session-scoped (ephemeral, per
- * browser session) and stamped with `updatedAt` so a dead tab's stale "watching"
- * is dropped. The background SW holds no presence in memory (constraint #4) — it
- * reads this on each 15 s relay poll.
- */
-export const presenceSnapshots = storage.defineItem<
-  Record<number, PresenceState & { updatedAt: number }>
->("session:presence", { fallback: {} });
-
-/**
- * Per-tab resolved presence extras — the tracker-matched title, poster image, and
- * "View on …" link computed in the background's `resolveMedia` (by the recipe-
- * matching frame). The background merges these into each `reportPresence` snapshot
- * keyed by tabId, so a cross-origin PLAYER iframe (which never resolves anything
- * itself) still gets the real title + poster, not the scraped id. Session-scoped.
- */
-export interface PresenceExtras {
-  title?: string;
-  posterUrl?: string;
-}
-export const presenceExtras = storage.defineItem<Record<number, PresenceExtras>>(
-  "session:presence_extras",
-  { fallback: {} },
-);
-
-/**
- * TMDB poster URLs for Discord RP, keyed `${type}:${tmdbId}`. `null` caches a
- * confirmed "no poster" so we don't refetch. Local + regenerable; only the
- * experimental RP path writes it (display art, not tracking — see config TMDB).
- */
-export const tmdbPosterCache = storage.defineItem<Record<string, string | null>>(
-  "local:tmdb_posters",
-  { fallback: {} },
-);
-
-/**
- * Discord Rich Presence toggle. A social-flex add-on tangential to the passive
- * scrobbler, gated on a third-party relay + helper — so it ships OFF and is
- * surfaced as experimental (docs/DISCORD-RP.md). A small user pref ⇒ `sync`.
- */
-/**
- * Presence reaches Discord via the user's self-hosted aura Worker (endpoint URL +
- * token in `auraPresence`) — the sole transport. Earlier builds also had a local
- * Vencord-plugin and a lolamtisch-relay transport; those were retired in favour of
- * aura's server-side headless sessions (no local helper, cross-device incl. mobile
- * — docs/DISCORD-RP.md). Entries written then may still carry a stray `transport`
- * field; it's ignored.
- */
-export const discordRpPrefs = storage.defineItem<{ enabled: boolean }>("sync:discord_rp", {
-  fallback: { enabled: false },
-});
-
-/**
- * aura transport connection (docs/DISCORD-RP.md). `url` is the user's own
- * `.../presence` endpoint, `token` its ingest bearer, `applicationId` the Discord
- * app aura is authorised against (its icon/art). Unlike the plugin/relay these are
- * the user's own secrets for their own remote service, so this lives in `local`
- * (never `sync`), mirroring the OAuth-token convention — and the watch data goes
- * only to the user's own endpoint, consistent with the privacy split (constraint #6).
- */
-export const auraPresence = storage.defineItem<{
-  url: string;
-  token: string;
-  applicationId: string;
-}>("local:aura_presence", {
-  fallback: { url: "", token: "", applicationId: "" },
 });
