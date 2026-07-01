@@ -2,6 +2,8 @@
 
 **Status: PARKED on branch `discord-rich-presence` (2026-06-30). The feature is BUILT and fully working — the owner is going the PreMiD route instead, so it lives on a branch, NOT on `main`.** Don't rebuild from scratch: everything below is the record, and the branch has the working code + tests. PreMiD is a parallel system (its plugins re-scrape the page in PreMiD's own store — it reuses none of TMSync's engine), so this code isn't reusable there; it's preserved for when/if TMSync wants its own RP again.
 
+**UPDATE (2026-07-01) — the "hard wall" below is DISSOLVED; a third transport `"aura"` is added on this branch.** The owner's "own PreMiD" turned out to be a *server-side* path, not a native helper: Discord's **Social SDK `sdk.social_layer_presence` scope + `POST /users/@me/headless-sessions`** lets a server set the *authorizing user's own* presence with their delegated OAuth token — app-less, cross-device incl. mobile, no local IPC socket and no native helper at all. That capability wasn't known when this note was written, and it directly contradicts the "no server-side API to set a user's presence" claim in **The hard wall** (see the correction there). **aura** (a Cloudflare Worker + Durable Object, in `~/projects/dev/aura`) is that server; TMSync now ships an `aura` transport that POSTs the same neutral `PresenceState` to the user's own aura `/presence` endpoint (bearer-auth, opt-in, off by default — the user's own data to the user's own service, consistent with constraint #6). Verified end-to-end 2026-07-01 (create + update-in-place + custom activity type/icon, on mobile with the desktop client closed). The relay/plugin transports and all research below remain valid; aura simply makes the native helper optional.
+
 **The single most important learning (so it's never re-derived):** the Discord member-list line shows the **title** (not the app name) via the activity field **`status_display_type: 2`** (Details) — works on both the relay/RPC path and the Vencord `LOCAL_ACTIVITY_UPDATE` path. We wasted three rounds guessing (app-name-forced → Spotify sync fields → Social SDK) before finding it in the docs. Check official platform docs first.
 
 **Previously (pre-park):** SHIPPED as experimental, off-by-default (built 2026-06-30, reversing the 2026-06-29 deferral). Built along the "chosen-if-ever" path: a neutral `PresenceSink` seam with two transports — a custom **Vencord plugin** (push, cross-platform, `~/projects/dev/Vencord`) as default, and lolamtisch's **relay** (pull, no Apple-Silicon helper) as the alternative. The research below is kept intact.
@@ -22,10 +24,12 @@ The content-script session already knows, in real time, everything Discord RP wa
 
 So TMSync's own work is ~80 lines + a settings toggle + registering a TMSync Discord application (for `clientId` + art).
 
-## The hard wall (verified)
+## The hard wall (verified — but see the 2026-07-01 correction)
 Discord presence is set over Discord's **local IPC socket** (`discord-ipc-N`, a unix socket / named pipe). A sandboxed client — i.e. a **browser extension or web page** — cannot open it. There is also **no server-side API** to set a *user's* presence remotely (Discord blocks that by design; bots can only set their own).
 
 ⟹ **True RP mandates a locally-running native helper. No exceptions.** The only thing that varies is *who supplies the helper* and *whether an extension can reach it*.
+
+> **CORRECTION (2026-07-01):** the bolded "no server-side API" / "native helper, no exceptions" claim is **overturned**. It was true for the classic IPC/RPC surface, but Discord's **Social SDK headless sessions** (`sdk.social_layer_presence` → `activities.write`; `POST /users/@me/headless-sessions`, manage by the returned `token`) are exactly a server-side API to set the *authorizing user's own* presence — no socket, no helper, works while every Discord client is closed, and on mobile. This is the `aura` path. The IPC wall still stands for setting presence *without* OAuth (e.g. a purely local plugin), which is why the plugin/relay transports still exist; but "you must have a native helper" is no longer categorically true.
 
 Corollary the owner reasoned out: the only client class that needs a relay at all is **browser extensions** — every native/Electron/CLI/game client just opens the IPC socket directly with a library. That's why the "needs a relay" ecosystem is so thin.
 

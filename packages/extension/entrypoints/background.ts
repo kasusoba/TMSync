@@ -14,9 +14,10 @@ import {
   viewerScoreFormat,
 } from "@/lib/anilist/client";
 import { ANILIST } from "@/lib/anilist/config";
+import { pushToAura } from "@/lib/presence/aura";
 import { RELAY_ID } from "@/lib/presence/config";
-import { discordRelaySink } from "@/lib/presence/discord-relay";
 import { pushToPlugin } from "@/lib/presence/discord-plugin";
+import { discordRelaySink } from "@/lib/presence/discord-relay";
 import { clearPresence, focusedPresence, putPresence } from "@/lib/presence/snapshot";
 import { bundledLinks } from "@/lib/recipes";
 import { statusDotColor } from "@/lib/scrobble/action-badge";
@@ -26,15 +27,15 @@ import {
   anilistRatings,
   corrections,
   customRecipes,
+  discordRpPrefs,
   enabledOrigins,
   episodeOverrides,
   manualContexts,
   manualSelections,
   notes,
+  presenceExtras,
   quickLinks,
   ratings,
-  discordRpPrefs,
-  presenceExtras,
   remoteRatings,
   remoteRecipes,
   resolutionCache,
@@ -45,7 +46,6 @@ import {
 import { getAdapter, routeTracker } from "@/lib/tracker";
 import type { TrackedItem } from "@/lib/tracker/types";
 import { connect, disconnect, getRedirectUri, isConnected } from "@/lib/trakt/auth";
-import { tmdbPoster } from "@/lib/trakt/images";
 import {
   TraktNotConnectedError,
   commentItem,
@@ -58,6 +58,7 @@ import {
   search,
   updateComment,
 } from "@/lib/trakt/client";
+import { tmdbPoster } from "@/lib/trakt/images";
 import type { ReviewLevel } from "@/lib/trakt/types";
 import { buildRatingBody, resolutionCacheKey, reviewKey } from "@/lib/trakt/util";
 import { type BadgeStatus, onMessage, sendMessage } from "@/messaging";
@@ -652,11 +653,12 @@ export default defineBackground(() => {
     void dispatchPresence();
   });
 
-  // Options flipped the toggle or changed the transport. Clear the plugin first
-  // (covers a disable, or switching away from the plugin), then start whatever's
+  // Options flipped the toggle or changed the transport. Clear both push transports
+  // first (covers a disable, or switching away from plugin/aura), then start whatever's
   // now active. The relay self-clears via its `{}` poll when not chosen.
   onMessage("setPresenceEnabled", async () => {
     await pushToPlugin(null);
+    await pushToAura(null);
     await dispatchPresence();
   });
 
@@ -903,15 +905,22 @@ async function clearTabStatus(tabId: number): Promise<void> {
  * Send the current (focused-tab) presence to whichever transport is active:
  *  - relay  → (re)register with lolamtisch's relay; it then polls us.
  *  - plugin → POST the focused presence to the local Vencord plugin.
- *  - disabled → POST null to clear the plugin (the relay self-clears via `{}`).
+ *  - aura   → POST the focused presence to the user's remote aura Worker.
+ *  - disabled → POST null to clear the active push transport (relay self-clears via `{}`).
  * Called on cold start, every presence report, and on tab focus changes.
  */
 async function dispatchPresence(): Promise<void> {
   const { enabled, transport } = await discordRpPrefs.getValue();
-  if (enabled && (transport ?? "plugin") === "relay") {
+  const t = transport ?? "plugin";
+  if (enabled && t === "relay") {
     await discordRelaySink.register();
+    return;
+  }
+  const state = enabled ? await focusedPresence() : null;
+  if (t === "aura") {
+    await pushToAura(state);
   } else {
-    await pushToPlugin(enabled ? await focusedPresence() : null);
+    await pushToPlugin(state);
   }
 }
 

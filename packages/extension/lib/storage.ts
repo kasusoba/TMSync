@@ -322,12 +322,31 @@ export const tmdbPosterCache = storage.defineItem<Record<string, string | null>>
  *    plugin (cross-platform, no native helper; the default).
  *  - `"relay"`  — lolamtisch's relay extension + Node helper (no native Apple
  *    Silicon build). Kept as an option for setups already using it.
+ *  - `"aura"`   — POST to the user's own self-hosted aura Worker, which sets
+ *    presence via Discord's headless-session server API — no local helper at all,
+ *    cross-device incl. mobile. The endpoint URL + token live in `auraPresence`.
  * Only one runs at a time (two would double the presence). `transport` may be
  * absent on entries written before this field existed — read it as `?? "plugin"`.
  */
 export const discordRpPrefs = storage.defineItem<{
   enabled: boolean;
-  transport: "relay" | "plugin";
+  transport: "relay" | "plugin" | "aura";
 }>("sync:discord_rp", {
   fallback: { enabled: false, transport: "plugin" },
+});
+
+/**
+ * aura transport connection (docs/DISCORD-RP.md). `url` is the user's own
+ * `.../presence` endpoint, `token` its ingest bearer, `applicationId` the Discord
+ * app aura is authorised against (its icon/art). Unlike the plugin/relay these are
+ * the user's own secrets for their own remote service, so this lives in `local`
+ * (never `sync`), mirroring the OAuth-token convention — and the watch data goes
+ * only to the user's own endpoint, consistent with the privacy split (constraint #6).
+ */
+export const auraPresence = storage.defineItem<{
+  url: string;
+  token: string;
+  applicationId: string;
+}>("local:aura_presence", {
+  fallback: { url: "", token: "", applicationId: "" },
 });
