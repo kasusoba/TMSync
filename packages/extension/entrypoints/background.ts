@@ -650,6 +650,10 @@ export default defineBackground(() => {
     // ...and its Discord presence (pagehide may not have landed before teardown)
     // plus the resolved presence extras for the tab.
     await clearPresence(tabId);
+    // Tell aura to re-evaluate now that this tab's snapshot is gone: it pushes the
+    // focused tab's presence, or null when nothing else is playing. Without this the
+    // stored activity keeps heartbeating on aura until its TTL (the closed-tab bug).
+    await dispatchPresence();
     const px = await presenceExtras.getValue();
     if (px[tabId]) {
       delete px[tabId];
