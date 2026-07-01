@@ -6,8 +6,8 @@ const LARGE_IMAGE = "tmsync";
 
 /**
  * Build the Discord activity object from TMSync's neutral {@link PresenceState}.
- * Shared by every push transport (the local Vencord plugin and the remote aura
- * Worker) so the presence looks identical however it reaches Discord:
+ * The transport-agnostic mapping (kept separate from the aura POST so a future
+ * transport reuses it verbatim), producing:
  *  - timestamps in **milliseconds** (gateway/local-activity path, not RPC seconds);
  *  - assets nested (`assets.large_image`) — the receiver resolves a URL (our poster)
  *    or a named key;

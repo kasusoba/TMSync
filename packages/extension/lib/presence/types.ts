@@ -1,9 +1,9 @@
 /**
  * TMSync's OWN neutral session-presence event — the seam (see docs/DISCORD-RP.md).
- * The content session produces this as a side effect of scrobbling; a PresenceSink
- * translates it to a concrete transport (today: the lolamtisch Discord relay). We
- * couple to THIS shape, never to a specific transport, so a future bridge is a
- * small adapter swap rather than a rewrite.
+ * The content session produces this as a side effect of scrobbling; a transport
+ * (today the aura Worker, via `toActivity`) translates it to Discord's shape. We
+ * couple to THIS neutral event, never to a specific transport, so a future bridge
+ * is a small adapter swap rather than a rewrite.
  */
 export interface PresenceState {
   /** Line 1 — the resolved title (e.g. "Frieren"). */

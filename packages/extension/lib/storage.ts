@@ -317,22 +317,15 @@ export const tmdbPosterCache = storage.defineItem<Record<string, string | null>>
  * surfaced as experimental (docs/DISCORD-RP.md). A small user pref ⇒ `sync`.
  */
 /**
- * `transport` picks how presence reaches Discord:
- *  - `"plugin"` — POST to the local "Rich Presence for browser extensions" Vencord
- *    plugin (cross-platform, no native helper; the default).
- *  - `"relay"`  — lolamtisch's relay extension + Node helper (no native Apple
- *    Silicon build). Kept as an option for setups already using it.
- *  - `"aura"`   — POST to the user's own self-hosted aura Worker, which sets
- *    presence via Discord's headless-session server API — no local helper at all,
- *    cross-device incl. mobile. The endpoint URL + token live in `auraPresence`.
- * Only one runs at a time (two would double the presence). `transport` may be
- * absent on entries written before this field existed — read it as `?? "plugin"`.
+ * Presence reaches Discord via the user's self-hosted aura Worker (endpoint URL +
+ * token in `auraPresence`) — the sole transport. Earlier builds also had a local
+ * Vencord-plugin and a lolamtisch-relay transport; those were retired in favour of
+ * aura's server-side headless sessions (no local helper, cross-device incl. mobile
+ * — docs/DISCORD-RP.md). Entries written then may still carry a stray `transport`
+ * field; it's ignored.
  */
-export const discordRpPrefs = storage.defineItem<{
-  enabled: boolean;
-  transport: "relay" | "plugin" | "aura";
-}>("sync:discord_rp", {
-  fallback: { enabled: false, transport: "plugin" },
+export const discordRpPrefs = storage.defineItem<{ enabled: boolean }>("sync:discord_rp", {
+  fallback: { enabled: false },
 });
 
 /**

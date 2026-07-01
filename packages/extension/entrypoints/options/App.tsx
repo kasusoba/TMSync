@@ -7,7 +7,6 @@ import {
   contributeQuickLink,
   contributeRecipe,
 } from "@/lib/portability/contribute";
-import { presenceConfigured } from "@/lib/presence/config";
 import {
   type BadgePrefs,
   type QuickLinkSite,
@@ -378,13 +377,7 @@ export function App() {
   const [backupNote, setBackupNote] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [badge, setBadge] = useState<BadgePrefs>({ mode: "full", position: null });
-  const [discordRp, setDiscordRp] = useState<{
-    enabled: boolean;
-    transport: "relay" | "plugin" | "aura";
-  }>({
-    enabled: false,
-    transport: "plugin",
-  });
+  const [discordRp, setDiscordRp] = useState<{ enabled: boolean }>({ enabled: false });
   const [aura, setAura] = useState<{ url: string; token: string; applicationId: string }>({
     url: "",
     token: "",
@@ -413,7 +406,7 @@ export function App() {
     setCorr(c);
     setRemote(rem);
     setBadge(bp);
-    setDiscordRp({ enabled: drp.enabled, transport: drp.transport ?? "plugin" });
+    setDiscordRp({ enabled: drp.enabled });
     setAura(ap);
   };
 
@@ -423,13 +416,11 @@ export function App() {
     await badgePrefs.setValue(next);
   };
 
-  const updateDiscordRp = async (
-    patch: Partial<{ enabled: boolean; transport: "relay" | "plugin" | "aura" }>,
-  ) => {
+  const updateDiscordRp = async (patch: Partial<{ enabled: boolean }>) => {
     const next = { ...discordRp, ...patch };
     setDiscordRp(next);
     await discordRpPrefs.setValue(next);
-    // Background re-evaluates: clears the inactive transport, starts the active one.
+    // Background clears then re-pushes the current state to aura.
     await sendMessage("setPresenceEnabled", next.enabled);
   };
 
@@ -440,7 +431,7 @@ export function App() {
     const next = { ...aura, ...patch };
     setAura(next);
     await auraPresence.setValue(next);
-    if (discordRp.enabled && discordRp.transport === "aura") {
+    if (discordRp.enabled) {
       await sendMessage("setPresenceEnabled", true); // re-push with the new config
     }
   };
@@ -1249,8 +1240,8 @@ export function App() {
                       Discord Rich Presence
                     </span>
                     <span class={clsx("block text-[11px] leading-relaxed", t.sub)}>
-                      Show “Watching …” on your Discord profile. Needs a local helper running (see
-                      the transport options below).
+                      Show “Watching …” on your Discord profile via your own self-hosted aura Worker
+                      — no local app, works cross-device including mobile.
                     </span>
                   </span>
                   <Switch
@@ -1261,137 +1252,76 @@ export function App() {
                 </div>
 
                 {discordRp.enabled && (
-                  <>
-                    <span class={clsx("mt-3 mb-1 block text-[11px] font-medium", t.faint)}>
-                      Transport
-                    </span>
-                    <div class="mb-1 flex gap-1">
-                      {(
-                        [
-                          ["plugin", "Vencord plugin"],
-                          ["relay", "Relay + helper"],
-                          ["aura", "aura (self-hosted)"],
-                        ] as const
-                      ).map(([value, label]) => (
-                        <button
-                          type="button"
-                          key={value}
-                          onClick={() => void updateDiscordRp({ transport: value })}
-                          class={clsx(
-                            "flex-1 rounded-md py-1.5 text-[12px] font-medium transition-colors",
-                            discordRp.transport === value ? "bg-ikura text-white" : t.ghost,
-                          )}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
+                  <div class="mt-3 flex flex-col gap-2">
                     <p class={clsx("text-[11px] leading-relaxed", t.sub)}>
-                      {discordRp.transport === "plugin" ? (
-                        <>
-                          Install the “Rich Presence for browser extensions” Vencord plugin (runs
-                          inside Discord — works on Apple Silicon, no separate app).
-                        </>
-                      ) : discordRp.transport === "relay" ? (
-                        <>
-                          Needs lolamtisch’s{" "}
-                          <a
-                            href="https://github.com/lolamtisch/Discord-RPC-Extension"
-                            target="_blank"
-                            rel="noreferrer"
-                            class={clsx("underline underline-offset-2", t.link)}
-                          >
-                            Discord Rich Presence
-                          </a>{" "}
-                          relay extension + its Node helper. Apple Silicon: run the helper from
-                          source.
-                        </>
-                      ) : (
-                        <>
-                          Posts presence to your own self-hosted aura Worker, which sets it via
-                          Discord’s headless-session API — no local helper, works cross-device
-                          including mobile. Paste your <code class="px-1">/presence</code> endpoint
-                          and ingest token, then grant access to the endpoint’s origin.
-                        </>
-                      )}
+                      Posts presence to your own self-hosted{" "}
+                      <span class={clsx("font-semibold", t.heading)}>aura</span> Worker, which sets
+                      it via Discord’s headless-session API — no local helper, works cross-device
+                      including mobile. Paste your <code class="px-1">/presence</code> endpoint and
+                      ingest token, then grant access to the endpoint’s origin.
                     </p>
-
-                    {discordRp.transport === "aura" && (
-                      <div class="mt-2 flex flex-col gap-2">
-                        <label class="block">
-                          <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>
-                            Endpoint URL
-                          </span>
-                          <input
-                            value={aura.url}
-                            placeholder="https://aura.you.workers.dev/presence"
-                            onInput={(e) =>
-                              void updateAura({ url: (e.target as HTMLInputElement).value })
-                            }
-                            class={clsx(
-                              "w-full rounded-lg px-2.5 py-1.5 font-mono text-[11px] outline-none ring-inset focus:ring-2",
-                              t.input,
-                            )}
-                          />
-                        </label>
-                        <label class="block">
-                          <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>
-                            Ingest token
-                          </span>
-                          <input
-                            type="password"
-                            value={aura.token}
-                            placeholder="INGEST_TOKEN"
-                            onInput={(e) =>
-                              void updateAura({ token: (e.target as HTMLInputElement).value })
-                            }
-                            class={clsx(
-                              "w-full rounded-lg px-2.5 py-1.5 font-mono text-[11px] outline-none ring-inset focus:ring-2",
-                              t.input,
-                            )}
-                          />
-                        </label>
-                        <label class="block">
-                          <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>
-                            Discord application ID
-                          </span>
-                          <input
-                            value={aura.applicationId}
-                            placeholder="the app aura is authorised against"
-                            onInput={(e) =>
-                              void updateAura({
-                                applicationId: (e.target as HTMLInputElement).value,
-                              })
-                            }
-                            class={clsx(
-                              "w-full rounded-lg px-2.5 py-1.5 font-mono text-[11px] outline-none ring-inset focus:ring-2",
-                              t.input,
-                            )}
-                          />
-                        </label>
-                        <Btn
-                          t={t}
-                          tone="ghost"
-                          onClick={() =>
-                            void (async () => {
-                              const ok = await grantAuraOrigin();
-                              if (ok) await sendMessage("setPresenceEnabled", discordRp.enabled);
-                            })()
-                          }
-                        >
-                          Grant endpoint access
-                        </Btn>
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {discordRp.transport !== "aura" && !presenceConfigured() && (
-                  <p class={clsx("mt-1.5 text-[11px] leading-relaxed", t.faint)}>
-                    No Discord application is bundled in this build (set
-                    <code class="px-1">WXT_DISCORD_CLIENT_ID</code>), so presence stays inert even
-                    when enabled.
-                  </p>
+                    <label class="block">
+                      <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>
+                        Endpoint URL
+                      </span>
+                      <input
+                        value={aura.url}
+                        placeholder="https://aura.you.workers.dev/presence"
+                        onInput={(e) =>
+                          void updateAura({ url: (e.target as HTMLInputElement).value })
+                        }
+                        class={clsx(
+                          "w-full rounded-lg px-2.5 py-1.5 font-mono text-[11px] outline-none ring-inset focus:ring-2",
+                          t.input,
+                        )}
+                      />
+                    </label>
+                    <label class="block">
+                      <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>
+                        Ingest token
+                      </span>
+                      <input
+                        type="password"
+                        value={aura.token}
+                        placeholder="INGEST_TOKEN"
+                        onInput={(e) =>
+                          void updateAura({ token: (e.target as HTMLInputElement).value })
+                        }
+                        class={clsx(
+                          "w-full rounded-lg px-2.5 py-1.5 font-mono text-[11px] outline-none ring-inset focus:ring-2",
+                          t.input,
+                        )}
+                      />
+                    </label>
+                    <label class="block">
+                      <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>
+                        Discord application ID
+                      </span>
+                      <input
+                        value={aura.applicationId}
+                        placeholder="the app aura is authorised against"
+                        onInput={(e) =>
+                          void updateAura({ applicationId: (e.target as HTMLInputElement).value })
+                        }
+                        class={clsx(
+                          "w-full rounded-lg px-2.5 py-1.5 font-mono text-[11px] outline-none ring-inset focus:ring-2",
+                          t.input,
+                        )}
+                      />
+                    </label>
+                    <Btn
+                      t={t}
+                      tone="ghost"
+                      onClick={() =>
+                        void (async () => {
+                          const ok = await grantAuraOrigin();
+                          if (ok) await sendMessage("setPresenceEnabled", discordRp.enabled);
+                        })()
+                      }
+                    >
+                      Grant endpoint access
+                    </Btn>
+                  </div>
                 )}
               </>
             )}

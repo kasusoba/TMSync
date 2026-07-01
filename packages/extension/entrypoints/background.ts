@@ -15,9 +15,6 @@ import {
 } from "@/lib/anilist/client";
 import { ANILIST } from "@/lib/anilist/config";
 import { pushToAura } from "@/lib/presence/aura";
-import { RELAY_ID } from "@/lib/presence/config";
-import { pushToPlugin } from "@/lib/presence/discord-plugin";
-import { discordRelaySink } from "@/lib/presence/discord-relay";
 import { clearPresence, focusedPresence, putPresence } from "@/lib/presence/snapshot";
 import { bundledLinks } from "@/lib/recipes";
 import { statusDotColor } from "@/lib/scrobble/action-badge";
@@ -95,27 +92,13 @@ export default defineBackground(() => {
     if (alarm.name === "tmsync-recipes") void fetchRemoteRecipes(true);
   });
 
-  // Discord Rich Presence (experimental — docs/DISCORD-RP.md). On a cold SW start,
-  // (re)establish the active transport: the relay needs registering; the plugin
-  // path is push-based so there's nothing to do until something plays.
+  // Discord Rich Presence (experimental — docs/DISCORD-RP.md). Push-based: on a
+  // cold SW start there's nothing to send until something plays, but re-push so a
+  // still-playing tab re-establishes presence after the SW was evicted.
   void dispatchPresence();
-  // The relay polls us every ~15 s via cross-extension messaging; answer each poll
-  // with the focused tab's presence — but ONLY when the relay is the chosen
-  // transport, else `{}` (so relay + plugin never both show). @webext-core/messaging
-  // doesn't carry external senders, so this is a raw listener; only our relay's id.
-  browser.runtime.onMessageExternal.addListener((_message, sender, sendResponse) => {
-    if (sender.id !== RELAY_ID) return false;
-    void (async () => {
-      const { enabled, transport } = await discordRpPrefs.getValue();
-      const onRelay = enabled && (transport ?? "plugin") === "relay";
-      sendResponse(discordRelaySink.poll(onRelay ? await focusedPresence() : null));
-    })();
-    return true; // async sendResponse
-  });
 
-  // Plugin transport is push-based + focus-aware: when the user switches tabs,
-  // re-push the (now) focused tab's presence so the plugin tracks focus like the
-  // relay's poll would. No-op unless the plugin transport is active.
+  // Focus-aware: presence shows the focused tab, so re-push when the user switches
+  // tabs. No-op unless RP is enabled.
   browser.tabs.onActivated.addListener(() => void dispatchPresence());
 
   onMessage("refreshRecipes", async () => {
@@ -649,15 +632,13 @@ export default defineBackground(() => {
     } else {
       await clearPresence(tabId);
     }
-    // Send the (now-updated) focused presence to the active transport.
+    // Push the (now-updated) focused presence to aura.
     void dispatchPresence();
   });
 
-  // Options flipped the toggle or changed the transport. Clear both push transports
-  // first (covers a disable, or switching away from plugin/aura), then start whatever's
-  // now active. The relay self-clears via its `{}` poll when not chosen.
+  // Options flipped the toggle (or changed the aura endpoint). Clear first so a
+  // disable/reconfigure can't leave a stale session up, then push the current state.
   onMessage("setPresenceEnabled", async () => {
-    await pushToPlugin(null);
     await pushToAura(null);
     await dispatchPresence();
   });
@@ -902,26 +883,13 @@ async function clearTabStatus(tabId: number): Promise<void> {
 }
 
 /**
- * Send the current (focused-tab) presence to whichever transport is active:
- *  - relay  → (re)register with lolamtisch's relay; it then polls us.
- *  - plugin → POST the focused presence to the local Vencord plugin.
- *  - aura   → POST the focused presence to the user's remote aura Worker.
- *  - disabled → POST null to clear the active push transport (relay self-clears via `{}`).
- * Called on cold start, every presence report, and on tab focus changes.
+ * Push the current (focused-tab) presence to the user's aura Worker — or null to
+ * clear it when RP is disabled. Called on cold start, every presence report, and
+ * on tab focus changes.
  */
 async function dispatchPresence(): Promise<void> {
-  const { enabled, transport } = await discordRpPrefs.getValue();
-  const t = transport ?? "plugin";
-  if (enabled && t === "relay") {
-    await discordRelaySink.register();
-    return;
-  }
-  const state = enabled ? await focusedPresence() : null;
-  if (t === "aura") {
-    await pushToAura(state);
-  } else {
-    await pushToPlugin(state);
-  }
+  const { enabled } = await discordRpPrefs.getValue();
+  await pushToAura(enabled ? await focusedPresence() : null);
 }
 
 /**
