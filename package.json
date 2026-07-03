@@ -10,6 +10,7 @@
   "packageManager": "pnpm@10.11.0",
   "scripts": {
     "dev": "pnpm -F @tmsync/extension dev",
+    "dev:edge": "pnpm -F @tmsync/extension dev:edge",
     "dev:firefox": "pnpm -F @tmsync/extension dev:firefox",
     "build": "pnpm -F @tmsync/extension build",
     "build:firefox": "pnpm -F @tmsync/extension build:firefox",

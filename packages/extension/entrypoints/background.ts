@@ -37,7 +37,7 @@ import {
   tabSessions,
   tabStatus,
 } from "@/lib/storage";
-import { getAdapter, routeTracker } from "@/lib/tracker";
+import { getAdapter, inferNativeTracker, routeTracker } from "@/lib/tracker";
 import type { TrackedItem, Tracker } from "@/lib/tracker/types";
 import { connect, disconnect, getRedirectUri, isConnected } from "@/lib/trakt/auth";
 import {
@@ -54,7 +54,14 @@ import {
 } from "@/lib/trakt/client";
 import type { ReviewLevel } from "@/lib/trakt/types";
 import { buildRatingBody, resolutionCacheKey, reviewKey } from "@/lib/trakt/util";
-import { type BadgeStatus, type DerivedOutcome, type ScrobbleRequest, onMessage, sendMessage } from "@/messaging";
+import {
+  type BadgeStatus,
+  type DerivedOutcome,
+  type ScrobbleReply,
+  type ScrobbleRequest,
+  onMessage,
+  sendMessage,
+} from "@/messaging";
 import { type LibraryLink, type ParsedMedia, type Recipe, parseLibrary } from "@tmsync/shared";
 import { browser } from "wxt/browser";
 
@@ -152,36 +159,70 @@ export default defineBackground(() => {
     if (tabId !== undefined && !(await claimScrobbleOwner(tabId, frameId, data.action))) {
       return { ok: true, resolved: true }; // another frame owns this tab's scrobble
     }
-    const adapter = getAdapter(routeTracker(data.tracker ?? "trakt", data.media.mediaType));
-    let item: Awaited<ReturnType<typeof adapter.resolve>>;
-    try {
-      item = await adapter.resolve(data.media);
-    } catch {
-      return { ok: false, resolved: false, reason: "http" as const };
+    // MULTI-TRACK: the enabled set + which tracker speaks the page's numbering
+    // natively (recorded directly). Every OTHER enabled tracker is derived via the
+    // crosswalk. `trackers` is authoritative; fall back to the legacy single field.
+    const enabled = data.trackers?.length ? data.trackers : [data.tracker ?? "trakt"];
+    const native = inferNativeTracker(data.media);
+    const nativeEnabled = enabled.includes(native);
+    // Resolve the native item when we'll record it, OR to BRIDGE a reverse (→Trakt)
+    // derive (which needs the AniList id). Forward (→AniList) uses the scraped
+    // tmdbId, so it needs no native item.
+    const needNative = nativeEnabled || (native === "anilist" && enabled.includes("trakt"));
+    let nativeItem: TrackedItem | null = null;
+    let nativeThrew = false;
+    if (needNative) {
+      try {
+        nativeItem = await getAdapter(native).resolve(data.media);
+      } catch {
+        nativeThrew = true;
+      }
     }
-    if (!item) return { ok: false, resolved: false, reason: "unresolved" as const };
-    const result = await adapter.recordProgress(
-      item,
-      data.media,
-      data.progress,
-      data.action,
-      data.watchedThreshold ?? 0.8,
+
+    // Record the native tracker directly — only if the user enabled it.
+    let nativeReply: ScrobbleReply | null = null;
+    if (nativeEnabled) {
+      if (nativeThrew) {
+        nativeReply = { ok: false, resolved: false, reason: "http", primaryTracker: native };
+      } else if (!nativeItem) {
+        nativeReply = { ok: false, resolved: false, reason: "unresolved", primaryTracker: native };
+      } else {
+        const result = await getAdapter(native).recordProgress(
+          nativeItem,
+          data.media,
+          data.progress,
+          data.action,
+          data.watchedThreshold ?? 0.8,
+        );
+        nativeReply = {
+          ok: result.ok,
+          status: result.status,
+          action: result.action,
+          resolved: true,
+          reason: result.ok ? undefined : result.reason,
+          completed: result.completed,
+          resolvedTitle: result.reason === "no_episode" ? undefined : nativeItem.title,
+          resolvedYear: result.reason === "no_episode" ? undefined : nativeItem.year,
+          httpError: result.httpError,
+          primaryTracker: native,
+        };
+      }
+    }
+
+    // Derive + record every OTHER enabled tracker via the crosswalk.
+    const derived = await recordDerivedTrackers(
+      nativeItem,
+      enabled.filter((t) => t !== native),
+      data,
     );
-    // MULTI-TRACK: also write any DERIVED tracker(s) via the anime-map crosswalk.
-    const derived = await recordDerivedTrackers(adapter.tracker, item, data);
-    return {
-      ok: result.ok,
-      status: result.status,
-      action: result.action,
-      resolved: true,
-      reason: result.ok ? undefined : result.reason,
-      completed: result.completed,
-      // The no_episode error never carried a title (it has no resolved target shown).
-      resolvedTitle: result.reason === "no_episode" ? undefined : item.title,
-      resolvedYear: result.reason === "no_episode" ? undefined : item.year,
-      httpError: result.httpError,
-      derived: derived.length ? derived : undefined,
-    };
+
+    // Native is the badge's primary when enabled; otherwise promote the first
+    // derived tracker so a derive-only recipe (e.g. AniList-only on a TMDB site)
+    // still drives the badge.
+    if (nativeReply) return { ...nativeReply, derived: derived.length ? derived : undefined };
+    const [head, ...rest] = derived;
+    if (!head) return { ok: false, resolved: false, reason: "unresolved" };
+    return { ...derivedToReply(head), derived: rest.length ? rest : undefined };
   });
 
   // Pre-resolution for the badge: resolve identity (cached) without recording so
@@ -649,12 +690,35 @@ export default defineBackground(() => {
  * decision + never-lower rule). Never guesses: a crosswalk miss is a silent skip
  * (the item isn't anime / isn't mapped), an ambiguous match refuses with a warning.
  */
+/** Promote a derived outcome to the top-level reply shape (used when the native
+ * tracker isn't enabled, so a derived tracker drives the badge). */
+function derivedToReply(d: DerivedOutcome): ScrobbleReply {
+  const reason: ScrobbleReply["reason"] | undefined = d.ok
+    ? undefined
+    : d.reason === "no_match" || d.skipped
+      ? "unresolved"
+      : d.reason === "numbering_mismatch" ||
+          d.reason === "not_connected" ||
+          d.reason === "no_episode" ||
+          d.reason === "needs_rewatch"
+        ? d.reason
+        : "http";
+  return {
+    ok: d.ok,
+    resolved: !d.skipped && d.reason !== "unresolved",
+    action: d.action,
+    reason,
+    completed: d.completed,
+    resolvedTitle: d.resolvedTitle,
+    primaryTracker: d.tracker,
+  };
+}
+
 async function recordDerivedTrackers(
-  nativeTracker: Tracker,
-  nativeItem: TrackedItem,
+  nativeItem: TrackedItem | null,
+  targets: Tracker[],
   data: ScrobbleRequest,
 ): Promise<DerivedOutcome[]> {
-  const targets = (data.trackers ?? []).filter((t) => t !== nativeTracker);
   const out: DerivedOutcome[] = [];
   for (const target of targets) {
     const d = deriveMedia(target, data.media, nativeItem);

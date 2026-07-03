@@ -23,3 +23,15 @@ export function getAdapter(tracker: Tracker): TrackerAdapter {
 export function routeTracker(tracker: Tracker, mediaType: ParsedMedia["mediaType"]): Tracker {
   return mediaType === "movie" ? "trakt" : tracker;
 }
+
+/**
+ * The NATIVE tracker for scraped media (multi-track — docs/MULTI-TRACK.md): the one
+ * whose numbering the page ALREADY speaks, so it's recorded directly; every other
+ * enabled tracker is DERIVED via the anime-map crosswalk. Inferred, NOT user-picked
+ * — TMDB/western seasoning (a tmdbId or a season) ⇒ Trakt; a bare linear episode
+ * (dedicated anime site) ⇒ AniList. When more trackers are added this becomes a
+ * per-adapter `speaksNatively(media)` check; for the current two it's this.
+ */
+export function inferNativeTracker(media: ParsedMedia): Tracker {
+  return media.tmdbId !== undefined || media.season !== undefined ? "trakt" : "anilist";
+}

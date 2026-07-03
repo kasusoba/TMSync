@@ -296,7 +296,7 @@ export function App() {
               ]}
               urlParts={urlParts(EP_URL)}
               mediaType="auto"
-              tracker="trakt"
+              trackers={["trakt"]}
               iframe={false}
               preview={{ ok: true, text: "show: Spider-Noir S1E1" }}
             />
@@ -316,7 +316,7 @@ export function App() {
                 "https://www.rivestream.app/watch?type=tv&id=85552&season=1&episode=1",
               )}
               mediaType="auto"
-              tracker="trakt"
+              trackers={["trakt"]}
               iframe
               preview={{ ok: true, text: "show: Euphoria S1E1" }}
             />
@@ -336,7 +336,7 @@ export function App() {
               urlParts={urlParts("bcine.ru/tv/276161")}
               titleParts={["Teach You a Lesson", "bCine"]}
               mediaType="auto"
-              tracker="trakt"
+              trackers={["trakt"]}
               iframe
               preview={{ ok: false, error: "no title yet — pick one" }}
             />
@@ -372,7 +372,7 @@ export function App() {
                 },
               ]}
               mediaType="auto"
-              tracker="trakt"
+              trackers={["trakt"]}
               iframe
               preview={{ ok: false, error: "pick the episode number" }}
             />
@@ -402,7 +402,7 @@ export function App() {
                 ],
               }}
               mediaType="auto"
-              tracker="trakt"
+              trackers={["trakt"]}
               iframe
               preview={{ ok: false, error: "pick the episode number" }}
             />
@@ -420,7 +420,7 @@ export function App() {
               ]}
               urlParts={urlParts("www.cineby.at/movie/693134")}
               mediaType="movie"
-              tracker="trakt"
+              trackers={["trakt"]}
               iframe
               preview={{ ok: true, text: "movie: Dune: Part Two (2024)" }}
               status="Saved! Reload the page to start scrobbling."
@@ -440,7 +440,7 @@ export function App() {
               ]}
               urlParts={urlParts("popcornmovies.org/movie/srimulat-hidup-memang-komedi")}
               mediaType="auto"
-              tracker="trakt"
+              trackers={["trakt"]}
               iframe={false}
               preview={{ ok: true, text: "movie: Srimulat (2023)" }}
             />
@@ -455,7 +455,7 @@ export function App() {
               fields={[]}
               urlParts={urlParts("twoseven.xyz/room/abc123")}
               mediaType="auto"
-              tracker="trakt"
+              trackers={["trakt"]}
               iframe
               preview={{ ok: true, text: "Manual — pick each title from the badge" }}
             />
@@ -471,7 +471,7 @@ export function App() {
               ]}
               urlParts={urlParts("reanime.to/watch/frieren/3")}
               mediaType="show"
-              tracker="anilist"
+              trackers={["anilist"]}
               iframe
               preview={{ ok: true, text: "show: Frieren E3 → AniList" }}
             />
@@ -487,8 +487,7 @@ export function App() {
               ]}
               urlParts={urlParts("reanime.to/watch/frieren/3")}
               mediaType="show"
-              tracker="anilist"
-              dual
+              trackers={["anilist", "trakt"]}
               iframe
               preview={{ ok: true, text: "show: Frieren E3 → AniList + Trakt" }}
             />

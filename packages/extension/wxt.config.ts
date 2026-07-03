@@ -18,6 +18,16 @@ const CHROME_KEY =
 // See ../../CLAUDE.md for the settled constraints encoded here.
 export default defineConfig({
   srcDir: ".",
+  // No Chrome installed? Point the dev runner at a Chromium-based browser you DO
+  // have. `pnpm dev:edge` builds the (Chromium) edge target and launches Edge —
+  // the chrome-mv3 output + every chrome.*/browser.* API run identically there,
+  // and the OAuth id is unchanged (derived from `key` above). Adjust the path if
+  // Edge lives elsewhere.
+  webExt: {
+    binaries: {
+      edge: "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+    },
+  },
   manifest: ({ browser }) => ({
     name: "TMSync",
     description:
