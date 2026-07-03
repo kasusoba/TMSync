@@ -18,12 +18,16 @@ const CHROME_KEY =
 // See ../../CLAUDE.md for the settled constraints encoded here.
 export default defineConfig({
   srcDir: ".",
-  // No Chrome installed? Point the dev runner at a Chromium-based browser you DO
-  // have. `pnpm dev:edge` builds the (Chromium) edge target and launches Edge —
-  // the chrome-mv3 output + every chrome.*/browser.* API run identically there,
-  // and the OAuth id is unchanged (derived from `key` above). Adjust the path if
-  // Edge lives elsewhere.
+  // Dev runner: DON'T auto-launch a throwaway browser+profile. Instead load the
+  // dev build into your OWN Edge once (edge://extensions → Developer mode → Load
+  // unpacked → .output/chrome-mv3-dev) — then `pnpm dev` just watches + rebuilds
+  // and the extension hot-reloads itself in your normal profile: no new window,
+  // your Trakt/AniList logins persist. (Content-script/UI edits may still need a
+  // page refresh; background/options/popup reload on their own.)
+  // Flip `disabled: false` to instead auto-launch a dedicated dev window via the
+  // Edge binary below (fresh profile each run).
   webExt: {
+    disabled: true,
     binaries: {
       edge: "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
     },
