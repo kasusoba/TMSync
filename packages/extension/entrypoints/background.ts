@@ -1,5 +1,6 @@
 import { RECIPES } from "@/config";
-import { confirmAniListRewatch } from "@/lib/anilist/adapter";
+import { confirmAniListRewatch, resolveAniListById } from "@/lib/anilist/adapter";
+import { deriveMedia } from "@/lib/animap/derive";
 import {
   connect as anilistConnect,
   disconnect as anilistDisconnect,
@@ -37,6 +38,7 @@ import {
   tabStatus,
 } from "@/lib/storage";
 import { getAdapter, routeTracker } from "@/lib/tracker";
+import type { TrackedItem, Tracker } from "@/lib/tracker/types";
 import { connect, disconnect, getRedirectUri, isConnected } from "@/lib/trakt/auth";
 import {
   TraktNotConnectedError,
@@ -52,7 +54,7 @@ import {
 } from "@/lib/trakt/client";
 import type { ReviewLevel } from "@/lib/trakt/types";
 import { buildRatingBody, resolutionCacheKey, reviewKey } from "@/lib/trakt/util";
-import { type BadgeStatus, onMessage, sendMessage } from "@/messaging";
+import { type BadgeStatus, type DerivedOutcome, type ScrobbleRequest, onMessage, sendMessage } from "@/messaging";
 import { type LibraryLink, type ParsedMedia, type Recipe, parseLibrary } from "@tmsync/shared";
 import { browser } from "wxt/browser";
 
@@ -165,6 +167,8 @@ export default defineBackground(() => {
       data.action,
       data.watchedThreshold ?? 0.8,
     );
+    // MULTI-TRACK: also write any DERIVED tracker(s) via the anime-map crosswalk.
+    const derived = await recordDerivedTrackers(adapter.tracker, item, data);
     return {
       ok: result.ok,
       status: result.status,
@@ -176,6 +180,7 @@ export default defineBackground(() => {
       resolvedTitle: result.reason === "no_episode" ? undefined : item.title,
       resolvedYear: result.reason === "no_episode" ? undefined : item.year,
       httpError: result.httpError,
+      derived: derived.length ? derived : undefined,
     };
   });
 
@@ -504,6 +509,7 @@ export default defineBackground(() => {
     all[tabId] = {
       media: data.media,
       tracker: data.tracker,
+      trackers: data.trackers,
       videoSelector: data.videoSelector,
       frame: data.frame,
       watchedThreshold: data.watchedThreshold,
@@ -521,6 +527,7 @@ export default defineBackground(() => {
       ? {
           media: session.media,
           tracker: session.tracker,
+          trackers: session.trackers,
           videoSelector: session.videoSelector,
           frame: session.frame,
           watchedThreshold: session.watchedThreshold,
@@ -633,6 +640,64 @@ export default defineBackground(() => {
     if (changeInfo.status === "loading") void clearTabStatus(tabId);
   });
 });
+
+/**
+ * MULTI-TRACK (docs/MULTI-TRACK.md): record the DERIVED tracker(s) for a scrobble,
+ * alongside the native one. The native item is already resolved+recorded; for each
+ * other toggled tracker we derive its numbering via the anime-map crosswalk, then
+ * resolve + record it. Independent + advance-only (each adapter owns its own watched
+ * decision + never-lower rule). Never guesses: a crosswalk miss is a silent skip
+ * (the item isn't anime / isn't mapped), an ambiguous match refuses with a warning.
+ */
+async function recordDerivedTrackers(
+  nativeTracker: Tracker,
+  nativeItem: TrackedItem,
+  data: ScrobbleRequest,
+): Promise<DerivedOutcome[]> {
+  const targets = (data.trackers ?? []).filter((t) => t !== nativeTracker);
+  const out: DerivedOutcome[] = [];
+  for (const target of targets) {
+    const d = deriveMedia(target, data.media, nativeItem);
+    if (d.kind === "miss") {
+      out.push({ tracker: target, ok: false, skipped: true, reason: "no_match" });
+      continue;
+    }
+    if (d.kind === "ambiguous") {
+      out.push({ tracker: target, ok: false, reason: "numbering_mismatch" });
+      continue;
+    }
+    let item: TrackedItem | null;
+    try {
+      item =
+        target === "anilist" && d.anilistId !== undefined
+          ? await resolveAniListById(d.anilistId)
+          : await getAdapter(target).resolve(d.media);
+    } catch {
+      out.push({ tracker: target, ok: false, reason: "http" });
+      continue;
+    }
+    if (!item) {
+      out.push({ tracker: target, ok: false, reason: "unresolved" });
+      continue;
+    }
+    const r = await getAdapter(target).recordProgress(
+      item,
+      d.media,
+      data.progress,
+      data.action,
+      data.watchedThreshold ?? 0.8,
+    );
+    out.push({
+      tracker: target,
+      ok: r.ok,
+      action: r.action,
+      reason: r.ok ? undefined : r.reason,
+      completed: r.completed,
+      resolvedTitle: item.title,
+    });
+  }
+  return out;
+}
 
 // --- AniList rating + private note (step 7) ---
 // AniList rates the COUR ENTRY only — score + private notes both write through

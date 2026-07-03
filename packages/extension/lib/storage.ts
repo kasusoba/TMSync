@@ -211,8 +211,10 @@ export const manualContexts = storage.defineItem<Record<number, ManualContext>>(
  */
 export interface TabSession {
   media: ParsedMedia;
-  /** Which tracker this session records to (routed by the matched recipe). */
+  /** The PRIMARY/native tracker this session records to (routed by the recipe). */
   tracker: Tracker;
+  /** MULTI-TRACK: the full toggled set (native + derived). Omitted ⇒ [tracker]. */
+  trackers?: Tracker[];
   videoSelector: string;
   frame: "auto" | "top" | "iframe";
   /** 0–1; a pause at/after this fraction is committed as a stop. */

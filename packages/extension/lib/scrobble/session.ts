@@ -8,6 +8,7 @@ import {
   extract,
   isManualRecipe,
   readField,
+  recipeTrackers,
   selectRecipe,
 } from "@tmsync/shared";
 import type { ContentScriptContext } from "wxt/utils/content-script-context";
@@ -56,7 +57,47 @@ function resolvedLabel(title: string, year: number | undefined, m: ParsedMedia):
   return `${title}${year ? ` (${year})` : ""}${episodeSuffix(m)}`;
 }
 
+/** The DERIVED-tracker summary for the badge (multi-track). Silent crosswalk
+ * misses are omitted (the item just isn't anime / mapped); real outcomes surface
+ * so the user can verify both trackers. Success only shows at the write moment. */
+function derivedSuffix(reply: ScrobbleReply): string {
+  const parts: string[] = [];
+  for (const d of reply.derived ?? []) {
+    if (d.skipped) continue;
+    const name = d.tracker === "anilist" ? "AniList" : "Trakt";
+    if (d.ok) {
+      if (d.action === "scrobble") parts.push(`${name} ${d.completed ? "completed" : "saved"}`);
+    } else {
+      const why =
+        d.reason === "numbering_mismatch"
+          ? "numbering ✗"
+          : d.reason === "unresolved"
+            ? "not found"
+            : d.reason === "not_connected"
+              ? "connect"
+              : d.reason === "no_episode"
+                ? "no episode"
+                : "failed";
+      parts.push(`${name} ${why}`);
+    }
+  }
+  return parts.join(" · ");
+}
+
+/** Build the badge status: the native tracker's result, plus a compact derived
+ * suffix ("added to history · AniList saved") when a recipe multi-tracks. */
 function statusFromReply(
+  action: "start" | "pause" | "stop",
+  reply: ScrobbleReply,
+  m: ParsedMedia,
+  tracker: Tracker,
+): BadgeStatus {
+  const base = primaryStatus(action, reply, m, tracker);
+  const suffix = derivedSuffix(reply);
+  return suffix ? { ...base, detail: [base.detail, suffix].filter(Boolean).join(" · ") } : base;
+}
+
+function primaryStatus(
   action: "start" | "pause" | "stop",
   reply: ScrobbleReply,
   m: ParsedMedia,
@@ -136,8 +177,11 @@ export class SessionManager {
   private videoSelector = "video";
   private frame: PlayerFrame = "auto";
   private watchedThreshold = 0.8;
-  /** Tracker the matched recipe routes to (constraint #1: one item, one tracker). */
+  /** The PRIMARY/native tracker (its numbering is what the page speaks). */
   private tracker: Tracker = "trakt";
+  /** MULTI-TRACK: the full toggled set. Derived tracker(s) are written via the
+   * anime-map crosswalk in the background. Kept in sync with `tracker`. */
+  private trackers: Tracker[] = ["trakt"];
   private lastPublishedKey: string | null = null;
   /** Top frame: a matched recipe is currently showing a badge for this tab. Lets
    * us (a) clear the badge + stop the session when an SPA navigates AWAY to a
@@ -326,6 +370,9 @@ export class SessionManager {
     this.watchedThreshold = recipe.video.watchedThreshold;
     // Route by TYPE: a movie on an anilist (anime) site still goes to Trakt.
     this.tracker = routeTracker(recipe.tracker, media.mediaType);
+    // MULTI-TRACK: the full toggled set — the background derives the non-native
+    // one(s) via the crosswalk. Single-tracker recipes yield [tracker] (unchanged).
+    this.trackers = recipeTrackers(recipe);
 
     // AniList resolves by TITLE only — a scraped tmdbId can't stand in for it. On
     // an SPA the URL's tmdbId is present immediately but the title (`.title span`)
@@ -346,6 +393,7 @@ export class SessionManager {
     await sendMessage("publishMedia", {
       media,
       tracker: this.tracker,
+      trackers: this.trackers,
       videoSelector: recipe.video.selector,
       frame: recipe.video.frame,
       watchedThreshold: recipe.video.watchedThreshold,
@@ -408,6 +456,7 @@ export class SessionManager {
     this.frame = recipe.video.frame;
     this.watchedThreshold = recipe.video.watchedThreshold;
     this.tracker = recipe.tracker;
+    this.trackers = recipeTrackers(recipe);
 
     const pageKey =
       (recipe.manualKey ? readField(recipe.manualKey, engineCtx) : null) ?? document.title.trim();
@@ -439,6 +488,7 @@ export class SessionManager {
     await sendMessage("publishMedia", {
       media,
       tracker: this.tracker,
+      trackers: this.trackers,
       videoSelector: this.videoSelector,
       frame: this.frame,
       watchedThreshold: this.watchedThreshold,
@@ -484,10 +534,11 @@ export class SessionManager {
       if (tab) {
         this.videoSelector = tab.videoSelector;
         this.watchedThreshold = tab.watchedThreshold;
-        // Cross-frame: the player iframe must record to the SAME tracker the
+        // Cross-frame: the player iframe must record to the SAME tracker(s) the
         // matcher frame routed to — otherwise an iframe anime recipe scrobbles to
         // Trakt (no season → "missing episode #") instead of AniList.
         this.tracker = tab.tracker;
+        this.trackers = tab.trackers ?? [tab.tracker];
         return { media: tab.media, frame: tab.frame };
       }
       await sleep(TAB_MEDIA_POLL_MS);
@@ -619,11 +670,19 @@ export class SessionManager {
     this.currentKey = mediaKey(media);
 
     const tracker = this.tracker;
+    const trackers = this.trackers;
     const watchedThreshold = this.watchedThreshold;
     const controller = new ScrobbleController(
       video,
       (action, progress) => {
-        void sendMessage("scrobble", { action, media, progress, tracker, watchedThreshold }).then(
+        void sendMessage("scrobble", {
+          action,
+          media,
+          progress,
+          tracker,
+          trackers,
+          watchedThreshold,
+        }).then(
           (reply) => {
             // We still tell the tracker to stop the outgoing episode — but the
             // scrobble call is async, so by the time it replies we may have shown

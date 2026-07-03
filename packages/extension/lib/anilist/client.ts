@@ -100,6 +100,33 @@ export async function resolve(media: ParsedMedia): Promise<AniListIdentity | nul
   return identity;
 }
 
+const BY_ID_QUERY = `
+query ($id: Int) {
+  Media(id: $id, type: ANIME) {
+    id idMal episodes
+    startDate { year }
+    title { romaji english }
+  }
+}`;
+
+/**
+ * Resolve a KNOWN AniList Media id → identity (cached). The multi-track derived
+ * path (docs/MULTI-TRACK.md) gets the id straight from the anime-map crosswalk, so
+ * it resolves by id instead of a title search — exact, no same-title ambiguity.
+ */
+export async function resolveById(anilistId: number): Promise<AniListIdentity | null> {
+  const key = `id:${anilistId}`;
+  const cache = await anilistResolutionCache.getValue();
+  const cached = cache[key];
+  if (cached) return cached;
+
+  const data = await gql<{ Media: MediaNode | null }>(BY_ID_QUERY, { id: anilistId });
+  if (!data.Media) return null;
+  const identity = mediaToIdentity(data.Media);
+  await anilistResolutionCache.setValue({ ...cache, [key]: identity });
+  return identity;
+}
+
 const LIST_ENTRY_QUERY = `
 query ($mediaId: Int) {
   Media(id: $mediaId) { mediaListEntry { status progress repeat } }
