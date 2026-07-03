@@ -25,14 +25,15 @@ describe("multi-track: recipe.trackers (additive) + recipeTrackers()", () => {
     expect(recipeTrackers(recipe({ tracker: "anilist" }))).toEqual(["anilist"]);
   });
 
-  it("explicit set is returned primary-first", () => {
+  it("explicit set is returned as-is", () => {
     const r = recipe({ tracker: "trakt", trackers: ["trakt", "anilist"] });
     expect(recipeTrackers(r)).toEqual(["trakt", "anilist"]);
   });
 
-  it("primary is always included even if trackers omitted it", () => {
+  it("trackers is AUTHORITATIVE — the legacy tracker default is not unioned in", () => {
+    // AniList-only recipe: the "trakt" default of `tracker` must NOT sneak in.
     const r = recipe({ tracker: "trakt", trackers: ["anilist"] });
-    expect(recipeTrackers(r)).toEqual(["trakt", "anilist"]);
+    expect(recipeTrackers(r)).toEqual(["anilist"]);
   });
 
   it("dedupes", () => {

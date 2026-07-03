@@ -85,15 +85,18 @@ export const Recipe = z.object({
   // everything else (movies — anime or not — and non-anime TV) is `"trakt"`.
   // Optional + default `"trakt"` keeps v1/older-v2 recipes back-compatible. The
   // engine selects the adapter by this field; `extract()` stays tracker-agnostic.
+  // Legacy single-tracker field (v1/older-v2 recipes). New recipes use `trackers`
+  // below; `tracker` is kept for back-compat + as a default. Its "trakt" default is
+  // why `recipeTrackers()` treats `trackers` as authoritative, not a union.
   tracker: z.enum(["trakt", "anilist"]).default("trakt"),
-  // MULTI-TRACK (docs/MULTI-TRACK.md): the FULL set of trackers this recipe writes
-  // to. `tracker` above is the PRIMARY/native one — its numbering is what the site
-  // speaks, written directly; any *additional* tracker here is DERIVED via the
-  // anime-map crosswalk (best-effort, refuse-on-ambiguous, skip-on-miss). Optional
-  // and additive: omitted ⇒ single-tracker `[tracker]`, so v1/older-v2 recipes are
-  // unchanged and an older engine that ignores this field degrades to native-only
-  // (no schemaVersion bump needed). Read the normalized set via `recipeTrackers()`,
-  // never `recipe.trackers` directly (it guarantees the primary is included).
+  // MULTI-TRACK (docs/MULTI-TRACK.md): the set of trackers this recipe records to —
+  // the user's toggled set (a pluggable list; more trackers may be added later).
+  // AUTHORITATIVE when present. Which one is "native" (its numbering matches the
+  // page → written directly) vs "derived" (mapped via the anime-map crosswalk,
+  // best-effort, refuse-on-ambiguous, skip-on-miss) is inferred at scrobble time
+  // from the scraped media — not chosen here. Additive: omitted ⇒ `[tracker]`, so
+  // older recipes/engines degrade to single-tracker (no schemaVersion bump). Read
+  // via `recipeTrackers()`, never `recipe.trackers` directly.
   trackers: z.array(z.enum(["trakt", "anilist"])).optional(),
   video: z
     .object({
@@ -146,12 +149,14 @@ export const RecipeSchema = Recipe;
 export type Tracker = Recipe["tracker"];
 
 /**
- * The normalized set of trackers a recipe writes to (multi-track — docs/MULTI-TRACK.md).
- * Always primary-first, always includes the primary/native `tracker`, deduped; falls
- * back to `[tracker]` when `trackers` is omitted. Call sites read THIS, never
- * `recipe.trackers` directly, so the "primary is always present" invariant holds even
- * for a hand-authored recipe whose `trackers` forgot to list it.
+ * The set of trackers a recipe writes to (multi-track — docs/MULTI-TRACK.md).
+ * `trackers` is AUTHORITATIVE when present (the user's toggled set), deduped; only
+ * a legacy recipe with no `trackers` falls back to the single `tracker`. It is NOT
+ * unioned with `tracker` — the `tracker` field defaults to "trakt", so unioning
+ * would force Trakt into an AniList-only recipe. Which one is "native" (written
+ * directly) vs "derived" (via the crosswalk) is inferred at scrobble time from the
+ * scraped media, not from this list. Call sites read THIS, never `recipe.trackers`.
  */
 export function recipeTrackers(recipe: Pick<Recipe, "tracker" | "trackers">): Tracker[] {
-  return [...new Set<Tracker>([recipe.tracker, ...(recipe.trackers ?? [])])];
+  return recipe.trackers?.length ? [...new Set(recipe.trackers)] : [recipe.tracker];
 }

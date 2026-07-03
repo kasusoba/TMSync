@@ -9,6 +9,7 @@ import {
   SCHEMA_VERSION,
   extract,
   readField,
+  recipeTrackers,
 } from "@tmsync/shared";
 
 /**
@@ -18,12 +19,12 @@ import {
 export interface RecipeDraft {
   match: { urlPattern: string; domFingerprint?: string; hostnames?: string[] };
   mediaType: "auto" | "movie" | "show";
-  /** The PRIMARY/native tracker. Its numbering is what the page speaks; recorded
-   * directly. "anilist" ⇒ a dedicated anime *series* site. */
-  tracker: Tracker;
-  /** MULTI-TRACK (docs/MULTI-TRACK.md): also write to the OTHER tracker, derived
-   * via the anime-map crosswalk. Anime series only (movies skip). */
-  dual?: boolean;
+  /** MULTI-TRACK (docs/MULTI-TRACK.md): the set of trackers to record to — the
+   * user's independent toggles (a pluggable list; more trackers may be added).
+   * Which one is "native" (recorded directly) vs "derived" (mapped via the
+   * anime-map crosswalk) is inferred at runtime from the scraped fields, NOT
+   * chosen here. Must have ≥1 to save. */
+  trackers: Tracker[];
   video: { selector: string; frame: "auto" | "top" | "iframe" };
   /** Manual recipe: no scraping — the user picks each title from the badge. */
   manual: boolean;
@@ -224,7 +225,7 @@ export function emptyDraft(url: string): RecipeDraft {
       hostnames: hostname ? [hostname] : undefined,
     },
     mediaType: "auto",
-    tracker: "trakt",
+    trackers: ["trakt"],
     video: { selector: "video", frame: "auto" },
     manual: false,
     fields: {},
@@ -240,8 +241,7 @@ export function recipeToDraft(recipe: Recipe): RecipeDraft {
       hostnames: recipe.match.hostnames,
     },
     mediaType: recipe.mediaType,
-    tracker: recipe.tracker,
-    dual: (recipe.trackers?.length ?? 0) > 1,
+    trackers: recipeTrackers(recipe),
     video: { selector: recipe.video.selector, frame: recipe.video.frame },
     manual: recipe.extract === undefined,
     manualKey: recipe.manualKey,
@@ -331,23 +331,21 @@ export type BuildResult = { ok: true; recipe: Recipe } | { ok: false; error: str
 
 /** Assemble + validate a recipe from a draft. */
 export function buildRecipe(draft: RecipeDraft, meta: { id: string; name: string }): BuildResult {
+  // The native hint = the tracker whose numbering the scraped fields already speak
+  // (a tmdbId or a season ⇒ TMDB/Trakt; else a bare linear episode ⇒ AniList). The
+  // runtime re-infers this per watch; we persist it as the legacy `tracker` field.
+  const trackers = draft.trackers.length ? draft.trackers : (["trakt"] as Tracker[]);
+  const nativeHint: Tracker = draft.fields.tmdbId || draft.fields.season ? "trakt" : "anilist";
   const base = {
     id: meta.id,
     schemaVersion: SCHEMA_VERSION,
     name: meta.name,
     match: draft.match,
     mediaType: draft.mediaType,
-    tracker: draft.tracker,
-    // MULTI-TRACK: when "also track on the other" is on, write the full set —
-    // primary-first; the background derives the second via the crosswalk.
-    ...(draft.dual
-      ? {
-          trackers: [
-            draft.tracker,
-            draft.tracker === "anilist" ? "trakt" : "anilist",
-          ] as Tracker[],
-        }
-      : {}),
+    // Single tracker ⇒ legacy `tracker` only (recipe looks unchanged). Multi ⇒
+    // `trackers` is authoritative + `tracker` carries the native hint for back-compat.
+    tracker: (trackers.length === 1 ? trackers[0] : nativeHint) ?? nativeHint,
+    ...(trackers.length > 1 ? { trackers } : {}),
     video: { selector: draft.video.selector, frame: draft.video.frame },
   };
 

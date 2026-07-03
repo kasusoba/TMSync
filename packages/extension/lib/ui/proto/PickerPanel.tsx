@@ -28,10 +28,8 @@ export interface PickerPanelProps {
   /** Field label currently being picked, or null. */
   picking?: string | null;
   mediaType: "auto" | "movie" | "show";
-  /** The PRIMARY/native tracker (Trakt default; AniList = anime series). */
-  tracker: Tracker;
-  /** MULTI-TRACK: also write to the OTHER tracker (derived via the crosswalk). */
-  dual?: boolean;
+  /** MULTI-TRACK: the set of enabled trackers (independent per-tracker toggles). */
+  trackers: Tracker[];
   iframe: boolean;
   preview: { ok: true; text: string } | { ok: false; error: string };
   banner?: { kind: "library"; name: string } | null;
@@ -58,16 +56,45 @@ export interface PickerPanelProps {
   onCopy?: () => void;
   onNameChange?: (name: string) => void;
   onMediaTypeChange?: (type: "auto" | "movie" | "show") => void;
-  onTrackerChange?: (tracker: Tracker) => void;
-  onDualChange?: (dual: boolean) => void;
+  /** Toggle a tracker on/off in the enabled set. */
+  onTrackerToggle?: (tracker: Tracker) => void;
   onIframeChange?: (iframe: boolean) => void;
   onManualChange?: (manual: boolean) => void;
   onPickManualKey?: () => void;
   onClearManualKey?: () => void;
 }
 
+type FieldVal = (key: FieldKey) => string | null | undefined;
+
+/** The per-tracker toggle rows + the fields each needs to be enableable. Add a
+ * tracker here (label, description, field requirement) to surface it in the picker
+ * — the rest of the panel is tracker-agnostic. */
+const TRACKER_TOGGLES: {
+  key: Tracker;
+  label: string;
+  desc: string;
+  need: (v: FieldVal) => boolean;
+  needHint: string;
+}[] = [
+  {
+    key: "trakt",
+    label: "Trakt",
+    desc: "Movies & TV.",
+    need: (v) => !!v("title") || !!v("tmdbId"),
+    needHint: "Needs a title or a TMDB id.",
+  },
+  {
+    key: "anilist",
+    label: "AniList",
+    desc: "Anime series.",
+    need: (v) => !!v("title"),
+    needHint: "Needs a title.",
+  },
+];
+
 export function PickerPanel(p: PickerPanelProps) {
   const t = tokens(p.variant);
+  const fieldVal: FieldVal = (key) => p.fields.find((f) => f.key === key)?.value;
   const saveLabel =
     p.mode === "edit"
       ? "Update recipe"
@@ -135,61 +162,56 @@ export function PickerPanel(p: PickerPanelProps) {
           />
         </label>
 
-        {/* tracker — governs which fields show below, so it sits up top */}
+        {/* trackers — independent per-tracker toggles, gated on the fields each
+            needs (the "master picker": one field set feeds every tracker). More
+            trackers can be added to this list without touching the rest. */}
         <div class="mb-3">
           <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>Scrobble to</span>
-          <div class="flex gap-1">
-            {(
-              [
-                ["trakt", "Trakt"],
-                ["anilist", "AniList"],
-              ] as const
-            ).map(([value, lbl]) => (
-              <button
-                type="button"
-                key={value}
-                onClick={() => p.onTrackerChange?.(value)}
-                class={clsx(
-                  "flex-1 rounded-md py-1.5 text-[12px] font-medium transition-colors",
-                  p.tracker === value ? "bg-ikura text-white" : t.ghost,
-                )}
-              >
-                {lbl}
-              </button>
-            ))}
+          <div class="space-y-1">
+            {TRACKER_TOGGLES.map(({ key, label, desc, need, needHint }) => {
+              const canEnable = need(fieldVal);
+              const on = p.trackers.includes(key);
+              const disabled = !canEnable && !on;
+              return (
+                <button
+                  type="button"
+                  key={key}
+                  disabled={disabled}
+                  onClick={() => !disabled && p.onTrackerToggle?.(key)}
+                  class={clsx(
+                    "flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left",
+                    t.card,
+                    disabled && "opacity-50",
+                  )}
+                >
+                  <span class="min-w-0 flex-1">
+                    <span class={clsx("block text-[12px] font-medium", t.heading)}>{label}</span>
+                    <span class={clsx("block text-[10px] leading-snug", t.sub)}>
+                      {disabled ? needHint : desc}
+                    </span>
+                  </span>
+                  <Switch on={on} t={t} />
+                </button>
+              );
+            })}
           </div>
-          {p.tracker === "anilist" && (
+          {p.trackers.length === 0 && (
             <div class={clsx("mt-1.5 rounded-lg px-2.5 py-2 text-[10px] leading-snug", t.infoBox)}>
-              For <strong>dedicated anime sites</strong> where the episode number matches the
-              AniList entry — pick <strong>title + episode</strong>. If numbering doesn’t line up
-              (e.g. a general/TMDB site), TMSync refuses the write rather than corrupt your list.
+              Enable at least one tracker.
             </div>
           )}
-
-          {/* MULTI-TRACK: mirror anime to the other tracker via the anime-map crosswalk. */}
-          <button
-            type="button"
-            onClick={() => p.onDualChange?.(!p.dual)}
-            class={clsx(
-              "mt-1.5 flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left",
-              t.card,
-            )}
-          >
-            <span class="min-w-0 flex-1">
-              <span class={clsx("block text-[12px] font-medium", t.heading)}>
-                Also track on {p.tracker === "anilist" ? "Trakt" : "AniList"}
-              </span>
-              <span class={clsx("block text-[10px] leading-snug", t.sub)}>
-                Anime series only — mirrored via the crosswalk. Skips non-anime; refuses rather than
-                mis-write when numbering is ambiguous.
-              </span>
-            </span>
-            <Switch on={!!p.dual} t={t} />
-          </button>
+          {p.trackers.includes("anilist") && (
+            <div class={clsx("mt-1.5 rounded-lg px-2.5 py-2 text-[10px] leading-snug", t.infoBox)}>
+              AniList tracks <strong>anime only</strong>. On a general/TMDB site it’s mapped via the
+              crosswalk — non-anime is skipped, and ambiguous numbering is refused rather than
+              mis-written.
+            </div>
+          )}
         </div>
 
-        {/* manual mode — a Trakt-only concept (anime sites always have a title) */}
-        {p.tracker !== "anilist" && (
+        {/* manual mode — a no-title concept; irrelevant once AniList is on (anime
+            always has a title). Shown only when AniList isn't enabled. */}
+        {!p.trackers.includes("anilist") && (
           <button
             type="button"
             onClick={() => p.onManualChange?.(!p.manual)}
@@ -441,8 +463,14 @@ export function PickerPanel(p: PickerPanelProps) {
               </div>
             )}
 
-            {/* type — N/A for AniList (always an anime series) */}
-            <label class={clsx("mb-2 block", p.tracker === "anilist" && "hidden")}>
+            {/* type — N/A when AniList is the only tracker (always an anime series);
+                still shown when Trakt is in the mix (it needs movie vs show). */}
+            <label
+              class={clsx(
+                "mb-2 block",
+                p.trackers.length === 1 && p.trackers[0] === "anilist" && "hidden",
+              )}
+            >
               <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>Type</span>
               <div class="relative">
                 <select

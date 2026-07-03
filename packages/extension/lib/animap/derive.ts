@@ -26,7 +26,7 @@ export type DeriveOutcome =
 export function deriveMedia(
   target: Tracker,
   media: ParsedMedia,
-  nativeItem: TrackedItem,
+  nativeItem: TrackedItem | null,
   animap: Animap = defaultAnimap,
 ): DeriveOutcome {
   // Movies deferred — skip cleanly (native tracker still records them).
@@ -45,8 +45,9 @@ export function deriveMedia(
     };
   }
 
-  // target "trakt": AniList-native → Trakt (reverse). Needs the resolved AniList id.
-  if (nativeItem.tracker !== "anilist") return { kind: "miss" };
+  // target "trakt": AniList-native → Trakt (reverse). Needs a resolved AniList id
+  // to bridge — null when we couldn't get one (skip cleanly).
+  if (nativeItem?.tracker !== "anilist") return { kind: "miss" };
   const r = animap.reverse(nativeItem.id, media.episode);
   if (r.kind !== "resolved") return r;
   const { tmdbId, tmdbSeason, tmdbEpisode } = r.value;

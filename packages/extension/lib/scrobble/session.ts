@@ -693,7 +693,12 @@ export class SessionManager {
             // it must keep reporting its own normal stops.)
             if (action === "stop" && (this.episodeAwaiting || (this.isTop && !this.badgeActive)))
               return;
-            void sendMessage("reportScrobble", statusFromReply(action, reply, media, tracker));
+            // MULTI-TRACK: the badge names whichever tracker the reply's top-level
+            // fields describe (the native one, or the first enabled if native is off).
+            void sendMessage(
+              "reportScrobble",
+              statusFromReply(action, reply, media, reply.primaryTracker ?? tracker),
+            );
           },
         );
         if (action === "stop") void sendMessage("endSession");

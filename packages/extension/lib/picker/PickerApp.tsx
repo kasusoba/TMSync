@@ -468,10 +468,12 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
           }
           fields={(Object.keys(FIELD_LABELS) as DraftFieldKey[])
             .filter((key) => {
-              // AniList resolves by title → cour and passes episode as-is: season
-              // is never used, and year isn't part of the AniList search. Hide both
-              // so an anime recipe only asks for what it needs (title + episode).
-              if (draft.tracker === "anilist") return key === "title" || key === "episode";
+              // AniList-ONLY (dedicated anime site): resolves by title → cour and
+              // passes episode as-is, so season/year/tmdbId aren't needed — ask for
+              // just title + episode. With Trakt also on, show everything (Trakt +
+              // the forward crosswalk need tmdbId/season).
+              if (draft.trackers.length === 1 && draft.trackers[0] === "anilist")
+                return key === "title" || key === "episode";
               // A movie has no season/episode — offering those rows invites picking
               // a stray number (e.g. the id) that flips resolution to the tv namespace.
               if (draft.mediaType === "movie") return key !== "season" && key !== "episode";
@@ -493,7 +495,7 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
           }
           playerFrames={playerFrames.map((f) => ({ src: f.src, parts: f.parts }))}
           mediaType={draft.mediaType}
-          tracker={draft.tracker}
+          trackers={draft.trackers}
           iframe={draft.video.frame === "iframe"}
           manual={draft.manual}
           manualKeyValue={draft.manualKey ? readField(draft.manualKey, ctx) : null}
@@ -507,7 +509,10 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
           banner={!editingId && libraryCovers ? { kind: "library", name: libraryCovers } : null}
           siteRecipeNote={editingId ? null : siteRecipeName}
           status={status}
-          canSave={draft.manual || !!draft.fields.title || !!draft.fields.tmdbId}
+          canSave={
+            draft.trackers.length > 0 &&
+            (draft.manual || !!draft.fields.title || !!draft.fields.tmdbId)
+          }
           onPick={(key) => {
             setDomPick(null); // a fresh pick supersedes a pending "which number?"
             setPicking(key);
@@ -530,18 +535,17 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
           onCopy={copyJson}
           onNameChange={setName}
           onMediaTypeChange={(v) => setDraft((d) => ({ ...d, mediaType: v }))}
-          onTrackerChange={(tracker) =>
+          onTrackerToggle={(tracker) =>
             setDraft((d) => {
-              if (tracker !== "anilist") return { ...d, tracker };
-              // Anime → AniList is series-only (episode required), always has a
-              // title (so never manual), and ignores season + year — drop any
-              // that were picked so they aren't saved.
-              const { season: _s, year: _y, ...fields } = d.fields;
-              return { ...d, tracker, mediaType: "show", manual: false, fields };
+              const on = d.trackers.includes(tracker);
+              const trackers = on
+                ? d.trackers.filter((x) => x !== tracker)
+                : [...d.trackers, tracker];
+              // Enabling AniList implies an anime series with a real title — it's
+              // never a manual (no-title) recipe.
+              return { ...d, trackers, manual: tracker === "anilist" && !on ? false : d.manual };
             })
           }
-          dual={draft.dual}
-          onDualChange={(dual) => setDraft((d) => ({ ...d, dual }))}
           onIframeChange={(v) =>
             setDraft((d) => ({ ...d, video: { ...d.video, frame: v ? "iframe" : "auto" } }))
           }

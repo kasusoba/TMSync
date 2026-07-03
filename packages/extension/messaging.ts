@@ -61,6 +61,10 @@ export interface ScrobbleReply {
    * so the badge can surface "Trakt ✓ · AniList ⚠ numbering". Empty/absent for a
    * single-tracker recipe. */
   derived?: DerivedOutcome[];
+  /** MULTI-TRACK: which tracker these top-level fields describe (the native one, or
+   * the first enabled when the native isn't recorded). Lets the badge name it
+   * correctly. Absent ⇒ the recipe's own tracker. */
+  primaryTracker?: Tracker;
 }
 
 export type BadgeState = "idle" | "watching" | "paused" | "scrobbled" | "stopped" | "error";

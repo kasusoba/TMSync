@@ -1,6 +1,6 @@
 import type { ParsedMedia } from "@tmsync/shared";
 import { describe, expect, it } from "vitest";
-import { getAdapter, routeTracker } from "./index";
+import { getAdapter, inferNativeTracker, routeTracker } from "./index";
 
 describe("getAdapter", () => {
   it("routes each tracker to its adapter", () => {
@@ -27,5 +27,19 @@ describe("routeTracker (route by type — constraint #1)", () => {
   it("leaves shows on the recipe's tracker (series → AniList stays)", () => {
     expect(routeTracker("anilist", "show")).toBe("anilist");
     expect(routeTracker("trakt", "show")).toBe("trakt");
+  });
+});
+
+describe("inferNativeTracker (multi-track — which numbering the page speaks)", () => {
+  it("TMDB seasoning (tmdbId or a season) ⇒ Trakt native", () => {
+    expect(inferNativeTracker({ mediaType: "show", title: "x", tmdbId: 1429, season: 3, episode: 15 })).toBe(
+      "trakt",
+    );
+    expect(inferNativeTracker({ mediaType: "show", title: "x", season: 1, episode: 2 })).toBe("trakt");
+    expect(inferNativeTracker({ mediaType: "movie", title: "Dune", tmdbId: 438631 })).toBe("trakt");
+  });
+
+  it("a bare linear episode (no tmdbId, no season) ⇒ AniList native", () => {
+    expect(inferNativeTracker({ mediaType: "show", title: "Frieren", episode: 3 })).toBe("anilist");
   });
 });

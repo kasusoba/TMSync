@@ -338,36 +338,50 @@ describe("TMDB id (auto-detect + resolve-by-id)", () => {
     });
   });
 
-  it("multi-track: `dual` writes a primary-first trackers[] (recipeTrackers-ready)", () => {
+  it("multi-track: trackers[] is authoritative; native hint inferred from fields", () => {
     const title = { title: { source: "title" as const } };
-    // Trakt-primary general site, "also track on AniList" ON → [trakt, anilist].
-    const trakt = buildRecipe(
-      { ...emptyDraft("https://cineby.at/tv/1429/3/15"), tracker: "trakt", dual: true, fields: title },
+    const season = { source: "url" as const };
+
+    // General show, both trackers on → trackers[] persisted; native hint = trakt (season present).
+    const both = buildRecipe(
+      {
+        ...emptyDraft("https://cineby.at/tv/1429/3/15"),
+        trackers: ["trakt", "anilist"],
+        fields: { ...title, season },
+      },
       { id: "s", name: "Cineby" },
     );
-    expect(trakt.ok).toBe(true);
-    if (trakt.ok) expect(trakt.recipe.trackers).toEqual(["trakt", "anilist"]);
+    expect(both.ok).toBe(true);
+    if (both.ok) {
+      expect(both.recipe.trackers).toEqual(["trakt", "anilist"]);
+      expect(both.recipe.tracker).toBe("trakt");
+    }
 
-    // AniList-primary dedicated site, "also track on Trakt" ON → [anilist, trakt].
-    const anilist = buildRecipe(
-      {
-        ...emptyDraft("https://reanime.to/watch/frieren/3"),
-        tracker: "anilist",
-        dual: true,
-        fields: title,
-      },
+    // Dedicated anime, AniList only → single-tracker: no trackers[], tracker = anilist.
+    const anime = buildRecipe(
+      { ...emptyDraft("https://reanime.to/watch/frieren/3"), trackers: ["anilist"], fields: title },
       { id: "a", name: "reanime" },
     );
-    expect(anilist.ok).toBe(true);
-    if (anilist.ok) expect(anilist.recipe.trackers).toEqual(["anilist", "trakt"]);
+    expect(anime.ok).toBe(true);
+    if (anime.ok) {
+      expect(anime.recipe.trackers).toBeUndefined();
+      expect(anime.recipe.tracker).toBe("anilist");
+    }
 
-    // Off (default) → no trackers[] (single-tracker, unchanged).
-    const single = buildRecipe(
-      { ...emptyDraft("https://cineby.at/tv/1429/3/15"), tracker: "trakt", fields: title },
-      { id: "x", name: "Cineby" },
+    // Anime site, also mirror to Trakt → trackers[] persisted; native hint = anilist.
+    const mirror = buildRecipe(
+      {
+        ...emptyDraft("https://reanime.to/watch/frieren/3"),
+        trackers: ["anilist", "trakt"],
+        fields: title,
+      },
+      { id: "m", name: "reanime" },
     );
-    expect(single.ok).toBe(true);
-    if (single.ok) expect(single.recipe.trackers).toBeUndefined();
+    expect(mirror.ok).toBe(true);
+    if (mirror.ok) {
+      expect(mirror.recipe.trackers).toEqual(["anilist", "trakt"]);
+      expect(mirror.recipe.tracker).toBe("anilist");
+    }
   });
 
   it("drops season/episode from a movie recipe (would resolve as a show otherwise)", () => {
