@@ -1,8 +1,14 @@
 # ANIME-PLAN.md — adding AniList for anime
 
-Working checklist for the AniList integration. Direction + rules are settled in `CLAUDE.md`
-(see the 2026-06 direction note + the **Tracker adapters** section). This file is just the
-build order and progress; delete it once shipped.
+> **Superseded (2026-07) by `docs/MULTI-TRACK.md`.** The single-tracker AniList integration below
+> is **shipped** (steps 1–7 done) and its Trakt/AniList paths are still accurate. But its **routing
+> model and "Non-goal" section are reversed**: TMSync now **multi-tracks anime to BOTH Trakt and
+> AniList** via the anime-map crosswalk. For anything about routing, episode mapping, the is-anime
+> classifier, or the general-site path, **`docs/MULTI-TRACK.md` wins.** Kept here for the AniList
+> build history only.
+
+Working checklist for the AniList integration. This file is the (historical) build order and
+progress for the single-tracker AniList path.
 
 ## Scope recap (settled — do not relitigate)
 - Routing: **anime series → AniList; movies (anime or not) + non-anime TV → Trakt.** One item, one tracker. No cross-tracker sync/mapping.
@@ -25,7 +31,6 @@ build order and progress; delete it once shipped.
 - Score scale: stars are 1–10 mapped to `scoreRaw` (0–100); `scoreFormat` is read/returned but the badge doesn't yet render POINT_5/POINT_3 natively.
 - No AniList correction flow in the badge ("wrong match?" is Trakt-only in v1).
 
-## Non-goal — will NOT build (see CLAUDE.md constraint #2 + drift guards)
-- Absolute↔AniList-entry offset mapping; TMDB/general-site anime; is-anime classifier.
-- Why: anime viewers use dedicated anime sites; the general-site path only serves Trakt↔AniList parity, which TMSync rejects. Decided 2026-06 (reconsidered and dropped).
-- Mapping-DB background, reference only (do not start building): `Fribb/anime-lists`, `Anime-Lists/anime-lists` (`anime-list-master.xml`), `manami-project/anime-offline-database`, `MALSync/MAL-Sync-Backend`.
+## ~~Non-goal — will NOT build~~ — REVERSED 2026-07 (now the plan; see `docs/MULTI-TRACK.md`)
+- Absolute↔AniList-entry offset mapping, TMDB/general-site anime, and the is-anime classifier were a non-goal under the single-tracker routing model. **Multi-tracking reverses this**: the offset mapping + classification are now built via the `Fribb/anime-lists` crosswalk (`lib/animap/`), validated with real coverage data (~19% TMDB coverage, ~97% of that resolvable). They remain **quarantined out of `extract()`**.
+- Mapping-DB source now in use: `Fribb/anime-lists` (`anime-list-full.json`). Background refs: `Anime-Lists/anime-lists`, `manami-project/anime-offline-database`.

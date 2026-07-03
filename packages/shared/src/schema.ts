@@ -86,6 +86,15 @@ export const Recipe = z.object({
   // Optional + default `"trakt"` keeps v1/older-v2 recipes back-compatible. The
   // engine selects the adapter by this field; `extract()` stays tracker-agnostic.
   tracker: z.enum(["trakt", "anilist"]).default("trakt"),
+  // MULTI-TRACK (docs/MULTI-TRACK.md): the FULL set of trackers this recipe writes
+  // to. `tracker` above is the PRIMARY/native one — its numbering is what the site
+  // speaks, written directly; any *additional* tracker here is DERIVED via the
+  // anime-map crosswalk (best-effort, refuse-on-ambiguous, skip-on-miss). Optional
+  // and additive: omitted ⇒ single-tracker `[tracker]`, so v1/older-v2 recipes are
+  // unchanged and an older engine that ignores this field degrades to native-only
+  // (no schemaVersion bump needed). Read the normalized set via `recipeTrackers()`,
+  // never `recipe.trackers` directly (it guarantees the primary is included).
+  trackers: z.array(z.enum(["trakt", "anilist"])).optional(),
   video: z
     .object({
       selector: z.string().default("video"),
@@ -132,3 +141,17 @@ export const Recipe = z.object({
 
 export type Recipe = z.infer<typeof Recipe>;
 export const RecipeSchema = Recipe;
+
+/** A tracker this build knows about. */
+export type Tracker = Recipe["tracker"];
+
+/**
+ * The normalized set of trackers a recipe writes to (multi-track — docs/MULTI-TRACK.md).
+ * Always primary-first, always includes the primary/native `tracker`, deduped; falls
+ * back to `[tracker]` when `trackers` is omitted. Call sites read THIS, never
+ * `recipe.trackers` directly, so the "primary is always present" invariant holds even
+ * for a hand-authored recipe whose `trackers` forgot to list it.
+ */
+export function recipeTrackers(recipe: Pick<Recipe, "tracker" | "trackers">): Tracker[] {
+  return [...new Set<Tracker>([recipe.tracker, ...(recipe.trackers ?? [])])];
+}
