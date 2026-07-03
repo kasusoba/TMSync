@@ -12,6 +12,7 @@ import {
   AniListNotConnectedError,
   resolve as anilistResolve,
   getListEntry,
+  resolveById,
   saveEntry,
 } from "./client";
 import { type AniListPlan, planAniListWrite } from "./util";
@@ -141,6 +142,24 @@ export const anilistAdapter: TrackerAdapter = {
     };
   },
 };
+
+/**
+ * Resolve a KNOWN AniList id → a TrackedItem (multi-track derived path). The
+ * crosswalk already gave us the exact entry, so we resolve by id (episodes/title)
+ * rather than a title search.
+ */
+export async function resolveAniListById(anilistId: number): Promise<AniListItem | null> {
+  const identity = await resolveById(anilistId);
+  if (!identity) return null;
+  return {
+    tracker: "anilist",
+    mediaType: "show",
+    id: identity.id,
+    title: identity.title,
+    year: identity.year,
+    episodes: identity.episodes,
+  };
+}
 
 /**
  * Explicit rewatch confirmation for a COMPLETED cour (the user said yes to the

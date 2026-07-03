@@ -9,10 +9,27 @@ export interface ScrobbleRequest {
   media: ParsedMedia;
   /** 0–100. */
   progress: number;
-  /** Which tracker records this item (routed by the matched recipe). Default trakt. */
+  /** The PRIMARY/native tracker — its numbering is what the page speaks; recorded
+   * directly. Default trakt. */
   tracker?: Tracker;
+  /** MULTI-TRACK (docs/MULTI-TRACK.md): the full toggled set. Any tracker beyond
+   * the native one is DERIVED via the anime-map crosswalk. Omitted ⇒ [tracker]
+   * (native-only, unchanged behaviour). */
+  trackers?: Tracker[];
   /** 0–1; the per-recipe "treat as finished here" point (AniList owns the watched decision). */
   watchedThreshold?: number;
+}
+
+/** Per-derived-tracker outcome for the badge (multi-track). `skipped` = a silent
+ * crosswalk miss (not an error — the item just isn't anime / isn't mapped). */
+export interface DerivedOutcome {
+  tracker: Tracker;
+  ok: boolean;
+  action?: "start" | "pause" | "scrobble";
+  reason?: string;
+  skipped?: boolean;
+  completed?: boolean;
+  resolvedTitle?: string;
 }
 
 export interface ScrobbleReply {
@@ -40,6 +57,10 @@ export interface ScrobbleReply {
   resolvedYear?: number;
   /** Trakt's error body on an http failure (for diagnosis in the badge). */
   httpError?: string;
+  /** MULTI-TRACK: outcomes for the DERIVED tracker(s) written this same phase,
+   * so the badge can surface "Trakt ✓ · AniList ⚠ numbering". Empty/absent for a
+   * single-tracker recipe. */
+  derived?: DerivedOutcome[];
 }
 
 export type BadgeState = "idle" | "watching" | "paused" | "scrobbled" | "stopped" | "error";
@@ -68,8 +89,10 @@ export interface BadgeStatus {
 
 export interface TabMedia {
   media: ParsedMedia;
-  /** Which tracker this tab's item routes to. */
+  /** The PRIMARY/native tracker this tab's item routes to. */
   tracker: Tracker;
+  /** MULTI-TRACK: the full toggled set (native + derived). Omitted ⇒ [tracker]. */
+  trackers?: Tracker[];
   videoSelector: string;
   /** Where the player lives: which frame should drive scrobbling. */
   frame: "auto" | "top" | "iframe";
