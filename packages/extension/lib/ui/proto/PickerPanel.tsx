@@ -28,8 +28,10 @@ export interface PickerPanelProps {
   /** Field label currently being picked, or null. */
   picking?: string | null;
   mediaType: "auto" | "movie" | "show";
-  /** Which tracker this recipe routes to (Trakt default; AniList = anime series). */
+  /** The PRIMARY/native tracker (Trakt default; AniList = anime series). */
   tracker: Tracker;
+  /** MULTI-TRACK: also write to the OTHER tracker (derived via the crosswalk). */
+  dual?: boolean;
   iframe: boolean;
   preview: { ok: true; text: string } | { ok: false; error: string };
   banner?: { kind: "library"; name: string } | null;
@@ -57,6 +59,7 @@ export interface PickerPanelProps {
   onNameChange?: (name: string) => void;
   onMediaTypeChange?: (type: "auto" | "movie" | "show") => void;
   onTrackerChange?: (tracker: Tracker) => void;
+  onDualChange?: (dual: boolean) => void;
   onIframeChange?: (iframe: boolean) => void;
   onManualChange?: (manual: boolean) => void;
   onPickManualKey?: () => void;
@@ -162,6 +165,27 @@ export function PickerPanel(p: PickerPanelProps) {
               (e.g. a general/TMDB site), TMSync refuses the write rather than corrupt your list.
             </div>
           )}
+
+          {/* MULTI-TRACK: mirror anime to the other tracker via the anime-map crosswalk. */}
+          <button
+            type="button"
+            onClick={() => p.onDualChange?.(!p.dual)}
+            class={clsx(
+              "mt-1.5 flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left",
+              t.card,
+            )}
+          >
+            <span class="min-w-0 flex-1">
+              <span class={clsx("block text-[12px] font-medium", t.heading)}>
+                Also track on {p.tracker === "anilist" ? "Trakt" : "AniList"}
+              </span>
+              <span class={clsx("block text-[10px] leading-snug", t.sub)}>
+                Anime series only — mirrored via the crosswalk. Skips non-anime; refuses rather than
+                mis-write when numbering is ambiguous.
+              </span>
+            </span>
+            <Switch on={!!p.dual} t={t} />
+          </button>
         </div>
 
         {/* manual mode — a Trakt-only concept (anime sites always have a title) */}

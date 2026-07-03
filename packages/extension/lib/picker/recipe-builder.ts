@@ -18,9 +18,12 @@ import {
 export interface RecipeDraft {
   match: { urlPattern: string; domFingerprint?: string; hostnames?: string[] };
   mediaType: "auto" | "movie" | "show";
-  /** Which tracker this recipe routes to. "anilist" ⇒ a dedicated anime *series*
-   * site whose episode numbering matches the AniList entry (constraint #2). */
+  /** The PRIMARY/native tracker. Its numbering is what the page speaks; recorded
+   * directly. "anilist" ⇒ a dedicated anime *series* site. */
   tracker: Tracker;
+  /** MULTI-TRACK (docs/MULTI-TRACK.md): also write to the OTHER tracker, derived
+   * via the anime-map crosswalk. Anime series only (movies skip). */
+  dual?: boolean;
   video: { selector: string; frame: "auto" | "top" | "iframe" };
   /** Manual recipe: no scraping — the user picks each title from the badge. */
   manual: boolean;
@@ -238,6 +241,7 @@ export function recipeToDraft(recipe: Recipe): RecipeDraft {
     },
     mediaType: recipe.mediaType,
     tracker: recipe.tracker,
+    dual: (recipe.trackers?.length ?? 0) > 1,
     video: { selector: recipe.video.selector, frame: recipe.video.frame },
     manual: recipe.extract === undefined,
     manualKey: recipe.manualKey,
@@ -334,6 +338,16 @@ export function buildRecipe(draft: RecipeDraft, meta: { id: string; name: string
     match: draft.match,
     mediaType: draft.mediaType,
     tracker: draft.tracker,
+    // MULTI-TRACK: when "also track on the other" is on, write the full set —
+    // primary-first; the background derives the second via the crosswalk.
+    ...(draft.dual
+      ? {
+          trackers: [
+            draft.tracker,
+            draft.tracker === "anilist" ? "trakt" : "anilist",
+          ] as Tracker[],
+        }
+      : {}),
     video: { selector: draft.video.selector, frame: draft.video.frame },
   };
 

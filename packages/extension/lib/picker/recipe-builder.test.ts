@@ -338,6 +338,38 @@ describe("TMDB id (auto-detect + resolve-by-id)", () => {
     });
   });
 
+  it("multi-track: `dual` writes a primary-first trackers[] (recipeTrackers-ready)", () => {
+    const title = { title: { source: "title" as const } };
+    // Trakt-primary general site, "also track on AniList" ON → [trakt, anilist].
+    const trakt = buildRecipe(
+      { ...emptyDraft("https://cineby.at/tv/1429/3/15"), tracker: "trakt", dual: true, fields: title },
+      { id: "s", name: "Cineby" },
+    );
+    expect(trakt.ok).toBe(true);
+    if (trakt.ok) expect(trakt.recipe.trackers).toEqual(["trakt", "anilist"]);
+
+    // AniList-primary dedicated site, "also track on Trakt" ON → [anilist, trakt].
+    const anilist = buildRecipe(
+      {
+        ...emptyDraft("https://reanime.to/watch/frieren/3"),
+        tracker: "anilist",
+        dual: true,
+        fields: title,
+      },
+      { id: "a", name: "reanime" },
+    );
+    expect(anilist.ok).toBe(true);
+    if (anilist.ok) expect(anilist.recipe.trackers).toEqual(["anilist", "trakt"]);
+
+    // Off (default) → no trackers[] (single-tracker, unchanged).
+    const single = buildRecipe(
+      { ...emptyDraft("https://cineby.at/tv/1429/3/15"), tracker: "trakt", fields: title },
+      { id: "x", name: "Cineby" },
+    );
+    expect(single.ok).toBe(true);
+    if (single.ok) expect(single.recipe.trackers).toBeUndefined();
+  });
+
   it("drops season/episode from a movie recipe (would resolve as a show otherwise)", () => {
     // Regression: a movie page (bcine /movie/4977 = the film Paprika) whose draft
     // picked up a stray season/episode would resolve tmdb id 4977 in the *tv*
