@@ -111,17 +111,24 @@ export function PickerPanel(p: PickerPanelProps) {
     // shove the panel sideways every time you press Pick.
     <div class="relative w-[320px]">
       {p.picking && (
-        <div class="absolute inset-x-0 bottom-full mb-2 flex justify-center">
-          <span class="inline-flex max-w-full items-center justify-center gap-2 rounded-2xl bg-ikura px-3.5 py-1.5 text-center text-[12px] font-medium leading-snug text-white shadow-lg shadow-black/20">
+        // Pinned to the top-center of the VIEWPORT (not the panel) so it stays
+        // visible while picking even when the panel is tall.
+        <div class="fixed inset-x-0 top-4 z-10 flex justify-center px-4">
+          <span class="inline-flex max-w-md items-center justify-center gap-2 rounded-2xl bg-ikura px-3.5 py-1.5 text-center text-[12px] font-medium leading-snug text-white shadow-lg shadow-black/20">
             <Icon name="target" class="shrink-0 text-[14px]" />
             Click the {p.picking} on the page — or a number in the URL · Esc to cancel
           </span>
         </div>
       )}
 
-      <div class={clsx("w-full rounded-2xl p-3.5 shadow-2xl shadow-black/30", t.panel)}>
-        {/* header */}
-        <header class="mb-3 flex items-center justify-between">
+      <div
+        class={clsx(
+          "flex max-h-[calc(100vh-2rem)] w-full flex-col rounded-2xl p-3.5 shadow-2xl shadow-black/30",
+          t.panel,
+        )}
+      >
+        {/* header — always visible */}
+        <header class="mb-3 flex shrink-0 items-center justify-between">
           <div class="flex items-center gap-2">
             <span class="grid size-6 place-items-center rounded-md bg-ikura text-white">
               <Icon name="target" class="text-[12px]" />
@@ -133,6 +140,8 @@ export function PickerPanel(p: PickerPanelProps) {
           <IconBtn t={t} name="x" title="Close" onClick={p.onClose} />
         </header>
 
+        {/* scrollable body — everything between the pinned header and actions */}
+        <div class="-mr-1 min-h-0 flex-1 overflow-y-auto pr-1">
         {p.banner?.kind === "library" && (
           <div class={clsx("mb-3 rounded-lg px-2.5 py-2 text-[11px] leading-snug", t.infoBox)}>
             A library recipe (“{p.banner.name}”) already covers this page. Saving creates your local
@@ -177,35 +186,31 @@ export function PickerPanel(p: PickerPanelProps) {
                   type="button"
                   key={key}
                   disabled={disabled}
+                  title={disabled ? needHint : undefined}
                   onClick={() => !disabled && p.onTrackerToggle?.(key)}
                   class={clsx(
-                    "flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left",
+                    "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left",
                     t.card,
                     disabled && "opacity-50",
                   )}
                 >
-                  <span class="min-w-0 flex-1">
-                    <span class={clsx("block text-[12px] font-medium", t.heading)}>{label}</span>
-                    <span class={clsx("block text-[10px] leading-snug", t.sub)}>
-                      {disabled ? needHint : desc}
-                    </span>
-                  </span>
                   <Switch on={on} t={t} />
+                  <span class={clsx("text-[12px] font-medium", t.heading)}>{label}</span>
+                  <span class={clsx("ml-auto truncate pl-2 text-[10px]", t.faint)}>
+                    {disabled ? needHint : desc}
+                  </span>
                 </button>
               );
             })}
           </div>
           {p.trackers.length === 0 && (
-            <div class={clsx("mt-1.5 rounded-lg px-2.5 py-2 text-[10px] leading-snug", t.infoBox)}>
-              Enable at least one tracker.
-            </div>
+            <p class={clsx("mt-1 text-[10px]", t.faint)}>Enable at least one tracker.</p>
           )}
           {p.trackers.includes("anilist") && (
-            <div class={clsx("mt-1.5 rounded-lg px-2.5 py-2 text-[10px] leading-snug", t.infoBox)}>
-              AniList tracks <strong>anime only</strong>. On a general/TMDB site it’s mapped via the
-              crosswalk — non-anime is skipped, and ambiguous numbering is refused rather than
-              mis-written.
-            </div>
+            <p class={clsx("mt-1 text-[10px] leading-snug", t.faint)}>
+              AniList tracks anime only — on a general site it’s mapped via the crosswalk (non-anime
+              skipped, ambiguous numbering refused).
+            </p>
           )}
         </div>
 
@@ -531,9 +536,11 @@ export function PickerPanel(p: PickerPanelProps) {
           <Icon name={p.preview.ok ? "check" : "x"} class="text-[13px]" />
           <span class="truncate">{p.preview.ok ? p.preview.text : p.preview.error}</span>
         </div>
+        </div>
+        {/* /scrollable body */}
 
-        {/* actions */}
-        <div class="flex gap-2">
+        {/* actions — always visible */}
+        <div class={clsx("mt-3 flex shrink-0 gap-2 border-t pt-3", t.divider)}>
           <Btn t={t} tone="primary" class="flex-1" disabled={!hasTitle} onClick={p.onSave}>
             {saveLabel}
           </Btn>
@@ -543,7 +550,7 @@ export function PickerPanel(p: PickerPanelProps) {
           </Btn>
         </div>
 
-        {p.status && <p class={clsx("mt-2 text-[11px]", t.sub)}>{p.status}</p>}
+        {p.status && <p class={clsx("mt-2 shrink-0 text-[11px]", t.sub)}>{p.status}</p>}
       </div>
     </div>
   );
