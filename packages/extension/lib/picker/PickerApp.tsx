@@ -540,6 +540,8 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
               return { ...d, tracker, mediaType: "show", manual: false, fields };
             })
           }
+          dual={draft.dual}
+          onDualChange={(dual) => setDraft((d) => ({ ...d, dual }))}
           onIframeChange={(v) =>
             setDraft((d) => ({ ...d, video: { ...d.video, frame: v ? "iframe" : "auto" } }))
           }

@@ -476,6 +476,23 @@ export function App() {
               preview={{ ok: true, text: "show: Frieren E3 → AniList" }}
             />
           </Tile>
+          <Tile label="Multi-track — anime site → AniList + Trakt (derived)" t={t}>
+            <PickerPanel
+              variant={variant}
+              mode="setup"
+              name="reanime.to"
+              fields={[
+                { key: "title", label: "Title", value: "Frieren", source: "dom" },
+                { key: "episode", label: "Episode", value: "3", source: "url" },
+              ]}
+              urlParts={urlParts("reanime.to/watch/frieren/3")}
+              mediaType="show"
+              tracker="anilist"
+              dual
+              iframe
+              preview={{ ok: true, text: "show: Frieren E3 → AniList + Trakt" }}
+            />
+          </Tile>
         </Group>
 
         {/* BADGE */}
