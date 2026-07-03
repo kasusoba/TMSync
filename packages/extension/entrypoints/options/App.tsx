@@ -689,6 +689,30 @@ export function App() {
                     </code>
                   </p>
                 )}
+                {connected && (
+                  <div class={clsx("space-y-2 rounded-lg px-3 py-2.5", t.card)}>
+                    <div class="flex items-center justify-between gap-3">
+                      <span class="min-w-0">
+                        <span class={clsx("block text-[13px] font-medium", t.heading)}>
+                          Export to Letterboxd
+                        </span>
+                        <span class={clsx("block text-[11px] leading-relaxed", t.sub)}>
+                          Your Trakt movie history, ratings &amp; reviews as a Letterboxd-import CSV
+                          (rewatches included). Trakt only — AniList isn’t included.
+                        </span>
+                      </span>
+                      <Btn t={t} tone="ghost" disabled={exporting} onClick={exportLetterboxd}>
+                        <Icon name="external" class="text-[12px]" />{" "}
+                        {exporting ? "Exporting…" : "Export CSV"}
+                      </Btn>
+                    </div>
+                    {exportNote && (
+                      <p class={clsx("rounded-md px-2.5 py-1.5 text-[11px]", t.infoBox)}>
+                        {exportNote}
+                      </p>
+                    )}
+                  </div>
+                )}
                 <ProviderRow
                   mark={<AniListMark />}
                   name="AniList"
@@ -716,30 +740,6 @@ export function App() {
                       {anilist.redirectUri}
                     </code>
                   </p>
-                )}
-                {connected && (
-                  <div class={clsx("space-y-2 rounded-lg px-3 py-2.5", t.card)}>
-                    <div class="flex items-center justify-between gap-3">
-                      <span class="min-w-0">
-                        <span class={clsx("block text-[13px] font-medium", t.heading)}>
-                          Export to Letterboxd
-                        </span>
-                        <span class={clsx("block text-[11px] leading-relaxed", t.sub)}>
-                          Your movie history, ratings &amp; reviews as a Letterboxd-import CSV
-                          (rewatches included).
-                        </span>
-                      </span>
-                      <Btn t={t} tone="ghost" disabled={exporting} onClick={exportLetterboxd}>
-                        <Icon name="external" class="text-[12px]" />{" "}
-                        {exporting ? "Exporting…" : "Export CSV"}
-                      </Btn>
-                    </div>
-                    {exportNote && (
-                      <p class={clsx("rounded-md px-2.5 py-1.5 text-[11px]", t.infoBox)}>
-                        {exportNote}
-                      </p>
-                    )}
-                  </div>
                 )}
               </>
             )}
