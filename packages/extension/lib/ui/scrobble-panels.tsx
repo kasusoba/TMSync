@@ -1,6 +1,6 @@
 import type { RatingLevel, Tracker, WatchedEpisode, WatchedState } from "@/lib/tracker/types";
 import type { ResolvedIdentity, ReviewLevel, TraktSearchOption } from "@/lib/trakt/types";
-import { type BadgeState, type BadgeStatus, sendMessage } from "@/messaging";
+import { type BadgeState, type BadgeStatus, type TrackerResolution, sendMessage } from "@/messaging";
 import type { ParsedMedia } from "@tmsync/shared";
 import clsx from "clsx";
 import { useEffect, useState } from "preact/hooks";
@@ -156,13 +156,27 @@ export function RateNote({
   const levels: RatingLevel[] = isShow ? ["episode", "season", "show"] : ["movie"];
   const [level, setLevel] = useState<RatingLevel>(levels[0] ?? "movie");
 
+  // What each enabled tracker ACTUALLY resolves to for this item (async). Gates
+  // the targets: e.g. a non-anime show enabled for AniList (Boondocks on a general
+  // site) resolves to nothing there, so AniList isn't a real destination.
+  const [resolutions, setResolutions] = useState<TrackerResolution[] | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: key on the tracker set
+  useEffect(() => {
+    setResolutions(null);
+    void sendMessage("resolveAll", { media, trackers }).then(setResolutions);
+  }, [media, trackers.join(",")]);
+  const resFor = (tk: Tracker) => resolutions?.find((r) => r.tracker === tk);
+  // Optimistic until resolutions load, so opening the panel doesn't briefly block.
+  const resolvedOk = (tk: Tracker) => {
+    const r = resFor(tk);
+    return r ? r.resolved : true;
+  };
+
   // AniList rates only the cour (≈ the whole series), so it's a valid target only
-  // on the top "show" level; Trakt rates whatever level is picked.
-  const anilistApplies = trackers.includes("anilist") && level === "show";
-  const applicable: Tracker[] = [
-    ...(hasTrakt ? (["trakt"] as Tracker[]) : []),
-    ...(anilistApplies ? (["anilist"] as Tracker[]) : []),
-  ];
+  // on the top "show" level; Trakt rates whatever level is picked. AND the tracker
+  // must actually have resolved the item.
+  const levelOk = (tk: Tracker): boolean => tk === "trakt" || level === "show";
+  const applicable: Tracker[] = trackers.filter((tk) => levelOk(tk) && resolvedOk(tk));
   const [selected, setSelected] = useState<Set<Tracker>>(new Set(trackers));
   const targets = applicable.filter((tk) => selected.has(tk));
   const trackerLevel = (tk: Tracker): RatingLevel => (tk === "anilist" ? "cour" : level);
@@ -286,27 +300,45 @@ export function RateNote({
       {trackers.length > 1 && (
         <div class="mb-3">
           <span class={clsx("mb-1 block text-[11px]", t.faint)}>Send to</span>
-          <div class="flex flex-wrap gap-1.5">
+          <div class="space-y-1">
             {trackers.map((tk) => {
+              const res = resFor(tk);
               const canSend = applicable.includes(tk);
               const on = canSend && selected.has(tk);
+              // What this tracker resolved to, or why it isn't a destination.
+              const detail =
+                res == null
+                  ? "…"
+                  : res.resolved
+                    ? levelOk(tk)
+                      ? `→ ${res.title ?? "matched"}`
+                      : "rates the whole entry — pick “show”"
+                    : res.reason === "no_match"
+                      ? `not on ${trackerName(tk)}`
+                      : res.reason === "ambiguous"
+                        ? "ambiguous mapping"
+                        : "not found";
               return (
                 <button
                   type="button"
                   key={tk}
                   disabled={!canSend}
-                  title={canSend ? trackerName(tk) : "AniList rates the whole entry — pick “show”"}
                   onClick={() => canSend && toggleTarget(tk)}
                   class={clsx(
-                    "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 ring-inset transition",
+                    "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left ring-inset transition",
                     t.card,
                     on ? "ring-2 ring-ikura" : "ring-1 ring-transparent",
-                    !canSend && "opacity-40",
+                    !canSend && "opacity-60",
                   )}
                 >
                   {tk === "anilist" ? <AniListMark class="size-4" /> : <TraktMark class="size-4" />}
-                  <span class={clsx("text-[12px] font-medium", t.heading)}>{trackerName(tk)}</span>
-                  {on && <Icon name="check" class="text-[12px] text-ikura" />}
+                  <span class={clsx("shrink-0 text-[12px] font-medium", t.heading)}>
+                    {trackerName(tk)}
+                  </span>
+                  <span class={clsx("ml-1 min-w-0 flex-1 truncate text-[10px]", t.faint)}>
+                    {detail}
+                  </span>
+                  {on && <Icon name="check" class="shrink-0 text-[12px] text-ikura" />}
                 </button>
               );
             })}

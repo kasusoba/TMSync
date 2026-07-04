@@ -59,6 +59,7 @@ import {
   type DerivedOutcome,
   type ScrobbleReply,
   type ScrobbleRequest,
+  type TrackerResolution,
   onMessage,
   sendMessage,
 } from "@/messaging";
@@ -242,6 +243,16 @@ export default defineBackground(() => {
       };
     } catch {
       return { resolved: false };
+    }
+  });
+
+  // MULTI-TRACK: per-tracker destination readout for the rate/correction UI.
+  onMessage("resolveAll", async ({ data }) => {
+    const trackers = data.trackers?.length ? data.trackers : (["trakt"] as Tracker[]);
+    try {
+      return await resolveAcross(data.media, trackers);
+    } catch {
+      return trackers.map((tracker) => ({ tracker, resolved: false, reason: "http" }));
     }
   });
 
@@ -712,6 +723,63 @@ function derivedToReply(d: DerivedOutcome): ScrobbleReply {
     resolvedTitle: d.resolvedTitle,
     primaryTracker: d.tracker,
   };
+}
+
+/**
+ * MULTI-TRACK read-only resolve: what each enabled tracker matches for this media
+ * (native direct + derived via the crosswalk). Mirrors the record fan-out but writes
+ * nothing — powers the rate/correction UI's per-tracker destination readout, so it
+ * can show "Trakt → The Boondocks / AniList → not found" and gate actions.
+ */
+async function resolveAcross(
+  media: ParsedMedia,
+  trackers: Tracker[],
+): Promise<TrackerResolution[]> {
+  const native = inferNativeTracker(media);
+  const needNative =
+    trackers.includes(native) || (native === "anilist" && trackers.includes("trakt"));
+  let nativeItem: TrackedItem | null = null;
+  if (needNative) {
+    try {
+      nativeItem = await getAdapter(native).resolve(media);
+    } catch {
+      nativeItem = null;
+    }
+  }
+  const out: TrackerResolution[] = [];
+  for (const tk of trackers) {
+    if (tk === native) {
+      out.push(
+        nativeItem
+          ? { tracker: tk, resolved: true, title: nativeItem.title, id: nativeItem.id }
+          : { tracker: tk, resolved: false, reason: "unresolved" },
+      );
+      continue;
+    }
+    const d = deriveMedia(tk, media, nativeItem);
+    if (d.kind === "miss") {
+      out.push({ tracker: tk, resolved: false, reason: "no_match" });
+      continue;
+    }
+    if (d.kind === "ambiguous") {
+      out.push({ tracker: tk, resolved: false, reason: "ambiguous" });
+      continue;
+    }
+    try {
+      const item =
+        tk === "anilist" && d.anilistId !== undefined
+          ? await resolveAniListById(d.anilistId)
+          : await getAdapter(tk).resolve(d.media);
+      out.push(
+        item
+          ? { tracker: tk, resolved: true, title: item.title, id: item.id }
+          : { tracker: tk, resolved: false, reason: "unresolved" },
+      );
+    } catch {
+      out.push({ tracker: tk, resolved: false, reason: "http" });
+    }
+  }
+  return out;
 }
 
 async function recordDerivedTrackers(

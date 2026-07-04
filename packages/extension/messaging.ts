@@ -110,6 +110,20 @@ export interface TraktStatus {
   redirectUri: string;
 }
 
+/** Per-tracker resolution readout for the current item (multi-track): what each
+ * enabled tracker matched, or why it didn't — powers the rate/correct UI so it can
+ * show real destinations and gate actions (e.g. don't offer to rate on AniList when
+ * the item isn't anime). */
+export interface TrackerResolution {
+  tracker: Tracker;
+  resolved: boolean;
+  title?: string;
+  id?: number;
+  /** When unresolved: "no_match" (crosswalk miss / not anime) | "ambiguous" |
+   * "unresolved" (searched, nothing) | "http". */
+  reason?: string;
+}
+
 /** AniList account status (the second, independent provider — constraint #1). */
 export interface AniListStatus {
   connected: boolean;
@@ -144,6 +158,10 @@ export interface ProtocolMap {
     year?: number;
     mediaType?: "movie" | "show";
   };
+  /** MULTI-TRACK: resolve the current media on EACH enabled tracker (read-only,
+   * native direct + derived via the crosswalk) so the rate/correction UI can show
+   * per-tracker destinations and gate actions. */
+  resolveAll(q: { media: ParsedMedia; trackers?: Tracker[] }): TrackerResolution[];
   /** Force-refresh the CDN recipe list; returns how many recipes are now cached. */
   refreshRecipes(): { ok: boolean; count: number; error?: string };
   /** Build a Letterboxd-import CSV from the user's Trakt movie history, ratings
