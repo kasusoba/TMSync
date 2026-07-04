@@ -26,6 +26,34 @@ const TRAKT_LEVELS: ReviewLevel[] = ["episode", "season", "show"];
 export const panelClass = (t: Tokens): string =>
   clsx("w-full rounded-2xl p-3.5 shadow-2xl shadow-black/40", t.panel);
 
+/**
+ * Shared panel header. The whole bar is a drag handle (`[data-tmsync-drag]` — the
+ * in-page badge drags the popup by it). An optional Back returns to the previous
+ * panel (e.g. correction → rate); Close dismisses. Buttons are excluded from the
+ * drag by the badge's handler so they still click.
+ */
+function PanelHeader({
+  t,
+  title,
+  onBack,
+  onClose,
+}: {
+  t: Tokens;
+  title: string;
+  onBack?: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <header data-tmsync-drag class="mb-3 flex items-center justify-between gap-2">
+      <span class="flex min-w-0 items-center gap-1">
+        {onBack && <IconBtn t={t} name="back" title="Back" onClick={onBack} />}
+        <strong class={clsx("truncate text-[13px]", t.heading)}>{title}</strong>
+      </span>
+      <IconBtn t={t} name="x" title="Close" onClick={onClose} />
+    </header>
+  );
+}
+
 function optionLabel(o: TraktSearchOption): string {
   return `${o.title}${o.year ? ` (${o.year})` : ""} · ${o.type}`;
 }
@@ -288,12 +316,7 @@ export function RateNote({
 
   return (
     <div class={panelClass(t)}>
-      <header class="mb-3 flex items-center justify-between">
-        <strong data-tmsync-drag class={clsx("text-[13px]", t.heading)}>
-          Rate &amp; note
-        </strong>
-        <IconBtn t={t} name="x" title="Close" onClick={onClose} />
-      </header>
+      <PanelHeader t={t} title="Rate & note" onClose={onClose} />
 
       {isShow && (
         <div class="mb-3">
@@ -431,10 +454,12 @@ export function Correction({
   t,
   tabId,
   onClose,
+  onBack,
 }: {
   t: Tokens;
   tabId?: number;
   onClose: () => void;
+  onBack?: () => void;
 }) {
   const [media, setMedia] = useState<ParsedMedia | null>(null);
   const [query, setQuery] = useState("");
@@ -480,12 +505,7 @@ export function Correction({
 
   return (
     <div class={panelClass(t)}>
-      <header class="mb-3 flex items-center justify-between">
-        <strong data-tmsync-drag class={clsx("text-[13px]", t.heading)}>
-          Fix match
-        </strong>
-        <IconBtn t={t} name="x" title="Close" onClick={onClose} />
-      </header>
+      <PanelHeader t={t} title="Fix match" onBack={onBack} onClose={onClose} />
       {saved ? (
         <p class={clsx("rounded-lg px-2.5 py-2 text-[12px]", t.okBox)}>
           Corrected → {saved}. It’ll re-scrobble now.
@@ -552,10 +572,12 @@ export function AniListCorrection({
   t,
   tabId,
   onClose,
+  onBack,
 }: {
   t: Tokens;
   tabId?: number;
   onClose: () => void;
+  onBack?: () => void;
 }) {
   const [media, setMedia] = useState<ParsedMedia | null>(null);
   const [query, setQuery] = useState("");
@@ -593,12 +615,7 @@ export function AniListCorrection({
 
   return (
     <div class={panelClass(t)}>
-      <header class="mb-3 flex items-center justify-between">
-        <strong data-tmsync-drag class={clsx("text-[13px]", t.heading)}>
-          Fix AniList match
-        </strong>
-        <IconBtn t={t} name="x" title="Close" onClick={onClose} />
-      </header>
+      <PanelHeader t={t} title="Fix AniList match" onBack={onBack} onClose={onClose} />
       {saved ? (
         <p class={clsx("rounded-lg px-2.5 py-2 text-[12px]", t.okBox)}>
           Set → {saved}. It’ll re-resolve now.
@@ -762,12 +779,7 @@ export function ManualPick({
 
   return (
     <div class={panelClass(t)}>
-      <header class="mb-3 flex items-center justify-between">
-        <strong data-tmsync-drag class={clsx("text-[13px]", t.heading)}>
-          What are you watching?
-        </strong>
-        <IconBtn t={t} name="x" title="Close" onClick={onClose} />
-      </header>
+      <PanelHeader t={t} title="What are you watching?" onClose={onClose} />
 
       <div class="mb-3 flex gap-1">
         {(["movie", "show"] as const).map((tt) => (
@@ -899,12 +911,7 @@ export function EpisodePick({
 
   return (
     <div class={panelClass(t)}>
-      <header class="mb-3 flex items-center justify-between">
-        <strong data-tmsync-drag class={clsx("text-[13px]", t.heading)}>
-          Which episode?
-        </strong>
-        <IconBtn t={t} name="x" title="Close" onClick={onClose} />
-      </header>
+      <PanelHeader t={t} title="Which episode?" onClose={onClose} />
       {title && <p class={clsx("mb-2 truncate text-[12px]", t.sub)}>{title}</p>}
       <p class={clsx("mb-3 text-[11px]", t.faint)}>
         This page’s URL doesn’t say which episode is playing. Set it so TMSync can scrobble.
@@ -1029,9 +1036,24 @@ export function NowPlaying({
       />
     );
   }
-  if (panel === "fix") return <Correction t={t} tabId={tabId} onClose={() => setPanel(null)} />;
+  if (panel === "fix")
+    return (
+      <Correction
+        t={t}
+        tabId={tabId}
+        onClose={() => setPanel(null)}
+        onBack={() => setPanel("review")}
+      />
+    );
   if (panel === "anilist-fix")
-    return <AniListCorrection t={t} tabId={tabId} onClose={() => setPanel(null)} />;
+    return (
+      <AniListCorrection
+        t={t}
+        tabId={tabId}
+        onClose={() => setPanel(null)}
+        onBack={() => setPanel("review")}
+      />
+    );
   if (panel === "manual") {
     return <ManualPick t={t} tabId={tabId} onClose={() => setPanel(null)} onDone={done} />;
   }
