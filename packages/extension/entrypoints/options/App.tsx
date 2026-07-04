@@ -126,11 +126,12 @@ function Filter({
 function QuickLinkRow({
   site,
   busy,
-  startOpen,
+  open,
   dragging,
   onSave,
   onDelete,
   onToggle,
+  onEdit,
   onContribute,
   onDragStart,
   onDragEnter,
@@ -139,12 +140,15 @@ function QuickLinkRow({
 }: {
   site: QuickLinkSite;
   busy: boolean;
-  startOpen: boolean;
+  /** Expanded? Owned by the parent so only ONE row is open at a time (accordion). */
+  open: boolean;
   /** True while this row is the one being dragged (dimmed). */
   dragging: boolean;
   onSave: (site: QuickLinkSite) => Promise<void>;
   onDelete: (id: string) => void;
   onToggle: (id: string) => void;
+  /** Toggle this row's expansion — collapses whichever other row was open. */
+  onEdit: () => void;
   onContribute: () => void;
   // Drag-to-reorder (HTML5 DnD): handle starts the drag; the row is a drop target.
   onDragStart: () => void;
@@ -153,7 +157,6 @@ function QuickLinkRow({
   onDrop: () => void;
 }) {
   const rowRef = useRef<HTMLDivElement>(null);
-  const [open, setOpen] = useState(startOpen);
   const [name, setName] = useState(site.name);
   const [tracker, setTracker] = useState<Tracker>(site.tracker ?? "trakt");
   const [movie, setMovie] = useState(site.movie ?? "");
@@ -259,7 +262,7 @@ function QuickLinkRow({
         {site.source !== "library" && (
           <IconBtn t={t} name="external" title="Contribute to library" onClick={onContribute} />
         )}
-        <IconBtn t={t} name="edit" title="Edit" onClick={() => setOpen((v) => !v)} />
+        <IconBtn t={t} name="edit" title="Edit" onClick={onEdit} />
         <IconBtn t={t} name="trash" title="Delete" danger onClick={() => onDelete(site.id)} />
       </div>
       {open && (
@@ -362,7 +365,8 @@ export function App() {
   const [remote, setRemote] = useState<RemoteRecipes | null>(null);
   const [recipeNote, setRecipeNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [justAdded, setJustAdded] = useState<string | null>(null);
+  /** The one expanded quick-link row (accordion) — editing another collapses this. */
+  const [openLinkId, setOpenLinkId] = useState<string | null>(null);
   /** The single unsaved quick-link draft (from "Add blank"), if any — cleared on save. */
   const [draftId, setDraftId] = useState<string | null>(null);
   const [active, setActive] = useState("account");
@@ -508,7 +512,7 @@ export function App() {
     const id = `ql-${Date.now()}`;
     setLinks((prev) => [...prev, { id, name: "New site", enabled: true }]);
     setDraftId(id);
-    setJustAdded(id);
+    setOpenLinkId(id); // auto-expand the new row (and collapse any other)
   };
   const addFromRecipe = async (sg: RecipeSuggestion) => {
     const id = `ql-${Date.now()}`;
@@ -518,7 +522,7 @@ export function App() {
     ];
     await quickLinks.setValue(next);
     setLinks(next);
-    setJustAdded(id);
+    setOpenLinkId(id); // auto-expand the new row (and collapse any other)
   };
 
   const exportLetterboxd = async () => {
@@ -828,11 +832,12 @@ export function App() {
                           key={s.id}
                           site={s}
                           busy={busy}
-                          startOpen={s.id === justAdded}
+                          open={openLinkId === s.id}
                           dragging={dragId === s.id}
                           onSave={saveLink}
                           onDelete={deleteLink}
                           onToggle={toggleLink}
+                          onEdit={() => setOpenLinkId((cur) => (cur === s.id ? null : s.id))}
                           onContribute={() => openContribution(contributeQuickLink(s))}
                           onDragStart={() => onLinkDragStart(s.id)}
                           onDragEnter={() => onLinkDragEnter(s.id)}
