@@ -431,7 +431,12 @@ export function App() {
 
   // --- quick links ---
   const saveLink = async (site: QuickLinkSite) => {
-    const next = (await quickLinks.getValue()).map((s) => (s.id === site.id ? site : s));
+    // Upsert: a brand-new (unsaved draft) row isn't in storage yet, so append it;
+    // an existing one is replaced. This is what lets "Add" stay a draft until Save.
+    const existing = await quickLinks.getValue();
+    const next = existing.some((s) => s.id === site.id)
+      ? existing.map((s) => (s.id === site.id ? site : s))
+      : [...existing, site];
     await quickLinks.setValue(next);
     setLinks(next);
   };
@@ -478,11 +483,11 @@ export function App() {
     setDragId(null);
     await quickLinks.setValue(linksRef.current);
   };
-  const addLink = async () => {
+  const addLink = () => {
+    // A local-only DRAFT — not written to storage until the user hits Save (which
+    // upserts it). So bailing out (or reloading) without saving leaves nothing behind.
     const id = `ql-${Date.now()}`;
-    const next = [...(await quickLinks.getValue()), { id, name: "New site", enabled: true }];
-    await quickLinks.setValue(next);
-    setLinks(next);
+    setLinks((prev) => [...prev, { id, name: "New site", enabled: true }]);
     setJustAdded(id);
   };
   const addFromRecipe = async (sg: RecipeSuggestion) => {
