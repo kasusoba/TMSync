@@ -597,6 +597,7 @@ export default defineBackground(() => {
     const tabId = sender.tab?.id;
     if (tabId === undefined) return;
     const all = await tabSessions.getValue();
+    const prev = all[tabId];
     all[tabId] = {
       media: data.media,
       tracker: data.tracker,
@@ -604,7 +605,9 @@ export default defineBackground(() => {
       videoSelector: data.videoSelector,
       frame: data.frame,
       watchedThreshold: data.watchedThreshold,
-      progress: all[tabId]?.progress ?? 0,
+      // Keep progress across a same-session re-publish (recheck), but start fresh
+      // after a finished item — else the next episode inherits ~100% (a stray stop).
+      progress: prev?.ended ? 0 : (prev?.progress ?? 0),
       updatedAt: Date.now(),
     };
     await tabSessions.setValue(all);
@@ -655,7 +658,15 @@ export default defineBackground(() => {
   onMessage("endSession", async ({ sender }) => {
     const tabId = sender.tab?.id;
     if (tabId === undefined) return;
-    await clearTabSession(tabId);
+    // Don't drop the record — the item just finished, and the popup/badge should
+    // still offer rate + fix on it. Mark it ended so the tab-close reconcile skips
+    // it (the stop already fired). A fresh play (publishMedia) overwrites it; a real
+    // nav-away (stopTabSession) still clears it.
+    const all = await tabSessions.getValue();
+    const session = all[tabId];
+    if (!session) return;
+    all[tabId] = { ...session, ended: true };
+    await tabSessions.setValue(all);
   });
 
   // Playing frame → relay to the top frame's badge, mirror to per-tab storage
@@ -704,7 +715,8 @@ export default defineBackground(() => {
     const session = all[tabId];
     if (!session) return;
     await clearTabSession(tabId);
-    if (session.progress <= 0) return;
+    // Already stopped (ended) or never really started → nothing to reconcile.
+    if (session.ended || session.progress <= 0) return;
     try {
       // Route the reconciling stop to the same adapter the session used. For Trakt
       // this sends the final /scrobble/stop; for AniList it commits the threshold

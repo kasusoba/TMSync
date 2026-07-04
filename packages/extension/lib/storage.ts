@@ -225,6 +225,10 @@ export interface TabSession {
   /** Frame that owns scrobbling for this tab (first to start). Prevents two
    * frames — e.g. the page + a player iframe — scrobbling the same item. */
   ownerFrameId?: number;
+  /** The scrobble already stopped, but we KEEP the record so the popup/badge can
+   * still rate + fix the just-finished item. The tab-close reconcile skips ended
+   * sessions (the stop already fired); a new play overwrites it. */
+  ended?: boolean;
 }
 export const tabSessions = storage.defineItem<Record<number, TabSession>>("session:tab_sessions", {
   fallback: {},
