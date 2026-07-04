@@ -324,21 +324,6 @@ export function PopupView(p: PopupViewProps) {
       )}
 
       {p.note && <p class={clsx("rounded-lg px-3 py-2 text-[12px]", t.infoBox)}>{p.note}</p>}
-
-      <footer class={clsx("border-t pt-3", t.divider)}>
-        <button
-          type="button"
-          onClick={p.onOpenOptions}
-          class={clsx(
-            "flex w-full items-center justify-between text-[12px]",
-            t.sub,
-            "hover:opacity-80",
-          )}
-        >
-          Manage accounts, recipes &amp; corrections
-          <Icon name="chevron" class="text-[14px]" />
-        </button>
-      </footer>
     </div>
   );
 }
