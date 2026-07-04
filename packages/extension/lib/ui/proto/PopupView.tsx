@@ -9,6 +9,7 @@ import {
   AniListMark,
   Btn,
   Icon,
+  IconBtn,
   Section,
   type Tokens,
   TraktMark,
@@ -40,7 +41,7 @@ export interface PopupViewProps {
   onDisable?: (origin: string) => void;
   onSetup?: () => void;
   onOpenOptions?: () => void;
-  // --- per-site "watch on this site" quick link (independent of recipes) ---
+  // --- per-site quick link (independent of recipes) ---
   /** Hostname of the active tab's top page; null = no eligible page. */
   quickLinkHost?: string | null;
   /** The site's saved quick link, if any (then we're editing). */
@@ -68,55 +69,56 @@ export interface PopupViewProps {
 
 export type BadgeMode = "full" | "dot" | "off";
 
-const BADGE_MODES: [BadgeMode, string][] = [
-  ["full", "Full"],
-  ["dot", "Dot"],
-  ["off", "Off"],
-];
-
-/** One provider row (mark + name + status + connect/disconnect). Uniform per provider. */
-function ProviderRow({
+/**
+ * The on-page badge visibility control — one line, icon-only (a pill = full panel,
+ * a dot = status dot, an eye-off = hidden). Shared by the popup and the Options
+ * Display setting so the two stay identical.
+ */
+export function BadgeModeToggle({
   t,
-  mark,
-  name,
-  connected,
-  busy,
-  onConnect,
-  onDisconnect,
+  mode,
+  onMode,
 }: {
   t: Tokens;
-  mark: preact.ComponentChildren;
-  name: string;
-  connected: boolean;
-  busy?: boolean;
-  onConnect?: () => void;
-  onDisconnect?: () => void;
+  mode: BadgeMode;
+  onMode?: (mode: BadgeMode) => void;
 }) {
+  const items: [BadgeMode, string, preact.ComponentChildren][] = [
+    ["full", "Full badge", <span class="h-2.5 w-4 rounded-sm bg-current" />],
+    ["dot", "Dot only", <span class="size-2 rounded-full bg-current" />],
+    ["off", "Hidden", <Icon name="eye-off" class="text-[13px]" />],
+  ];
   return (
-    <div class={clsx("flex items-center gap-3 rounded-xl px-3 py-2.5", t.card)}>
-      {mark}
-      <span class="min-w-0 flex-1">
-        <span class={clsx("block text-[13px] font-semibold", t.heading)}>{name}</span>
-        <span class={clsx("flex items-center gap-1.5 text-[11px]", t.sub)}>
-          {connected && <span class="size-1.5 rounded-full bg-emerald-500" />}
-          {connected ? "Connected" : "Not connected"}
-        </span>
-      </span>
-      {connected ? (
-        <Btn t={t} tone="ghost" disabled={busy} onClick={onDisconnect}>
-          Disconnect
-        </Btn>
-      ) : (
-        <Btn t={t} tone="primary" disabled={busy} onClick={onConnect}>
-          Connect
-        </Btn>
-      )}
+    <div class="flex gap-1">
+      {items.map(([value, label, glyph]) => (
+        <button
+          type="button"
+          key={value}
+          title={label}
+          aria-label={label}
+          onClick={() => onMode?.(value)}
+          class={clsx(
+            "grid size-7 place-items-center rounded-md transition-colors",
+            mode === value ? "bg-ikura text-white" : t.ghost,
+          )}
+        >
+          {glyph}
+        </button>
+      ))}
     </div>
   );
 }
 
 function host(origin: string): string {
   return origin.replace(/^https?:\/\//, "");
+}
+
+function SubLabel({ t, children }: { t: Tokens; children: preact.ComponentChildren }) {
+  return (
+    <span class={clsx("block px-1 text-[10px] font-semibold uppercase tracking-wide", t.faint)}>
+      {children}
+    </span>
+  );
 }
 
 /** One enable/disable row for an origin (the top site; deeper frames live in the inspector). */
@@ -169,76 +171,72 @@ export function PopupView(p: PopupViewProps) {
   const t = tokens(p.variant);
   const origins = p.origins ?? [];
   const topRow = origins.find((o) => o.isTop) ?? origins[0] ?? null;
+  const moreFrames = origins.length > 1;
+  const noAccount = !p.connected && !(p.anilistConnected ?? false);
   const [watchOpen, setWatchOpen] = useState(false);
+
   return (
-    <div class={clsx("w-[360px] p-4 antialiased", t.page)}>
-      <div class={clsx("rounded-2xl p-4 space-y-5", t.panel)}>
-        {/* header */}
-        <header class="flex items-center gap-2">
-          <span class={clsx("text-[15px] font-semibold tracking-tight", t.heading)}>TMSync</span>
-        </header>
+    <div class={clsx("w-[360px] space-y-4 p-4 antialiased", t.page)}>
+      {/* header */}
+      <header class="flex items-center justify-between">
+        <span class={clsx("text-[15px] font-semibold tracking-tight", t.heading)}>TMSync</span>
+        <IconBtn t={t} name="settings" title="Options" onClick={p.onOpenOptions} />
+      </header>
 
-        {/* Now scrobbling — status + any pending prompt for the active tab. The
-            toolbar icon is the ambient indicator; this is where you act. */}
-        {p.nowPlaying}
-
-        {/* Account — a provider list: Trakt + AniList (independent, never synced). */}
-        <Section title="Account" t={t}>
-          <div class="space-y-1.5">
-            <ProviderRow
-              t={t}
-              mark={<TraktMark />}
-              name="Trakt"
-              connected={p.connected}
-              busy={p.busy}
-              onConnect={p.onConnect}
-              onDisconnect={p.onDisconnect}
-            />
-            <ProviderRow
-              t={t}
-              mark={<AniListMark />}
-              name="AniList"
-              connected={p.anilistConnected ?? false}
-              busy={p.busy}
-              onConnect={p.onConnectAniList}
-              onDisconnect={p.onDisconnectAniList}
-            />
+      {/* No-tracker prompt — accounts are managed in Options; the popup only nudges
+          you to connect when nothing is linked yet. */}
+      {noAccount && (
+        <div class={clsx("space-y-2 rounded-xl px-3 py-2.5", t.infoBox)}>
+          <p class="text-[12px] leading-snug">Connect a tracker to start scrobbling.</p>
+          <div class="flex gap-2">
+            <Btn t={t} tone="primary" class="flex-1" disabled={p.busy} onClick={p.onConnect}>
+              <TraktMark class="size-4" /> Connect Trakt
+            </Btn>
+            <Btn t={t} tone="ghost" class="flex-1" disabled={p.busy} onClick={p.onConnectAniList}>
+              <AniListMark class="size-4" /> AniList
+            </Btn>
           </div>
-          {!p.connected && p.redirectUri && (
-            <p class={clsx("text-[11px] leading-relaxed", t.sub)}>
-              Set this redirect URI in your Trakt app:
-              <code
-                class={clsx(
-                  "mt-1 block break-all rounded-md px-2 py-1 font-mono text-[10px]",
-                  t.chip,
-                )}
-              >
-                {p.redirectUri}
-              </code>
-            </p>
-          )}
-        </Section>
+        </div>
+      )}
 
-        {/* On this page — the top site row + (on demand) the frame inspector, which
-            is the single source for nested/player frames (no redundant flat list). */}
-        <Section
-          title="On this page"
-          t={t}
-          right={
-            topRow && (
-              <Btn t={t} tone="ghost" onClick={p.onToggleInspect}>
-                <Icon name="search" class="text-[12px]" />
-                {p.inspecting ? "Hide frames" : "Inspect frames"}
-              </Btn>
-            )
-          }
-        >
-          {!topRow ? (
-            <p class={clsx("rounded-xl px-3 py-4 text-center text-[12px]", t.card, t.sub)}>
-              No streaming page in the active tab.
-            </p>
-          ) : (
+      {/* Now scrobbling — status + any pending prompt for the active tab. */}
+      {p.nowPlaying}
+
+      {/* On-page badge — one line, right under the status. */}
+      {p.badgeMode && (
+        <div class="flex items-center justify-between">
+          <span class={clsx("text-[11px] font-semibold uppercase tracking-wider", t.faint)}>
+            On-page badge
+          </span>
+          <BadgeModeToggle t={t} mode={p.badgeMode} onMode={p.onBadgeMode} />
+        </div>
+      )}
+
+      {/* This page — video DETECTION (access + frames) and the RECIPE (picker),
+          kept visibly separate so it's clear the two are different things. */}
+      <Section
+        title="This page"
+        t={t}
+        right={
+          moreFrames &&
+          topRow && (
+            <IconBtn
+              t={t}
+              name="frame"
+              title={p.inspecting ? "Hide frames" : "Inspect frames"}
+              onClick={p.onToggleInspect}
+            />
+          )
+        }
+      >
+        {!topRow ? (
+          <p class={clsx("rounded-xl px-3 py-4 text-center text-[12px]", t.card, t.sub)}>
+            No streaming page in the active tab.
+          </p>
+        ) : (
+          <div class="space-y-3">
             <div class="space-y-1.5">
+              <SubLabel t={t}>Video detection</SubLabel>
               <OriginRowView
                 t={t}
                 o={topRow}
@@ -246,37 +244,6 @@ export function PopupView(p: PopupViewProps) {
                 onEnable={p.onEnable}
                 onDisable={p.onDisable}
               />
-
-              <button
-                type="button"
-                disabled={p.busy}
-                onClick={p.onSetup}
-                class={clsx(
-                  "group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition disabled:opacity-50",
-                  t.card,
-                  "hover:ring-2 hover:ring-ikura",
-                )}
-              >
-                <span class="grid size-9 shrink-0 place-items-center rounded-lg bg-ikura/15 text-ikura">
-                  <Icon name="target" class="text-[17px]" />
-                </span>
-                <span class="min-w-0 flex-1">
-                  <span class={clsx("block text-[13px] font-semibold", t.heading)}>
-                    Set up this site
-                  </span>
-                  <span class={clsx("block text-[11px]", t.sub)}>
-                    Point &amp; click to teach TMSync this page
-                  </span>
-                </span>
-                <Icon
-                  name="chevron"
-                  class={clsx(
-                    "text-[16px] transition-transform group-hover:translate-x-0.5",
-                    t.faint,
-                  )}
-                />
-              </button>
-
               {p.inspecting ? (
                 <FrameInspector
                   t={t}
@@ -288,111 +255,90 @@ export function PopupView(p: PopupViewProps) {
                   onSetupFrame={p.onSetupFrame}
                 />
               ) : (
-                <p class={clsx("px-1 text-[11px] leading-relaxed", t.faint)}>
-                  Player in an embedded frame and not scrobbling? Use{" "}
-                  <span class={clsx("font-medium", t.sub)}>Inspect frames</span> above to find and
-                  enable it.
-                </p>
+                moreFrames && (
+                  <p class={clsx("px-1 text-[11px] leading-relaxed", t.faint)}>
+                    Player in an embedded frame? Tap the frame icon above to find and enable it.
+                  </p>
+                )
               )}
             </div>
+
+            <div class="space-y-1.5">
+              <SubLabel t={t}>Recipe</SubLabel>
+              <Btn t={t} tone="primary" class="w-full" disabled={p.busy} onClick={p.onSetup}>
+                <Icon name="target" class="text-[13px]" />
+                Set up recipe
+              </Btn>
+              <p class={clsx("px-1 text-[10px] leading-relaxed", t.faint)}>
+                Point &amp; click to teach TMSync what’s playing here.
+              </p>
+            </div>
+          </div>
+        )}
+      </Section>
+
+      {/* Quick links — per-SITE, editable from any page (not tied to a recipe). */}
+      {p.quickLinkHost && (
+        <Section
+          title="Quick links"
+          t={t}
+          right={
+            <Btn t={t} tone="ghost" onClick={() => setWatchOpen((v) => !v)}>
+              {watchOpen ? (
+                "Hide"
+              ) : (
+                <>
+                  <Icon name={p.quickLinkInitial ? "edit" : "plus"} class="text-[12px]" />
+                  {p.quickLinkInitial ? "Edit" : "Add"}
+                </>
+              )}
+            </Btn>
+          }
+        >
+          {watchOpen ? (
+            <>
+              <p class={clsx("text-[11px] leading-relaxed", t.sub)}>
+                A quick link on {p.quickLinkInitial?.tracker === "anilist" ? "anilist.co" : "Trakt"}{" "}
+                pages that opens <span class="font-mono">{p.quickLinkHost}</span>. Per-site — works
+                from any page here.
+              </p>
+              <QuickLinkEditor
+                key={p.quickLinkHost}
+                t={t}
+                host={p.quickLinkHost}
+                initial={p.quickLinkInitial}
+                derive={p.quickLinkDerive}
+                busy={p.busy}
+                onSave={(v) => p.onSaveQuickLink?.(v)}
+                onRemove={p.quickLinkInitial ? () => p.onRemoveQuickLink?.() : undefined}
+              />
+            </>
+          ) : (
+            <p class={clsx("text-[11px] leading-relaxed", t.faint)}>
+              {p.quickLinkInitial
+                ? `Quick link added — opens ${p.quickLinkHost} from ${p.quickLinkInitial.tracker === "anilist" ? "anilist.co" : "Trakt"}.`
+                : `Add a quick link on Trakt/AniList pages that opens ${p.quickLinkHost}.`}
+            </p>
           )}
         </Section>
+      )}
 
-        {/* Watch-on link — per-SITE, editable from any page (not tied to a recipe).
-            Collapsed by default: it's a secondary feature, so it shouldn't pad the popup. */}
-        {p.quickLinkHost && (
-          <Section
-            title="Watch-on link"
-            t={t}
-            right={
-              <Btn t={t} tone="ghost" onClick={() => setWatchOpen((v) => !v)}>
-                {watchOpen ? (
-                  "Hide"
-                ) : (
-                  <>
-                    <Icon name={p.quickLinkInitial ? "edit" : "plus"} class="text-[12px]" />
-                    {p.quickLinkInitial ? "Edit" : "Add"}
-                  </>
-                )}
-              </Btn>
-            }
-          >
-            {watchOpen ? (
-              <>
-                <p class={clsx("text-[11px] leading-relaxed", t.sub)}>
-                  A button on {p.quickLinkInitial?.tracker === "anilist" ? "anilist.co" : "Trakt"}{" "}
-                  pages that opens <span class="font-mono">{p.quickLinkHost}</span>. Per-site —
-                  works from any page here.
-                </p>
-                <QuickLinkEditor
-                  key={p.quickLinkHost}
-                  t={t}
-                  host={p.quickLinkHost}
-                  initial={p.quickLinkInitial}
-                  derive={p.quickLinkDerive}
-                  busy={p.busy}
-                  onSave={(v) => p.onSaveQuickLink?.(v)}
-                  onRemove={p.quickLinkInitial ? () => p.onRemoveQuickLink?.() : undefined}
-                />
-              </>
-            ) : (
-              <p class={clsx("text-[11px] leading-relaxed", t.faint)}>
-                {p.quickLinkInitial
-                  ? `Button added — opens ${p.quickLinkHost} from ${p.quickLinkInitial.tracker === "anilist" ? "anilist.co" : "Trakt"}.`
-                  : `Add a button on Trakt/AniList pages that opens ${p.quickLinkHost}.`}
-              </p>
-            )}
-          </Section>
-        )}
+      {p.note && <p class={clsx("rounded-lg px-3 py-2 text-[12px]", t.infoBox)}>{p.note}</p>}
 
-        {/* On-page badge — quick show/hide so it's not buried in Options. Full =
-            panel · Dot = status dot only · Off = hidden (toolbar icon still shows
-            status). Mirrors the Options Display control. */}
-        {p.badgeMode && (
-          <Section
-            title="On-page badge"
-            t={t}
-            right={
-              <span class={clsx("text-[11px]", t.faint)}>
-                {p.badgeMode === "off" ? "Hidden" : p.badgeMode === "dot" ? "Dot only" : "Shown"}
-              </span>
-            }
-          >
-            <div class="flex gap-1">
-              {BADGE_MODES.map(([value, label]) => (
-                <button
-                  type="button"
-                  key={value}
-                  onClick={() => p.onBadgeMode?.(value)}
-                  class={clsx(
-                    "flex-1 rounded-md py-1.5 text-[12px] font-medium transition-colors",
-                    p.badgeMode === value ? "bg-ikura text-white" : t.ghost,
-                  )}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </Section>
-        )}
-
-        {p.note && <p class={clsx("rounded-lg px-3 py-2 text-[12px]", t.infoBox)}>{p.note}</p>}
-
-        <footer class={clsx("border-t pt-3", t.divider)}>
-          <button
-            type="button"
-            onClick={p.onOpenOptions}
-            class={clsx(
-              "flex w-full items-center justify-between text-[12px]",
-              t.sub,
-              "hover:opacity-80",
-            )}
-          >
-            Manage sites, recipes &amp; corrections
-            <Icon name="chevron" class="text-[14px]" />
-          </button>
-        </footer>
-      </div>
+      <footer class={clsx("border-t pt-3", t.divider)}>
+        <button
+          type="button"
+          onClick={p.onOpenOptions}
+          class={clsx(
+            "flex w-full items-center justify-between text-[12px]",
+            t.sub,
+            "hover:opacity-80",
+          )}
+        >
+          Manage accounts, recipes &amp; corrections
+          <Icon name="chevron" class="text-[14px]" />
+        </button>
+      </footer>
     </div>
   );
 }

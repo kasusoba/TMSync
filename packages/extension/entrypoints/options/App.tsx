@@ -19,6 +19,7 @@ import {
 } from "@/lib/storage";
 import type { Tracker } from "@/lib/tracker/types";
 import type { ResolvedIdentity } from "@/lib/trakt/types";
+import { BadgeModeToggle } from "@/lib/ui/proto/PopupView";
 import {
   AniListMark,
   Btn,
@@ -1145,29 +1146,9 @@ export function App() {
                   on-page badge is optional — hide it or move it off your player’s controls.
                 </p>
 
-                <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>
-                  On-page badge
-                </span>
-                <div class="mb-4 flex gap-1">
-                  {(
-                    [
-                      ["full", "Full"],
-                      ["dot", "Dot only"],
-                      ["off", "Off"],
-                    ] as const
-                  ).map(([value, label]) => (
-                    <button
-                      type="button"
-                      key={value}
-                      onClick={() => updateBadge({ mode: value })}
-                      class={clsx(
-                        "flex-1 rounded-md py-1.5 text-[12px] font-medium transition-colors",
-                        badge.mode === value ? "bg-ikura text-white" : t.ghost,
-                      )}
-                    >
-                      {label}
-                    </button>
-                  ))}
+                <div class="mb-4 flex items-center justify-between">
+                  <span class={clsx("text-[11px] font-medium", t.faint)}>On-page badge</span>
+                  <BadgeModeToggle t={t} mode={badge.mode} onMode={(mode) => updateBadge({ mode })} />
                 </div>
 
                 <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>Position</span>
