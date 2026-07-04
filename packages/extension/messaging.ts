@@ -245,6 +245,9 @@ export interface ProtocolMap {
     ok: boolean;
     error?: string;
   };
+  /** Clear the AniList override for this TMDB item — fall back to the Fribb crosswalk
+   * (undo a pin or a "Not on AniList"). Then re-resolve the tab. */
+  resetAniListMatch(q: { media: ParsedMedia; tabId?: number }): { ok: boolean };
   /** Background → frames: a correction landed, re-resolve the current session. */
   recheck(): void;
 

@@ -398,6 +398,21 @@ export default defineBackground(() => {
     return { ok: true };
   });
 
+  // Undo an AniList override (pin or "Not on AniList") → back to the Fribb crosswalk.
+  onMessage("resetAniListMatch", async ({ data, sender }) => {
+    if (data.media.tmdbId !== undefined) {
+      const ov = await animapOverrides.getValue();
+      const key = forwardKey(data.media.tmdbId, data.media.season);
+      if (key in ov.forward) {
+        delete ov.forward[key];
+        await animapOverrides.setValue(ov);
+      }
+    }
+    const tabId = data.tabId ?? sender.tab?.id;
+    if (tabId !== undefined) void sendMessage("recheck", undefined, tabId);
+    return { ok: true };
+  });
+
   // The user confirmed a rewatch of a COMPLETED AniList cour → write REPEATING
   // (or re-COMPLETED + repeat++ on the final episode) and update the badge.
   onMessage("confirmRewatch", async ({ data, sender }) => {

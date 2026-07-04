@@ -14,7 +14,7 @@
     "dev:firefox": "pnpm -F @tmsync/extension dev:firefox",
     "build": "pnpm -F @tmsync/extension build",
     "build:firefox": "pnpm -F @tmsync/extension build:firefox",
-    "prepare": "pnpm -F @tmsync/extension exec wxt prepare",
+    "prepare": "git config core.hooksPath .githooks 2>/dev/null || true; pnpm -F @tmsync/extension exec wxt prepare",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "lint": "biome check .",
