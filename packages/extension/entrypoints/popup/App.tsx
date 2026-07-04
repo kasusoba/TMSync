@@ -178,6 +178,7 @@ export function App() {
     status: BadgeStatus;
     media: ParsedMedia | null;
     tracker: Tracker;
+    trackers: Tracker[];
     tabId: number;
   } | null>(null);
 
@@ -193,6 +194,7 @@ export function App() {
       status: st,
       media: session?.media ?? null,
       tracker: session?.tracker ?? "trakt",
+      trackers: session?.trackers ?? [session?.tracker ?? "trakt"],
       tabId,
     });
   };
@@ -501,6 +503,7 @@ export function App() {
             status={now.status}
             media={now.media}
             tracker={now.tracker}
+            trackers={now.trackers}
             tabId={now.tabId}
             t={tokens("dark")}
             onRefresh={refreshNow}

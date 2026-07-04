@@ -4,7 +4,7 @@ import { type BadgeState, type BadgeStatus, sendMessage } from "@/messaging";
 import type { ParsedMedia } from "@tmsync/shared";
 import clsx from "clsx";
 import { useEffect, useState } from "preact/hooks";
-import { Btn, Icon, IconBtn, type Tokens } from "./proto/kit";
+import { AniListMark, Btn, Icon, IconBtn, type Tokens, TraktMark } from "./proto/kit";
 
 /**
  * The interactive scrobble panels — rate/note, fix-match, manual pick, episode
@@ -133,80 +133,140 @@ export function RatingRow({
  * rates show/season/episode with a public comment (≥5 words, spoiler flag);
  * AniList rates the single cour entry with a private note (no spoiler, no minimum).
  */
+const trackerName = (tk: Tracker): string => (tk === "anilist" ? "AniList" : "Trakt");
+
 export function RateNote({
   media,
-  tracker,
+  trackers,
   t,
   onClose,
   onFix,
 }: {
   media: ParsedMedia;
-  tracker: Tracker;
+  /** The item's enabled trackers (multi-track). */
+  trackers: Tracker[];
   t: Tokens;
   onClose: () => void;
   onFix: () => void;
 }) {
-  const isAniList = tracker === "anilist";
   const isShow = media.season !== undefined || media.episode !== undefined;
-  const [level, setLevel] = useState<RatingLevel>(
-    isAniList ? "cour" : isShow ? "episode" : "movie",
-  );
+  const hasTrakt = trackers.includes("trakt");
+
+  // Levels: a movie has just "movie"; a show is episode/season/show.
+  const levels: RatingLevel[] = isShow ? ["episode", "season", "show"] : ["movie"];
+  const [level, setLevel] = useState<RatingLevel>(levels[0] ?? "movie");
+
+  // AniList rates only the cour (≈ the whole series), so it's a valid target only
+  // on the top "show" level; Trakt rates whatever level is picked.
+  const anilistApplies = trackers.includes("anilist") && level === "show";
+  const applicable: Tracker[] = [
+    ...(hasTrakt ? (["trakt"] as Tracker[]) : []),
+    ...(anilistApplies ? (["anilist"] as Tracker[]) : []),
+  ];
+  const [selected, setSelected] = useState<Set<Tracker>>(new Set(trackers));
+  const targets = applicable.filter((tk) => selected.has(tk));
+  const trackerLevel = (tk: Tracker): RatingLevel => (tk === "anilist" ? "cour" : level);
+
+  const [rating, setRating] = useState<number | null>(null);
   const [note, setNote] = useState("");
   const [spoiler, setSpoiler] = useState(false);
   const [hasNote, setHasNote] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
+  // Seed the score + note from the primary target (first applicable, prefer a
+  // selected one) so editing shows what's already there.
+  const primary = targets[0] ?? applicable[0] ?? null;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: primary encodes tracker+level
   useEffect(() => {
     setMsg(null);
-    void sendMessage("getReview", { media, level, tracker }).then((r) => {
-      setNote(r.note?.text ?? "");
-      setSpoiler(r.note?.spoiler ?? false);
-      setHasNote(!!r.note);
-    });
-  }, [media, level, tracker]);
-
-  const save = async () => {
-    setBusy(true);
-    setMsg(null);
-    const out = await sendMessage("saveNote", { media, level, text: note, spoiler, tracker });
-    if (out.ok) {
-      setHasNote(true);
-      setMsg(isAniList ? "Saved to AniList" : "Saved to Trakt");
-    } else {
-      setMsg(out.error ?? "Failed");
-    }
-    setBusy(false);
-  };
-
-  const remove = async () => {
-    setBusy(true);
-    setMsg(null);
-    const out = await sendMessage("deleteNote", { media, level, tracker });
-    if (out.ok) {
+    if (!primary) {
+      setRating(null);
       setNote("");
+      setSpoiler(false);
       setHasNote(false);
-      setMsg("Deleted");
-    } else {
-      setMsg(out.error ?? "Failed");
+      return;
     }
+    void sendMessage("getReview", { media, level: trackerLevel(primary), tracker: primary }).then(
+      (r) => {
+        setRating(r.rating);
+        setNote(r.note?.text ?? "");
+        setSpoiler(r.note?.spoiler ?? false);
+        setHasNote(!!r.note);
+      },
+    );
+  }, [media, level, primary]);
+
+  const spoilerApplies = targets.includes("trakt");
+  const canSubmit = targets.length > 0 && (rating !== null || note.trim().length > 0) && !busy;
+
+  const toggleTarget = (tk: Tracker) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(tk)) next.delete(tk);
+      else next.add(tk);
+      return next;
+    });
+
+  // One Submit fans out the staged score + note to every selected tracker, at that
+  // tracker's level (Trakt = picked level; AniList = its cour). Spoiler is Trakt-only.
+  const submit = async () => {
+    if (!canSubmit) return;
+    setBusy(true);
+    setMsg(null);
+    const fails: string[] = [];
+    for (const tk of targets) {
+      const lv = trackerLevel(tk);
+      if (rating !== null) {
+        const r = await sendMessage("rateItem", { media, level: lv, rating, tracker: tk });
+        if (!r.ok) fails.push(`${trackerName(tk)}: ${r.error ?? "rating failed"}`);
+      }
+      if (note.trim()) {
+        const n = await sendMessage("saveNote", {
+          media,
+          level: lv,
+          text: note,
+          spoiler: tk === "trakt" ? spoiler : false,
+          tracker: tk,
+        });
+        if (!n.ok) fails.push(`${trackerName(tk)}: ${n.error ?? "note failed"}`);
+      }
+    }
+    if (note.trim()) setHasNote(true);
+    setMsg(fails.length ? fails.join(" · ") : `Saved to ${targets.map(trackerName).join(" & ")}`);
     setBusy(false);
   };
+
+  const removeNote = async () => {
+    setBusy(true);
+    setMsg(null);
+    for (const tk of targets) {
+      await sendMessage("deleteNote", { media, level: trackerLevel(tk), tracker: tk });
+    }
+    setNote("");
+    setHasNote(false);
+    setMsg("Deleted");
+    setBusy(false);
+  };
+
+  const notePlaceholder = !spoilerApplies
+    ? "Private note on AniList…"
+    : targets.includes("anilist")
+      ? "Public comment on Trakt · private note on AniList…"
+      : "Your note — public on Trakt, at least 5 words…";
 
   return (
     <div class={panelClass(t)}>
       <header class="mb-3 flex items-center justify-between">
-        <strong class={clsx("text-[13px]", t.heading)}>
-          {isAniList ? "Rate this cour" : "Rate & note"}
-        </strong>
+        <strong class={clsx("text-[13px]", t.heading)}>Rate &amp; note</strong>
         <IconBtn t={t} name="x" title="Close" onClick={onClose} />
       </header>
 
-      {!isAniList && isShow && (
+      {isShow && (
         <div class="mb-3">
           <span class={clsx("mb-1 block text-[11px]", t.faint)}>Rate &amp; note the</span>
           <div class="flex gap-1">
-            {TRAKT_LEVELS.map((l) => (
+            {levels.map((l) => (
               <button
                 type="button"
                 key={l}
@@ -223,8 +283,40 @@ export function RateNote({
         </div>
       )}
 
+      {trackers.length > 1 && (
+        <div class="mb-3">
+          <span class={clsx("mb-1 block text-[11px]", t.faint)}>Send to</span>
+          <div class="flex flex-wrap gap-1.5">
+            {trackers.map((tk) => {
+              const canSend = applicable.includes(tk);
+              const on = canSend && selected.has(tk);
+              return (
+                <button
+                  type="button"
+                  key={tk}
+                  disabled={!canSend}
+                  title={canSend ? trackerName(tk) : "AniList rates the whole entry — pick “show”"}
+                  onClick={() => canSend && toggleTarget(tk)}
+                  class={clsx(
+                    "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 ring-inset transition",
+                    t.card,
+                    on ? "ring-2 ring-ikura" : "ring-1 ring-transparent",
+                    !canSend && "opacity-40",
+                  )}
+                >
+                  {tk === "anilist" ? <AniListMark class="size-4" /> : <TraktMark class="size-4" />}
+                  <span class={clsx("text-[12px] font-medium", t.heading)}>{trackerName(tk)}</span>
+                  {on && <Icon name="check" class="text-[12px] text-ikura" />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div class="mb-3">
-        <RatingRow media={media} level={level} tracker={tracker} t={t} />
+        <span class={clsx("mb-1 block text-[11px]", t.faint)}>Your rating</span>
+        <Stars value={rating} onChoose={(n) => setRating(n === rating ? null : n)} t={t} />
       </div>
 
       <textarea
@@ -232,16 +324,14 @@ export function RateNote({
         rows={4}
         value={note}
         onInput={(e) => setNote((e.target as HTMLTextAreaElement).value)}
-        placeholder={
-          isAniList ? "Private note on AniList…" : "Your note — public on Trakt, at least 5 words…"
-        }
+        placeholder={notePlaceholder}
         class={clsx(
           "mb-2 w-full resize-none rounded-lg px-2.5 py-2 text-[12px] outline-none ring-inset focus:ring-2",
           t.input,
         )}
       />
 
-      {!isAniList && (
+      {spoilerApplies && (
         <label class={clsx("mb-3 flex cursor-pointer items-center gap-2 text-[11px]", t.sub)}>
           <input
             type="checkbox"
@@ -250,25 +340,22 @@ export function RateNote({
             onChange={(e) => setSpoiler((e.target as HTMLInputElement).checked)}
           />
           Mark as spoiler
+          <span class={t.faint} title="Only applies to Trakt public comments">
+            <Icon name="info" class="text-[12px]" />
+          </span>
         </label>
       )}
 
       <div class="flex items-stretch gap-2">
-        <Btn
-          t={t}
-          tone="primary"
-          class="flex-1"
-          disabled={busy || note.trim().length === 0}
-          onClick={save}
-        >
-          {hasNote ? "Update note" : isAniList ? "Save note" : "Post note"}
+        <Btn t={t} tone="primary" class="flex-1" disabled={!canSubmit} onClick={submit}>
+          Save
         </Btn>
         {hasNote && (
-          <Btn t={t} tone="danger" title="Delete note" disabled={busy} onClick={remove}>
+          <Btn t={t} tone="danger" title="Delete note" disabled={busy} onClick={removeNote}>
             <Icon name="trash" class="text-[13px]" />
           </Btn>
         )}
-        {!isAniList && (
+        {hasTrakt && (
           <button
             type="button"
             onClick={onFix}
@@ -686,13 +773,17 @@ export function NowPlaying({
   status,
   media,
   tracker,
+  trackers,
   tabId,
   t,
   onRefresh,
 }: {
   status: BadgeStatus;
   media: ParsedMedia | null;
+  /** Primary tracker (drives the quick prompt / watched line). */
   tracker: Tracker;
+  /** Enabled tracker set (the rate/note composer fans out across it). */
+  trackers: Tracker[];
   tabId: number;
   t: Tokens;
   onRefresh?: () => void;
@@ -721,7 +812,7 @@ export function NowPlaying({
     return (
       <RateNote
         media={media}
-        tracker={tracker}
+        trackers={trackers}
         t={t}
         onClose={() => setPanel(null)}
         onFix={() => setPanel("fix")}

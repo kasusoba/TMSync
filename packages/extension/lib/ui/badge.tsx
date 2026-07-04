@@ -123,6 +123,9 @@ function BadgeRoot() {
   const [panel, setPanel] = useState<null | "review" | "fix" | "manual" | "episode">(null);
   const [media, setMedia] = useState<ParsedMedia | null>(null);
   const [tracker, setTracker] = useState<Tracker>("trakt");
+  /** The item's enabled trackers (multi-track) — the rate/note composer fans out
+   * across these; `tracker` stays the primary for the quick prompt. */
+  const [trackers, setTrackers] = useState<Tracker[]>(["trakt"]);
   const [promptDismissed, setPromptDismissed] = useState(false);
   const [rewatchHidden, setRewatchHidden] = useState(false);
   const [manualMode, setManualMode] = useState(false);
@@ -261,6 +264,7 @@ function BadgeRoot() {
     void sendMessage("getTabMedia", undefined).then((tab) => {
       if (!tab) return;
       setTracker(tab.tracker);
+      setTrackers(tab.trackers ?? [tab.tracker]);
       setMedia((prev) => (mediaIdentity(prev) === mediaIdentity(tab.media) ? prev : tab.media));
     });
   }, [status]);
@@ -350,7 +354,7 @@ function BadgeRoot() {
       {panel === "review" && media && (
         <RateNote
           media={media}
-          tracker={tracker}
+          trackers={trackers}
           t={t}
           onClose={() => setPanel(null)}
           onFix={() => setPanel(manualMode ? "manual" : "fix")}
