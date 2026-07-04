@@ -1,6 +1,7 @@
 import clsx from "clsx";
 import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
+import { ANILIST_LOGO, TRAKT_LOGO } from "./marks.data";
 
 /**
  * Prototype design kit — presentational only (no browser APIs, no effects), so
@@ -192,7 +193,7 @@ export function Btn({
  */
 export function TraktMark({
   class: cls = "size-8",
-  src = "/trakt.svg",
+  src = TRAKT_LOGO,
 }: { class?: string; src?: string }) {
   const [failed, setFailed] = useState(false);
   if (failed) {
@@ -224,7 +225,7 @@ export function TraktMark({
  */
 export function AniListMark({
   class: cls = "size-8",
-  src = "/anilist.svg",
+  src = ANILIST_LOGO,
 }: { class?: string; src?: string }) {
   const [failed, setFailed] = useState(false);
   if (failed) {
