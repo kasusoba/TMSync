@@ -1,5 +1,6 @@
+import type { Tracker } from "@/lib/tracker/types";
 import clsx from "clsx";
-import { Btn, Icon, IconBtn, Stars, Switch, type Variant, tokens } from "./kit";
+import { AniListMark, Btn, Icon, IconBtn, Stars, type Variant, TraktMark, tokens } from "./kit";
 
 export type BadgeState = "idle" | "watching" | "paused" | "scrobbled" | "stopped" | "error";
 
@@ -121,6 +122,7 @@ export function RateNotePanel({
   note,
   hasNote,
   spoiler,
+  trackers = ["trakt"],
 }: {
   variant: Variant;
   isShow: boolean;
@@ -129,8 +131,11 @@ export function RateNotePanel({
   note: string;
   hasNote: boolean;
   spoiler: boolean;
+  /** Enabled trackers (multi-track): the composer fans out; AniList only on "show". */
+  trackers?: Tracker[];
 }) {
   const t = tokens(variant);
+  const anilistApplies = level === "show";
   return (
     <div class={clsx("w-[300px] rounded-2xl p-3.5 shadow-2xl shadow-black/40", t.panel)}>
       <header class="mb-3 flex items-center justify-between">
@@ -158,6 +163,34 @@ export function RateNotePanel({
         </div>
       )}
 
+      {trackers.length > 1 && (
+        <div class="mb-3">
+          <span class={clsx("mb-1 block text-[11px]", t.faint)}>Send to</span>
+          <div class="flex flex-wrap gap-1.5">
+            {trackers.map((tk) => {
+              const canSend = tk === "trakt" || anilistApplies;
+              return (
+                <span
+                  key={tk}
+                  title={canSend ? undefined : "AniList rates the whole entry — pick “show”"}
+                  class={clsx(
+                    "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 ring-inset",
+                    t.card,
+                    canSend ? "ring-2 ring-ikura" : "ring-1 ring-transparent opacity-40",
+                  )}
+                >
+                  {tk === "anilist" ? <AniListMark class="size-4" /> : <TraktMark class="size-4" />}
+                  <span class={clsx("text-[12px] font-medium", t.heading)}>
+                    {tk === "anilist" ? "AniList" : "Trakt"}
+                  </span>
+                  {canSend && <Icon name="check" class="text-[12px] text-ikura" />}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div class="mb-3">
         <span class={clsx("mb-1 block text-[11px]", t.faint)}>Your rating</span>
         <Stars value={value} />
@@ -173,10 +206,15 @@ export function RateNotePanel({
         )}
       />
 
-      <div class={clsx("mb-3 flex items-center gap-2 text-[11px]", t.sub)}>
-        <Switch on={spoiler} t={t} />
-        Mark as spoiler
-      </div>
+      {trackers.includes("trakt") && (
+        <label class={clsx("mb-3 flex items-center gap-2 text-[11px]", t.sub)}>
+          <input type="checkbox" class="accent-trakt" checked={spoiler} readOnly />
+          Mark as spoiler
+          <span class={t.faint} title="Only applies to Trakt public comments">
+            <Icon name="info" class="text-[12px]" />
+          </span>
+        </label>
+      )}
 
       <div class="flex items-stretch gap-2">
         <Btn t={t} tone="primary" class="flex-1">

@@ -534,6 +534,18 @@ export function App() {
               spoiler={false}
             />
           </Tile>
+          <Tile label="Rate & note · multi-track (show level → both)" t={t}>
+            <RateNotePanel
+              variant={variant}
+              isShow
+              level="show"
+              trackers={["trakt", "anilist"]}
+              value={8}
+              note="Peak Frieren. The elf-time framing device lands."
+              hasNote
+              spoiler={false}
+            />
+          </Tile>
           <Tile label="Fix match · search" t={t}>
             <CorrectionPanel
               variant={variant}
