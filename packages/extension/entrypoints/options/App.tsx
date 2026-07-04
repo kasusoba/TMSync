@@ -1,4 +1,5 @@
 import { RECIPES } from "@/config";
+import { defaultRecipeName } from "@/lib/picker/recipe-builder";
 import { applyBackup, buildBackup, parseBackup } from "@/lib/portability/backup";
 import {
   type Contribution,
@@ -19,7 +20,6 @@ import {
 } from "@/lib/storage";
 import type { Tracker } from "@/lib/tracker/types";
 import type { ResolvedIdentity } from "@/lib/trakt/types";
-import { defaultRecipeName } from "@/lib/picker/recipe-builder";
 import { BadgeModeToggle } from "@/lib/ui/proto/PopupView";
 import { TrackerTab } from "@/lib/ui/proto/TrackerTab";
 import {
@@ -1175,7 +1175,11 @@ export function App() {
 
                 <div class="mb-4 flex items-center justify-between">
                   <span class={clsx("text-[11px] font-medium", t.faint)}>On-page badge</span>
-                  <BadgeModeToggle t={t} mode={badge.mode} onMode={(mode) => updateBadge({ mode })} />
+                  <BadgeModeToggle
+                    t={t}
+                    mode={badge.mode}
+                    onMode={(mode) => updateBadge({ mode })}
+                  />
                 </div>
 
                 <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>Position</span>

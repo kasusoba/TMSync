@@ -2,9 +2,9 @@ import type { Tracker } from "@/lib/tracker/types";
 import clsx from "clsx";
 import { AniListMark, type Tokens, TraktMark } from "./kit";
 
-const TABS: [Tracker, string, preact.ComponentChildren][] = [
-  ["trakt", "Trakt", <TraktMark class="size-4" />],
-  ["anilist", "AniList", <AniListMark class="size-4" />],
+const TABS: [Tracker, string][] = [
+  ["trakt", "Trakt"],
+  ["anilist", "AniList"],
 ];
 
 /**
@@ -24,7 +24,7 @@ export function TrackerTab({
 }) {
   return (
     <div class="flex gap-1.5">
-      {TABS.map(([key, label, mark]) => (
+      {TABS.map(([key, label]) => (
         <button
           type="button"
           key={key}
@@ -35,7 +35,7 @@ export function TrackerTab({
             value === key ? "ring-2 ring-ikura" : "ring-1 ring-transparent",
           )}
         >
-          {mark}
+          {key === "anilist" ? <AniListMark class="size-4" /> : <TraktMark class="size-4" />}
           <span class={clsx("text-[12px] font-medium", t.heading)}>{label}</span>
         </button>
       ))}

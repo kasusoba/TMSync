@@ -1,7 +1,12 @@
 import type { AniListSearchOption } from "@/lib/anilist/client";
 import type { RatingLevel, Tracker, WatchedEpisode, WatchedState } from "@/lib/tracker/types";
 import type { ResolvedIdentity, ReviewLevel, TraktSearchOption } from "@/lib/trakt/types";
-import { type BadgeState, type BadgeStatus, type TrackerResolution, sendMessage } from "@/messaging";
+import {
+  type BadgeState,
+  type BadgeStatus,
+  type TrackerResolution,
+  sendMessage,
+} from "@/messaging";
 import type { ParsedMedia } from "@tmsync/shared";
 import clsx from "clsx";
 import { useEffect, useState } from "preact/hooks";

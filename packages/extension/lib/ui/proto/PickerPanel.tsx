@@ -175,376 +175,380 @@ export function PickerPanel(p: PickerPanelProps) {
 
         {/* scrollable body — everything between the pinned header and actions */}
         <div class="-mr-1 min-h-0 flex-1 overflow-y-auto pr-1">
-        {p.banner?.kind === "library" && (
-          <div class={clsx("mb-3 rounded-lg px-2.5 py-2 text-[11px] leading-snug", t.infoBox)}>
-            A library recipe (“{p.banner.name}”) already covers this page. Saving creates your local
-            override — it wins over the library one.
-          </div>
-        )}
+          {p.banner?.kind === "library" && (
+            <div class={clsx("mb-3 rounded-lg px-2.5 py-2 text-[11px] leading-snug", t.infoBox)}>
+              A library recipe (“{p.banner.name}”) already covers this page. Saving creates your
+              local override — it wins over the library one.
+            </div>
+          )}
 
-        {p.siteRecipeNote && (
-          <div class={clsx("mb-3 rounded-lg px-2.5 py-2 text-[11px] leading-snug", t.infoBox)}>
-            You already have a recipe for “{p.siteRecipeNote}” — it applies on its watch pages, not
-            this one. (Quick links live in the popup, not here.)
-          </div>
-        )}
+          {p.siteRecipeNote && (
+            <div class={clsx("mb-3 rounded-lg px-2.5 py-2 text-[11px] leading-snug", t.infoBox)}>
+              You already have a recipe for “{p.siteRecipeNote}” — it applies on its watch pages,
+              not this one. (Quick links live in the popup, not here.)
+            </div>
+          )}
 
-        {/* site name */}
-        <label class="mb-3 block">
-          <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>Site name</span>
-          <input
-            value={p.name}
-            onInput={(e) => p.onNameChange?.((e.target as HTMLInputElement).value)}
-            onKeyDown={(e) => e.stopPropagation()}
-            onKeyUp={(e) => e.stopPropagation()}
-            class={clsx(
-              "w-full rounded-lg px-2.5 py-1.5 text-[13px] outline-none ring-inset focus:ring-2",
-              t.input,
-            )}
-          />
-        </label>
+          {/* site name */}
+          <label class="mb-3 block">
+            <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>Site name</span>
+            <input
+              value={p.name}
+              onInput={(e) => p.onNameChange?.((e.target as HTMLInputElement).value)}
+              onKeyDown={(e) => e.stopPropagation()}
+              onKeyUp={(e) => e.stopPropagation()}
+              class={clsx(
+                "w-full rounded-lg px-2.5 py-1.5 text-[13px] outline-none ring-inset focus:ring-2",
+                t.input,
+              )}
+            />
+          </label>
 
-        {/* trackers — independent per-tracker toggles, gated on the fields each
+          {/* trackers — independent per-tracker toggles, gated on the fields each
             needs (the "master picker": one field set feeds every tracker). More
             trackers can be added to this list without touching the rest. */}
-        <div class="mb-3">
-          <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>Scrobble to</span>
-          <div class="flex flex-wrap gap-1.5">
-            {TRACKER_TOGGLES.map(({ key, label, mark, need, needHint }) => {
-              const canEnable = need(fieldVal);
-              const on = p.trackers.includes(key);
-              const disabled = !canEnable && !on;
-              return (
-                <button
-                  type="button"
-                  key={key}
-                  disabled={disabled}
-                  title={disabled ? needHint : label}
-                  onClick={() => !disabled && p.onTrackerToggle?.(key)}
-                  class={clsx(
-                    "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 ring-inset transition",
-                    t.card,
-                    on ? "ring-2 ring-ikura" : "ring-1 ring-transparent",
-                    disabled && "opacity-40",
-                  )}
-                >
-                  {mark}
-                  <span class={clsx("text-[12px] font-medium", t.heading)}>{label}</span>
-                  {on && <Icon name="check" class="text-[12px] text-ikura" />}
-                </button>
-              );
-            })}
-          </div>
-          {p.trackers.length === 0 && (
-            <p class={clsx("mt-1 text-[10px]", t.faint)}>Enable at least one tracker.</p>
-          )}
-          {p.trackers.includes("anilist") && (
-            <p class={clsx("mt-1 text-[10px] leading-snug", t.faint)}>
-              AniList tracks anime only — on a general site it’s mapped via the crosswalk (non-anime
-              skipped, ambiguous numbering refused).
-            </p>
-          )}
-        </div>
-
-        {/* type — right under the trackers. Hidden in manual mode (nothing scraped)
-            and when AniList is the only tracker (always an anime series). */}
-        {!p.manual && !(p.trackers.length === 1 && p.trackers[0] === "anilist") && (
-          <label class="mb-3 block">
-            <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>Type</span>
-            <div class="relative">
-              <select
-                value={p.mediaType}
-                onChange={(e) =>
-                  p.onMediaTypeChange?.(
-                    (e.target as HTMLSelectElement).value as "auto" | "movie" | "show",
-                  )
-                }
-                class={clsx(
-                  "w-full appearance-none rounded-lg py-1.5 pr-8 pl-2.5 text-[13px] outline-none ring-inset focus:ring-2",
-                  t.input,
-                )}
-              >
-                <option value="auto">Auto</option>
-                <option value="movie">Movie</option>
-                <option value="show">Show</option>
-              </select>
-              <Icon
-                name="down"
-                class={clsx(
-                  "pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 text-[14px]",
-                  t.faint,
-                )}
-              />
-            </div>
-          </label>
-        )}
-
-        {/* manual mode — a no-title concept; irrelevant once AniList is on (anime
-            always has a title). Shown only when AniList isn't enabled. */}
-        {!p.trackers.includes("anilist") && (
-          <ToggleRow
-            t={t}
-            on={!!p.manual}
-            label="Pick titles manually"
-            info="For players with no title to read (local files, watch parties). You’ll choose each title from the badge."
-            onToggle={() => p.onManualChange?.(!p.manual)}
-          />
-        )}
-
-        {/* player-in-a-separate-frame */}
-        <ToggleRow
-          t={t}
-          on={p.iframe}
-          label="Player loads in a separate frame"
-          info="Turn on if the video is inside an iframe from another site."
-          onToggle={() => p.onIframeChange?.(!p.iframe)}
-        />
-
-        {p.manual ? (
-          <div class="mb-3 space-y-2">
-            <div class={clsx("rounded-lg px-2.5 py-2 text-[11px] leading-snug", t.infoBox)}>
-              No fields to scrape. When a video plays here, the badge will ask what you’re watching;
-              your choice is remembered per title when possible.
-            </div>
-            {/* optional remember-by element */}
-            <div class={clsx("flex items-center gap-2 rounded-lg px-2.5 py-1.5", t.card)}>
-              <span class={clsx("w-20 shrink-0 text-[11px] font-medium", t.faint)}>
-                Remember by
-              </span>
-              <span class="flex min-w-0 flex-1 items-center gap-1.5">
-                <span class={clsx("truncate text-[12px]", p.manualKeyValue ? t.heading : t.faint)}>
-                  {p.manualKeyValue ?? "page title (default)"}
-                </span>
-              </span>
-              <button
-                type="button"
-                onClick={() => p.onPickManualKey?.()}
-                class={clsx(
-                  "rounded-md px-2 py-1 text-[11px] font-medium transition-colors",
-                  p.picking === "remember-by element" ? "bg-ikura text-white" : t.ghost,
-                )}
-              >
-                Pick
-              </button>
-              {p.manualKeyValue && (
-                <button
-                  type="button"
-                  onClick={() => p.onClearManualKey?.()}
-                  class={clsx("grid size-6 place-items-center rounded-md", t.ghost)}
-                  title="Clear"
-                >
-                  <Icon name="x" class="text-[12px]" />
-                </button>
-              )}
-            </div>
-          </div>
-        ) : (
-          <>
-            {/* fields */}
-            <div class="mb-3 space-y-1.5">
-              {p.fields.map((f) => (
-                <div
-                  key={f.key}
-                  class={clsx("flex items-center gap-2 rounded-lg px-2.5 py-1.5", t.card)}
-                >
-                  <span class={clsx("w-14 shrink-0 text-[11px] font-medium", t.faint)}>
-                    {f.label}
-                  </span>
-                  <span class="flex min-w-0 flex-1 items-center gap-1.5">
-                    <span
-                      class={clsx("truncate text-[12px]", f.value ? t.heading : t.faint)}
-                      title={f.value ?? undefined}
-                    >
-                      {f.value ?? "—"}
-                    </span>
-                    {f.source && (
-                      <span
-                        class={clsx("rounded px-1 py-0.5 text-[9px] font-medium uppercase", t.chip)}
-                      >
-                        {f.source}
-                      </span>
-                    )}
-                  </span>
+          <div class="mb-3">
+            <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>Scrobble to</span>
+            <div class="flex flex-wrap gap-1.5">
+              {TRACKER_TOGGLES.map(({ key, label, mark, need, needHint }) => {
+                const canEnable = need(fieldVal);
+                const on = p.trackers.includes(key);
+                const disabled = !canEnable && !on;
+                return (
                   <button
                     type="button"
-                    onClick={() => p.onPick?.(f.key)}
+                    key={key}
+                    disabled={disabled}
+                    title={disabled ? needHint : label}
+                    onClick={() => !disabled && p.onTrackerToggle?.(key)}
                     class={clsx(
-                      "rounded-md px-2 py-1 text-[11px] font-medium transition-colors",
-                      p.picking === f.label ? "bg-ikura text-white" : t.ghost,
+                      "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 ring-inset transition",
+                      t.card,
+                      on ? "ring-2 ring-ikura" : "ring-1 ring-transparent",
+                      disabled && "opacity-40",
                     )}
                   >
-                    Pick
+                    {mark}
+                    <span class={clsx("text-[12px] font-medium", t.heading)}>{label}</span>
+                    {on && <Icon name="check" class="text-[12px] text-ikura" />}
                   </button>
-                  {f.value && (
+                );
+              })}
+            </div>
+            {p.trackers.length === 0 && (
+              <p class={clsx("mt-1 text-[10px]", t.faint)}>Enable at least one tracker.</p>
+            )}
+            {p.trackers.includes("anilist") && (
+              <p class={clsx("mt-1 text-[10px] leading-snug", t.faint)}>
+                AniList tracks anime only — on a general site it’s mapped via the crosswalk
+                (non-anime skipped, ambiguous numbering refused).
+              </p>
+            )}
+          </div>
+
+          {/* type — right under the trackers. Hidden in manual mode (nothing scraped)
+            and when AniList is the only tracker (always an anime series). */}
+          {!p.manual && !(p.trackers.length === 1 && p.trackers[0] === "anilist") && (
+            <label class="mb-3 block">
+              <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>Type</span>
+              <div class="relative">
+                <select
+                  value={p.mediaType}
+                  onChange={(e) =>
+                    p.onMediaTypeChange?.(
+                      (e.target as HTMLSelectElement).value as "auto" | "movie" | "show",
+                    )
+                  }
+                  class={clsx(
+                    "w-full appearance-none rounded-lg py-1.5 pr-8 pl-2.5 text-[13px] outline-none ring-inset focus:ring-2",
+                    t.input,
+                  )}
+                >
+                  <option value="auto">Auto</option>
+                  <option value="movie">Movie</option>
+                  <option value="show">Show</option>
+                </select>
+                <Icon
+                  name="down"
+                  class={clsx(
+                    "pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 text-[14px]",
+                    t.faint,
+                  )}
+                />
+              </div>
+            </label>
+          )}
+
+          {/* manual mode — a no-title concept; irrelevant once AniList is on (anime
+            always has a title). Shown only when AniList isn't enabled. */}
+          {!p.trackers.includes("anilist") && (
+            <ToggleRow
+              t={t}
+              on={!!p.manual}
+              label="Pick titles manually"
+              info="For players with no title to read (local files, watch parties). You’ll choose each title from the badge."
+              onToggle={() => p.onManualChange?.(!p.manual)}
+            />
+          )}
+
+          {/* player-in-a-separate-frame */}
+          <ToggleRow
+            t={t}
+            on={p.iframe}
+            label="Player loads in a separate frame"
+            info="Turn on if the video is inside an iframe from another site."
+            onToggle={() => p.onIframeChange?.(!p.iframe)}
+          />
+
+          {p.manual ? (
+            <div class="mb-3 space-y-2">
+              <div class={clsx("rounded-lg px-2.5 py-2 text-[11px] leading-snug", t.infoBox)}>
+                No fields to scrape. When a video plays here, the badge will ask what you’re
+                watching; your choice is remembered per title when possible.
+              </div>
+              {/* optional remember-by element */}
+              <div class={clsx("flex items-center gap-2 rounded-lg px-2.5 py-1.5", t.card)}>
+                <span class={clsx("w-20 shrink-0 text-[11px] font-medium", t.faint)}>
+                  Remember by
+                </span>
+                <span class="flex min-w-0 flex-1 items-center gap-1.5">
+                  <span
+                    class={clsx("truncate text-[12px]", p.manualKeyValue ? t.heading : t.faint)}
+                  >
+                    {p.manualKeyValue ?? "page title (default)"}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => p.onPickManualKey?.()}
+                  class={clsx(
+                    "rounded-md px-2 py-1 text-[11px] font-medium transition-colors",
+                    p.picking === "remember-by element" ? "bg-ikura text-white" : t.ghost,
+                  )}
+                >
+                  Pick
+                </button>
+                {p.manualKeyValue && (
+                  <button
+                    type="button"
+                    onClick={() => p.onClearManualKey?.()}
+                    class={clsx("grid size-6 place-items-center rounded-md", t.ghost)}
+                    title="Clear"
+                  >
+                    <Icon name="x" class="text-[12px]" />
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* fields */}
+              <div class="mb-3 space-y-1.5">
+                {p.fields.map((f) => (
+                  <div
+                    key={f.key}
+                    class={clsx("flex items-center gap-2 rounded-lg px-2.5 py-1.5", t.card)}
+                  >
+                    <span class={clsx("w-14 shrink-0 text-[11px] font-medium", t.faint)}>
+                      {f.label}
+                    </span>
+                    <span class="flex min-w-0 flex-1 items-center gap-1.5">
+                      <span
+                        class={clsx("truncate text-[12px]", f.value ? t.heading : t.faint)}
+                        title={f.value ?? undefined}
+                      >
+                        {f.value ?? "—"}
+                      </span>
+                      {f.source && (
+                        <span
+                          class={clsx(
+                            "rounded px-1 py-0.5 text-[9px] font-medium uppercase",
+                            t.chip,
+                          )}
+                        >
+                          {f.source}
+                        </span>
+                      )}
+                    </span>
                     <button
                       type="button"
-                      onClick={() => p.onClear?.(f.key)}
-                      class={clsx("grid size-6 place-items-center rounded-md", t.ghost)}
-                      title="Clear"
+                      onClick={() => p.onPick?.(f.key)}
+                      class={clsx(
+                        "rounded-md px-2 py-1 text-[11px] font-medium transition-colors",
+                        p.picking === f.label ? "bg-ikura text-white" : t.ghost,
+                      )}
                     >
-                      <Icon name="x" class="text-[12px]" />
+                      Pick
                     </button>
-                  )}
-                </div>
-              ))}
-            </div>
+                    {f.value && (
+                      <button
+                        type="button"
+                        onClick={() => p.onClear?.(f.key)}
+                        class={clsx("grid size-6 place-items-center rounded-md", t.ghost)}
+                        title="Clear"
+                      >
+                        <Icon name="x" class="text-[12px]" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
 
-            {/* Which number? — the picked element packs several (e.g. "1x6 –
+              {/* Which number? — the picked element packs several (e.g. "1x6 –
                 Episode 6"), so the user clicks the one that is the season/episode. */}
-            {p.domPick && (
+              {p.domPick && (
+                <div class="mb-3">
+                  <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>
+                    From the picked element → click the number for{" "}
+                    <span class="capitalize">{p.domPick.field}</span>
+                  </span>
+                  <div
+                    class={clsx(
+                      "rounded-lg px-2 py-1.5 font-mono text-[11px] leading-7 break-words",
+                      t.card,
+                      t.sub,
+                    )}
+                  >
+                    {p.domPick.parts.map((part, i) =>
+                      "num" in part ? (
+                        <button
+                          // biome-ignore lint/suspicious/noArrayIndexKey: positional number tokens are stable
+                          key={i}
+                          type="button"
+                          onClick={() => p.onPickDomNumber?.(part.ordinal)}
+                          class="mx-0.5 rounded bg-amber-400/20 px-1.5 py-0.5 text-[11px] text-amber-600 ring-1 ring-amber-400/40 transition-colors hover:bg-amber-400/40 dark:text-amber-300"
+                        >
+                          {part.num}
+                        </button>
+                      ) : (
+                        // biome-ignore lint/suspicious/noArrayIndexKey: positional number tokens are stable
+                        <span key={i}>{part.text}</span>
+                      ),
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* URL tokens */}
               <div class="mb-3">
                 <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>
-                  From the picked element → click the number for{" "}
-                  <span class="capitalize">{p.domPick.field}</span>
+                  From URL{p.picking ? ` → click a number for ${p.picking}` : ""}
                 </span>
                 <div
                   class={clsx(
-                    "rounded-lg px-2 py-1.5 font-mono text-[11px] leading-7 break-words",
+                    "rounded-lg px-2 py-1.5 font-mono text-[11px] leading-7 break-all",
                     t.card,
                     t.sub,
                   )}
                 >
-                  {p.domPick.parts.map((part, i) =>
+                  {p.urlParts.map((part, i) =>
                     "num" in part ? (
                       <button
-                        // biome-ignore lint/suspicious/noArrayIndexKey: positional number tokens are stable
+                        // biome-ignore lint/suspicious/noArrayIndexKey: positional URL tokens are stable
                         key={i}
                         type="button"
-                        onClick={() => p.onPickDomNumber?.(part.ordinal)}
-                        class="mx-0.5 rounded bg-amber-400/20 px-1.5 py-0.5 text-[11px] text-amber-600 ring-1 ring-amber-400/40 transition-colors hover:bg-amber-400/40 dark:text-amber-300"
+                        disabled={!p.picking}
+                        title={part.paramKey ? `${part.paramKey}=${part.num}` : undefined}
+                        onClick={() => p.onPickToken?.(part.ordinal, part.paramKey)}
+                        class={clsx(
+                          "mx-0.5 rounded px-1.5 py-0.5 text-[11px] transition-colors",
+                          p.picking
+                            ? "bg-amber-400/20 text-amber-600 ring-1 ring-amber-400/40 hover:bg-amber-400/40 dark:text-amber-300"
+                            : t.chip,
+                        )}
                       >
                         {part.num}
                       </button>
                     ) : (
-                      // biome-ignore lint/suspicious/noArrayIndexKey: positional number tokens are stable
+                      // biome-ignore lint/suspicious/noArrayIndexKey: positional URL tokens are stable
                       <span key={i}>{part.text}</span>
                     ),
                   )}
                 </div>
               </div>
-            )}
 
-            {/* URL tokens */}
-            <div class="mb-3">
-              <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>
-                From URL{p.picking ? ` → click a number for ${p.picking}` : ""}
-              </span>
-              <div
-                class={clsx(
-                  "rounded-lg px-2 py-1.5 font-mono text-[11px] leading-7 break-all",
-                  t.card,
-                  t.sub,
-                )}
-              >
-                {p.urlParts.map((part, i) =>
-                  "num" in part ? (
-                    <button
-                      // biome-ignore lint/suspicious/noArrayIndexKey: positional URL tokens are stable
-                      key={i}
-                      type="button"
-                      disabled={!p.picking}
-                      title={part.paramKey ? `${part.paramKey}=${part.num}` : undefined}
-                      onClick={() => p.onPickToken?.(part.ordinal, part.paramKey)}
-                      class={clsx(
-                        "mx-0.5 rounded px-1.5 py-0.5 text-[11px] transition-colors",
-                        p.picking
-                          ? "bg-amber-400/20 text-amber-600 ring-1 ring-amber-400/40 hover:bg-amber-400/40 dark:text-amber-300"
-                          : t.chip,
-                      )}
-                    >
-                      {part.num}
-                    </button>
-                  ) : (
-                    // biome-ignore lint/suspicious/noArrayIndexKey: positional URL tokens are stable
-                    <span key={i}>{part.text}</span>
-                  ),
-                )}
-              </div>
-            </div>
-
-            {/* From player frame URL — a cross-origin embed (e.g. 1embed.cc) whose
+              {/* From player frame URL — a cross-origin embed (e.g. 1embed.cc) whose
                 src carries the season/episode the top page hides. Shown only while
                 picking season/episode, since it's a number source. */}
-            {(p.picking === "Season" || p.picking === "Episode") &&
-              (p.playerFrames?.length ?? 0) > 0 && (
+              {(p.picking === "Season" || p.picking === "Episode") &&
+                (p.playerFrames?.length ?? 0) > 0 && (
+                  <div class="mb-3">
+                    <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>
+                      From player frame URL → click a number for {p.picking}
+                    </span>
+                    <div class="space-y-1.5">
+                      {p.playerFrames?.map((frame, fi) => (
+                        <div
+                          // biome-ignore lint/suspicious/noArrayIndexKey: positional frame list is stable
+                          key={fi}
+                          class={clsx(
+                            "rounded-lg px-2 py-1.5 font-mono text-[11px] leading-7 break-all",
+                            t.card,
+                            t.sub,
+                          )}
+                        >
+                          {frame.parts.map((part, i) =>
+                            "num" in part ? (
+                              <button
+                                // biome-ignore lint/suspicious/noArrayIndexKey: positional tokens are stable
+                                key={i}
+                                type="button"
+                                onClick={() => p.onPickFrameToken?.(fi, part.ordinal)}
+                                class="mx-0.5 rounded bg-amber-400/20 px-1.5 py-0.5 text-[11px] text-amber-600 ring-1 ring-amber-400/40 transition-colors hover:bg-amber-400/40 dark:text-amber-300"
+                              >
+                                {part.num}
+                              </button>
+                            ) : (
+                              // biome-ignore lint/suspicious/noArrayIndexKey: positional tokens are stable
+                              <span key={i}>{part.text}</span>
+                            ),
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+              {/* From page title — pick a segment of the browser tab title, for SPA
+                players whose real title is only in document.title (og:title is a
+                static site name). Only while picking the Title, since segments
+                only feed that field (shown elsewhere it just reads as noise). */}
+              {p.picking === "Title" && (p.titleParts?.length ?? 0) > 1 && (
                 <div class="mb-3">
                   <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>
-                    From player frame URL → click a number for {p.picking}
+                    From page title → click the part that is the title
                   </span>
-                  <div class="space-y-1.5">
-                    {p.playerFrames?.map((frame, fi) => (
-                      <div
-                        // biome-ignore lint/suspicious/noArrayIndexKey: positional frame list is stable
-                        key={fi}
+                  <div class="flex flex-wrap gap-1">
+                    {p.titleParts?.map((seg, i) => (
+                      <button
+                        // biome-ignore lint/suspicious/noArrayIndexKey: positional title segments are stable
+                        key={i}
+                        type="button"
+                        onClick={() => p.onPickTitleSegment?.(i)}
                         class={clsx(
-                          "rounded-lg px-2 py-1.5 font-mono text-[11px] leading-7 break-all",
-                          t.card,
-                          t.sub,
+                          "max-w-full truncate rounded px-1.5 py-0.5 text-[11px] transition-colors hover:bg-ikura hover:text-white",
+                          t.chip,
                         )}
                       >
-                        {frame.parts.map((part, i) =>
-                          "num" in part ? (
-                            <button
-                              // biome-ignore lint/suspicious/noArrayIndexKey: positional tokens are stable
-                              key={i}
-                              type="button"
-                              onClick={() => p.onPickFrameToken?.(fi, part.ordinal)}
-                              class="mx-0.5 rounded bg-amber-400/20 px-1.5 py-0.5 text-[11px] text-amber-600 ring-1 ring-amber-400/40 transition-colors hover:bg-amber-400/40 dark:text-amber-300"
-                            >
-                              {part.num}
-                            </button>
-                          ) : (
-                            // biome-ignore lint/suspicious/noArrayIndexKey: positional tokens are stable
-                            <span key={i}>{part.text}</span>
-                          ),
-                        )}
-                      </div>
+                        {seg}
+                      </button>
                     ))}
                   </div>
                 </div>
               )}
-
-            {/* From page title — pick a segment of the browser tab title, for SPA
-                players whose real title is only in document.title (og:title is a
-                static site name). Only while picking the Title, since segments
-                only feed that field (shown elsewhere it just reads as noise). */}
-            {p.picking === "Title" && (p.titleParts?.length ?? 0) > 1 && (
-              <div class="mb-3">
-                <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>
-                  From page title → click the part that is the title
-                </span>
-                <div class="flex flex-wrap gap-1">
-                  {p.titleParts?.map((seg, i) => (
-                    <button
-                      // biome-ignore lint/suspicious/noArrayIndexKey: positional title segments are stable
-                      key={i}
-                      type="button"
-                      onClick={() => p.onPickTitleSegment?.(i)}
-                      class={clsx(
-                        "max-w-full truncate rounded px-1.5 py-0.5 text-[11px] transition-colors hover:bg-ikura hover:text-white",
-                        t.chip,
-                      )}
-                    >
-                      {seg}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-          </>
-        )}
-
-        {/* preview */}
-        <div
-          class={clsx(
-            "mb-3 flex items-center gap-1.5 truncate rounded-lg px-2.5 py-2 text-[12px] font-medium",
-            p.preview.ok ? t.okBox : t.badBox,
+            </>
           )}
-        >
-          <Icon name={p.preview.ok ? "check" : "x"} class="text-[13px]" />
-          <span class="truncate">{p.preview.ok ? p.preview.text : p.preview.error}</span>
-        </div>
+
+          {/* preview */}
+          <div
+            class={clsx(
+              "mb-3 flex items-center gap-1.5 truncate rounded-lg px-2.5 py-2 text-[12px] font-medium",
+              p.preview.ok ? t.okBox : t.badBox,
+            )}
+          >
+            <Icon name={p.preview.ok ? "check" : "x"} class="text-[13px]" />
+            <span class="truncate">{p.preview.ok ? p.preview.text : p.preview.error}</span>
+          </div>
         </div>
         {/* /scrollable body */}
 

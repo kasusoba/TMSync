@@ -1,8 +1,8 @@
 import type { ParsedMedia } from "@tmsync/shared";
 import { describe, expect, it } from "vitest";
 import type { TrackedItem } from "../tracker/types";
+import { type AnimapOverrides, EMPTY_OVERRIDES, deriveMedia, deriveMediaWith } from "./derive";
 import { Animap, type AnimapRow } from "./index";
-import { type AnimapOverrides, deriveMedia, deriveMediaWith, EMPTY_OVERRIDES } from "./derive";
 
 const rows: AnimapRow[] = [
   { a: 99147, t: 1429, k: "tv", s: 3, o: null }, // AoT S3 part 1
@@ -21,7 +21,13 @@ const anilistItem: TrackedItem = {
 
 describe("deriveMedia — forward (TMDB-native → AniList)", () => {
   it("derives the AniList entry + local episode from tmdb season/episode", () => {
-    const media: ParsedMedia = { mediaType: "show", title: "AoT", tmdbId: 1429, season: 3, episode: 15 };
+    const media: ParsedMedia = {
+      mediaType: "show",
+      title: "AoT",
+      tmdbId: 1429,
+      season: 3,
+      episode: 15,
+    };
     const out = deriveMedia("anilist", media, traktItem, map);
     expect(out).toEqual({
       kind: "resolved",
@@ -68,7 +74,13 @@ describe("deriveMediaWith — local overrides sit above Fribb", () => {
   };
 
   it("no override → identical to deriveMedia (Fribb)", () => {
-    const media: ParsedMedia = { mediaType: "show", title: "AoT", tmdbId: 1429, season: 3, episode: 15 };
+    const media: ParsedMedia = {
+      mediaType: "show",
+      title: "AoT",
+      tmdbId: 1429,
+      season: 3,
+      episode: 15,
+    };
     expect(deriveMediaWith("anilist", media, traktItem, EMPTY_OVERRIDES, map)).toEqual(
       deriveMedia("anilist", media, traktItem, map),
     );
@@ -76,7 +88,13 @@ describe("deriveMediaWith — local overrides sit above Fribb", () => {
 
   it("forward override pins the AniList entry (offset 0)", () => {
     const overrides: AnimapOverrides = { forward: { "5555:1": 42 }, reverse: {} };
-    const media: ParsedMedia = { mediaType: "show", title: "New", tmdbId: 5555, season: 1, episode: 7 };
+    const media: ParsedMedia = {
+      mediaType: "show",
+      title: "New",
+      tmdbId: 5555,
+      season: 1,
+      episode: 7,
+    };
     expect(deriveMediaWith("anilist", media, traktItem, overrides, map)).toEqual({
       kind: "resolved",
       anilistId: 42,
@@ -86,12 +104,21 @@ describe("deriveMediaWith — local overrides sit above Fribb", () => {
 
   it("forward override of null means 'explicitly not on AniList' → miss", () => {
     const overrides: AnimapOverrides = { forward: { "2604:1": null }, reverse: {} };
-    const media: ParsedMedia = { mediaType: "show", title: "Boondocks", tmdbId: 2604, season: 1, episode: 5 };
+    const media: ParsedMedia = {
+      mediaType: "show",
+      title: "Boondocks",
+      tmdbId: 2604,
+      season: 1,
+      episode: 5,
+    };
     expect(deriveMediaWith("anilist", media, traktItem, overrides, map)).toEqual({ kind: "miss" });
   });
 
   it("reverse override pins the TMDB target for an AniList entry", () => {
-    const overrides: AnimapOverrides = { forward: {}, reverse: { 104578: { tmdbId: 1429, season: 3 } } };
+    const overrides: AnimapOverrides = {
+      forward: {},
+      reverse: { 104578: { tmdbId: 1429, season: 3 } },
+    };
     const media: ParsedMedia = { mediaType: "show", title: "AoT", episode: 3 };
     expect(deriveMediaWith("trakt", media, anilistItem, overrides, map)).toEqual({
       kind: "resolved",

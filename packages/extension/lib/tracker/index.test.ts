@@ -32,10 +32,12 @@ describe("routeTracker (route by type — constraint #1)", () => {
 
 describe("inferNativeTracker (multi-track — which numbering the page speaks)", () => {
   it("TMDB seasoning (tmdbId or a season) ⇒ Trakt native", () => {
-    expect(inferNativeTracker({ mediaType: "show", title: "x", tmdbId: 1429, season: 3, episode: 15 })).toBe(
+    expect(
+      inferNativeTracker({ mediaType: "show", title: "x", tmdbId: 1429, season: 3, episode: 15 }),
+    ).toBe("trakt");
+    expect(inferNativeTracker({ mediaType: "show", title: "x", season: 1, episode: 2 })).toBe(
       "trakt",
     );
-    expect(inferNativeTracker({ mediaType: "show", title: "x", season: 1, episode: 2 })).toBe("trakt");
     expect(inferNativeTracker({ mediaType: "movie", title: "Dune", tmdbId: 438631 })).toBe("trakt");
   });
 

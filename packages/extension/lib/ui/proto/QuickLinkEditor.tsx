@@ -3,8 +3,8 @@ import type { Tracker } from "@/lib/tracker/types";
 import type { LinkTemplates } from "@tmsync/shared";
 import clsx from "clsx";
 import { useState } from "preact/hooks";
-import { Btn, Icon, type Tokens } from "./kit";
 import { TrackerTab } from "./TrackerTab";
+import { Btn, Icon, type Tokens } from "./kit";
 
 /** A saved quick link's editable shape (per-site "watch on" templates). */
 export interface QuickLinkValue extends LinkTemplates {

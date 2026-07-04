@@ -1,6 +1,5 @@
 import { RECIPES } from "@/config";
 import { confirmAniListRewatch, resolveAniListById } from "@/lib/anilist/adapter";
-import { type AnimapOverrides, deriveMediaWith, forwardKey } from "@/lib/animap/derive";
 import {
   connect as anilistConnect,
   disconnect as anilistDisconnect,
@@ -16,6 +15,7 @@ import {
   viewerScoreFormat,
 } from "@/lib/anilist/client";
 import { ANILIST } from "@/lib/anilist/config";
+import { type AnimapOverrides, deriveMediaWith, forwardKey } from "@/lib/animap/derive";
 import { bundledLinks } from "@/lib/recipes";
 import { statusDotColor } from "@/lib/scrobble/action-badge";
 import {
