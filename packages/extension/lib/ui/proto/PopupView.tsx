@@ -83,14 +83,14 @@ export function BadgeModeToggle({
   mode: BadgeMode;
   onMode?: (mode: BadgeMode) => void;
 }) {
-  const items: [BadgeMode, string, preact.ComponentChildren][] = [
-    ["full", "Full badge", <span class="h-2.5 w-4 rounded-sm bg-current" />],
-    ["dot", "Dot only", <span class="size-2 rounded-full bg-current" />],
-    ["off", "Hidden", <Icon name="eye-off" class="text-[13px]" />],
+  const items: [BadgeMode, string][] = [
+    ["full", "Full badge"],
+    ["dot", "Dot only"],
+    ["off", "Hidden"],
   ];
   return (
     <div class="flex gap-1">
-      {items.map(([value, label, glyph]) => (
+      {items.map(([value, label]) => (
         <button
           type="button"
           key={value}
@@ -102,7 +102,13 @@ export function BadgeModeToggle({
             mode === value ? "bg-ikura text-white" : t.ghost,
           )}
         >
-          {glyph}
+          {value === "full" ? (
+            <span class="h-2.5 w-4 rounded-sm bg-current" />
+          ) : value === "dot" ? (
+            <span class="size-2 rounded-full bg-current" />
+          ) : (
+            <Icon name="eye-off" class="text-[13px]" />
+          )}
         </button>
       ))}
     </div>

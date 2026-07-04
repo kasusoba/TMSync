@@ -1,8 +1,8 @@
 import type { BadgeStatus } from "@/messaging";
 import type { LinkTemplates, ParsedMedia, Recipe } from "@tmsync/shared";
 import { storage } from "wxt/utils/storage";
-import type { AnimapOverrides } from "./animap/derive";
 import type { AniListIdentity, AniListTokens } from "./anilist/types";
+import type { AnimapOverrides } from "./animap/derive";
 import type { Tracker } from "./tracker/types";
 import type { ResolvedIdentity, TraktTokens } from "./trakt/types";
 

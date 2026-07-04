@@ -718,25 +718,23 @@ export class SessionManager {
           tracker,
           trackers,
           watchedThreshold,
-        }).then(
-          (reply) => {
-            // We still tell the tracker to stop the outgoing episode — but the
-            // scrobble call is async, so by the time it replies we may have shown
-            // the episode prompt (tearing down S1E2 to ask which episode a
-            // "?play=true" URL is on) or, in the top frame, navigated away entirely
-            // (badge cleared). In either case this late reply must not re-show the
-            // old status. (isTop-gated: an iframe player never sets badgeActive, so
-            // it must keep reporting its own normal stops.)
-            if (action === "stop" && (this.episodeAwaiting || (this.isTop && !this.badgeActive)))
-              return;
-            // MULTI-TRACK: the badge names whichever tracker the reply's top-level
-            // fields describe (the native one, or the first enabled if native is off).
-            void sendMessage(
-              "reportScrobble",
-              statusFromReply(action, reply, media, reply.primaryTracker ?? tracker),
-            );
-          },
-        );
+        }).then((reply) => {
+          // We still tell the tracker to stop the outgoing episode — but the
+          // scrobble call is async, so by the time it replies we may have shown
+          // the episode prompt (tearing down S1E2 to ask which episode a
+          // "?play=true" URL is on) or, in the top frame, navigated away entirely
+          // (badge cleared). In either case this late reply must not re-show the
+          // old status. (isTop-gated: an iframe player never sets badgeActive, so
+          // it must keep reporting its own normal stops.)
+          if (action === "stop" && (this.episodeAwaiting || (this.isTop && !this.badgeActive)))
+            return;
+          // MULTI-TRACK: the badge names whichever tracker the reply's top-level
+          // fields describe (the native one, or the first enabled if native is off).
+          void sendMessage(
+            "reportScrobble",
+            statusFromReply(action, reply, media, reply.primaryTracker ?? tracker),
+          );
+        });
         if (action === "stop") void sendMessage("endSession");
         else void sendMessage("updateProgress", progress);
       },

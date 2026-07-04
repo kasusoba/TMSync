@@ -1,6 +1,6 @@
 import type { Tracker } from "@/lib/tracker/types";
 import clsx from "clsx";
-import { AniListMark, Btn, Icon, IconBtn, Stars, type Variant, TraktMark, tokens } from "./kit";
+import { AniListMark, Btn, Icon, IconBtn, Stars, TraktMark, type Variant, tokens } from "./kit";
 
 export type BadgeState = "idle" | "watching" | "paused" | "scrobbled" | "stopped" | "error";
 

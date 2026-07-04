@@ -59,8 +59,12 @@ export class Animap {
   constructor(rows: readonly AnimapRow[]) {
     for (const r of rows) {
       const key = `${r.k}:${r.t}`;
-      (this.byTmdb.get(key) ?? this.byTmdb.set(key, []).get(key)!).push(r);
-      (this.byAnilist.get(r.a) ?? this.byAnilist.set(r.a, []).get(r.a)!).push(r);
+      const byT = this.byTmdb.get(key);
+      if (byT) byT.push(r);
+      else this.byTmdb.set(key, [r]);
+      const byA = this.byAnilist.get(r.a);
+      if (byA) byA.push(r);
+      else this.byAnilist.set(r.a, [r]);
     }
   }
 
