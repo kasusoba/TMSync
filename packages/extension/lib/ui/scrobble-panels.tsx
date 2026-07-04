@@ -147,13 +147,17 @@ export function RateNote({
   t,
   onClose,
   onFix,
+  onFixAniList,
 }: {
   media: ParsedMedia;
   /** The item's enabled trackers (multi-track). */
   trackers: Tracker[];
   t: Tokens;
   onClose: () => void;
+  /** Open the Trakt fix-match panel. */
   onFix: () => void;
+  /** Open the AniList fix-match panel (multi-track derived tracker). */
+  onFixAniList?: () => void;
 }) {
   const isShow = media.season !== undefined || media.episode !== undefined;
   const hasTrakt = trackers.includes("trakt");
@@ -194,35 +198,12 @@ export function RateNote({
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
-  // AniList correction (derived tracker): pin/block the AniList entry for this TMDB
-  // item — a local override above Fribb. Only meaningful when we have a tmdbId to key it.
-  const canFixAniList = trackers.includes("anilist") && media.tmdbId !== undefined;
-  const [fixing, setFixing] = useState(false);
-  const [aniQuery, setAniQuery] = useState(media.title ?? "");
-  const [aniResults, setAniResults] = useState<AniListSearchOption[] | null>(null);
-  const [aniBusy, setAniBusy] = useState(false);
-  const runAniSearch = async () => {
-    setAniBusy(true);
-    setAniResults(await sendMessage("searchAniList", { query: aniQuery }));
-    setAniBusy(false);
-  };
-  const refreshResolutions = async () => {
-    setResolutions(null);
-    setResolutions(await sendMessage("resolveAll", { media, trackers }));
-  };
-  const pinAniList = async (anilistId: number | null) => {
-    await sendMessage("setAniListMatch", { media, anilistId });
-    setFixing(false);
-    await refreshResolutions();
-  };
-  const resetAniList = async () => {
-    await sendMessage("resetAniListMatch", { media });
-    setFixing(false);
-    await refreshResolutions();
-  };
-  // Per-tracker "fix": Trakt opens the search panel (onFix); AniList opens the
-  // inline crosswalk fixer. Same entry point (a row icon) for both — consistent.
-  const openFix = (tk: Tracker) => (tk === "anilist" ? setFixing(true) : onFix());
+  // AniList correction (derived tracker): only meaningful when we have a tmdbId to
+  // key the override. Per-tracker "fix" opens the matching panel — Trakt (onFix) or
+  // AniList (onFixAniList) — same entry point (a row edit icon) for consistency.
+  const canFixAniList =
+    trackers.includes("anilist") && media.tmdbId !== undefined && !!onFixAniList;
+  const openFix = (tk: Tracker) => (tk === "anilist" ? onFixAniList?.() : onFix());
 
   // Seed the score + note from the primary target (first applicable, prefer a
   // selected one) so editing shows what's already there.
@@ -384,7 +365,7 @@ export function RateNote({
                 {canFixRow && (
                   <IconBtn
                     t={t}
-                    name="search"
+                    name="edit"
                     title={`Fix ${trackerName(tk)} match`}
                     onClick={() => openFix(tk)}
                   />
@@ -393,64 +374,6 @@ export function RateNote({
             );
           })}
         </div>
-        {fixing && (
-          <div class={clsx("mt-2 space-y-2 rounded-lg p-2.5", t.card)}>
-            <div class="flex gap-1.5">
-              <input
-                {...stopKeys}
-                value={aniQuery}
-                onInput={(e) => setAniQuery((e.target as HTMLInputElement).value)}
-                onKeyDown={(e) => e.key === "Enter" && runAniSearch()}
-                placeholder="Search AniList…"
-                class={clsx(
-                  "min-w-0 flex-1 rounded-md px-2 py-1 text-[12px] outline-none ring-inset focus:ring-2",
-                  t.input,
-                )}
-              />
-              <Btn t={t} tone="ghost" disabled={aniBusy} onClick={runAniSearch}>
-                <Icon name="search" class="text-[12px]" />
-              </Btn>
-            </div>
-            {aniResults?.map((o) => (
-              <button
-                type="button"
-                key={o.id}
-                onClick={() => pinAniList(o.id)}
-                class={clsx(
-                  "block w-full truncate rounded-md px-2 py-1 text-left text-[12px] transition-colors hover:bg-ikura hover:text-white",
-                  t.ghost,
-                )}
-              >
-                {o.title}
-                {o.year ? ` (${o.year})` : ""}
-                {o.format ? ` · ${o.format.toLowerCase()}` : ""}
-              </button>
-            ))}
-            <div class="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={resetAniList}
-                class={clsx("text-[11px] underline underline-offset-2", t.sub)}
-              >
-                Reset to automatic
-              </button>
-              <button
-                type="button"
-                onClick={() => pinAniList(null)}
-                class={clsx("text-[11px] underline underline-offset-2", t.sub)}
-              >
-                Not on AniList
-              </button>
-              <button
-                type="button"
-                onClick={() => setFixing(false)}
-                class={clsx("ml-auto text-[11px]", t.faint)}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
       </div>
 
       <div class="mb-3">
@@ -608,6 +531,150 @@ export function Correction({
                 </button>
               ))
             )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The AniList "fix match" panel (multi-track) — the derived-tracker analogue of
+ * {@link Correction}: search AniList and PIN the right entry, mark it "Not on
+ * AniList", or clear back to the automatic (Fribb) match. All local overrides above
+ * the crosswalk. Same panel shape as the Trakt fixer for consistency.
+ */
+export function AniListCorrection({
+  t,
+  tabId,
+  onClose,
+}: {
+  t: Tokens;
+  tabId?: number;
+  onClose: () => void;
+}) {
+  const [media, setMedia] = useState<ParsedMedia | null>(null);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<AniListSearchOption[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState<string | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      const tab = await sendMessage("getTabMedia", { tabId });
+      if (tab) {
+        setMedia(tab.media);
+        setQuery(tab.media.title);
+      }
+    })();
+  }, [tabId]);
+
+  const runSearch = async () => {
+    setBusy(true);
+    setResults(await sendMessage("searchAniList", { query }));
+    setBusy(false);
+  };
+  const apply = async (label: string, send: Promise<{ ok: boolean }>) => {
+    if (!media) return;
+    setBusy(true);
+    await send;
+    setSaved(label);
+    setBusy(false);
+  };
+  const pick = (o: AniListSearchOption) =>
+    apply(
+      `${o.title}${o.year ? ` (${o.year})` : ""}`,
+      sendMessage("setAniListMatch", { media: media as ParsedMedia, anilistId: o.id, tabId }),
+    );
+
+  return (
+    <div class={panelClass(t)}>
+      <header class="mb-3 flex items-center justify-between">
+        <strong class={clsx("text-[13px]", t.heading)}>Fix AniList match</strong>
+        <IconBtn t={t} name="x" title="Close" onClick={onClose} />
+      </header>
+      {saved ? (
+        <p class={clsx("rounded-lg px-2.5 py-2 text-[12px]", t.okBox)}>
+          Set → {saved}. It’ll re-resolve now.
+        </p>
+      ) : (
+        <>
+          <div class="mb-3 flex gap-2">
+            <div class={clsx("flex flex-1 items-center gap-2 rounded-lg px-2.5", t.input)}>
+              <Icon name="search" class={clsx("text-[14px]", t.faint)} />
+              <input
+                value={query}
+                onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
+                onKeyDown={(e) => {
+                  e.stopPropagation();
+                  if (e.key === "Enter") runSearch();
+                }}
+                onKeyUp={(e) => e.stopPropagation()}
+                placeholder="Search AniList…"
+                class="w-full bg-transparent py-1.5 text-[13px] outline-none"
+              />
+            </div>
+            <Btn t={t} tone="primary" disabled={busy} onClick={runSearch}>
+              Search
+            </Btn>
+          </div>
+          <div class="flex max-h-[200px] flex-col gap-1.5 overflow-y-auto">
+            {results.length === 0 ? (
+              <p class={clsx("py-1 text-[12px]", t.faint)}>
+                {busy ? "Searching…" : "Search and pick the right anime."}
+              </p>
+            ) : (
+              results.map((o) => (
+                <button
+                  type="button"
+                  key={o.id}
+                  onClick={() => pick(o)}
+                  disabled={busy}
+                  class={clsx(
+                    "truncate rounded-lg px-2.5 py-1.5 text-left text-[12px] transition-colors disabled:opacity-50",
+                    t.card,
+                    t.heading,
+                    "hover:ring-2 hover:ring-ikura",
+                  )}
+                >
+                  {o.title}
+                  {o.year ? ` (${o.year})` : ""}
+                  {o.format ? ` · ${o.format.toLowerCase()}` : ""}
+                </button>
+              ))
+            )}
+          </div>
+          <div class={clsx("mt-3 flex items-center gap-4 border-t pt-2.5", t.divider)}>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() =>
+                apply(
+                  "Not on AniList",
+                  sendMessage("setAniListMatch", {
+                    media: media as ParsedMedia,
+                    anilistId: null,
+                    tabId,
+                  }),
+                )
+              }
+              class={clsx("text-[11px] underline underline-offset-2", t.sub)}
+            >
+              Not on AniList
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() =>
+                apply(
+                  "automatic match",
+                  sendMessage("resetAniListMatch", { media: media as ParsedMedia, tabId }),
+                )
+              }
+              class={clsx("text-[11px] underline underline-offset-2", t.sub)}
+            >
+              Use automatic match
+            </button>
           </div>
         </>
       )}
@@ -918,7 +985,9 @@ export function NowPlaying({
   t: Tokens;
   onRefresh?: () => void;
 }) {
-  const [panel, setPanel] = useState<null | "review" | "fix" | "manual" | "episode">(null);
+  const [panel, setPanel] = useState<
+    null | "review" | "fix" | "anilist-fix" | "manual" | "episode"
+  >(null);
   const [rewatchBusy, setRewatchBusy] = useState(false);
   const [watched, setWatched] = useState<WatchedState | null>(null);
   const done = () => {
@@ -946,10 +1015,13 @@ export function NowPlaying({
         t={t}
         onClose={() => setPanel(null)}
         onFix={() => setPanel("fix")}
+        onFixAniList={() => setPanel("anilist-fix")}
       />
     );
   }
   if (panel === "fix") return <Correction t={t} tabId={tabId} onClose={() => setPanel(null)} />;
+  if (panel === "anilist-fix")
+    return <AniListCorrection t={t} tabId={tabId} onClose={() => setPanel(null)} />;
   if (panel === "manual") {
     return <ManualPick t={t} tabId={tabId} onClose={() => setPanel(null)} onDone={done} />;
   }
