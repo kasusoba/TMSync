@@ -1,5 +1,6 @@
 import { loadRecipes } from "@/lib/recipes";
 import { SessionManager } from "@/lib/scrobble/session";
+import { customRecipes, remoteRecipes } from "@/lib/storage";
 import { mountBadge } from "@/lib/ui/badge";
 
 /**
@@ -22,6 +23,18 @@ export default defineContentScript({
 
     if (window === window.top) await mountBadge(ctx);
 
-    new SessionManager(ctx, recipes).start();
+    const session = new SessionManager(ctx, recipes);
+    session.start();
+
+    // Reflect picker saves/edits/deletes LIVE — no page reload. The picker writes
+    // the recipe stores; when they change, reload + re-evaluate this tab. (New
+    // sites still need the content script injected, i.e. one reload, the first time.)
+    const reload = async () => session.updateRecipes(await loadRecipes());
+    const unwatchCustom = customRecipes.watch(reload);
+    const unwatchRemote = remoteRecipes.watch(reload);
+    ctx.onInvalidated(() => {
+      unwatchCustom();
+      unwatchRemote();
+    });
   },
 });

@@ -204,10 +204,19 @@ export class SessionManager {
   private abort: AbortController | null = null;
   private reconcileTimer: ReturnType<typeof setTimeout> | null = null;
   private videoObserver: MutationObserver | null = null;
+  private metadataObserver: MutationObserver | null = null;
+  /** Bounded count of synthetic player-nudges this session (reveal hover-gated bars). */
+  private metadataNudges = 0;
+  /** True while the extract is still missing something the recipe expects (a title
+   * or an episode). Some players only render those into their chrome (top/bottom
+   * bar) on hover/play, so an early extract falls back to a movie-by-URL-id. While
+   * this is set, late DOM changes trigger a re-extract; it costs nothing once we
+   * have what we need. */
+  private awaitingMetadata = true;
 
   constructor(
     private readonly ctx: ContentScriptContext,
-    private readonly recipes: Recipe[],
+    private recipes: Recipe[],
   ) {}
 
   private get isTop(): boolean {
@@ -233,6 +242,21 @@ export class SessionManager {
         attributeFilter: ["content"],
       });
       this.ctx.onInvalidated(() => headObserver.disconnect());
+    }
+
+    // Some players only render the title/season/episode into their overlay chrome
+    // when it's revealed (hover/play), so the first extract misses them and can
+    // fall back to a movie by the URL's tmdb id. Watch the body for those late
+    // nodes and re-extract — gated on `awaitingMetadata`, so it does nothing once
+    // we've got what the recipe asked for. (Shadow-DOM badge mutations aren't
+    // observed, so this can't loop on our own UI.)
+    if (document.body) {
+      const metaObserver = new MutationObserver(() => {
+        if (this.awaitingMetadata) this.scheduleReconcile();
+      });
+      metaObserver.observe(document.body, { childList: true, subtree: true, characterData: true });
+      this.metadataObserver = metaObserver;
+      this.ctx.onInvalidated(() => metaObserver.disconnect());
     }
 
     // A correction was saved → drop the current (wrong) session and re-resolve.
@@ -272,6 +296,9 @@ export class SessionManager {
 
   private async reconcile(): Promise<void> {
     await this.matchAndPublish();
+    // Still missing the title/episode? Poke the player to reveal a hover-gated
+    // control bar (bounded); the nudge schedules another reconcile.
+    if (this.awaitingMetadata) this.maybeNudgeForMetadata();
     // Awaiting the user: a manual-site title pick, or the episode # for an
     // S/E-less show URL. Nothing to play until they choose.
     if (this.manualAwaiting || this.episodeAwaiting) return;
@@ -293,6 +320,7 @@ export class SessionManager {
     const recipe = selectRecipe(this.recipes, engineCtx);
     if (!recipe) {
       this.localMedia = null;
+      this.awaitingMetadata = true;
       this.manualAwaiting = false;
       this.episodeAwaiting = false;
       if (this.isTop) {
@@ -350,6 +378,7 @@ export class SessionManager {
           this.episodeAwaiting = true;
           await sendMessage("stopTabSession", undefined);
         }
+        this.awaitingMetadata = true;
         this.localMedia = null;
         this.lastPublishedKey = null;
         this.teardownSession();
@@ -365,6 +394,13 @@ export class SessionManager {
 
     this.episodeAwaiting = false;
     this.localMedia = media;
+    // Still missing something this recipe scrapes (a title or an episode)? Keep
+    // watching the DOM — a hover-gated player bar (e.g. aether.bar's `S1 - E5`)
+    // may render it a moment later, and the metadataObserver will re-extract.
+    this.awaitingMetadata =
+      (recipe.extract?.title !== undefined && !media.title) ||
+      ((recipe.extract?.episode !== undefined || recipe.extract?.season !== undefined) &&
+        media.episode === undefined);
     this.videoSelector = recipe.video.selector;
     this.frame = recipe.video.frame;
     this.watchedThreshold = recipe.video.watchedThreshold;
@@ -733,7 +769,44 @@ export class SessionManager {
     if (!video.paused && !video.ended) controller.play();
   }
 
+  /**
+   * Swap the recipe list live and re-evaluate — no page reload. Called when the
+   * user saves/edits/deletes a recipe in the picker (the content script watches the
+   * recipe store). Only re-runs when the set actually changed.
+   */
+  updateRecipes(recipes: Recipe[]): void {
+    this.recipes = recipes;
+    this.lastPublishedKey = null;
+    this.teardownSession();
+    void this.reconcile();
+  }
+
+  /**
+   * Best-effort: while we're still missing the title/episode, poke the player with
+   * a synthetic pointer/mouse move so a hover-gated control bar (e.g. aether.bar's
+   * `S1 - E5`) renders WITHOUT the user having to move their mouse. Bounded per
+   * session; a re-extract follows shortly after. Some players ignore untrusted
+   * events — then the metadataObserver still catches it on the user's first hover.
+   */
+  private maybeNudgeForMetadata(): void {
+    if (!this.awaitingMetadata || this.metadataNudges >= 6) return;
+    const video = this.currentVideo ?? this.findVideo();
+    if (!video) return;
+    this.metadataNudges++;
+    const r = video.getBoundingClientRect();
+    const opts = {
+      bubbles: true,
+      clientX: r.left + r.width / 2,
+      clientY: r.top + r.height / 2,
+    };
+    video.dispatchEvent(new MouseEvent("pointermove", opts));
+    video.dispatchEvent(new MouseEvent("mousemove", opts));
+    // Re-extract once the bar has had a moment to render; keep nudging if needed.
+    setTimeout(() => void this.reconcile(), 400);
+  }
+
   private teardownSession(): void {
+    this.metadataNudges = 0;
     // Emit a stop for the outgoing session (SPA episode swap, nav away) before
     // dropping its listeners. ScrobbleController.leave() is idempotent.
     this.controller?.leave();
