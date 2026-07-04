@@ -20,6 +20,7 @@ import {
 import type { Tracker } from "@/lib/tracker/types";
 import type { ResolvedIdentity } from "@/lib/trakt/types";
 import { BadgeModeToggle } from "@/lib/ui/proto/PopupView";
+import { TrackerTab } from "@/lib/ui/proto/TrackerTab";
 import {
   AniListMark,
   Btn,
@@ -252,26 +253,7 @@ function QuickLinkRow({
           {/* shows on — Trakt pages (movies/TV) or AniList pages (anime) */}
           <div>
             <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>Shows on</span>
-            <div class="flex gap-1">
-              {(
-                [
-                  ["trakt", "Trakt"],
-                  ["anilist", "AniList"],
-                ] as const
-              ).map(([value, lbl]) => (
-                <button
-                  type="button"
-                  key={value}
-                  onClick={() => setTracker(value)}
-                  class={clsx(
-                    "flex-1 rounded-md py-1 text-[11px] font-medium transition-colors",
-                    tracker === value ? "bg-ikura text-white" : t.ghost,
-                  )}
-                >
-                  {lbl}
-                </button>
-              ))}
-            </div>
+            <TrackerTab t={t} value={tracker} onChange={setTracker} />
           </div>
           {field("Name", name, setName, "Site name")}
           {isAniList ? (
@@ -665,10 +647,6 @@ export function App() {
             {active === "account" && (
               <>
                 <PaneHead title="Account" />
-                <p class={clsx("text-[12px]", t.sub)}>
-                  Two independent trackers. Movies &amp; non-anime TV route to Trakt; anime series
-                  to AniList — one item to one tracker, never both.
-                </p>
                 <ProviderRow
                   mark={<TraktMark />}
                   name="Trakt"
