@@ -206,12 +206,23 @@ export function RateNote({
     setAniResults(await sendMessage("searchAniList", { query: aniQuery }));
     setAniBusy(false);
   };
-  const pinAniList = async (anilistId: number | null) => {
-    await sendMessage("setAniListMatch", { media, anilistId });
-    setFixing(false);
+  const refreshResolutions = async () => {
     setResolutions(null);
     setResolutions(await sendMessage("resolveAll", { media, trackers }));
   };
+  const pinAniList = async (anilistId: number | null) => {
+    await sendMessage("setAniListMatch", { media, anilistId });
+    setFixing(false);
+    await refreshResolutions();
+  };
+  const resetAniList = async () => {
+    await sendMessage("resetAniListMatch", { media });
+    setFixing(false);
+    await refreshResolutions();
+  };
+  // Per-tracker "fix": Trakt opens the search panel (onFix); AniList opens the
+  // inline crosswalk fixer. Same entry point (a row icon) for both — consistent.
+  const openFix = (tk: Tracker) => (tk === "anilist" ? setFixing(true) : onFix());
 
   // Seed the score + note from the primary target (first applicable, prefer a
   // selected one) so editing shows what's already there.
@@ -322,39 +333,44 @@ export function RateNote({
         </div>
       )}
 
-      {trackers.length > 1 && (
-        <div class="mb-3">
-          <span class={clsx("mb-1 block text-[11px]", t.faint)}>Send to</span>
-          <div class="space-y-1">
-            {trackers.map((tk) => {
-              const res = resFor(tk);
-              const canSend = applicable.includes(tk);
-              const on = canSend && selected.has(tk);
-              // What this tracker resolved to, or why it isn't a destination.
-              const detail =
-                res == null
-                  ? "…"
-                  : res.resolved
-                    ? levelOk(tk)
-                      ? `→ ${res.title ?? "matched"}`
-                      : "rates the whole entry — pick “show”"
-                    : res.reason === "no_match"
-                      ? `not on ${trackerName(tk)}`
-                      : res.reason === "ambiguous"
-                        ? "ambiguous mapping"
-                        : "not found";
-              return (
+      <div class="mb-3">
+        <span class={clsx("mb-1 block text-[11px]", t.faint)}>Send to</span>
+        <div class="space-y-1">
+          {trackers.map((tk) => {
+            const res = resFor(tk);
+            const canSend = applicable.includes(tk);
+            const on = canSend && selected.has(tk);
+            // Resolved but on the wrong tab (AniList on episode/season): make it a
+            // shortcut to the level it CAN rate rather than a dead disabled row.
+            const wrongLevel = !!res?.resolved && !levelOk(tk);
+            const canFixRow = tk === "trakt" || (tk === "anilist" && canFixAniList);
+            const detail =
+              res == null
+                ? "…"
+                : res.resolved
+                  ? levelOk(tk)
+                    ? `→ ${res.title ?? "matched"}`
+                    : "whole entry only — tap for “show”"
+                  : res.reason === "no_match"
+                    ? `not on ${trackerName(tk)}`
+                    : res.reason === "ambiguous"
+                      ? "ambiguous mapping"
+                      : "not found";
+            return (
+              <div
+                key={tk}
+                class={clsx(
+                  "flex items-center gap-1 rounded-lg pr-1 pl-2.5 ring-inset transition",
+                  t.card,
+                  on ? "ring-2 ring-ikura" : "ring-1 ring-transparent",
+                  !canSend && !wrongLevel && "opacity-60",
+                )}
+              >
                 <button
                   type="button"
-                  key={tk}
-                  disabled={!canSend}
-                  onClick={() => canSend && toggleTarget(tk)}
-                  class={clsx(
-                    "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left ring-inset transition",
-                    t.card,
-                    on ? "ring-2 ring-ikura" : "ring-1 ring-transparent",
-                    !canSend && "opacity-60",
-                  )}
+                  disabled={!canSend && !wrongLevel}
+                  onClick={() => (canSend ? toggleTarget(tk) : wrongLevel && setLevel("show"))}
+                  class="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left"
                 >
                   {tk === "anilist" ? <AniListMark class="size-4" /> : <TraktMark class="size-4" />}
                   <span class={clsx("shrink-0 text-[12px] font-medium", t.heading)}>
@@ -365,71 +381,77 @@ export function RateNote({
                   </span>
                   {on && <Icon name="check" class="shrink-0 text-[12px] text-ikura" />}
                 </button>
-              );
-            })}
-          </div>
-          {canFixAniList && !fixing && (
-            <button
-              type="button"
-              onClick={() => setFixing(true)}
-              class={clsx("mt-1 text-[11px] underline underline-offset-2", t.sub)}
-            >
-              Fix AniList match
-            </button>
-          )}
-          {fixing && (
-            <div class={clsx("mt-2 space-y-2 rounded-lg p-2.5", t.card)}>
-              <div class="flex gap-1.5">
-                <input
-                  {...stopKeys}
-                  value={aniQuery}
-                  onInput={(e) => setAniQuery((e.target as HTMLInputElement).value)}
-                  onKeyDown={(e) => e.key === "Enter" && runAniSearch()}
-                  placeholder="Search AniList…"
-                  class={clsx(
-                    "min-w-0 flex-1 rounded-md px-2 py-1 text-[12px] outline-none ring-inset focus:ring-2",
-                    t.input,
-                  )}
-                />
-                <Btn t={t} tone="ghost" disabled={aniBusy} onClick={runAniSearch}>
-                  <Icon name="search" class="text-[12px]" />
-                </Btn>
+                {canFixRow && (
+                  <IconBtn
+                    t={t}
+                    name="search"
+                    title={`Fix ${trackerName(tk)} match`}
+                    onClick={() => openFix(tk)}
+                  />
+                )}
               </div>
-              {aniResults?.map((o) => (
-                <button
-                  type="button"
-                  key={o.id}
-                  onClick={() => pinAniList(o.id)}
-                  class={clsx(
-                    "block w-full truncate rounded-md px-2 py-1 text-left text-[12px] transition-colors hover:bg-ikura hover:text-white",
-                    t.ghost,
-                  )}
-                >
-                  {o.title}
-                  {o.year ? ` (${o.year})` : ""}
-                  {o.format ? ` · ${o.format.toLowerCase()}` : ""}
-                </button>
-              ))}
-              <div class="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => pinAniList(null)}
-                  class={clsx("text-[11px] underline underline-offset-2", t.sub)}
-                >
-                  Not on AniList
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFixing(false)}
-                  class={clsx("ml-auto text-[11px]", t.faint)}
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
+            );
+          })}
         </div>
-      )}
+        {fixing && (
+          <div class={clsx("mt-2 space-y-2 rounded-lg p-2.5", t.card)}>
+            <div class="flex gap-1.5">
+              <input
+                {...stopKeys}
+                value={aniQuery}
+                onInput={(e) => setAniQuery((e.target as HTMLInputElement).value)}
+                onKeyDown={(e) => e.key === "Enter" && runAniSearch()}
+                placeholder="Search AniList…"
+                class={clsx(
+                  "min-w-0 flex-1 rounded-md px-2 py-1 text-[12px] outline-none ring-inset focus:ring-2",
+                  t.input,
+                )}
+              />
+              <Btn t={t} tone="ghost" disabled={aniBusy} onClick={runAniSearch}>
+                <Icon name="search" class="text-[12px]" />
+              </Btn>
+            </div>
+            {aniResults?.map((o) => (
+              <button
+                type="button"
+                key={o.id}
+                onClick={() => pinAniList(o.id)}
+                class={clsx(
+                  "block w-full truncate rounded-md px-2 py-1 text-left text-[12px] transition-colors hover:bg-ikura hover:text-white",
+                  t.ghost,
+                )}
+              >
+                {o.title}
+                {o.year ? ` (${o.year})` : ""}
+                {o.format ? ` · ${o.format.toLowerCase()}` : ""}
+              </button>
+            ))}
+            <div class="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={resetAniList}
+                class={clsx("text-[11px] underline underline-offset-2", t.sub)}
+              >
+                Reset to automatic
+              </button>
+              <button
+                type="button"
+                onClick={() => pinAniList(null)}
+                class={clsx("text-[11px] underline underline-offset-2", t.sub)}
+              >
+                Not on AniList
+              </button>
+              <button
+                type="button"
+                onClick={() => setFixing(false)}
+                class={clsx("ml-auto text-[11px]", t.faint)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
       <div class="mb-3">
         <span class={clsx("mb-1 block text-[11px]", t.faint)}>Your rating</span>
@@ -471,15 +493,6 @@ export function RateNote({
           <Btn t={t} tone="danger" title="Delete note" disabled={busy} onClick={removeNote}>
             <Icon name="trash" class="text-[13px]" />
           </Btn>
-        )}
-        {hasTrakt && (
-          <button
-            type="button"
-            onClick={onFix}
-            class={clsx("ml-auto text-[12px] underline underline-offset-2", t.sub)}
-          >
-            Wrong match?
-          </button>
         )}
       </div>
       {msg && <p class={clsx("mt-2 text-[11px]", t.sub)}>{msg}</p>}

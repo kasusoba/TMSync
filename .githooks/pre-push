@@ -1,0 +1,12 @@
+#!/bin/sh
+# Enforce CI parity before every push. CI (.github/workflows/ci.yml) runs exactly
+# these five; lint was silently red for a while because it's easy to skip locally.
+# Auto-installed via the root `prepare` script (git config core.hooksPath .githooks).
+set -e
+echo "▶ pre-push: typecheck · lint · test · build · build:firefox"
+pnpm typecheck
+pnpm lint
+pnpm test
+pnpm build
+pnpm build:firefox
+echo "✓ pre-push: CI checks passed"
