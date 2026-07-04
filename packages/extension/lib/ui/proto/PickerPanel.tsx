@@ -1,6 +1,16 @@
 import type { Tracker } from "@/lib/tracker/types";
 import clsx from "clsx";
-import { Btn, Icon, IconBtn, Switch, type Variant, tokens } from "./kit";
+import {
+  AniListMark,
+  Btn,
+  Icon,
+  IconBtn,
+  Switch,
+  type Tokens,
+  TraktMark,
+  type Variant,
+  tokens,
+} from "./kit";
 
 export type FieldKey = "title" | "tmdbId" | "year" | "season" | "episode";
 export interface FieldRow {
@@ -72,25 +82,53 @@ type FieldVal = (key: FieldKey) => string | null | undefined;
 const TRACKER_TOGGLES: {
   key: Tracker;
   label: string;
-  desc: string;
+  mark: preact.ComponentChildren;
   need: (v: FieldVal) => boolean;
   needHint: string;
 }[] = [
   {
     key: "trakt",
     label: "Trakt",
-    desc: "Movies & TV.",
+    mark: <TraktMark class="size-4" />,
     need: (v) => !!v("title") || !!v("tmdbId"),
     needHint: "Needs a title or a TMDB id.",
   },
   {
     key: "anilist",
     label: "AniList",
-    desc: "Anime series.",
+    mark: <AniListMark class="size-4" />,
     need: (v) => !!v("title"),
     needHint: "Needs a title.",
   },
 ];
+
+/** A compact on/off row: switch + label + a hover-info icon (native tooltip) —
+ * keeps the picker uncramped instead of a paragraph under every toggle. */
+function ToggleRow({
+  t,
+  on,
+  label,
+  info,
+  onToggle,
+}: {
+  t: Tokens;
+  on: boolean;
+  label: string;
+  info: string;
+  onToggle?: () => void;
+}) {
+  return (
+    <div class={clsx("mb-3 flex items-center gap-2.5 rounded-lg px-2.5 py-2", t.card)}>
+      <button type="button" onClick={onToggle} class="flex flex-1 items-center gap-2.5 text-left">
+        <Switch on={on} t={t} />
+        <span class={clsx("text-[12px]", t.heading)}>{label}</span>
+      </button>
+      <span class={t.faint} title={info}>
+        <Icon name="info" class="text-[13px]" />
+      </span>
+    </div>
+  );
+}
 
 export function PickerPanel(p: PickerPanelProps) {
   const t = tokens(p.variant);
@@ -129,14 +167,9 @@ export function PickerPanel(p: PickerPanelProps) {
       >
         {/* header — always visible */}
         <header class="mb-3 flex shrink-0 items-center justify-between">
-          <div class="flex items-center gap-2">
-            <span class="grid size-6 place-items-center rounded-md bg-ikura text-white">
-              <Icon name="target" class="text-[12px]" />
-            </span>
-            <strong class={clsx("text-[13px]", t.heading)}>
-              {p.mode === "edit" ? "Edit site" : "Set up site"}
-            </strong>
-          </div>
+          <strong class={clsx("text-[13px]", t.heading)}>
+            {p.mode === "edit" ? "Edit site" : "Set up site"}
+          </strong>
           <IconBtn t={t} name="x" title="Close" onClick={p.onClose} />
         </header>
 
@@ -176,8 +209,8 @@ export function PickerPanel(p: PickerPanelProps) {
             trackers can be added to this list without touching the rest. */}
         <div class="mb-3">
           <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>Scrobble to</span>
-          <div class="space-y-1">
-            {TRACKER_TOGGLES.map(({ key, label, desc, need, needHint }) => {
+          <div class="flex flex-wrap gap-1.5">
+            {TRACKER_TOGGLES.map(({ key, label, mark, need, needHint }) => {
               const canEnable = need(fieldVal);
               const on = p.trackers.includes(key);
               const disabled = !canEnable && !on;
@@ -186,19 +219,18 @@ export function PickerPanel(p: PickerPanelProps) {
                   type="button"
                   key={key}
                   disabled={disabled}
-                  title={disabled ? needHint : undefined}
+                  title={disabled ? needHint : label}
                   onClick={() => !disabled && p.onTrackerToggle?.(key)}
                   class={clsx(
-                    "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left",
+                    "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 ring-inset transition",
                     t.card,
-                    disabled && "opacity-50",
+                    on ? "ring-2 ring-ikura" : "ring-1 ring-transparent",
+                    disabled && "opacity-40",
                   )}
                 >
-                  <Switch on={on} t={t} />
+                  {mark}
                   <span class={clsx("text-[12px] font-medium", t.heading)}>{label}</span>
-                  <span class={clsx("ml-auto truncate pl-2 text-[10px]", t.faint)}>
-                    {disabled ? needHint : desc}
-                  </span>
+                  {on && <Icon name="check" class="text-[12px] text-ikura" />}
                 </button>
               );
             })}
@@ -214,27 +246,59 @@ export function PickerPanel(p: PickerPanelProps) {
           )}
         </div>
 
+        {/* type — right under the trackers. Hidden in manual mode (nothing scraped)
+            and when AniList is the only tracker (always an anime series). */}
+        {!p.manual && !(p.trackers.length === 1 && p.trackers[0] === "anilist") && (
+          <label class="mb-3 block">
+            <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>Type</span>
+            <div class="relative">
+              <select
+                value={p.mediaType}
+                onChange={(e) =>
+                  p.onMediaTypeChange?.(
+                    (e.target as HTMLSelectElement).value as "auto" | "movie" | "show",
+                  )
+                }
+                class={clsx(
+                  "w-full appearance-none rounded-lg py-1.5 pr-8 pl-2.5 text-[13px] outline-none ring-inset focus:ring-2",
+                  t.input,
+                )}
+              >
+                <option value="auto">Auto</option>
+                <option value="movie">Movie</option>
+                <option value="show">Show</option>
+              </select>
+              <Icon
+                name="down"
+                class={clsx(
+                  "pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 text-[14px]",
+                  t.faint,
+                )}
+              />
+            </div>
+          </label>
+        )}
+
         {/* manual mode — a no-title concept; irrelevant once AniList is on (anime
             always has a title). Shown only when AniList isn't enabled. */}
         {!p.trackers.includes("anilist") && (
-          <button
-            type="button"
-            onClick={() => p.onManualChange?.(!p.manual)}
-            class={clsx(
-              "mb-3 flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left",
-              t.card,
-            )}
-          >
-            <Switch on={!!p.manual} t={t} />
-            <span class="min-w-0 flex-1">
-              <span class={clsx("block text-[12px]", t.heading)}>Pick titles manually</span>
-              <span class={clsx("block text-[10px]", t.faint)}>
-                For players with no title to read (local files, watch parties). You’ll choose each
-                title from the badge.
-              </span>
-            </span>
-          </button>
+          <ToggleRow
+            t={t}
+            on={!!p.manual}
+            label="Pick titles manually"
+            info="For players with no title to read (local files, watch parties). You’ll choose each title from the badge."
+            onToggle={() => p.onManualChange?.(!p.manual)}
+          />
         )}
+
+        {/* player-in-a-separate-frame */}
+        <ToggleRow
+          t={t}
+          on={p.iframe}
+          label="Player loads in a separate frame"
+          info="Turn on if the video is inside an iframe from another site."
+          onToggle={() => p.onIframeChange?.(!p.iframe)}
+        />
 
         {p.manual ? (
           <div class="mb-3 space-y-2">
@@ -468,63 +532,8 @@ export function PickerPanel(p: PickerPanelProps) {
               </div>
             )}
 
-            {/* type — N/A when AniList is the only tracker (always an anime series);
-                still shown when Trakt is in the mix (it needs movie vs show). */}
-            <label
-              class={clsx(
-                "mb-2 block",
-                p.trackers.length === 1 && p.trackers[0] === "anilist" && "hidden",
-              )}
-            >
-              <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>Type</span>
-              <div class="relative">
-                <select
-                  value={p.mediaType}
-                  onChange={(e) =>
-                    p.onMediaTypeChange?.(
-                      (e.target as HTMLSelectElement).value as "auto" | "movie" | "show",
-                    )
-                  }
-                  class={clsx(
-                    "w-full appearance-none rounded-lg py-1.5 pr-8 pl-2.5 text-[13px] outline-none ring-inset focus:ring-2",
-                    t.input,
-                  )}
-                >
-                  <option value="auto">Auto</option>
-                  <option value="movie">Movie</option>
-                  <option value="show">Show</option>
-                </select>
-                <Icon
-                  name="down"
-                  class={clsx(
-                    "pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 text-[14px]",
-                    t.faint,
-                  )}
-                />
-              </div>
-            </label>
           </>
         )}
-
-        {/* iframe toggle — its own full-width row so it sits clean (both modes) */}
-        <button
-          type="button"
-          onClick={() => p.onIframeChange?.(!p.iframe)}
-          class={clsx(
-            "mb-3 flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left",
-            t.card,
-          )}
-        >
-          <Switch on={p.iframe} t={t} />
-          <span class="min-w-0 flex-1">
-            <span class={clsx("block text-[12px]", t.heading)}>
-              Player loads in a separate frame
-            </span>
-            <span class={clsx("block text-[10px]", t.faint)}>
-              Turn on if the video is inside an iframe from another site.
-            </span>
-          </span>
-        </button>
 
         {/* preview */}
         <div
