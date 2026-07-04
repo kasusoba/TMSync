@@ -3,6 +3,7 @@ import type { LinkTemplates } from "@tmsync/shared";
 import clsx from "clsx";
 import { useState } from "preact/hooks";
 import { Btn, Icon, type Tokens } from "./kit";
+import { TrackerTab } from "./TrackerTab";
 
 /** A saved quick link's editable shape (per-site "watch on" templates). */
 export interface QuickLinkValue extends LinkTemplates {
@@ -94,26 +95,7 @@ export function QuickLinkEditor({
       {/* shows-on tracker */}
       <div>
         <span class={clsx("mb-1 block text-[10px] font-medium", t.faint)}>Shows on</span>
-        <div class="flex gap-1">
-          {(
-            [
-              ["trakt", "Trakt"],
-              ["anilist", "AniList"],
-            ] as const
-          ).map(([value, lbl]) => (
-            <button
-              type="button"
-              key={value}
-              onClick={() => switchTracker(value)}
-              class={clsx(
-                "flex-1 rounded-md py-1 text-[11px] font-medium transition-colors",
-                tracker === value ? "bg-ikura text-white" : t.ghost,
-              )}
-            >
-              {lbl}
-            </button>
-          ))}
-        </div>
+        <TrackerTab t={t} value={tracker} onChange={switchTracker} />
       </div>
 
       {field("Name", name, setName, host)}
