@@ -210,7 +210,7 @@ function BadgeRoot() {
       dy = ev.clientY - e.clientY;
       if (!moved && Math.hypot(dx, dy) > 4) moved = true;
       if (moved) {
-        el.style.transform = `translate(${dx}px, ${dy}px) scale(1.06)`; // a little "lift"
+        el.style.transform = `translate(${dx}px, ${dy}px)`;
         pointer = { x: ev.clientX, y: ev.clientY };
       }
     };
@@ -314,6 +314,12 @@ function BadgeRoot() {
   // is written straight to the DOM, so the base position stays put under it.)
   const posStyle = pos ? edgeStyle(pos) : undefined;
   const anchor = pos ? "" : DEFAULT_CORNER;
+  // Which vertical edge the container is pinned to (matches edgeStyle). The status
+  // bar sits ON that edge so it stays put when a panel expands — the panel grows
+  // toward screen-centre. Default corner (no pos) is bottom-left → bottom-pinned.
+  const bottomPinned = pos
+    ? pos.edge === "bottom" || ((pos.edge === "left" || pos.edge === "right") && pos.offset >= 0.5)
+    : true;
   const summary = `TMSync · ${status.detail ?? s.label}${status.title ? ` — ${status.title}` : ""}`;
 
   // Minimized: a status dot with a soft glow. The dot is also the drag handle.
@@ -360,9 +366,13 @@ function BadgeRoot() {
       )}
       style={posStyle}
       // Any panel title ([data-tmsync-drag]) drags the whole popup, like the badge
-      // status bar — so you can reposition an expanded panel by its header.
+      // status bar — so you can reposition an expanded panel by its header. Ignore
+      // presses on the header's own controls (back/close) so those still click.
       onPointerDown={(e) => {
-        if ((e.target as HTMLElement).closest?.("[data-tmsync-drag]")) startDrag(e);
+        const el = e.target as HTMLElement;
+        if (el.closest?.("[data-tmsync-drag]") && !el.closest?.("button, input, textarea, a")) {
+          startDrag(e);
+        }
       }}
     >
       {panel === "review" && media && (
@@ -375,8 +385,12 @@ function BadgeRoot() {
           onFixAniList={() => setPanel("anilist-fix")}
         />
       )}
-      {panel === "fix" && <Correction t={t} onClose={() => setPanel(null)} />}
-      {panel === "anilist-fix" && <AniListCorrection t={t} onClose={() => setPanel(null)} />}
+      {panel === "fix" && (
+        <Correction t={t} onClose={() => setPanel(null)} onBack={() => setPanel("review")} />
+      )}
+      {panel === "anilist-fix" && (
+        <AniListCorrection t={t} onClose={() => setPanel(null)} onBack={() => setPanel("review")} />
+      )}
       {panel === "manual" && (
         <ManualPick t={t} onClose={() => setPanel(null)} onDone={() => setPanel(null)} />
       )}
@@ -483,12 +497,15 @@ function BadgeRoot() {
         </div>
       )}
 
-      {/* The status bar doubles as the drag handle (drag to reposition). */}
+      {/* The status bar doubles as the drag handle (drag to reposition). `order`
+          pins it to the docked edge (top when top-pinned) so it stays fixed while a
+          panel expands the other way. */}
       <div
         class={clsx(
           "inline-flex cursor-grab touch-none items-center gap-2.5 rounded-xl py-2 pr-2 pl-3 shadow-xl shadow-black/30 active:cursor-grabbing",
           t.panel,
         )}
+        style={{ order: bottomPinned ? 1 : -1 }}
         onPointerDown={startDrag}
       >
         <span class={clsx("size-2.5 shrink-0 rounded-full", s.color)} />
