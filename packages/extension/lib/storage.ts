@@ -1,6 +1,7 @@
 import type { BadgeStatus } from "@/messaging";
 import type { LinkTemplates, ParsedMedia, Recipe } from "@tmsync/shared";
 import { storage } from "wxt/utils/storage";
+import type { AnimapOverrides } from "./animap/derive";
 import type { AniListIdentity, AniListTokens } from "./anilist/types";
 import type { Tracker } from "./tracker/types";
 import type { ResolvedIdentity, TraktTokens } from "./trakt/types";
@@ -266,4 +267,14 @@ export interface BadgePrefs {
 }
 export const badgePrefs = storage.defineItem<BadgePrefs>("sync:badge_prefs", {
   fallback: { mode: "full", position: null },
+});
+
+/**
+ * User corrections to the anime-map crosswalk (multi-track — docs/MULTI-TRACK.md).
+ * A LOCAL override layer above Fribb (precedence: override › Fribb › miss) — fixes
+ * a wrong/missed/ambiguous derived match by pinning (or blocking) the target entry.
+ * Local + regenerable-by-hand; contributable back like recipes.
+ */
+export const animapOverrides = storage.defineItem<AnimapOverrides>("local:animap_overrides", {
+  fallback: { forward: {}, reverse: {} },
 });

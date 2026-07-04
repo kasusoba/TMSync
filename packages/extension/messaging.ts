@@ -1,3 +1,4 @@
+import type { AniListSearchOption } from "@/lib/anilist/client";
 import type { ScoreFormat } from "@/lib/anilist/types";
 import type { RatingLevel, Tracker, WatchedState } from "@/lib/tracker/types";
 import type { ResolvedIdentity, ScrobbleAction, TraktSearchOption } from "@/lib/trakt/types";
@@ -236,6 +237,14 @@ export interface ProtocolMap {
   searchTrakt(q: { query: string; type?: "movie" | "show" }): TraktSearchOption[];
   /** Persist a correction for the scraped media and re-resolve the tab. */
   saveCorrection(data: { media: ParsedMedia; identity: ResolvedIdentity; tabId?: number }): void;
+  /** Free-text AniList search for the DERIVED-tracker correction picker (multi-track). */
+  searchAniList(q: { query: string }): AniListSearchOption[];
+  /** Pin (or block, via `anilistId: null`) the AniList entry for this TMDB item — a
+   * local override above the Fribb crosswalk (docs/MULTI-TRACK.md) — then re-resolve. */
+  setAniListMatch(q: { media: ParsedMedia; anilistId: number | null; tabId?: number }): {
+    ok: boolean;
+    error?: string;
+  };
   /** Background → frames: a correction landed, re-resolve the current session. */
   recheck(): void;
 

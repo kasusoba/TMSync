@@ -20,8 +20,18 @@ interface MediaNode {
   id: number;
   idMal?: number | null;
   episodes?: number | null;
+  format?: string | null;
   startDate?: { year?: number | null } | null;
   title?: { romaji?: string | null; english?: string | null } | null;
+}
+
+/** A search result for the AniList correction picker (mirrors TraktSearchOption). */
+export interface AniListSearchOption {
+  id: number;
+  title: string;
+  year?: number;
+  episodes: number | null;
+  format?: string;
 }
 
 /** Pick a display title + map a `Media` node to our identity. Pure (unit-tested). */
@@ -125,6 +135,33 @@ export async function resolveById(anilistId: number): Promise<AniListIdentity | 
   const identity = mediaToIdentity(data.Media);
   await anilistResolutionCache.setValue({ ...cache, [key]: identity });
   return identity;
+}
+
+const SEARCH_LIST_QUERY = `
+query ($search: String) {
+  Page(perPage: 8) {
+    media(search: $search, type: ANIME, sort: SEARCH_MATCH) {
+      id episodes format
+      startDate { year }
+      title { romaji english }
+    }
+  }
+}`;
+
+/** Free-text AniList search for the correction picker — top matches (reads work
+ * unauthenticated). Returns [] for a blank query. */
+export async function searchAniList(query: string): Promise<AniListSearchOption[]> {
+  if (!query.trim()) return [];
+  const data = await gql<{ Page: { media: MediaNode[] } | null }>(SEARCH_LIST_QUERY, {
+    search: query,
+  });
+  return (data.Page?.media ?? []).map((n) => ({
+    id: n.id,
+    title: n.title?.english || n.title?.romaji || `AniList #${n.id}`,
+    year: n.startDate?.year ?? undefined,
+    episodes: n.episodes ?? null,
+    format: n.format ?? undefined,
+  }));
 }
 
 const LIST_ENTRY_QUERY = `

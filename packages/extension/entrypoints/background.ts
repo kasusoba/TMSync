@@ -1,6 +1,6 @@
 import { RECIPES } from "@/config";
 import { confirmAniListRewatch, resolveAniListById } from "@/lib/anilist/adapter";
-import { deriveMedia } from "@/lib/animap/derive";
+import { type AnimapOverrides, deriveMediaWith, forwardKey } from "@/lib/animap/derive";
 import {
   connect as anilistConnect,
   disconnect as anilistDisconnect,
@@ -12,6 +12,7 @@ import {
   resolve as anilistResolve,
   saveNotes as anilistSaveNotes,
   saveRating as anilistSaveRating,
+  searchAniList,
   viewerScoreFormat,
 } from "@/lib/anilist/client";
 import { ANILIST } from "@/lib/anilist/config";
@@ -21,6 +22,7 @@ import {
   type QuickLinkSite,
   anilistNotes,
   anilistRatings,
+  animapOverrides,
   corrections,
   customRecipes,
   enabledOrigins,
@@ -210,11 +212,12 @@ export default defineBackground(() => {
       }
     }
 
-    // Derive + record every OTHER enabled tracker via the crosswalk.
+    // Derive + record every OTHER enabled tracker via the crosswalk (+ overrides).
     const derived = await recordDerivedTrackers(
       nativeItem,
       enabled.filter((t) => t !== native),
       data,
+      await animapOverrides.getValue(),
     );
 
     // Native is the badge's primary when enabled; otherwise promote the first
@@ -250,7 +253,7 @@ export default defineBackground(() => {
   onMessage("resolveAll", async ({ data }) => {
     const trackers = data.trackers?.length ? data.trackers : (["trakt"] as Tracker[]);
     try {
-      return await resolveAcross(data.media, trackers);
+      return await resolveAcross(data.media, trackers, await animapOverrides.getValue());
     } catch {
       return trackers.map((tracker) => ({ tracker, resolved: false, reason: "http" }));
     }
@@ -372,6 +375,27 @@ export default defineBackground(() => {
     // Re-resolve the current session in the tab (replaces the wrong scrobble).
     const tabId = data.tabId ?? sender.tab?.id;
     if (tabId !== undefined) void sendMessage("recheck", undefined, tabId);
+  });
+
+  onMessage("searchAniList", async ({ data }) => {
+    try {
+      return await searchAniList(data.query);
+    } catch {
+      return [];
+    }
+  });
+
+  // Pin/block the AniList entry for this TMDB item — a local override above Fribb.
+  onMessage("setAniListMatch", async ({ data, sender }) => {
+    if (data.media.tmdbId === undefined) {
+      return { ok: false, error: "no TMDB id on this item to key the override" };
+    }
+    const ov = await animapOverrides.getValue();
+    ov.forward[forwardKey(data.media.tmdbId, data.media.season)] = data.anilistId;
+    await animapOverrides.setValue(ov);
+    const tabId = data.tabId ?? sender.tab?.id;
+    if (tabId !== undefined) void sendMessage("recheck", undefined, tabId);
+    return { ok: true };
   });
 
   // The user confirmed a rewatch of a COMPLETED AniList cour → write REPEATING
@@ -734,6 +758,7 @@ function derivedToReply(d: DerivedOutcome): ScrobbleReply {
 async function resolveAcross(
   media: ParsedMedia,
   trackers: Tracker[],
+  overrides: AnimapOverrides,
 ): Promise<TrackerResolution[]> {
   const native = inferNativeTracker(media);
   const needNative =
@@ -756,7 +781,7 @@ async function resolveAcross(
       );
       continue;
     }
-    const d = deriveMedia(tk, media, nativeItem);
+    const d = deriveMediaWith(tk, media, nativeItem, overrides);
     if (d.kind === "miss") {
       out.push({ tracker: tk, resolved: false, reason: "no_match" });
       continue;
@@ -786,10 +811,11 @@ async function recordDerivedTrackers(
   nativeItem: TrackedItem | null,
   targets: Tracker[],
   data: ScrobbleRequest,
+  overrides: AnimapOverrides,
 ): Promise<DerivedOutcome[]> {
   const out: DerivedOutcome[] = [];
   for (const target of targets) {
-    const d = deriveMedia(target, data.media, nativeItem);
+    const d = deriveMediaWith(target, data.media, nativeItem, overrides);
     if (d.kind === "miss") {
       out.push({ tracker: target, ok: false, skipped: true, reason: "no_match" });
       continue;
