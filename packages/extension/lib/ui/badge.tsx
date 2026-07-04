@@ -17,6 +17,7 @@ import {
   ManualPick,
   RateNote,
   RatingRow,
+  TrackingRows,
 } from "./scrobble-panels";
 import { keepAboveModals } from "./top-layer";
 
@@ -128,7 +129,7 @@ function BadgeRoot() {
   const [status, setStatus] = useState<BadgeStatus | null>(null);
   const [minimized, setMinimized] = useState(false);
   const [panel, setPanel] = useState<
-    null | "review" | "fix" | "anilist-fix" | "manual" | "episode"
+    null | "now" | "review" | "fix" | "anilist-fix" | "manual" | "episode"
   >(null);
   const [media, setMedia] = useState<ParsedMedia | null>(null);
   const [tracker, setTracker] = useState<Tracker>("trakt");
@@ -375,21 +376,36 @@ function BadgeRoot() {
         }
       }}
     >
+      {panel === "now" && media && (
+        <div class={clsx("w-full rounded-2xl p-3.5 shadow-2xl shadow-black/40", t.panel)}>
+          <TrackingRows
+            t={t}
+            media={media}
+            trackers={trackers}
+            onFix={(tk) =>
+              setPanel(tk === "anilist" ? "anilist-fix" : manualMode ? "manual" : "fix")
+            }
+          />
+          <Btn t={t} tone="primary" class="mt-3 w-full" onClick={() => setPanel("review")}>
+            <Icon name="edit" class="text-[12px]" />
+            Rate / note
+          </Btn>
+        </div>
+      )}
       {panel === "review" && media && (
         <RateNote
           media={media}
           trackers={trackers}
           t={t}
           onClose={() => setPanel(null)}
-          onFix={() => setPanel(manualMode ? "manual" : "fix")}
-          onFixAniList={() => setPanel("anilist-fix")}
+          onBack={() => setPanel("now")}
         />
       )}
       {panel === "fix" && (
-        <Correction t={t} onClose={() => setPanel(null)} onBack={() => setPanel("review")} />
+        <Correction t={t} onClose={() => setPanel(null)} onBack={() => setPanel("now")} />
       )}
       {panel === "anilist-fix" && (
-        <AniListCorrection t={t} onClose={() => setPanel(null)} onBack={() => setPanel("review")} />
+        <AniListCorrection t={t} onClose={() => setPanel(null)} onBack={() => setPanel("now")} />
       )}
       {panel === "manual" && (
         <ManualPick t={t} onClose={() => setPanel(null)} onDone={() => setPanel(null)} />
@@ -515,7 +531,7 @@ function BadgeRoot() {
           onClick={() => {
             if (consumeDrag()) return;
             setPanel((p) =>
-              p ? null : status.pick ? "manual" : status.needEpisode ? "episode" : "review",
+              p ? null : status.pick ? "manual" : status.needEpisode ? "episode" : "now",
             );
           }}
           title={
@@ -523,7 +539,7 @@ function BadgeRoot() {
               ? "Pick what you’re watching"
               : status.needEpisode
                 ? "Set the episode you’re watching"
-                : "Rate, note, or fix the match · drag the bar to move"
+                : "Show tracking, rate, or fix the match · drag the bar to move"
           }
         >
           <span class={clsx("block text-[12px] font-semibold", t.heading)}>

@@ -162,30 +162,106 @@ export function RatingRow({
   );
 }
 
+const trackerName = (tk: Tracker): string => (tk === "anilist" ? "AniList" : "Trakt");
+
+/**
+ * The per-tracker destinations readout for the now-playing view (badge + popup):
+ * what each enabled tracker resolved to, each with a "fix" (edit) that opens the
+ * matching correction panel. Correction lives HERE — where the match is shown — not
+ * buried in the rate/note composer. Does its own `resolveAll`.
+ */
+export function TrackingRows({
+  t,
+  media,
+  trackers,
+  onFix,
+}: {
+  t: Tokens;
+  media: ParsedMedia;
+  trackers: Tracker[];
+  onFix: (tracker: Tracker) => void;
+}) {
+  const [resolutions, setResolutions] = useState<TrackerResolution[] | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: key on the tracker set
+  useEffect(() => {
+    setResolutions(null);
+    void sendMessage("resolveAll", { media, trackers }).then(setResolutions);
+  }, [media, trackers.join(",")]);
+  const resFor = (tk: Tracker) => resolutions?.find((r) => r.tracker === tk);
+  // Trakt is always fixable; AniList only when we have a tmdbId to key the override.
+  const canFix = (tk: Tracker) =>
+    tk === "trakt" || (tk === "anilist" && media.tmdbId !== undefined);
+
+  return (
+    <div>
+      <span class={clsx("mb-1 block text-[11px]", t.faint)}>Tracking</span>
+      <div class="space-y-1">
+        {trackers.map((tk) => {
+          const res = resFor(tk);
+          const detail =
+            res == null
+              ? "…"
+              : res.resolved
+                ? `→ ${res.title ?? "matched"}`
+                : res.reason === "no_match"
+                  ? `not on ${trackerName(tk)}`
+                  : res.reason === "ambiguous"
+                    ? "ambiguous mapping"
+                    : "not found";
+          return (
+            <div
+              key={tk}
+              class={clsx(
+                "flex items-center gap-1 rounded-lg pr-1 pl-2.5",
+                t.card,
+                !res?.resolved && "opacity-70",
+              )}
+            >
+              <span class="flex min-w-0 flex-1 items-center gap-2 py-1.5">
+                {tk === "anilist" ? <AniListMark class="size-4" /> : <TraktMark class="size-4" />}
+                <span class={clsx("shrink-0 text-[12px] font-medium", t.heading)}>
+                  {trackerName(tk)}
+                </span>
+                <span class={clsx("ml-1 min-w-0 flex-1 truncate text-[10px]", t.faint)}>
+                  {detail}
+                </span>
+              </span>
+              {canFix(tk) && (
+                <IconBtn
+                  t={t}
+                  name="edit"
+                  title={`Fix ${trackerName(tk)} match`}
+                  onClick={() => onFix(tk)}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /**
  * Rate + keep a single editable note for the matched item. Adapter-driven: Trakt
  * rates show/season/episode with a public comment (≥5 words, spoiler flag);
  * AniList rates the single cour entry with a private note (no spoiler, no minimum).
  */
-const trackerName = (tk: Tracker): string => (tk === "anilist" ? "AniList" : "Trakt");
 
 export function RateNote({
   media,
   trackers,
   t,
   onClose,
-  onFix,
-  onFixAniList,
+  onBack,
 }: {
   media: ParsedMedia;
   /** The item's enabled trackers (multi-track). */
   trackers: Tracker[];
   t: Tokens;
   onClose: () => void;
-  /** Open the Trakt fix-match panel. */
-  onFix: () => void;
-  /** Open the AniList fix-match panel (multi-track derived tracker). */
-  onFixAniList?: () => void;
+  /** Back to the now-playing view (correction now lives there, not here). */
+  onBack?: () => void;
 }) {
   const isShow = media.season !== undefined || media.episode !== undefined;
   const hasTrakt = trackers.includes("trakt");
@@ -225,13 +301,6 @@ export function RateNote({
   const [hasNote, setHasNote] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-
-  // AniList correction (derived tracker): only meaningful when we have a tmdbId to
-  // key the override. Per-tracker "fix" opens the matching panel — Trakt (onFix) or
-  // AniList (onFixAniList) — same entry point (a row edit icon) for consistency.
-  const canFixAniList =
-    trackers.includes("anilist") && media.tmdbId !== undefined && !!onFixAniList;
-  const openFix = (tk: Tracker) => (tk === "anilist" ? onFixAniList?.() : onFix());
 
   // Seed the score + note from the primary target (first applicable, prefer a
   // selected one) so editing shows what's already there.
@@ -316,7 +385,7 @@ export function RateNote({
 
   return (
     <div class={panelClass(t)}>
-      <PanelHeader t={t} title="Rate & note" onClose={onClose} />
+      <PanelHeader t={t} title="Rate & note" onBack={onBack} onClose={onClose} />
 
       {isShow && (
         <div class="mb-3">
@@ -349,7 +418,6 @@ export function RateNote({
             // Resolved but on the wrong tab (AniList on episode/season): make it a
             // shortcut to the level it CAN rate rather than a dead disabled row.
             const wrongLevel = !!res?.resolved && !levelOk(tk);
-            const canFixRow = tk === "trakt" || (tk === "anilist" && canFixAniList);
             const detail =
               res == null
                 ? "…"
@@ -363,39 +431,27 @@ export function RateNote({
                       ? "ambiguous mapping"
                       : "not found";
             return (
-              <div
+              <button
+                type="button"
                 key={tk}
+                disabled={!canSend && !wrongLevel}
+                onClick={() => (canSend ? toggleTarget(tk) : wrongLevel && setLevel("show"))}
                 class={clsx(
-                  "flex items-center gap-1 rounded-lg pr-1 pl-2.5 ring-inset transition",
+                  "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left ring-inset transition",
                   t.card,
                   on ? "ring-2 ring-ikura" : "ring-1 ring-transparent",
                   !canSend && !wrongLevel && "opacity-60",
                 )}
               >
-                <button
-                  type="button"
-                  disabled={!canSend && !wrongLevel}
-                  onClick={() => (canSend ? toggleTarget(tk) : wrongLevel && setLevel("show"))}
-                  class="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left"
-                >
-                  {tk === "anilist" ? <AniListMark class="size-4" /> : <TraktMark class="size-4" />}
-                  <span class={clsx("shrink-0 text-[12px] font-medium", t.heading)}>
-                    {trackerName(tk)}
-                  </span>
-                  <span class={clsx("ml-1 min-w-0 flex-1 truncate text-[10px]", t.faint)}>
-                    {detail}
-                  </span>
-                  {on && <Icon name="check" class="shrink-0 text-[12px] text-ikura" />}
-                </button>
-                {canFixRow && (
-                  <IconBtn
-                    t={t}
-                    name="edit"
-                    title={`Fix ${trackerName(tk)} match`}
-                    onClick={() => openFix(tk)}
-                  />
-                )}
-              </div>
+                {tk === "anilist" ? <AniListMark class="size-4" /> : <TraktMark class="size-4" />}
+                <span class={clsx("shrink-0 text-[12px] font-medium", t.heading)}>
+                  {trackerName(tk)}
+                </span>
+                <span class={clsx("ml-1 min-w-0 flex-1 truncate text-[10px]", t.faint)}>
+                  {detail}
+                </span>
+                {on && <Icon name="check" class="shrink-0 text-[12px] text-ikura" />}
+              </button>
             );
           })}
         </div>
@@ -1031,8 +1087,7 @@ export function NowPlaying({
         trackers={trackers}
         t={t}
         onClose={() => setPanel(null)}
-        onFix={() => setPanel("fix")}
-        onFixAniList={() => setPanel("anilist-fix")}
+        onBack={() => setPanel(null)}
       />
     );
   }
@@ -1042,7 +1097,7 @@ export function NowPlaying({
         t={t}
         tabId={tabId}
         onClose={() => setPanel(null)}
-        onBack={() => setPanel("review")}
+        onBack={() => setPanel(null)}
       />
     );
   if (panel === "anilist-fix")
@@ -1051,7 +1106,7 @@ export function NowPlaying({
         t={t}
         tabId={tabId}
         onClose={() => setPanel(null)}
-        onBack={() => setPanel("review")}
+        onBack={() => setPanel(null)}
       />
     );
   if (panel === "manual") {
@@ -1117,18 +1172,18 @@ export function NowPlaying({
         </Btn>
       )}
       {idle && media && (
-        <div class="flex gap-2">
-          <Btn t={t} tone="ghost" class="flex-1" onClick={() => setPanel("review")}>
+        <>
+          <TrackingRows
+            t={t}
+            media={media}
+            trackers={trackers}
+            onFix={(tk) => setPanel(tk === "anilist" ? "anilist-fix" : "fix")}
+          />
+          <Btn t={t} tone="ghost" class="w-full" onClick={() => setPanel("review")}>
             <Icon name="edit" class="text-[12px]" />
             Rate / note
           </Btn>
-          {tracker !== "anilist" && (
-            <Btn t={t} tone="ghost" class="flex-1" onClick={() => setPanel("fix")}>
-              <Icon name="search" class="text-[12px]" />
-              Fix match
-            </Btn>
-          )}
-        </div>
+        </>
       )}
     </div>
   );
