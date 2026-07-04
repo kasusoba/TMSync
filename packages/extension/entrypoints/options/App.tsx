@@ -349,6 +349,8 @@ export function App() {
   const [recipeNote, setRecipeNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [justAdded, setJustAdded] = useState<string | null>(null);
+  /** The single unsaved quick-link draft (from "Add blank"), if any — cleared on save. */
+  const [draftId, setDraftId] = useState<string | null>(null);
   const [active, setActive] = useState("account");
   const [q, setQ] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
@@ -439,6 +441,7 @@ export function App() {
       : [...existing, site];
     await quickLinks.setValue(next);
     setLinks(next);
+    if (site.id === draftId) setDraftId(null); // draft is now persisted
   };
   const toggleLink = async (id: string) => {
     const next = (await quickLinks.getValue()).map((s) =>
@@ -484,10 +487,13 @@ export function App() {
     await quickLinks.setValue(linksRef.current);
   };
   const addLink = () => {
-    // A local-only DRAFT — not written to storage until the user hits Save (which
-    // upserts it). So bailing out (or reloading) without saving leaves nothing behind.
+    // Only ONE unsaved draft at a time — if a blank one is still open, don't stack
+    // another. A local-only DRAFT: not written to storage until the user hits Save
+    // (which upserts it), so bailing out without saving leaves nothing behind.
+    if (draftId && links.some((l) => l.id === draftId)) return;
     const id = `ql-${Date.now()}`;
     setLinks((prev) => [...prev, { id, name: "New site", enabled: true }]);
+    setDraftId(id);
     setJustAdded(id);
   };
   const addFromRecipe = async (sg: RecipeSuggestion) => {
