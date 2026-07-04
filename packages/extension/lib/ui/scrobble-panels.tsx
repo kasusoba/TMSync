@@ -266,9 +266,14 @@ export function RateNote({
   const isShow = media.season !== undefined || media.episode !== undefined;
   const hasTrakt = trackers.includes("trakt");
 
-  // Levels: a movie has just "movie"; a show is episode/season/show.
+  // Levels: a movie has just "movie"; a show is episode/season/show. But the level
+  // picker is a Trakt concept — AniList rates only the cour (≈ the "show" level). So
+  // an AniList-only show has no picker and sits at "show" (its cour).
   const levels: RatingLevel[] = isShow ? ["episode", "season", "show"] : ["movie"];
-  const [level, setLevel] = useState<RatingLevel>(levels[0] ?? "movie");
+  const showLevelPicker = isShow && hasTrakt;
+  const [level, setLevel] = useState<RatingLevel>(
+    isShow && !hasTrakt ? "show" : (levels[0] ?? "movie"),
+  );
 
   // What each enabled tracker ACTUALLY resolves to for this item (async). Gates
   // the targets: e.g. a non-anime show enabled for AniList (Boondocks on a general
@@ -387,7 +392,7 @@ export function RateNote({
     <div class={panelClass(t)}>
       <PanelHeader t={t} title="Rate & note" onBack={onBack} onClose={onClose} />
 
-      {isShow && (
+      {showLevelPicker && (
         <div class="mb-3">
           <span class={clsx("mb-1 block text-[11px]", t.faint)}>Rate &amp; note the</span>
           <div class="flex gap-1">

@@ -208,16 +208,6 @@ export function PopupView(p: PopupViewProps) {
       {/* Now scrobbling — status + any pending prompt for the active tab. */}
       {p.nowPlaying}
 
-      {/* On-page badge — one line, right under the status. */}
-      {p.badgeMode && (
-        <div class="flex items-center justify-between">
-          <span class={clsx("text-[11px] font-semibold uppercase tracking-wider", t.faint)}>
-            On-page badge
-          </span>
-          <BadgeModeToggle t={t} mode={p.badgeMode} onMode={p.onBadgeMode} />
-        </div>
-      )}
-
       {/* This page — video DETECTION (access + frames) and the RECIPE (picker),
           kept visibly separate so it's clear the two are different things. */}
       <Section
@@ -282,6 +272,16 @@ export function PopupView(p: PopupViewProps) {
           </div>
         )}
       </Section>
+
+      {/* On-page badge — between this-page and quick links. One line, icon toggle. */}
+      {p.badgeMode && (
+        <div class="flex items-center justify-between">
+          <span class={clsx("text-[11px] font-semibold uppercase tracking-wider", t.faint)}>
+            On-page badge
+          </span>
+          <BadgeModeToggle t={t} mode={p.badgeMode} onMode={p.onBadgeMode} />
+        </div>
+      )}
 
       {/* Quick links — per-SITE, editable from any page (not tied to a recipe). */}
       {p.quickLinkHost && (
