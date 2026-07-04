@@ -10,7 +10,14 @@ import type { ContentScriptContext } from "wxt/utils/content-script-context";
 import { createShadowRootUi } from "wxt/utils/content-script-ui/shadow-root";
 import { useKeyShield } from "./key-shield";
 import { Btn, Icon, IconBtn, tokens } from "./proto/kit";
-import { Correction, EpisodePick, ManualPick, RateNote, RatingRow } from "./scrobble-panels";
+import {
+  AniListCorrection,
+  Correction,
+  EpisodePick,
+  ManualPick,
+  RateNote,
+  RatingRow,
+} from "./scrobble-panels";
 import { keepAboveModals } from "./top-layer";
 
 const t = tokens("dark");
@@ -120,7 +127,9 @@ const AUTO_COLLAPSE_MS = 12_000;
 function BadgeRoot() {
   const [status, setStatus] = useState<BadgeStatus | null>(null);
   const [minimized, setMinimized] = useState(false);
-  const [panel, setPanel] = useState<null | "review" | "fix" | "manual" | "episode">(null);
+  const [panel, setPanel] = useState<
+    null | "review" | "fix" | "anilist-fix" | "manual" | "episode"
+  >(null);
   const [media, setMedia] = useState<ParsedMedia | null>(null);
   const [tracker, setTracker] = useState<Tracker>("trakt");
   /** The item's enabled trackers (multi-track) — the rate/note composer fans out
@@ -358,9 +367,11 @@ function BadgeRoot() {
           t={t}
           onClose={() => setPanel(null)}
           onFix={() => setPanel(manualMode ? "manual" : "fix")}
+          onFixAniList={() => setPanel("anilist-fix")}
         />
       )}
       {panel === "fix" && <Correction t={t} onClose={() => setPanel(null)} />}
+      {panel === "anilist-fix" && <AniListCorrection t={t} onClose={() => setPanel(null)} />}
       {panel === "manual" && (
         <ManualPick t={t} onClose={() => setPanel(null)} onDone={() => setPanel(null)} />
       )}
