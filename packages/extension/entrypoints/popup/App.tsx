@@ -354,7 +354,28 @@ export function App() {
     const granted = await browser.permissions.request({ origins: [`${origin}/*`] });
     if (granted) {
       const res = await sendMessage("registerSite", origin);
-      setNote(res.ok ? "Enabled — reload the page to start." : (res.error ?? "Failed"));
+      if (res.ok) {
+        // Registration only affects FUTURE loads; the current tab has no content
+        // script yet. Granting access is a clear intent to use it now, so inject it
+        // into the open tab immediately — no manual reload, and (unlike a reload) it
+        // keeps the video where it is.
+        const tabId = await activeTabId();
+        let injected = false;
+        if (tabId !== null) {
+          try {
+            await browser.scripting.executeScript({
+              target: { tabId, allFrames: true },
+              files: ["/content-scripts/content.js"],
+            });
+            injected = true;
+          } catch {
+            // e.g. a restricted page — fall back to asking for a reload.
+          }
+        }
+        setNote(injected ? "Enabled — now scrobbling on this page." : "Enabled — reload to start.");
+      } else {
+        setNote(res.error ?? "Failed");
+      }
     } else {
       setNote("Permission denied");
     }
