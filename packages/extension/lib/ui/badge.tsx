@@ -359,6 +359,11 @@ function BadgeRoot() {
         anchor,
       )}
       style={posStyle}
+      // Any panel title ([data-tmsync-drag]) drags the whole popup, like the badge
+      // status bar — so you can reposition an expanded panel by its header.
+      onPointerDown={(e) => {
+        if ((e.target as HTMLElement).closest?.("[data-tmsync-drag]")) startDrag(e);
+      }}
     >
       {panel === "review" && media && (
         <RateNote

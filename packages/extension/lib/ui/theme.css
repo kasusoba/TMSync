@@ -45,6 +45,16 @@
   .tmsync-dot {
     animation: tmsync-dot-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
   }
+  /* A panel title is a drag handle (moves the whole badge+panel, like the status
+     bar). Scoped to the in-page badge, so popup panels don't show the grab cursor. */
+  .tmsync-pop [data-tmsync-drag] {
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+  }
+  .tmsync-pop [data-tmsync-drag]:active {
+    cursor: grabbing;
+  }
 }
 
 @keyframes tmsync-pop-in {

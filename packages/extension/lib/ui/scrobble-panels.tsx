@@ -289,7 +289,9 @@ export function RateNote({
   return (
     <div class={panelClass(t)}>
       <header class="mb-3 flex items-center justify-between">
-        <strong class={clsx("text-[13px]", t.heading)}>Rate &amp; note</strong>
+        <strong data-tmsync-drag class={clsx("text-[13px]", t.heading)}>
+          Rate &amp; note
+        </strong>
         <IconBtn t={t} name="x" title="Close" onClick={onClose} />
       </header>
 
@@ -479,7 +481,9 @@ export function Correction({
   return (
     <div class={panelClass(t)}>
       <header class="mb-3 flex items-center justify-between">
-        <strong class={clsx("text-[13px]", t.heading)}>Fix match</strong>
+        <strong data-tmsync-drag class={clsx("text-[13px]", t.heading)}>
+          Fix match
+        </strong>
         <IconBtn t={t} name="x" title="Close" onClick={onClose} />
       </header>
       {saved ? (
@@ -590,7 +594,9 @@ export function AniListCorrection({
   return (
     <div class={panelClass(t)}>
       <header class="mb-3 flex items-center justify-between">
-        <strong class={clsx("text-[13px]", t.heading)}>Fix AniList match</strong>
+        <strong data-tmsync-drag class={clsx("text-[13px]", t.heading)}>
+          Fix AniList match
+        </strong>
         <IconBtn t={t} name="x" title="Close" onClick={onClose} />
       </header>
       {saved ? (
@@ -757,7 +763,9 @@ export function ManualPick({
   return (
     <div class={panelClass(t)}>
       <header class="mb-3 flex items-center justify-between">
-        <strong class={clsx("text-[13px]", t.heading)}>What are you watching?</strong>
+        <strong data-tmsync-drag class={clsx("text-[13px]", t.heading)}>
+          What are you watching?
+        </strong>
         <IconBtn t={t} name="x" title="Close" onClick={onClose} />
       </header>
 
@@ -892,7 +900,9 @@ export function EpisodePick({
   return (
     <div class={panelClass(t)}>
       <header class="mb-3 flex items-center justify-between">
-        <strong class={clsx("text-[13px]", t.heading)}>Which episode?</strong>
+        <strong data-tmsync-drag class={clsx("text-[13px]", t.heading)}>
+          Which episode?
+        </strong>
         <IconBtn t={t} name="x" title="Close" onClick={onClose} />
       </header>
       {title && <p class={clsx("mb-2 truncate text-[12px]", t.sub)}>{title}</p>}
