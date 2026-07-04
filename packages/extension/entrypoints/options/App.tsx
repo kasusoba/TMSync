@@ -774,9 +774,21 @@ export function App() {
                 <PaneHead
                   title="Quick links"
                   right={
-                    <Btn t={t} tone="ghost" disabled={busy} onClick={addLink}>
-                      <Icon name="plus" class="text-[12px]" /> Add blank
-                    </Btn>
+                    <div class="flex gap-1.5">
+                      {links.length > 0 && (
+                        <Btn
+                          t={t}
+                          tone="ghost"
+                          disabled={busy}
+                          onClick={() => openContribution(contributeAll([], links))}
+                        >
+                          <Icon name="external" class="text-[12px]" /> Contribute all
+                        </Btn>
+                      )}
+                      <Btn t={t} tone="ghost" disabled={busy} onClick={addLink}>
+                        <Icon name="plus" class="text-[12px]" /> Add blank
+                      </Btn>
+                    </div>
                   }
                 />
                 <p class={clsx("text-[12px]", t.sub)}>
@@ -839,9 +851,21 @@ export function App() {
                 <PaneHead
                   title="Recipes"
                   right={
-                    <Btn t={t} tone="ghost" disabled={busy} onClick={refreshRecipes}>
-                      <Icon name="refresh" class="text-[12px]" /> Refresh
-                    </Btn>
+                    <div class="flex gap-1.5">
+                      {recipes.length > 0 && (
+                        <Btn
+                          t={t}
+                          tone="ghost"
+                          disabled={busy}
+                          onClick={() => openContribution(contributeAll(recipes, []))}
+                        >
+                          <Icon name="external" class="text-[12px]" /> Contribute all
+                        </Btn>
+                      )}
+                      <Btn t={t} tone="ghost" disabled={busy} onClick={refreshRecipes}>
+                        <Icon name="refresh" class="text-[12px]" /> Refresh
+                      </Btn>
+                    </div>
                   }
                 />
                 <p class={clsx("text-[12px] leading-relaxed", t.sub)}>
