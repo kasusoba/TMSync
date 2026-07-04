@@ -1,3 +1,4 @@
+import type { AniListSearchOption } from "@/lib/anilist/client";
 import type { RatingLevel, Tracker, WatchedEpisode, WatchedState } from "@/lib/tracker/types";
 import type { ResolvedIdentity, ReviewLevel, TraktSearchOption } from "@/lib/trakt/types";
 import { type BadgeState, type BadgeStatus, type TrackerResolution, sendMessage } from "@/messaging";
@@ -188,6 +189,25 @@ export function RateNote({
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
+  // AniList correction (derived tracker): pin/block the AniList entry for this TMDB
+  // item — a local override above Fribb. Only meaningful when we have a tmdbId to key it.
+  const canFixAniList = trackers.includes("anilist") && media.tmdbId !== undefined;
+  const [fixing, setFixing] = useState(false);
+  const [aniQuery, setAniQuery] = useState(media.title ?? "");
+  const [aniResults, setAniResults] = useState<AniListSearchOption[] | null>(null);
+  const [aniBusy, setAniBusy] = useState(false);
+  const runAniSearch = async () => {
+    setAniBusy(true);
+    setAniResults(await sendMessage("searchAniList", { query: aniQuery }));
+    setAniBusy(false);
+  };
+  const pinAniList = async (anilistId: number | null) => {
+    await sendMessage("setAniListMatch", { media, anilistId });
+    setFixing(false);
+    setResolutions(null);
+    setResolutions(await sendMessage("resolveAll", { media, trackers }));
+  };
+
   // Seed the score + note from the primary target (first applicable, prefer a
   // selected one) so editing shows what's already there.
   const primary = targets[0] ?? applicable[0] ?? null;
@@ -343,6 +363,66 @@ export function RateNote({
               );
             })}
           </div>
+          {canFixAniList && !fixing && (
+            <button
+              type="button"
+              onClick={() => setFixing(true)}
+              class={clsx("mt-1 text-[11px] underline underline-offset-2", t.sub)}
+            >
+              Fix AniList match
+            </button>
+          )}
+          {fixing && (
+            <div class={clsx("mt-2 space-y-2 rounded-lg p-2.5", t.card)}>
+              <div class="flex gap-1.5">
+                <input
+                  {...stopKeys}
+                  value={aniQuery}
+                  onInput={(e) => setAniQuery((e.target as HTMLInputElement).value)}
+                  onKeyDown={(e) => e.key === "Enter" && runAniSearch()}
+                  placeholder="Search AniList…"
+                  class={clsx(
+                    "min-w-0 flex-1 rounded-md px-2 py-1 text-[12px] outline-none ring-inset focus:ring-2",
+                    t.input,
+                  )}
+                />
+                <Btn t={t} tone="ghost" disabled={aniBusy} onClick={runAniSearch}>
+                  <Icon name="search" class="text-[12px]" />
+                </Btn>
+              </div>
+              {aniResults?.map((o) => (
+                <button
+                  type="button"
+                  key={o.id}
+                  onClick={() => pinAniList(o.id)}
+                  class={clsx(
+                    "block w-full truncate rounded-md px-2 py-1 text-left text-[12px] transition-colors hover:bg-ikura hover:text-white",
+                    t.ghost,
+                  )}
+                >
+                  {o.title}
+                  {o.year ? ` (${o.year})` : ""}
+                  {o.format ? ` · ${o.format.toLowerCase()}` : ""}
+                </button>
+              ))}
+              <div class="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => pinAniList(null)}
+                  class={clsx("text-[11px] underline underline-offset-2", t.sub)}
+                >
+                  Not on AniList
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFixing(false)}
+                  class={clsx("ml-auto text-[11px]", t.faint)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
