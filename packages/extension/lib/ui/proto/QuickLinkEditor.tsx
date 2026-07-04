@@ -1,3 +1,4 @@
+import { defaultRecipeName } from "@/lib/picker/recipe-builder";
 import type { Tracker } from "@/lib/tracker/types";
 import type { LinkTemplates } from "@tmsync/shared";
 import clsx from "clsx";
@@ -38,7 +39,9 @@ export function QuickLinkEditor({
 }) {
   const editing = !!initial;
   const seed = initial ?? derive?.("trakt") ?? {};
-  const [name, setName] = useState(initial?.name ?? host);
+  // Default to the friendly capitalized hostname ("cineby.at" → "Cineby"), same as
+  // a new recipe — not the raw host.
+  const [name, setName] = useState(initial?.name ?? defaultRecipeName(host));
   const [tracker, setTracker] = useState<Tracker>(initial?.tracker ?? "trakt");
   const [movie, setMovie] = useState(seed.movie ?? "");
   const [tv, setTv] = useState(seed.tv ?? "");
@@ -64,7 +67,7 @@ export function QuickLinkEditor({
 
   const save = () => {
     onSave({
-      name: name.trim() || host,
+      name: name.trim() || defaultRecipeName(host),
       tracker,
       movie: isAniList ? undefined : movie.trim() || undefined,
       tv: isAniList ? undefined : tv.trim() || undefined,
@@ -98,7 +101,7 @@ export function QuickLinkEditor({
         <TrackerTab t={t} value={tracker} onChange={switchTracker} />
       </div>
 
-      {field("Name", name, setName, host)}
+      {field("Name", name, setName, defaultRecipeName(host))}
       {isAniList
         ? field("Anime URL", anime, setAnime, "https://site/anime/{slug}")
         : [

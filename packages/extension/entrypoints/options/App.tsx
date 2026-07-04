@@ -19,6 +19,7 @@ import {
 } from "@/lib/storage";
 import type { Tracker } from "@/lib/tracker/types";
 import type { ResolvedIdentity } from "@/lib/trakt/types";
+import { defaultRecipeName } from "@/lib/picker/recipe-builder";
 import { BadgeModeToggle } from "@/lib/ui/proto/PopupView";
 import { TrackerTab } from "@/lib/ui/proto/TrackerTab";
 import {
@@ -163,9 +164,22 @@ function QuickLinkRow({
   const isAniList = tracker === "anilist";
 
   const save = async () => {
+    // Like a recipe, default the name to the friendly capitalized hostname — but a
+    // quick link added here has no page context, so derive it from the first URL
+    // template the user typed. Only when they haven't set their own name.
+    const typed = name.trim();
+    const fromUrl = [movie, tv, anime, search].reduce<string>((acc, u) => {
+      if (acc || !u) return acc;
+      try {
+        return defaultRecipeName(new URL(u).hostname);
+      } catch {
+        return acc;
+      }
+    }, "");
+    const finalName = typed && typed !== "New site" ? typed : fromUrl || typed || site.name;
     await onSave({
       ...site,
-      name: name.trim() || site.name,
+      name: finalName,
       tracker,
       // Keep only the templates that apply to the chosen tracker.
       movie: isAniList ? undefined : movie.trim() || undefined,
