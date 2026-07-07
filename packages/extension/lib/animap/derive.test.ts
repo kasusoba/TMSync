@@ -127,9 +127,45 @@ describe("deriveMediaWith — local overrides sit above Fribb", () => {
   });
 });
 
-describe("deriveMedia — movies deferred", () => {
-  it("skips movies (native tracker still records them)", () => {
+describe("deriveMedia — anime movies (via the crosswalk)", () => {
+  const withMovie = new Animap([
+    ...rows,
+    { a: 20954, t: 378064, k: "movie" }, // A Silent Voice (film)
+  ]);
+
+  it("resolves an anime movie to its AniList entry, episode 1 (a 1-ep cour)", () => {
     const media: ParsedMedia = { mediaType: "movie", title: "A Silent Voice", tmdbId: 378064 };
-    expect(deriveMedia("anilist", media, traktItem, map)).toEqual({ kind: "miss" });
+    expect(deriveMedia("anilist", media, traktItem, withMovie)).toEqual({
+      kind: "resolved",
+      anilistId: 20954,
+      media: {
+        mediaType: "show",
+        title: "A Silent Voice",
+        tmdbId: 378064,
+        season: undefined,
+        episode: 1,
+      },
+    });
+  });
+
+  it("misses a non-anime movie (not in the crosswalk) → stays Trakt-only", () => {
+    const media: ParsedMedia = { mediaType: "movie", title: "Heat", tmdbId: 949 };
+    expect(deriveMedia("anilist", media, traktItem, withMovie)).toEqual({ kind: "miss" });
+  });
+
+  it("a pinned override makes an anime movie resolve even if Fribb lacks it", () => {
+    const overrides: AnimapOverrides = { forward: { "1244492:": 178025 }, reverse: {} };
+    const media: ParsedMedia = { mediaType: "movie", title: "Look Back", tmdbId: 1244492 };
+    expect(deriveMediaWith("anilist", media, traktItem, overrides, map)).toEqual({
+      kind: "resolved",
+      anilistId: 178025,
+      media: {
+        mediaType: "show",
+        title: "Look Back",
+        tmdbId: 1244492,
+        season: undefined,
+        episode: 1,
+      },
+    });
   });
 });
