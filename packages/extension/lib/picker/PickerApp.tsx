@@ -459,6 +459,14 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
           variant="dark"
           mode={editingId ? "edit" : "setup"}
           name={name}
+          urlPattern={draft.match.urlPattern}
+          patternMatchesPage={(() => {
+            try {
+              return new RegExp(draft.match.urlPattern).test(location.href);
+            } catch {
+              return false;
+            }
+          })()}
           picking={
             picking
               ? picking === "manualKey"
@@ -534,6 +542,9 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
           onSave={save}
           onCopy={copyJson}
           onNameChange={setName}
+          onUrlPatternChange={(v) =>
+            setDraft((d) => ({ ...d, match: { ...d.match, urlPattern: v } }))
+          }
           onMediaTypeChange={(v) => setDraft((d) => ({ ...d, mediaType: v }))}
           onTrackerToggle={(tracker) =>
             setDraft((d) => {
