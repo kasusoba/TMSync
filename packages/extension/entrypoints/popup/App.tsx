@@ -12,6 +12,7 @@ import {
   type BadgePrefs,
   type QuickLinkSite,
   badgePrefs,
+  customRecipes,
   quickLinks,
   tabFrameOrigins,
   tabSessions,
@@ -171,6 +172,7 @@ export function App() {
   // On-page badge visibility (Full / Dot / Off) — quick toggle mirrored from Options.
   const [badgeMode, setBadgeMode] = useState<BadgePrefs["mode"]>("full");
   // Frame inspector (diagnostics).
+  const [pageHasRecipe, setPageHasRecipe] = useState(false);
   const [inspecting, setInspecting] = useState(false);
   const [frameTree, setFrameTree] = useState<FrameNode[] | null>(null);
   // "Now scrobbling" for the active tab (status + media for the prompts/panels).
@@ -201,7 +203,7 @@ export function App() {
 
   const refresh = async () => {
     const tabId = await activeTabId();
-    const [s, al, url, found, sites, links, badge] = await Promise.all([
+    const [s, al, url, found, sites, links, badge, custom] = await Promise.all([
       sendMessage("getTraktStatus", undefined),
       sendMessage("getAniListStatus", undefined),
       activeTabUrl(),
@@ -209,6 +211,7 @@ export function App() {
       sendMessage("listEnabledSites", undefined),
       quickLinks.getValue(),
       badgePrefs.getValue(),
+      customRecipes.getValue(),
     ]);
     // Merge the live snapshot with origins the content script accumulated over
     // the session — catches player iframes that loaded after the page settled.
@@ -224,6 +227,20 @@ export function App() {
     setQlUrl(url);
     setQlSite(hostname ? (links.find((l) => l.id === `ql-${hostname}`) ?? null) : null);
     setBadgeMode(badge.mode);
+    // Does one of the user's OWN recipes already cover this page? Then the picker
+    // opens in edit mode — so the button says "Edit recipe", not "Set up recipe".
+    // urlPattern-only (the popup has no page DOM to check a domFingerprint), which
+    // is enough for picker-authored recipes.
+    setPageHasRecipe(
+      !!url &&
+        custom.some((r) => {
+          try {
+            return new RegExp(r.match.urlPattern).test(url);
+          } catch {
+            return false;
+          }
+        }),
+    );
     await refreshNow();
   };
 
@@ -473,6 +490,7 @@ export function App() {
       onEnable={enableOrigin}
       onDisable={disableOrigin}
       onSetup={setupSite}
+      pageHasRecipe={pageHasRecipe}
       onOpenOptions={() => browser.runtime.openOptionsPage()}
       quickLinkHost={qlHost}
       quickLinkInitial={
