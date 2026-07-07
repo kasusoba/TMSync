@@ -197,16 +197,29 @@ export function detectTmdbIdField(url: string): Field | undefined {
 }
 
 /**
- * A urlPattern matching the hostname + first path segment (e.g.
- * "cineby\.at/movie"), so a movie recipe doesn't fire on the home/search pages.
- * Hostname-scoped rather than full-URL so it survives the dynamic id segment.
+ * A urlPattern matching the hostname + first path segment (e.g. "cineby\.at/movie"),
+ * so a recipe doesn't fire on the home/search pages. Hostname-scoped rather than
+ * full-URL so it survives the dynamic id segment.
+ *
+ * PLUS: if the next segment is a "typed id" — a static prefix before a number, like
+ * `tmdb-tv-2604` or `tmdb-movie-1244492` — the prefix is kept. That's what makes a
+ * show recipe and a movie recipe on the SAME base path (…/media/tmdb-tv- vs
+ * …/media/tmdb-movie-) come out DISJOINT automatically, so the user never has to
+ * hand-write a regex to keep two recipes for one site from clobbering each other.
  */
 export function suggestUrlPattern(url: string): string {
   try {
     const u = new URL(url);
-    const firstSegment = u.pathname.split("/").filter(Boolean)[0];
-    const base = firstSegment ? `${u.hostname}/${firstSegment}` : u.hostname;
-    return escapeRegex(base);
+    const segments = u.pathname.split("/").filter(Boolean);
+    const first = segments[0];
+    if (!first) return escapeRegex(u.hostname);
+    const parts = [u.hostname, first];
+    // A meaningful (≥2-char) non-digit lead before the first digit of the 2nd
+    // segment marks a type ("tmdb-tv-"); a pure number ("42") or a slug
+    // ("breaking-bad") has none, so those stay hostname/first-segment as before.
+    const lead = segments[1] ? /^(\D{2,}?)\d/.exec(segments[1])?.[1] : undefined;
+    if (lead) parts.push(lead);
+    return escapeRegex(parts.join("/"));
   } catch {
     return escapeRegex(url);
   }

@@ -436,6 +436,25 @@ describe("escapeRegex / suggestUrlPattern", () => {
     );
     expect(suggestUrlPattern("https://watch.example.tv/")).toBe("watch\\.example\\.tv");
   });
+
+  it("keeps a typed-id prefix so movie/show recipes come out disjoint", () => {
+    // Aether-style: type lives in the 2nd segment's prefix, same base path.
+    expect(
+      suggestUrlPattern("https://aether.bar/media/tmdb-tv-2604-the-boondocks/8382/201035"),
+    ).toBe("aether\\.bar/media/tmdb-tv-");
+    expect(suggestUrlPattern("https://aether.bar/media/tmdb-movie-1244492-look-back")).toBe(
+      "aether\\.bar/media/tmdb-movie-",
+    );
+  });
+
+  it("does NOT over-narrow on a slug or a bare-number 2nd segment", () => {
+    // A dynamic title slug (no digit) → stays hostname/first-segment.
+    expect(suggestUrlPattern("https://ex.tv/tv-shows/breaking-bad/s01e01")).toBe(
+      "ex\\.tv/tv-shows",
+    );
+    // A pure numeric id → stays hostname/first-segment.
+    expect(suggestUrlPattern("https://ex.tv/watch/12345")).toBe("ex\\.tv/watch");
+  });
 });
 
 describe("urlTokenRegex (season/episode from URL)", () => {
