@@ -206,6 +206,7 @@ export default defineBackground(() => {
           completed: result.completed,
           resolvedTitle: result.reason === "no_episode" ? undefined : nativeItem.title,
           resolvedYear: result.reason === "no_episode" ? undefined : nativeItem.year,
+          resolvedEpisodes: nativeItem.tracker === "anilist" ? nativeItem.episodes : undefined,
           httpError: result.httpError,
           primaryTracker: native,
         };
