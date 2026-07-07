@@ -36,10 +36,12 @@ function mediaKey(m: ParsedMedia): string {
 /**
  * The episode suffix for the badge. Seasoned TV → ` S{n}E{m}`; anime (AniList,
  * episode but no season) → ` E{n}`; movies → "". So the badge always shows which
- * episode is scrobbling, including for season-less anime.
+ * episode is scrobbling, including for season-less anime. `singleEpisode` (a resolved
+ * AniList entry with 1 episode = an anime movie) drops the "E1" — it's a movie.
  */
-function episodeSuffix(m: ParsedMedia): string {
+function episodeSuffix(m: ParsedMedia, singleEpisode = false): string {
   if (m.season !== undefined) return ` S${m.season}E${m.episode ?? "?"}`;
+  if (singleEpisode) return "";
   if (m.episode !== undefined) return ` E${m.episode}`;
   return "";
 }
@@ -52,9 +54,15 @@ function label(m: ParsedMedia): string {
   return `${name}${episodeSuffix(m)}${yr}`;
 }
 
-/** Title as the tracker matched it, keeping the scraped episode (transparency). */
-function resolvedLabel(title: string, year: number | undefined, m: ParsedMedia): string {
-  return `${title}${year ? ` (${year})` : ""}${episodeSuffix(m)}`;
+/** Title as the tracker matched it, keeping the scraped episode (transparency).
+ * `singleEpisode` renders a 1-episode AniList entry (an anime movie) without "E1". */
+function resolvedLabel(
+  title: string,
+  year: number | undefined,
+  m: ParsedMedia,
+  singleEpisode = false,
+): string {
+  return `${title}${year ? ` (${year})` : ""}${episodeSuffix(m, singleEpisode)}`;
 }
 
 /** The DERIVED-tracker summary for the badge (multi-track). Silent crosswalk
@@ -106,7 +114,7 @@ function primaryStatus(
   const name = tracker === "anilist" ? "AniList" : "Trakt";
   // Prefer what the tracker actually matched (transparency); keep the scraped S/E.
   const title = reply.resolvedTitle
-    ? resolvedLabel(reply.resolvedTitle, reply.resolvedYear, m)
+    ? resolvedLabel(reply.resolvedTitle, reply.resolvedYear, m, reply.resolvedEpisodes === 1)
     : label(m);
   if (reply.ok) {
     if (action === "start") return { state: "watching", title };

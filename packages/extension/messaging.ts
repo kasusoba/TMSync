@@ -56,6 +56,9 @@ export interface ScrobbleReply {
   /** What this resolved to on Trakt (transparency for the badge). */
   resolvedTitle?: string;
   resolvedYear?: number;
+  /** Total episodes on the resolved entry (AniList). 1 ⇒ a movie / single-unit
+   * entry, so the badge drops the "E1" suffix and shows it as a movie. */
+  resolvedEpisodes?: number | null;
   /** Trakt's error body on an http failure (for diagnosis in the badge). */
   httpError?: string;
   /** MULTI-TRACK: outcomes for the DERIVED tracker(s) written this same phase,
