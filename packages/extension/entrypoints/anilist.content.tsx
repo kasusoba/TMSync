@@ -77,6 +77,17 @@ export default defineContentScript({
       });
       if (my !== gen) return created.remove(); // navigated again while mounting
       ui = created;
+
+      // The URL/id changes BEFORE AniList's Vue re-renders the sidebar `.data-set`
+      // rows we read the title from — so the first paint often has no links (just the
+      // "Watch on" header). Re-paint as the sidebar fills in, until links appear or a
+      // few seconds pass. Fixes the "only shows the header until I refresh" SPA bug.
+      let tries = 0;
+      const timer = ctx.setInterval(() => {
+        if (my !== gen) return clearInterval(timer); // superseded by a newer nav
+        created.update();
+        if (getItems().length > 0 || ++tries > 20) clearInterval(timer);
+      }, 300);
     };
 
     await sync();
