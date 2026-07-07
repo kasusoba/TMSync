@@ -40,6 +40,8 @@ export interface PopupViewProps {
   onEnable?: (origin: string) => void;
   onDisable?: (origin: string) => void;
   onSetup?: () => void;
+  /** A custom recipe already covers this page → the picker opens in edit mode. */
+  pageHasRecipe?: boolean;
   onOpenOptions?: () => void;
   // --- per-site quick link (independent of recipes) ---
   /** Hostname of the active tab's top page; null = no eligible page. */
@@ -262,11 +264,13 @@ export function PopupView(p: PopupViewProps) {
             <div class="space-y-1.5">
               <SubLabel t={t}>Recipe</SubLabel>
               <Btn t={t} tone="primary" class="w-full" disabled={p.busy} onClick={p.onSetup}>
-                <Icon name="target" class="text-[13px]" />
-                Set up recipe
+                <Icon name={p.pageHasRecipe ? "edit" : "target"} class="text-[13px]" />
+                {p.pageHasRecipe ? "Edit recipe" : "Set up recipe"}
               </Btn>
               <p class={clsx("px-1 text-[10px] leading-relaxed", t.faint)}>
-                Point &amp; click to teach TMSync what’s playing here.
+                {p.pageHasRecipe
+                  ? "A recipe already covers this page — tweak how it reads what’s playing."
+                  : "Point & click to teach TMSync what’s playing here."}
               </p>
             </div>
           </div>
