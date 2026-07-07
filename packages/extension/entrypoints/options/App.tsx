@@ -132,6 +132,8 @@ function QuickLinkRow({
   onDelete,
   onToggle,
   onEdit,
+  onCopy,
+  copied,
   onContribute,
   onDragStart,
   onDragEnter,
@@ -142,6 +144,8 @@ function QuickLinkRow({
   busy: boolean;
   /** Expanded? Owned by the parent so only ONE row is open at a time (accordion). */
   open: boolean;
+  /** Show the "Copied!" tick on the copy button. */
+  copied: boolean;
   /** True while this row is the one being dragged (dimmed). */
   dragging: boolean;
   onSave: (site: QuickLinkSite) => Promise<void>;
@@ -149,6 +153,8 @@ function QuickLinkRow({
   onToggle: (id: string) => void;
   /** Toggle this row's expansion — collapses whichever other row was open. */
   onEdit: () => void;
+  /** Copy this quick link's JSON to the clipboard (mirrors the recipe copy). */
+  onCopy: () => void;
   onContribute: () => void;
   // Drag-to-reorder (HTML5 DnD): handle starts the drag; the row is a drop target.
   onDragStart: () => void;
@@ -262,6 +268,12 @@ function QuickLinkRow({
         {site.source !== "library" && (
           <IconBtn t={t} name="external" title="Contribute to library" onClick={onContribute} />
         )}
+        <IconBtn
+          t={t}
+          name={copied ? "check" : "copy"}
+          title={copied ? "Copied!" : "Copy JSON"}
+          onClick={onCopy}
+        />
         <IconBtn t={t} name="edit" title="Edit" onClick={onEdit} />
         <IconBtn t={t} name="trash" title="Delete" danger onClick={() => onDelete(site.id)} />
       </div>
@@ -443,6 +455,15 @@ export function App() {
     try {
       await navigator.clipboard.writeText(JSON.stringify(r, null, 2));
       setCopied(r.id);
+      setTimeout(() => setCopied(null), 1500);
+    } catch {
+      // clipboard blocked — ignore
+    }
+  };
+  const copyLink = async (s: QuickLinkSite) => {
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(s, null, 2));
+      setCopied(s.id);
       setTimeout(() => setCopied(null), 1500);
     } catch {
       // clipboard blocked — ignore
@@ -838,6 +859,8 @@ export function App() {
                           onDelete={deleteLink}
                           onToggle={toggleLink}
                           onEdit={() => setOpenLinkId((cur) => (cur === s.id ? null : s.id))}
+                          onCopy={() => copyLink(s)}
+                          copied={copied === s.id}
                           onContribute={() => openContribution(contributeQuickLink(s))}
                           onDragStart={() => onLinkDragStart(s.id)}
                           onDragEnter={() => onLinkDragEnter(s.id)}
