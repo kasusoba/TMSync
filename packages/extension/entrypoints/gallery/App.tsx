@@ -287,6 +287,8 @@ export function App() {
               variant={variant}
               mode="setup"
               name="Popcorn Movies"
+              urlPattern="popcorn\.movies/watch/movie-"
+              patternMatchesPage
               fields={[
                 { key: "title", label: "Title", value: "Spider-Noir", source: "dom" },
                 { key: "tmdbId", label: "TMDB ID", value: "194764", source: "url" },

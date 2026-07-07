@@ -25,6 +25,11 @@ export interface PickerPanelProps {
   variant: Variant;
   mode: "setup" | "edit";
   name: string;
+  /** The recipe's URL-match regex (editable — lets you split e.g. `…/tmdb-tv-` from
+   * `…/tmdb-movie-` into disjoint recipes on a site that encodes type deep in the path). */
+  urlPattern?: string;
+  /** Whether the current urlPattern actually matches the page (a live footgun check). */
+  patternMatchesPage?: boolean;
   fields: FieldRow[];
   urlParts: UrlPart[];
   /** Segments of the page <title> (for "use the Nth part of the tab title"). */
@@ -65,6 +70,7 @@ export interface PickerPanelProps {
   onSave?: () => void;
   onCopy?: () => void;
   onNameChange?: (name: string) => void;
+  onUrlPatternChange?: (pattern: string) => void;
   onMediaTypeChange?: (type: "auto" | "movie" | "show") => void;
   /** Toggle a tracker on/off in the enabled set. */
   onTrackerToggle?: (tracker: Tracker) => void;
@@ -203,6 +209,37 @@ export function PickerPanel(p: PickerPanelProps) {
               )}
             />
           </label>
+
+          {/* URL pattern — which pages this recipe fires on. Editable so a site that
+              encodes the media type deep in the path (…/tmdb-tv- vs …/tmdb-movie-)
+              can be split into two disjoint recipes instead of one clobbering the other. */}
+          {p.urlPattern !== undefined && (
+            <label class="mb-3 block">
+              <span class={clsx("mb-1 flex items-center justify-between text-[11px]", t.faint)}>
+                <span class="font-medium">URL pattern</span>
+                <span
+                  class={p.patternMatchesPage ? "text-emerald-400" : "text-rose-400"}
+                  title="Whether this regex matches the current page URL"
+                >
+                  {p.patternMatchesPage ? "matches this page" : "no match here"}
+                </span>
+              </span>
+              <input
+                value={p.urlPattern}
+                spellcheck={false}
+                onInput={(e) => p.onUrlPatternChange?.((e.target as HTMLInputElement).value)}
+                onKeyDown={(e) => e.stopPropagation()}
+                onKeyUp={(e) => e.stopPropagation()}
+                class={clsx(
+                  "w-full rounded-lg px-2.5 py-1.5 font-mono text-[11px] outline-none ring-inset focus:ring-2",
+                  t.input,
+                )}
+              />
+              <span class={clsx("mt-1 block text-[10px] leading-snug", t.faint)}>
+                Regex tested against the page URL.
+              </span>
+            </label>
+          )}
 
           {/* trackers — independent per-tracker toggles, gated on the fields each
             needs (the "master picker": one field set feeds every tracker). More
