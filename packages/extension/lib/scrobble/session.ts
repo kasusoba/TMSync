@@ -37,7 +37,8 @@ function mediaKey(m: ParsedMedia): string {
  * The episode suffix for the badge. Seasoned TV → ` S{n}E{m}`; anime (AniList,
  * episode but no season) → ` E{n}`; movies → "". So the badge always shows which
  * episode is scrobbling, including for season-less anime. `singleEpisode` (a resolved
- * AniList entry with 1 episode = an anime movie) drops the "E1" — it's a movie.
+ * AniList entry with exactly 1 episode — a movie, OVA, or special) drops the "E1":
+ * the number is always 1, so it carries no information. (Not a movie-specific test.)
  */
 function episodeSuffix(m: ParsedMedia, singleEpisode = false): string {
   if (m.season !== undefined) return ` S${m.season}E${m.episode ?? "?"}`;
@@ -55,7 +56,7 @@ function label(m: ParsedMedia): string {
 }
 
 /** Title as the tracker matched it, keeping the scraped episode (transparency).
- * `singleEpisode` renders a 1-episode AniList entry (an anime movie) without "E1". */
+ * `singleEpisode` renders a 1-episode entry (movie / OVA / special) without "E1". */
 function resolvedLabel(
   title: string,
   year: number | undefined,

@@ -78,6 +78,6 @@ A dedicated anime site where series and movies share one URL shape and a movie i
 - The **derived Trakt** side gets the movie/series split for free from the reverse crosswalk: `animap.reverse(anilistId)` returns `tmdbKind: "movie" | "tv"`, so `deriveMedia` emits a Trakt movie or a show episode. The AniList entry's identity *is* the type signal.
 - **Authoring rule:** `mediaType: "auto"` (or `"show"`) and **always scrape `episode`**. Never `mediaType: "movie"` — `buildRecipe` drops season/episode for movies, leaving AniList with no episode to write.
 - **Only real risk:** resolution ambiguity when a series and a movie share a title — handled by the correction/pin system, not the recipe.
-- **Label:** a resolved 1-episode entry is shown as a movie (no `E1`) — the reply carries `resolvedEpisodes`, and the badge drops the episode suffix when it's `1`.
+- **Label:** a resolved **single-episode** entry drops the `E1` — the reply carries `resolvedEpisodes`, and the badge omits the episode suffix when it's `1` (the number is always 1, i.e. no information). This covers a movie *and* a 1-ep OVA/special; a precise "is a movie" test would need AniList's `format` field, which we don't fetch and the label doesn't need.
 
 > Rule of thumb: **TMDB-native + Trakt-cares-about-type → split by `urlPattern`. AniList-native → one recipe; the crosswalk untangles Trakt.**

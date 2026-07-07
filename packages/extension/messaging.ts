@@ -56,8 +56,10 @@ export interface ScrobbleReply {
   /** What this resolved to on Trakt (transparency for the badge). */
   resolvedTitle?: string;
   resolvedYear?: number;
-  /** Total episodes on the resolved entry (AniList). 1 ⇒ a movie / single-unit
-   * entry, so the badge drops the "E1" suffix and shows it as a movie. */
+  /** Total episodes on the resolved entry (AniList). 1 ⇒ a single-episode entry
+   * (a movie, OVA, special, or short) — the badge drops the "E1" suffix since the
+   * number is always 1 (no information). This is NOT a reliable "is a movie" signal;
+   * that would be AniList `format === "MOVIE"`, which we don't fetch. */
   resolvedEpisodes?: number | null;
   /** Trakt's error body on an http failure (for diagnosis in the badge). */
   httpError?: string;
