@@ -29,6 +29,18 @@ export async function mountQuickLinks(
     class?: string;
   } = {},
 ) {
+  // Captured so `update()` can re-paint with fresh items — an SPA's data can land
+  // AFTER the first mount (AniList renders the sidebar title async on nav), so the
+  // first paint may have no links and needs re-running once the page fills in.
+  let mounted: Element | null = null;
+  const paint = () => {
+    if (!mounted) return;
+    render(
+      <QuickLinksView variant="dark" items={getItems()} label={opts.label} class={opts.class} />,
+      mounted,
+    );
+  };
+
   const ui = await createShadowRootUi(ctx, {
     name: "tmsync-quicklinks",
     position: "inline",
@@ -40,14 +52,16 @@ export async function mountQuickLinks(
       // sidebar). Make it a full-width block so the links wrap to the column.
       host.style.display = "block";
       host.style.width = "100%";
-      render(
-        <QuickLinksView variant="dark" items={getItems()} label={opts.label} class={opts.class} />,
-        container,
-      );
+      mounted = container;
+      paint();
     },
-    onRemove: (container) => container && render(null, container),
+    onRemove: (container) => {
+      mounted = null;
+      container && render(null, container);
+    },
   });
   ui.autoMount();
-  // Returned so SPA hosts (AniList) can remove + re-mount on client-side nav.
-  return ui;
+  // Returned so SPA hosts (AniList) can remove + re-mount on client-side nav, and
+  // re-paint (`update`) as late-loading page data fills the links in.
+  return { remove: () => ui.remove(), update: paint };
 }
