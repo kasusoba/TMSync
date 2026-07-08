@@ -1,4 +1,77 @@
 {
-  "recipes": [],
+  "recipes": [
+    {
+      "extract": {
+        "episode": {
+          "group": 1,
+          "regex": "(?:\\D*\\d+){1}\\D*(\\d+)",
+          "selector": ".text-center .text-white",
+          "source": "dom",
+          "transforms": ["toInt"]
+        },
+        "season": {
+          "group": 1,
+          "regex": "(?:\\D*\\d+){0}\\D*(\\d+)",
+          "selector": ".text-center .text-white",
+          "source": "dom",
+          "transforms": ["toInt"]
+        },
+        "title": {
+          "selector": ".cursor-copy",
+          "source": "dom",
+          "transforms": ["trim", "collapseSpaces"]
+        },
+        "tmdbId": {
+          "group": 1,
+          "regex": "(?:\\D*\\d+){0}\\D*(\\d+)",
+          "source": "url",
+          "transforms": ["toInt"]
+        }
+      },
+      "id": "custom-aether.bar-1783392755943",
+      "match": {
+        "hostnames": ["aether.bar"],
+        "urlPattern": "aether\\.bar/media/tmdb-tv-"
+      },
+      "mediaType": "show",
+      "name": "Aether",
+      "schemaVersion": 2,
+      "tracker": "trakt",
+      "video": {
+        "frame": "auto",
+        "selector": "video",
+        "watchedThreshold": 0.8
+      }
+    },
+    {
+      "extract": {
+        "title": {
+          "source": "title",
+          "transforms": ["trim", "collapseSpaces"]
+        },
+        "tmdbId": {
+          "group": 1,
+          "regex": "(?:\\D*\\d+){0}\\D*(\\d+)",
+          "source": "url",
+          "transforms": ["toInt"]
+        }
+      },
+      "id": "custom-aether.bar-1783392793006",
+      "match": {
+        "hostnames": ["aether.bar"],
+        "urlPattern": "aether\\.bar/media/tmdb-movie-"
+      },
+      "mediaType": "movie",
+      "name": "Aether",
+      "schemaVersion": 2,
+      "tracker": "trakt",
+      "trackers": ["trakt", "anilist"],
+      "video": {
+        "frame": "auto",
+        "selector": "video",
+        "watchedThreshold": 0.8
+      }
+    }
+  ],
   "links": []
 }

@@ -34,6 +34,35 @@
         "selector": "video",
         "watchedThreshold": 0.8
       }
+    },
+    {
+      "extract": {
+        "episode": {
+          "group": 1,
+          "regex": "[?&]ep=(\\d+)",
+          "source": "url",
+          "transforms": ["toInt"]
+        },
+        "title": {
+          "selector": ".title span",
+          "source": "dom",
+          "transforms": ["trim", "collapseSpaces"]
+        }
+      },
+      "id": "custom-www.miruro.to-1782818045646",
+      "match": {
+        "hostnames": ["www.miruro.to"],
+        "urlPattern": "www\\.miruro\\.to/watch"
+      },
+      "mediaType": "show",
+      "name": "Miruro",
+      "schemaVersion": 2,
+      "tracker": "anilist",
+      "video": {
+        "frame": "auto",
+        "selector": "video",
+        "watchedThreshold": 0.8
+      }
     }
   ]
 }
