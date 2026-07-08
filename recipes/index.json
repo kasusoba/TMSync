@@ -1,4 +1,18 @@
 {
   "recipes": [],
-  "links": []
+  "links": [
+    {
+      "anime": "https://www.miruro.to/watch/{anilistId}/{slug}",
+      "id": "ql-www.miruro.to",
+      "name": "Miruro",
+      "search": "https://www.miruro.to/search?query={romaji}&type=ANIME&sort=POPULARITY_DESC",
+      "tracker": "anilist"
+    },
+    {
+      "id": "ql-aether.bar",
+      "name": "Aether",
+      "search": "https://aether.bar/browse/{slug}",
+      "tracker": "trakt"
+    }
+  ]
 }
