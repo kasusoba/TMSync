@@ -214,11 +214,14 @@ export default defineBackground(() => {
     }
 
     // Derive + record every OTHER enabled tracker via the crosswalk (+ overrides).
+    // When the native tracker isn't enabled there's no anchor to bridge from, so
+    // those trackers resolve themselves on a miss (id → title) instead of skipping.
     const derived = await recordDerivedTrackers(
       nativeItem,
       enabled.filter((t) => t !== native),
       data,
       await animapOverrides.getValue(),
+      !nativeEnabled,
     );
 
     // Native is the badge's primary when enabled; otherwise promote the first
@@ -775,6 +778,8 @@ function derivedToReply(d: DerivedOutcome): ScrobbleReply {
     reason,
     completed: d.completed,
     resolvedTitle: d.resolvedTitle,
+    resolvedYear: d.resolvedYear,
+    resolvedEpisodes: d.resolvedEpisodes,
     primaryTracker: d.tracker,
   };
 }
@@ -791,8 +796,9 @@ async function resolveAcross(
   overrides: AnimapOverrides,
 ): Promise<TrackerResolution[]> {
   const native = inferNativeTracker(media);
-  const needNative =
-    trackers.includes(native) || (native === "anilist" && trackers.includes("trakt"));
+  const nativeEnabled = trackers.includes(native);
+  const soloFallback = !nativeEnabled; // no enabled native anchor to bridge from
+  const needNative = nativeEnabled || (native === "anilist" && trackers.includes("trakt"));
   let nativeItem: TrackedItem | null = null;
   if (needNative) {
     try {
@@ -801,6 +807,15 @@ async function resolveAcross(
       nativeItem = null;
     }
   }
+  // Resolve a tracker directly (its own id → title) — the solo-fallback path.
+  const resolveDirect = async (tk: Tracker): Promise<TrackerResolution> => {
+    const item = await getAdapter(tk)
+      .resolve(media)
+      .catch(() => null);
+    return item
+      ? { tracker: tk, resolved: true, title: item.title, id: item.id }
+      : { tracker: tk, resolved: false, reason: "no_match" };
+  };
   const out: TrackerResolution[] = [];
   for (const tk of trackers) {
     if (tk === native) {
@@ -813,7 +828,11 @@ async function resolveAcross(
     }
     const d = deriveMediaWith(tk, media, nativeItem, overrides);
     if (d.kind === "miss") {
-      out.push({ tracker: tk, resolved: false, reason: "no_match" });
+      out.push(
+        soloFallback
+          ? await resolveDirect(tk)
+          : { tracker: tk, resolved: false, reason: "no_match" },
+      );
       continue;
     }
     if (d.kind === "ambiguous") {
@@ -842,11 +861,55 @@ async function recordDerivedTrackers(
   targets: Tracker[],
   data: ScrobbleRequest,
   overrides: AnimapOverrides,
+  // True when NO enabled tracker speaks the page's numbering natively — i.e. the
+  // crosswalk has no native partner to bridge FROM. Then a miss isn't "skip"; the
+  // target resolves itself (its own id, else title) with the scraped episode.
+  // Genuine multi-track (an enabled native anchor) keeps skip-on-miss.
+  soloFallback: boolean,
 ): Promise<DerivedOutcome[]> {
   const out: DerivedOutcome[] = [];
+
+  // Record a resolved item and shape its reply (year/episodes included so the badge
+  // shows them). Shared by the crosswalk path and the solo title fallback.
+  const record = async (
+    target: Tracker,
+    item: TrackedItem,
+    media: ParsedMedia,
+  ): Promise<DerivedOutcome> => {
+    const r = await getAdapter(target).recordProgress(
+      item,
+      media,
+      data.progress,
+      data.action,
+      data.watchedThreshold ?? 0.8,
+    );
+    return {
+      tracker: target,
+      ok: r.ok,
+      action: r.action,
+      reason: r.ok ? undefined : r.reason,
+      completed: r.completed,
+      resolvedTitle: item.title,
+      resolvedYear: item.year,
+      resolvedEpisodes: item.tracker === "anilist" ? (item.episodes ?? undefined) : undefined,
+    };
+  };
+
   for (const target of targets) {
     const d = deriveMediaWith(target, data.media, nativeItem, overrides);
     if (d.kind === "miss") {
+      // No crosswalk row. Standing alone (no enabled native anchor) ⇒ resolve this
+      // tracker directly rather than give up — a mislabeled/unmapped id degrades to
+      // a title match instead of "not found". The adapter's own guardrails apply.
+      if (soloFallback) {
+        const item = await getAdapter(target)
+          .resolve(data.media)
+          .catch(() => null);
+        if (item) {
+          out.push(await record(target, item, data.media));
+          continue;
+        }
+      }
       out.push({ tracker: target, ok: false, skipped: true, reason: "no_match" });
       continue;
     }
@@ -868,21 +931,7 @@ async function recordDerivedTrackers(
       out.push({ tracker: target, ok: false, reason: "unresolved" });
       continue;
     }
-    const r = await getAdapter(target).recordProgress(
-      item,
-      d.media,
-      data.progress,
-      data.action,
-      data.watchedThreshold ?? 0.8,
-    );
-    out.push({
-      tracker: target,
-      ok: r.ok,
-      action: r.action,
-      reason: r.ok ? undefined : r.reason,
-      completed: r.completed,
-      resolvedTitle: item.title,
-    });
+    out.push(await record(target, item, d.media));
   }
   return out;
 }

@@ -3,6 +3,7 @@ import {
   type EngineContext,
   type ExtractResult,
   type Field,
+  type IdNamespace,
   type LinkTemplates,
   type Recipe,
   RecipeSchema,
@@ -263,9 +264,14 @@ export function recipeToDraft(recipe: Recipe): RecipeDraft {
       year: recipe.extract?.year,
       season: recipe.extract?.season,
       episode: recipe.extract?.episode,
-      // The picker auto-detects TMDB ids only (the common case); other namespaces
-      // are hand-authorable in `extract.ids`. See docs/IDENTITY-NAMESPACES.md.
-      tmdbId: recipe.extract?.ids?.tmdb,
+      // The draft carries a single, namespace-agnostic id field; read whichever
+      // namespace the recipe stored it under. See docs/IDENTITY-NAMESPACES.md.
+      tmdbId:
+        recipe.extract?.ids?.tmdb ??
+        recipe.extract?.ids?.anilist ??
+        recipe.extract?.ids?.mal ??
+        recipe.extract?.ids?.imdb ??
+        recipe.extract?.ids?.tvdb,
     },
   };
 }
@@ -351,6 +357,11 @@ export function buildRecipe(draft: RecipeDraft, meta: { id: string; name: string
   // runtime re-infers this per watch; we persist it as the legacy `tracker` field.
   const trackers = draft.trackers.length ? draft.trackers : (["trakt"] as Tracker[]);
   const nativeHint: Tracker = draft.fields.tmdbId || draft.fields.season ? "trakt" : "anilist";
+  // Label the captured id by the tracker it feeds: an AniList-only recipe's URL id
+  // is an AniList id; anything involving Trakt is TMDB. Fixes anime sites whose
+  // /watch/<id> is an AniList id being mislabeled `tmdb` (docs/IDENTITY-NAMESPACES.md).
+  const idNamespace: IdNamespace =
+    trackers.includes("anilist") && !trackers.includes("trakt") ? "anilist" : "tmdb";
   const base = {
     id: meta.id,
     schemaVersion: SCHEMA_VERSION,
@@ -380,8 +391,8 @@ export function buildRecipe(draft: RecipeDraft, meta: { id: string; name: string
             year: draft.fields.year,
             season: isMovie ? undefined : draft.fields.season,
             episode: isMovie ? undefined : draft.fields.episode,
-            // Persist the modern id-map shape (picker detects tmdb only for now).
-            ...(draft.fields.tmdbId ? { ids: { tmdb: draft.fields.tmdbId } } : {}),
+            // Persist the id under the namespace of the tracker it feeds.
+            ...(draft.fields.tmdbId ? { ids: { [idNamespace]: draft.fields.tmdbId } } : {}),
           },
         }
       : null;

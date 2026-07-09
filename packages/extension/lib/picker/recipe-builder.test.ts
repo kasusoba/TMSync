@@ -1,4 +1,4 @@
-import { type Recipe, extract } from "@tmsync/shared";
+import { type Field, type Recipe, extract } from "@tmsync/shared";
 import { describe, expect, it } from "vitest";
 // Reuse the recipe-snapshot fixtures.
 import episodeHtml from "../../test/fixtures/sample-episode.html?raw";
@@ -382,6 +382,71 @@ describe("TMDB id (auto-detect + resolve-by-id)", () => {
       expect(mirror.recipe.trackers).toEqual(["anilist", "trakt"]);
       expect(mirror.recipe.tracker).toBe("anilist");
     }
+  });
+
+  it("labels a captured id by the tracker it feeds (anilist-only → ids.anilist)", () => {
+    const id: Field = { source: "url", regex: "/watch/(\\d+)", transforms: ["toInt"] };
+    const title = { title: { source: "title" as const } };
+
+    // AniList-only anime site: the /watch/<id> number is an AniList id, not TMDB.
+    const anime = buildRecipe(
+      {
+        ...emptyDraft("https://www.miruro.to/watch/99423"),
+        trackers: ["anilist"],
+        fields: { ...title, tmdbId: id },
+      },
+      { id: "miruro-to", name: "Miruro" },
+    );
+    expect(anime.ok).toBe(true);
+    if (anime.ok) {
+      expect(anime.recipe.extract?.ids).toEqual({ anilist: id });
+      expect(anime.recipe.extract?.ids?.tmdb).toBeUndefined();
+    }
+
+    // Trakt (or any Trakt-involving) recipe: the id is a TMDB id.
+    const trakt = buildRecipe(
+      {
+        ...emptyDraft("https://cineby.at/tv/1429"),
+        trackers: ["trakt"],
+        fields: { ...title, tmdbId: id },
+      },
+      { id: "cineby", name: "Cineby" },
+    );
+    expect(trakt.ok).toBe(true);
+    if (trakt.ok) expect(trakt.recipe.extract?.ids).toEqual({ tmdb: id });
+
+    // Multi-track (Trakt involved) → TMDB, since Trakt is the native numbering.
+    const multi = buildRecipe(
+      {
+        ...emptyDraft("https://cineby.at/tv/1429"),
+        trackers: ["trakt", "anilist"],
+        fields: { ...title, tmdbId: id },
+      },
+      { id: "cineby2", name: "Cineby" },
+    );
+    expect(multi.ok).toBe(true);
+    if (multi.ok) expect(multi.recipe.extract?.ids).toEqual({ tmdb: id });
+  });
+
+  it("round-trips an anilist id through recipeToDraft → buildRecipe", () => {
+    const id: Field = { source: "url", regex: "/watch/(\\d+)", transforms: ["toInt"] };
+    const original = buildRecipe(
+      {
+        ...emptyDraft("https://www.miruro.to/watch/99423"),
+        trackers: ["anilist"],
+        fields: { title: { source: "title" }, tmdbId: id },
+      },
+      { id: "miruro-to", name: "Miruro" },
+    );
+    expect(original.ok).toBe(true);
+    if (!original.ok) return;
+    // Editing it (draft → rebuild) must keep the id under `anilist`, not lose it.
+    const rebuilt = buildRecipe(recipeToDraft(original.recipe), {
+      id: original.recipe.id,
+      name: original.recipe.name,
+    });
+    expect(rebuilt.ok).toBe(true);
+    if (rebuilt.ok) expect(rebuilt.recipe.extract?.ids).toEqual({ anilist: id });
   });
 
   it("drops season/episode from a movie recipe (would resolve as a show otherwise)", () => {

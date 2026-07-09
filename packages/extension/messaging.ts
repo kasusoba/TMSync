@@ -31,6 +31,8 @@ export interface DerivedOutcome {
   skipped?: boolean;
   completed?: boolean;
   resolvedTitle?: string;
+  resolvedYear?: number;
+  resolvedEpisodes?: number;
 }
 
 export interface ScrobbleReply {
