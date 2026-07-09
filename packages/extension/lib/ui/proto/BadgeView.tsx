@@ -38,7 +38,11 @@ const STATE: Record<BadgeState, { color: string; glow: string; label: string }> 
   },
 };
 
-/** The resting scrobble pill (dot + state + title + minimize). */
+/**
+ * The resting scrobble bar (dot + state + title + minimize + disclosure chevron).
+ * The chevron signals the bar opens the actions panel; "Hide" moved into that panel
+ * to keep the resting overlay uncluttered. Mirrors the real badge in badge.tsx.
+ */
 export function BadgePill({
   variant,
   state,
@@ -53,7 +57,7 @@ export function BadgePill({
   return (
     <div
       class={clsx(
-        "inline-flex max-w-[340px] items-center gap-2.5 rounded-xl py-2 pr-2 pl-3 shadow-xl shadow-black/30",
+        "flex w-[300px] items-center gap-2.5 rounded-xl py-2 pr-2 pl-3 shadow-xl shadow-black/30",
         t.panel,
       )}
     >
@@ -63,6 +67,57 @@ export function BadgePill({
         {title && <span class={clsx("block truncate text-[12px]", t.sub)}>{title}</span>}
       </span>
       <IconBtn t={t} name="minimize" title="Minimize" />
+      <IconBtn t={t} name="up" title="Show tracking, rate, or fix the match" />
+    </div>
+  );
+}
+
+/**
+ * The "now" actions panel — auto-opens when a watch lands, and what the chevron
+ * opens. The per-tracker match (each fixable) + the Rate/note launchpad + the
+ * relocated Hide-badge control. Mirrors the "now" panel in badge.tsx.
+ */
+export function NowPanel({
+  variant,
+  trackers = ["trakt"],
+}: {
+  variant: Variant;
+  trackers?: Tracker[];
+}) {
+  const t = tokens(variant);
+  return (
+    <div class={clsx("w-[300px] rounded-2xl p-3.5 shadow-2xl shadow-black/40", t.panel)}>
+      <span class={clsx("mb-1 block text-[11px]", t.faint)}>Tracking</span>
+      <div class="space-y-1">
+        {trackers.map((tk) => (
+          <div key={tk} class={clsx("flex items-center gap-1 rounded-lg pr-1 pl-2.5", t.card)}>
+            <span class="flex min-w-0 flex-1 items-center gap-2 py-1.5">
+              {tk === "anilist" ? <AniListMark class="size-4" /> : <TraktMark class="size-4" />}
+              <span class={clsx("shrink-0 text-[12px] font-medium", t.heading)}>
+                {tk === "anilist" ? "AniList" : "Trakt"}
+              </span>
+              <span class={clsx("ml-1 min-w-0 flex-1 truncate text-[10px]", t.faint)}>
+                → The Boondocks
+              </span>
+            </span>
+            <IconBtn t={t} name="edit" title="Fix match" />
+          </div>
+        ))}
+      </div>
+      <Btn t={t} tone="primary" class="mt-3 w-full">
+        <Icon name="edit" class="text-[12px]" />
+        Rate / note
+      </Btn>
+      <button
+        type="button"
+        class={clsx(
+          "mt-2 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] transition-colors hover:bg-white/5",
+          t.faint,
+        )}
+      >
+        <Icon name="eye-off" class="text-[11px]" />
+        Hide badge on this page
+      </button>
     </div>
   );
 }
@@ -73,41 +128,6 @@ export function BadgeMini({ state }: { state: BadgeState }) {
     <button type="button" title="TMSync · click to expand" class="grid place-items-center p-1.5">
       <span class={clsx("size-3.5 rounded-full", STATE[state].color, STATE[state].glow)} />
     </button>
-  );
-}
-
-/** Compact rating prompt shown right after a watch lands in history. */
-export function RatingPrompt({
-  variant,
-  label,
-  value,
-}: {
-  variant: Variant;
-  label: string;
-  value: number | null;
-}) {
-  const t = tokens(variant);
-  return (
-    <div
-      class={clsx(
-        "inline-flex items-center gap-3 rounded-xl py-2 pr-2 pl-3 shadow-xl shadow-black/30",
-        t.panel,
-      )}
-    >
-      <span class={clsx("whitespace-nowrap text-[12px] font-semibold", t.heading)}>{label}</span>
-      <Stars value={value} />
-      <button
-        type="button"
-        class={clsx(
-          "inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium",
-          t.ghost,
-        )}
-      >
-        <Icon name="edit" class="text-[11px]" />
-        Note
-      </button>
-      <IconBtn t={t} name="x" title="Dismiss" />
-    </div>
   );
 }
 

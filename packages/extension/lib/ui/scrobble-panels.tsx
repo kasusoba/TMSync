@@ -106,62 +106,6 @@ export function Stars({
   );
 }
 
-/**
- * Your rating for the item at this level. Optimistic: the stars update instantly
- * and only revert if the tracker rejects the change (no waiting on the round-trip).
- */
-export function RatingRow({
-  media,
-  level,
-  tracker,
-  t,
-  compact = false,
-}: {
-  media: ParsedMedia;
-  level: RatingLevel;
-  tracker: Tracker;
-  t: Tokens;
-  compact?: boolean;
-}) {
-  const [rating, setRating] = useState<number | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-
-  useEffect(() => {
-    let live = true;
-    void sendMessage("getReview", { media, level, tracker }).then(
-      (r) => live && setRating(r.rating),
-    );
-    return () => {
-      live = false;
-    };
-  }, [media, level, tracker]);
-
-  const choose = (n: number) => {
-    const prev = rating;
-    const next = n === rating ? null : n;
-    setRating(next); // optimistic — instant
-    setErr(null);
-    void (
-      next === null
-        ? sendMessage("unrateItem", { media, level, tracker })
-        : sendMessage("rateItem", { media, level, rating: next, tracker })
-    ).then((out) => {
-      if (!out.ok) {
-        setRating(prev); // revert on failure
-        setErr(out.error ?? "Failed");
-      }
-    });
-  };
-
-  return (
-    <div>
-      {!compact && <span class={clsx("mb-1 block text-[11px]", t.faint)}>Your rating</span>}
-      <Stars value={rating} onChoose={choose} t={t} />
-      {err && <span class="mt-1 block text-[11px] text-rose-400">{err}</span>}
-    </div>
-  );
-}
-
 const trackerName = (tk: Tracker): string => (tk === "anilist" ? "AniList" : "Trakt");
 
 /**

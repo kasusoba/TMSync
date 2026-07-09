@@ -7,8 +7,8 @@ import {
   EpisodePrompt,
   ManualPickPanel,
   ManualPrompt,
+  NowPanel,
   RateNotePanel,
-  RatingPrompt,
 } from "@/lib/ui/proto/BadgeView";
 import { OptionsView } from "@/lib/ui/proto/OptionsView";
 import { PickerPanel, type UrlPart } from "@/lib/ui/proto/PickerPanel";
@@ -505,15 +505,18 @@ export function App() {
               ))}
             </div>
           </Tile>
-          <Tile label="Minimized dot + rating prompt" t={t}>
-            <div class="flex flex-col items-center gap-4">
-              <div class="flex items-center gap-4">
-                <BadgeMini state="watching" />
-                <BadgeMini state="paused" />
-                <BadgeMini state="scrobbled" />
-              </div>
-              <RatingPrompt variant={variant} label="Rate movie?" value={8} />
+          <Tile label="Minimized dot" t={t}>
+            <div class="flex items-center gap-4">
+              <BadgeMini state="watching" />
+              <BadgeMini state="paused" />
+              <BadgeMini state="scrobbled" />
             </div>
+          </Tile>
+          <Tile label="“Now” panel · auto-opens when a watch lands" t={t}>
+            <NowPanel variant={variant} trackers={["trakt"]} />
+          </Tile>
+          <Tile label="“Now” panel · multi-track (anime)" t={t}>
+            <NowPanel variant={variant} trackers={["trakt", "anilist"]} />
           </Tile>
           <Tile label="Rate & note · movie" t={t}>
             <RateNotePanel

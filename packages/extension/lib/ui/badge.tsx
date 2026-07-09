@@ -16,7 +16,6 @@ import {
   EpisodePick,
   ManualPick,
   RateNote,
-  RatingRow,
   TrackingRows,
 } from "./scrobble-panels";
 import { keepAboveModals } from "./top-layer";
@@ -137,7 +136,6 @@ function BadgeRoot() {
   /** The item's enabled trackers (multi-track) — the rate/note composer fans out
    * across these; `tracker` stays the primary for the quick prompt. */
   const [trackers, setTrackers] = useState<Tracker[]>(["trakt"]);
-  const [promptDismissed, setPromptDismissed] = useState(false);
   const [rewatchHidden, setRewatchHidden] = useState(false);
   const [manualMode, setManualMode] = useState(false);
   // Hide the badge while the page is in native fullscreen (player gone immersive) —
@@ -255,7 +253,6 @@ function BadgeRoot() {
         setPanel(null);
         setMedia(null);
         setMinimized(false);
-        setPromptDismissed(false);
         return;
       }
       setStatus(data);
@@ -298,14 +295,36 @@ function BadgeRoot() {
     if (status) void sendMessage("getManualContext", undefined).then((c) => setManualMode(!!c));
   }, [status]);
 
-  // After a watch lands in history, leave the rating prompt up for a moment then
-  // auto-collapse to the dot so it gets out of the way.
+  // Live ref of the open panel so the auto-tidy timeout can check the CURRENT panel
+  // without re-arming every time the panel changes.
+  const panelRef = useRef(panel);
+  panelRef.current = panel;
+
+  // A watch just landed and it's ratable (Trakt on any scrobble; AniList only once
+  // the cour completed).
+  const ratable =
+    status?.state === "scrobbled" &&
+    media !== null &&
+    (tracker !== "anilist" || status.completed === true);
+
+  // After a watch lands, auto-open the "now" panel (per-tracker match + Rate/note)
+  // so rating and fix-match are right there — the panel itself advertises what the
+  // badge can do. If left untouched, tidy back to the dot so it gets out of the way.
+  // Keyed on the landed episode so it opens once per watch (not on every play/pause)
+  // and never re-opens on a user who closed it.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: fire once per landed episode
   useEffect(() => {
-    if (status?.state === "scrobbled" && panel === null && !minimized) {
-      const id = setTimeout(() => setMinimized(true), AUTO_COLLAPSE_MS);
-      return () => clearTimeout(id);
-    }
-  }, [status?.state, panel, minimized]);
+    if (!ratable) return;
+    setMinimized(false);
+    setPanel("now");
+    const id = setTimeout(() => {
+      if (panelRef.current === "now") {
+        setPanel(null);
+        setMinimized(true);
+      }
+    }, AUTO_COLLAPSE_MS);
+    return () => clearTimeout(id);
+  }, [ratable, mediaIdentity(media)]);
 
   if (!status) return null;
   if (prefs.mode === "off") return null; // hidden — rely on the toolbar icon + popup
@@ -345,14 +364,6 @@ function BadgeRoot() {
     );
   }
 
-  // Rating prompt: Trakt on any scrobble; AniList only when the cour completed.
-  const showPrompt =
-    status.state === "scrobbled" &&
-    media !== null &&
-    panel === null &&
-    !promptDismissed &&
-    (tracker !== "anilist" || status.completed === true);
-
   const confirmRewatch = () => {
     if (!media) return;
     setRewatchHidden(true); // background pushes the resulting status back
@@ -362,8 +373,13 @@ function BadgeRoot() {
   return (
     <div
       ref={rootRef}
+      // Fixed width (not max-width): the container is shrink-to-fit, so an auto
+      // width would track whichever child is widest right now — narrow when only the
+      // status bar shows, wide once a `w-full` panel opens. That mismatch is the
+      // width jump + misaligned gap on expand. A fixed width keeps the bar and every
+      // panel/prompt the same size, so expanding never shifts the layout.
       class={clsx(
-        "tmsync-pop fixed z-[2147483646] flex max-w-[340px] flex-col gap-2 font-sans",
+        "tmsync-pop fixed z-[2147483646] flex w-[320px] flex-col gap-2 font-sans",
         anchor,
       )}
       style={posStyle}
@@ -391,6 +407,20 @@ function BadgeRoot() {
             <Icon name="edit" class="text-[12px]" />
             Rate / note
           </Btn>
+          {/* Hide-badge lives here (not on the status bar) so the resting overlay
+              stays uncluttered — it's a set-once action, re-enabled from the popup. */}
+          <button
+            type="button"
+            title="Hide the on-page badge (turn it back on from the toolbar popup)"
+            onClick={() => void badgePrefs.setValue({ ...prefs, mode: "off" })}
+            class={clsx(
+              "mt-2 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] transition-colors hover:bg-white/5",
+              t.faint,
+            )}
+          >
+            <Icon name="eye-off" class="text-[11px]" />
+            Hide badge on this page
+          </button>
         </div>
       )}
       {panel === "review" && media && (
@@ -476,47 +506,10 @@ function BadgeRoot() {
         </div>
       )}
 
-      {showPrompt && media && (
-        <div
-          class={clsx(
-            "inline-flex items-center gap-3 rounded-xl py-2 pr-2 pl-3 shadow-xl shadow-black/30",
-            t.panel,
-          )}
-        >
-          <span class={clsx("whitespace-nowrap text-[12px] font-semibold", t.heading)}>
-            {tracker === "anilist"
-              ? "Rate this cour?"
-              : `Rate ${media.season !== undefined ? "episode" : "movie"}?`}
-          </span>
-          <div class="flex-1">
-            <RatingRow
-              media={media}
-              tracker={tracker}
-              t={t}
-              level={
-                tracker === "anilist" ? "cour" : media.season !== undefined ? "episode" : "movie"
-              }
-              compact
-            />
-          </div>
-          <button
-            type="button"
-            onClick={() => setPanel("review")}
-            class={clsx(
-              "inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium",
-              t.ghost,
-            )}
-          >
-            <Icon name="edit" class="text-[11px]" />
-            Note
-          </button>
-          <IconBtn t={t} name="x" title="Dismiss" onClick={() => setPromptDismissed(true)} />
-        </div>
-      )}
-
       {/* The status bar doubles as the drag handle (drag to reposition). `order`
           pins it to the docked edge (top when top-pinned) so it stays fixed while a
-          panel expands the other way. */}
+          panel expands the other way. The disclosure chevron signals the bar opens
+          the actions panel — replacing a bare, mystery-meat click target. */}
       <div
         class={clsx(
           "inline-flex cursor-grab touch-none items-center gap-2.5 rounded-xl py-2 pr-2 pl-3 shadow-xl shadow-black/30 active:cursor-grabbing",
@@ -559,13 +552,17 @@ function BadgeRoot() {
             setMinimized(true);
           }}
         />
+        {/* Points toward where the panel will expand (up when bottom-pinned) and
+            flips when open — a plain, learnable "this opens" affordance. */}
         <IconBtn
           t={t}
-          name="eye-off"
-          title="Hide the on-page badge (turn it back on from the toolbar popup)"
+          name={panel ? (bottomPinned ? "down" : "up") : bottomPinned ? "up" : "down"}
+          title={panel ? "Collapse" : "Show tracking, rate, or fix the match"}
           onClick={() => {
             if (consumeDrag()) return;
-            void badgePrefs.setValue({ ...prefs, mode: "off" });
+            setPanel((p) =>
+              p ? null : status.pick ? "manual" : status.needEpisode ? "episode" : "now",
+            );
           }}
         />
       </div>
