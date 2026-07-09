@@ -171,6 +171,12 @@ export async function scrobble(
     } catch {
       // ignore unreadable body
     }
+    // A pause under Trakt's 1% floor ("progress should be at least 1.0% to
+    // pause") is benign — a pause only saves a resume position, and there's
+    // nothing to save that early. Swallow it as a no-op like a 409 rather than
+    // alarming the user; the adapter's guard normally skips it, this catches the
+    // rounding boundary that slips past.
+    if (action === "pause" && res.status === 422) return { ok: true, status: 422 };
     return { ok: false, status: res.status, error: detail || undefined };
   }
   const data = (await res.json()) as ScrobbleResponse;

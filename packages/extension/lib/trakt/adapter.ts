@@ -60,9 +60,11 @@ export const traktAdapter: TrackerAdapter = {
     const body = buildScrobbleBody(toIdentity(item), media, progress);
     // A show missing season/episode — can't scrobble an episode without both.
     if (!body) return { ok: false, reason: "no_episode" };
-    // Trakt rejects a pause under 1% ("progress should be at least 1.0% to
-    // pause"); pausing that early has nothing meaningful to save — skip it.
-    if (phase === "pause" && body.progress < 1) return { ok: true };
+    // Trakt rejects a pause under its 1% floor ("progress should be at least
+    // 1.0% to pause"); pausing that early has nothing meaningful to save — skip
+    // it. `<= 1` because clampProgress rounds to 2dp: a real ~0.996% rounds up to
+    // exactly 1.0, which Trakt still treats as below the floor.
+    if (phase === "pause" && body.progress <= 1) return { ok: true };
     try {
       const outcome = await scrobble(phase, body);
       return {
