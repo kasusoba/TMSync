@@ -2,7 +2,7 @@ import "@/lib/ui/theme.css";
 import { type BadgePrefs, badgePrefs } from "@/lib/storage";
 import type { Tracker } from "@/lib/tracker/types";
 import { type BadgeState, type BadgeStatus, onMessage, sendMessage } from "@/messaging";
-import type { ParsedMedia } from "@tmsync/shared";
+import { type ParsedMedia, primaryId } from "@tmsync/shared";
 import clsx from "clsx";
 import { render } from "preact";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
@@ -34,7 +34,8 @@ type XY = { x: number; y: number };
  * so refreshing `media` only swaps the object when the episode actually changed. */
 function mediaIdentity(m: ParsedMedia | null): string {
   if (!m) return "";
-  const id = m.tmdbId !== undefined ? `tmdb${m.tmdbId}` : m.title;
+  const p = primaryId(m);
+  const id = p ? `${p.namespace}${p.value}` : m.title;
   return `${m.mediaType}:${id}:${m.season ?? ""}:${m.episode ?? ""}`;
 }
 type Edge = "left" | "right" | "top" | "bottom";
@@ -321,7 +322,7 @@ function BadgeRoot() {
   const bottomPinned = pos
     ? pos.edge === "bottom" || ((pos.edge === "left" || pos.edge === "right") && pos.offset >= 0.5)
     : true;
-  const summary = `TMSync · ${status.detail ?? s.label}${status.title ? ` — ${status.title}` : ""}`;
+  const summary = `TMSync · ${status.detail ?? s.label}${status.title ? ` · ${status.title}` : ""}`;
 
   // Minimized: a status dot with a soft glow. The dot is also the drag handle.
   if (minimized) {
@@ -335,7 +336,7 @@ function BadgeRoot() {
             if (consumeDrag()) return;
             setMinimized(false);
           }}
-          title={`${summary} — drag to move`}
+          title={`${summary} · drag to move`}
           aria-label={summary}
         >
           <span class={clsx("tmsync-dot size-3.5 rounded-full", s.color, s.glow)} />

@@ -7,6 +7,7 @@ import {
   type Recipe,
   extract,
   isManualRecipe,
+  primaryId,
   readField,
   recipeTrackers,
   selectRecipe,
@@ -22,14 +23,14 @@ const TAB_MEDIA_POLL_TRIES = 8;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function mediaKey(m: ParsedMedia): string {
-  // Key by BOTH the tmdb id (when present) AND the title. Keying by tmdbId alone
-  // locked the badge on SPAs that render the title late: the first extract fires
-  // before the title exists, publishes with an empty title (tmdbId stands in), and
-  // a tmdbId-only key then dedupes away the re-publish once the real title loads —
-  // fatal for AniList, which resolves by title, not tmdbId (the page stayed stuck
-  // on "TMDB 197754"). Trakt tmdb-only recipes carry no title, so their key is
-  // still stable (`…::…`) and this changes nothing for them.
-  const id = m.tmdbId !== undefined ? `tmdb${m.tmdbId}` : "";
+  // Key by BOTH the id (when present) AND the title. Keying by id alone locked the
+  // badge on SPAs that render the title late: the first extract fires before the
+  // title exists, publishes with an empty title (the id stands in), and an id-only
+  // key then dedupes away the re-publish once the real title loads — fatal for
+  // AniList, which resolves by title (the page stayed stuck on "TMDB 197754").
+  // Trakt id-only recipes carry no title, so their key is still stable (`…::…`).
+  const p = primaryId(m);
+  const id = p ? `${p.namespace}${p.value}` : "";
   return `${m.mediaType}:${id}:${m.title}:${m.season ?? ""}:${m.episode ?? ""}`;
 }
 
@@ -50,7 +51,8 @@ function episodeSuffix(m: ParsedMedia, singleEpisode = false): string {
 function label(m: ParsedMedia): string {
   // A title-less, id-only recipe shows the id until the tracker resolves a real
   // title (which then replaces this in the badge).
-  const name = m.title || (m.tmdbId !== undefined ? `TMDB ${m.tmdbId}` : "");
+  const idp = primaryId(m);
+  const name = m.title || (idp ? `${idp.namespace.toUpperCase()} ${idp.value}` : "");
   const yr = m.year ? ` (${m.year})` : "";
   return `${name}${episodeSuffix(m)}${yr}`;
 }
@@ -461,7 +463,7 @@ export class SessionManager {
         : {
             state: "error",
             title: label(media),
-            detail: `not found on ${trackerName} — click to fix`,
+            detail: `not found on ${trackerName} · click to fix`,
           },
     );
 

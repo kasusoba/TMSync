@@ -263,7 +263,9 @@ export function recipeToDraft(recipe: Recipe): RecipeDraft {
       year: recipe.extract?.year,
       season: recipe.extract?.season,
       episode: recipe.extract?.episode,
-      tmdbId: recipe.extract?.tmdbId,
+      // The picker auto-detects TMDB ids only (the common case); other namespaces
+      // are hand-authorable in `extract.ids`. See docs/IDENTITY-NAMESPACES.md.
+      tmdbId: recipe.extract?.ids?.tmdb,
     },
   };
 }
@@ -378,7 +380,8 @@ export function buildRecipe(draft: RecipeDraft, meta: { id: string; name: string
             year: draft.fields.year,
             season: isMovie ? undefined : draft.fields.season,
             episode: isMovie ? undefined : draft.fields.episode,
-            tmdbId: draft.fields.tmdbId,
+            // Persist the modern id-map shape (picker detects tmdb only for now).
+            ...(draft.fields.tmdbId ? { ids: { tmdb: draft.fields.tmdbId } } : {}),
           },
         }
       : null;

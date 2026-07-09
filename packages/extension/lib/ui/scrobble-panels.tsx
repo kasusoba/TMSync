@@ -100,7 +100,7 @@ export function Stars({
         </button>
       ))}
       <span class={clsx("ml-1.5 min-w-[30px] text-[11px]", t.sub)}>
-        {value ? `${value}/10` : "—"}
+        {value ? `${value}/10` : "·"}
       </span>
     </div>
   );
@@ -190,7 +190,7 @@ export function TrackingRows({
   const resFor = (tk: Tracker) => resolutions?.find((r) => r.tracker === tk);
   // Trakt is always fixable; AniList only when we have a tmdbId to key the override.
   const canFix = (tk: Tracker) =>
-    tk === "trakt" || (tk === "anilist" && media.tmdbId !== undefined);
+    tk === "trakt" || (tk === "anilist" && media.ids?.tmdb !== undefined);
 
   return (
     <div>
@@ -386,7 +386,7 @@ export function RateNote({
     ? "Private note on AniList…"
     : targets.includes("anilist")
       ? "Public comment on Trakt · private note on AniList…"
-      : "Your note — public on Trakt, at least 5 words…";
+      : "Your note · public on Trakt, at least 5 words…";
 
   return (
     <div class={panelClass(t)}>
@@ -429,7 +429,7 @@ export function RateNote({
                 : res.resolved
                   ? levelOk(tk)
                     ? `→ ${res.title ?? "matched"}`
-                    : "whole entry only — tap for “show”"
+                    : "whole entry only · tap for “show”"
                   : res.reason === "no_match"
                     ? `not on ${trackerName(tk)}`
                     : res.reason === "ambiguous"

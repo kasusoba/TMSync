@@ -391,7 +391,7 @@ export function App() {
             // e.g. a restricted page — fall back to asking for a reload.
           }
         }
-        setNote(injected ? "Enabled — now scrobbling on this page." : "Enabled — reload to start.");
+        setNote(injected ? "Enabled · now scrobbling on this page." : "Enabled · reload to start.");
       } else {
         setNote(res.error ?? "Failed");
       }

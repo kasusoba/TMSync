@@ -290,7 +290,7 @@ function QuickLinkRow({
               {field("Anime URL", anime, setAnime, "https://site/anime/{slug}")}
               {field("Search URL", search, setSearch, "https://site/search?q={title}")}
               <p class={clsx("text-[11px] leading-relaxed", t.faint)}>
-                Placeholders: {"{anilistId} {title} {romaji} {slug}"} — shown on anilist.co anime
+                Placeholders: {"{anilistId} {title} {romaji} {slug}"} · shown on anilist.co anime
                 pages.
               </p>
             </>
@@ -423,7 +423,7 @@ export function App() {
     setBusy(true);
     setRecipeNote(null);
     const out = await sendMessage("refreshRecipes", undefined);
-    setRecipeNote(out.ok ? `Synced — ${out.count} recipes.` : `Couldn’t sync: ${out.error}`);
+    setRecipeNote(out.ok ? `Synced · ${out.count} recipes.` : `Couldn’t sync: ${out.error}`);
     setRemote(await remoteRecipes.getValue());
     setBusy(false);
   };
@@ -727,7 +727,7 @@ export function App() {
                         </span>
                         <span class={clsx("block text-[11px] leading-relaxed", t.sub)}>
                           Your Trakt movie history, ratings &amp; reviews as a Letterboxd-import CSV
-                          (rewatches included). Trakt only — AniList isn’t included.
+                          (rewatches included). Trakt only · AniList isn’t included.
                         </span>
                       </span>
                       <Btn t={t} tone="ghost" disabled={exporting} onClick={exportLetterboxd}>
@@ -752,7 +752,7 @@ export function App() {
                 />
                 {anilist && !anilist.configured && (
                   <p class={clsx("rounded-md px-2.5 py-1.5 text-[11px]", t.infoBox)}>
-                    AniList isn’t configured in this build — set{" "}
+                    AniList isn’t configured in this build · set{" "}
                     <code class="font-mono">WXT_ANILIST_CLIENT_ID</code> and{" "}
                     <code class="font-mono">WXT_ANILIST_CLIENT_SECRET</code> to enable it.
                   </p>
@@ -1021,7 +1021,7 @@ export function App() {
                 <p class={clsx("px-1 text-[11px]", t.faint)}>
                   {remote
                     ? `Shared via the repo · updated ${new Date(remote.fetchedAt).toLocaleString()}`
-                    : "Not fetched yet — it syncs automatically in the background."}
+                    : "Not fetched yet · it syncs automatically in the background."}
                 </p>
                 {remote && remote.recipes.length > 0 ? (
                   <div class="space-y-1.5">
@@ -1040,7 +1040,7 @@ export function App() {
                   </div>
                 ) : (
                   <p class={clsx("rounded-lg px-3 py-3 text-center text-[12px]", t.card, t.sub)}>
-                    The shared library is empty — contribute a site to seed it.
+                    The shared library is empty · contribute a site to seed it.
                   </p>
                 )}
                 {recipeNote && (
@@ -1111,8 +1111,8 @@ export function App() {
               <>
                 <PaneHead title="Backup &amp; restore" />
                 <p class={clsx("text-[12px] leading-relaxed", t.sub)}>
-                  Save your TMSync data — custom recipes, your quick links, corrections and manual
-                  picks — to a file, and import it on another device. Your tracker logins and caches
+                  Save your TMSync data · custom recipes, your quick links, corrections and manual
+                  picks · to a file, and import it on another device. Your tracker logins and caches
                   aren’t included.
                 </p>
                 <div class={clsx("flex items-center gap-3 rounded-lg px-3 py-2.5", t.card)}>
@@ -1134,7 +1134,7 @@ export function App() {
                       Import from file
                     </span>
                     <span class={clsx("block text-[11px]", t.sub)}>
-                      Merges a backup into this device — your items win, nothing is deleted.
+                      Merges a backup into this device · your items win, nothing is deleted.
                     </span>
                   </span>
                   <Btn
@@ -1164,7 +1164,7 @@ export function App() {
                 <PaneHead title="Contribute" />
                 <p class={clsx("text-[12px] leading-relaxed", t.sub)}>
                   Share your recipes &amp; quick links with everyone by opening a prefilled GitHub
-                  issue — no watch data is included, only site config. (You can also contribute a
+                  issue · no watch data is included, only site config. (You can also contribute a
                   single entry from its row.)
                 </p>
                 <div class={clsx("flex items-center gap-3 rounded-lg px-3 py-2.5", t.card)}>
@@ -1198,7 +1198,7 @@ export function App() {
                 <PaneHead title="Display" />
                 <p class={clsx("mb-3 text-[12px] leading-relaxed", t.sub)}>
                   The toolbar icon always shows scrobble status, and the popup mirrors it. The
-                  on-page badge is optional — hide it or move it off your player’s controls.
+                  on-page badge is optional · hide it or move it off your player’s controls.
                 </p>
 
                 <div class="mb-4 flex items-center justify-between">
@@ -1212,7 +1212,7 @@ export function App() {
 
                 <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>Position</span>
                 <p class={clsx("mb-2 text-[12px] leading-relaxed", t.sub)}>
-                  Drag the badge (grab the status bar, or the dot) — it snaps to the nearest screen
+                  Drag the badge (grab the status bar, or the dot) · it snaps to the nearest screen
                   edge.
                   {badge.position
                     ? ` Currently docked to the ${badge.position.edge} edge.`

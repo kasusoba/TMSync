@@ -38,8 +38,8 @@ export function forwardKey(tmdbId: number, season: number | undefined): string {
  * single-entry (1-episode) cour on AniList, so a non-anime movie simply misses the
  * crosswalk and stays native-only (no is-anime classifier needed).
  *
- *  - target "anilist": from a TMDB-native item (uses scraped `media.tmdbId`) → forward
- *  - target "trakt":   from an AniList-native item (uses `nativeItem.id`)     → reverse
+ *  - target "anilist": from a TMDB-native item (uses scraped `media.ids.tmdb`) → forward
+ *  - target "trakt":   from an AniList-native item (uses `nativeItem.id`)      → reverse
  *
  * On `resolved`, returns a ParsedMedia carrying the DERIVED tracker's episode
  * numbering (+ the AniList id for a direct id resolve), ready to hand to that
@@ -53,9 +53,10 @@ export function deriveMedia(
 ): DeriveOutcome {
   if (target === "anilist") {
     // TMDB-native → AniList (forward). Needs the scraped TMDB id.
-    if (media.tmdbId === undefined) return { kind: "miss" };
+    const tmdbId = media.ids?.tmdb;
+    if (tmdbId === undefined) return { kind: "miss" };
     const kind = media.mediaType === "movie" ? "movie" : "tv";
-    const r = animap.forward(media.tmdbId, kind, media.season, media.episode);
+    const r = animap.forward(Number(tmdbId), kind, media.season, media.episode);
     if (r.kind !== "resolved") return r;
     // An anime movie is one entry with a single episode on AniList → progress 1 marks
     // it COMPLETED; a series carries its local cour episode. AniList is linear (no
@@ -74,15 +75,23 @@ export function deriveMedia(
   const r = animap.reverse(nativeItem.id, media.episode);
   if (r.kind !== "resolved") return r;
   const { tmdbId, tmdbKind, tmdbSeason, tmdbEpisode } = r.value;
+  // The derived Trakt media is identified by the crosswalk's TMDB id (not the
+  // source AniList-native id) — overwrite `ids` so Trakt resolves by tmdb.
   return {
     kind: "resolved",
     media:
       tmdbKind === "movie"
-        ? { ...media, mediaType: "movie", tmdbId, season: undefined, episode: undefined }
+        ? {
+            ...media,
+            mediaType: "movie",
+            ids: { tmdb: tmdbId },
+            season: undefined,
+            episode: undefined,
+          }
         : {
             ...media,
             mediaType: "show",
-            tmdbId,
+            ids: { tmdb: tmdbId },
             season: tmdbSeason ?? undefined,
             episode: tmdbEpisode,
           },
@@ -103,8 +112,9 @@ export function deriveMediaWith(
   animap: Animap = defaultAnimap,
 ): DeriveOutcome {
   if (target === "anilist") {
-    if (media.tmdbId !== undefined) {
-      const key = forwardKey(media.tmdbId, media.season);
+    const tmdbId = media.ids?.tmdb;
+    if (tmdbId !== undefined) {
+      const key = forwardKey(Number(tmdbId), media.season);
       if (key in overrides.forward) {
         const anilistId = overrides.forward[key];
         if (anilistId == null) return { kind: "miss" }; // explicitly "not on AniList"
@@ -129,7 +139,7 @@ export function deriveMediaWith(
         media: {
           ...media,
           mediaType: "show",
-          tmdbId: r.tmdbId,
+          ids: { tmdb: r.tmdbId },
           season: r.season ?? undefined,
           episode: media.episode,
         },

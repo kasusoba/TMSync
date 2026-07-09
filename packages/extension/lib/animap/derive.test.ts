@@ -24,7 +24,7 @@ describe("deriveMedia — forward (TMDB-native → AniList)", () => {
     const media: ParsedMedia = {
       mediaType: "show",
       title: "AoT",
-      tmdbId: 1429,
+      ids: { tmdb: 1429 },
       season: 3,
       episode: 15,
     };
@@ -32,7 +32,13 @@ describe("deriveMedia — forward (TMDB-native → AniList)", () => {
     expect(out).toEqual({
       kind: "resolved",
       anilistId: 104578,
-      media: { mediaType: "show", title: "AoT", tmdbId: 1429, season: undefined, episode: 3 },
+      media: {
+        mediaType: "show",
+        title: "AoT",
+        ids: { tmdb: 1429 },
+        season: undefined,
+        episode: 3,
+      },
     });
   });
 
@@ -42,7 +48,12 @@ describe("deriveMedia — forward (TMDB-native → AniList)", () => {
   });
 
   it("propagates ambiguous from the crosswalk (no season on a multi-cour show)", () => {
-    const media: ParsedMedia = { mediaType: "show", title: "AoT", tmdbId: 1429, episode: 15 };
+    const media: ParsedMedia = {
+      mediaType: "show",
+      title: "AoT",
+      ids: { tmdb: 1429 },
+      episode: 15,
+    };
     expect(deriveMedia("anilist", media, traktItem, map)).toEqual({ kind: "ambiguous" });
   });
 });
@@ -53,7 +64,7 @@ describe("deriveMedia — reverse (AniList-native → Trakt)", () => {
     const out = deriveMedia("trakt", media, anilistItem, map);
     expect(out).toEqual({
       kind: "resolved",
-      media: { mediaType: "show", title: "AoT", tmdbId: 1429, season: 3, episode: 15 },
+      media: { mediaType: "show", title: "AoT", ids: { tmdb: 1429 }, season: 3, episode: 15 },
     });
   });
 
@@ -77,7 +88,7 @@ describe("deriveMediaWith — local overrides sit above Fribb", () => {
     const media: ParsedMedia = {
       mediaType: "show",
       title: "AoT",
-      tmdbId: 1429,
+      ids: { tmdb: 1429 },
       season: 3,
       episode: 15,
     };
@@ -91,14 +102,20 @@ describe("deriveMediaWith — local overrides sit above Fribb", () => {
     const media: ParsedMedia = {
       mediaType: "show",
       title: "New",
-      tmdbId: 5555,
+      ids: { tmdb: 5555 },
       season: 1,
       episode: 7,
     };
     expect(deriveMediaWith("anilist", media, traktItem, overrides, map)).toEqual({
       kind: "resolved",
       anilistId: 42,
-      media: { mediaType: "show", title: "New", tmdbId: 5555, season: undefined, episode: 7 },
+      media: {
+        mediaType: "show",
+        title: "New",
+        ids: { tmdb: 5555 },
+        season: undefined,
+        episode: 7,
+      },
     });
   });
 
@@ -107,7 +124,7 @@ describe("deriveMediaWith — local overrides sit above Fribb", () => {
     const media: ParsedMedia = {
       mediaType: "show",
       title: "Boondocks",
-      tmdbId: 2604,
+      ids: { tmdb: 2604 },
       season: 1,
       episode: 5,
     };
@@ -122,7 +139,7 @@ describe("deriveMediaWith — local overrides sit above Fribb", () => {
     const media: ParsedMedia = { mediaType: "show", title: "AoT", episode: 3 };
     expect(deriveMediaWith("trakt", media, anilistItem, overrides, map)).toEqual({
       kind: "resolved",
-      media: { mediaType: "show", title: "AoT", tmdbId: 1429, season: 3, episode: 3 },
+      media: { mediaType: "show", title: "AoT", ids: { tmdb: 1429 }, season: 3, episode: 3 },
     });
   });
 });
@@ -134,14 +151,18 @@ describe("deriveMedia — anime movies (via the crosswalk)", () => {
   ]);
 
   it("resolves an anime movie to its AniList entry, episode 1 (a 1-ep cour)", () => {
-    const media: ParsedMedia = { mediaType: "movie", title: "A Silent Voice", tmdbId: 378064 };
+    const media: ParsedMedia = {
+      mediaType: "movie",
+      title: "A Silent Voice",
+      ids: { tmdb: 378064 },
+    };
     expect(deriveMedia("anilist", media, traktItem, withMovie)).toEqual({
       kind: "resolved",
       anilistId: 20954,
       media: {
         mediaType: "show",
         title: "A Silent Voice",
-        tmdbId: 378064,
+        ids: { tmdb: 378064 },
         season: undefined,
         episode: 1,
       },
@@ -149,20 +170,20 @@ describe("deriveMedia — anime movies (via the crosswalk)", () => {
   });
 
   it("misses a non-anime movie (not in the crosswalk) → stays Trakt-only", () => {
-    const media: ParsedMedia = { mediaType: "movie", title: "Heat", tmdbId: 949 };
+    const media: ParsedMedia = { mediaType: "movie", title: "Heat", ids: { tmdb: 949 } };
     expect(deriveMedia("anilist", media, traktItem, withMovie)).toEqual({ kind: "miss" });
   });
 
   it("a pinned override makes an anime movie resolve even if Fribb lacks it", () => {
     const overrides: AnimapOverrides = { forward: { "1244492:": 178025 }, reverse: {} };
-    const media: ParsedMedia = { mediaType: "movie", title: "Look Back", tmdbId: 1244492 };
+    const media: ParsedMedia = { mediaType: "movie", title: "Look Back", ids: { tmdb: 1244492 } };
     expect(deriveMediaWith("anilist", media, traktItem, overrides, map)).toEqual({
       kind: "resolved",
       anilistId: 178025,
       media: {
         mediaType: "show",
         title: "Look Back",
-        tmdbId: 1244492,
+        ids: { tmdb: 1244492 },
         season: undefined,
         episode: 1,
       },

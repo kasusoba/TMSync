@@ -70,7 +70,7 @@ export function BadgePill({
 /** Minimized: a live status dot with a soft glow. Click to expand. */
 export function BadgeMini({ state }: { state: BadgeState }) {
   return (
-    <button type="button" title="TMSync — click to expand" class="grid place-items-center p-1.5">
+    <button type="button" title="TMSync · click to expand" class="grid place-items-center p-1.5">
       <span class={clsx("size-3.5 rounded-full", STATE[state].color, STATE[state].glow)} />
     </button>
   );
@@ -172,7 +172,7 @@ export function RateNotePanel({
               return (
                 <span
                   key={tk}
-                  title={canSend ? undefined : "AniList rates the whole entry — pick “show”"}
+                  title={canSend ? undefined : "AniList rates the whole entry · pick “show”"}
                   class={clsx(
                     "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 ring-inset",
                     t.card,
@@ -199,7 +199,7 @@ export function RateNotePanel({
       <textarea
         rows={4}
         value={note}
-        placeholder="Your note — public on Trakt, at least 5 words…"
+        placeholder="Your note · public on Trakt, at least 5 words…"
         class={clsx(
           "mb-2 w-full resize-none rounded-lg px-2.5 py-2 text-[12px] outline-none ring-inset focus:ring-2",
           t.input,

@@ -213,7 +213,7 @@ export function OptionsView({ variant }: { variant: Variant }) {
                 <PaneHead t={t} title="Account" />
                 <p class={clsx("text-[12px]", t.sub)}>
                   Two independent trackers. Movies &amp; non-anime TV route to Trakt; anime series
-                  to AniList — one item to one tracker, never both.
+                  to AniList · one item to one tracker, never both.
                 </p>
                 <div class={clsx("flex items-center gap-3 rounded-lg px-3 py-2.5", t.card)}>
                   <TraktMark />

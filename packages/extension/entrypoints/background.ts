@@ -388,11 +388,12 @@ export default defineBackground(() => {
 
   // Pin/block the AniList entry for this TMDB item — a local override above Fribb.
   onMessage("setAniListMatch", async ({ data, sender }) => {
-    if (data.media.tmdbId === undefined) {
+    const tmdbId = data.media.ids?.tmdb;
+    if (tmdbId === undefined) {
       return { ok: false, error: "no TMDB id on this item to key the override" };
     }
     const ov = await animapOverrides.getValue();
-    ov.forward[forwardKey(data.media.tmdbId, data.media.season)] = data.anilistId;
+    ov.forward[forwardKey(Number(tmdbId), data.media.season)] = data.anilistId;
     await animapOverrides.setValue(ov);
     const tabId = data.tabId ?? sender.tab?.id;
     if (tabId !== undefined) void sendMessage("recheck", undefined, tabId);
@@ -401,9 +402,10 @@ export default defineBackground(() => {
 
   // Undo an AniList override (pin or "Not on AniList") → back to the Fribb crosswalk.
   onMessage("resetAniListMatch", async ({ data, sender }) => {
-    if (data.media.tmdbId !== undefined) {
+    const tmdbId = data.media.ids?.tmdb;
+    if (tmdbId !== undefined) {
       const ov = await animapOverrides.getValue();
-      const key = forwardKey(data.media.tmdbId, data.media.season);
+      const key = forwardKey(Number(tmdbId), data.media.season);
       if (key in ov.forward) {
         delete ov.forward[key];
         await animapOverrides.setValue(ov);

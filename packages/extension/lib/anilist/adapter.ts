@@ -35,7 +35,7 @@ async function applyPlan(item: AniListItem, plan: AniListPlan): Promise<RecordRe
       return {
         ok: false,
         reason: "numbering_mismatch",
-        httpError: `episode ${plan.episode} > ${plan.total} on “${item.title}” — this site's numbering doesn't match AniList`,
+        httpError: `episode ${plan.episode} > ${plan.total} on “${item.title}” · this site's numbering doesn't match AniList`,
       };
     case "needs_rewatch":
       // Completed cour — write nothing; the badge asks the user to confirm first.
@@ -66,6 +66,10 @@ async function applyPlan(item: AniListItem, plan: AniListPlan): Promise<RecordRe
  */
 export const anilistAdapter: TrackerAdapter = {
   tracker: "anilist",
+
+  // AniList resolves an anilist Media id directly, or a MAL id via `Media(idMal:)`.
+  // A tmdb/imdb page id reaches AniList only through the crosswalk (derived path).
+  resolvableNamespaces: ["anilist", "mal"],
 
   isConnected,
 

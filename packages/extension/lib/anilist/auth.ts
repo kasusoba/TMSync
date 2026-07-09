@@ -20,7 +20,7 @@ export function getRedirectUri(): string {
 export async function connect(): Promise<AniListTokens> {
   if (!ANILIST.clientId || !ANILIST.clientSecret) {
     throw new Error(
-      "AniList isn't configured — set WXT_ANILIST_CLIENT_ID and WXT_ANILIST_CLIENT_SECRET",
+      "AniList isn't configured · set WXT_ANILIST_CLIENT_ID and WXT_ANILIST_CLIENT_SECRET",
     );
   }
   const redirectUri = getRedirectUri();

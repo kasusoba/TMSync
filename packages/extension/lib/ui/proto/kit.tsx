@@ -353,7 +353,7 @@ export function Stars({ value }: { value: number | null }) {
           ★
         </span>
       ))}
-      <span class="ml-1.5 text-[11px] opacity-70">{value ? `${value}/10` : "—"}</span>
+      <span class="ml-1.5 text-[11px] opacity-70">{value ? `${value}/10` : "·"}</span>
     </span>
   );
 }

@@ -81,6 +81,60 @@ describe("RecipeSchema", () => {
     expect(RecipeSchema.safeParse(bad).success).toBe(false);
   });
 
+  it("folds a legacy extract.tmdbId into ids.tmdb (v2 → v3 back-compat)", () => {
+    const legacy = {
+      ...validRecipe,
+      extract: { tmdbId: { source: "url", regex: "/movie/(\\d+)", transforms: ["toInt"] } },
+    };
+    const parsed = RecipeSchema.parse(legacy);
+    expect(parsed.extract?.ids?.tmdb).toEqual({
+      source: "url",
+      regex: "/movie/(\\d+)",
+      transforms: ["toInt"],
+    });
+    // The deprecated alias is not re-emitted.
+    expect((parsed.extract as { tmdbId?: unknown }).tmdbId).toBeUndefined();
+  });
+
+  it("an explicit ids.tmdb wins over a legacy tmdbId alias", () => {
+    const both = {
+      ...validRecipe,
+      extract: {
+        tmdbId: { source: "url", regex: "OLD" },
+        ids: { tmdb: { source: "url", regex: "NEW" } },
+      },
+    };
+    const parsed = RecipeSchema.parse(both);
+    expect(parsed.extract?.ids?.tmdb?.regex).toBe("NEW");
+  });
+
+  it("accepts a multi-namespace id map (title optional once an id is present)", () => {
+    const idOnly = {
+      ...validRecipe,
+      extract: {
+        ids: {
+          imdb: { source: "url", regex: "(tt\\d+)" },
+          anilist: { source: "url", regex: "/anime/(\\d+)", transforms: ["toInt"] },
+        },
+      },
+    };
+    const parsed = RecipeSchema.safeParse(idOnly);
+    expect(parsed.success).toBe(true);
+  });
+
+  it("rejects an unknown id namespace", () => {
+    const bad = {
+      ...validRecipe,
+      extract: { ids: { kitsu: { source: "url", regex: "(\\d+)" } } },
+    };
+    expect(RecipeSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it("rejects extract with neither a title nor any id", () => {
+    const bad = { ...validRecipe, extract: { ids: {} } };
+    expect(RecipeSchema.safeParse(bad).success).toBe(false);
+  });
+
   it("accepts a manual recipe with no extract (optional manualKey)", () => {
     const manual = {
       id: "asbplayer",

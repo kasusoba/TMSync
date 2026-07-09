@@ -269,7 +269,7 @@ export function PopupView(p: PopupViewProps) {
               </Btn>
               <p class={clsx("px-1 text-[10px] leading-relaxed", t.faint)}>
                 {p.pageHasRecipe
-                  ? "A recipe already covers this page — tweak how it reads what’s playing."
+                  ? "A recipe already covers this page · tweak how it reads what’s playing."
                   : "Point & click to teach TMSync what’s playing here."}
               </p>
             </div>
@@ -309,7 +309,7 @@ export function PopupView(p: PopupViewProps) {
             <>
               <p class={clsx("text-[11px] leading-relaxed", t.sub)}>
                 A quick link on {p.quickLinkInitial?.tracker === "anilist" ? "anilist.co" : "Trakt"}{" "}
-                pages that opens <span class="font-mono">{p.quickLinkHost}</span>. Per-site — works
+                pages that opens <span class="font-mono">{p.quickLinkHost}</span>. Per-site · works
                 from any page here.
               </p>
               <QuickLinkEditor
@@ -326,7 +326,7 @@ export function PopupView(p: PopupViewProps) {
           ) : (
             <p class={clsx("text-[11px] leading-relaxed", t.faint)}>
               {p.quickLinkInitial
-                ? `Quick link added — opens ${p.quickLinkHost} from ${p.quickLinkInitial.tracker === "anilist" ? "anilist.co" : "Trakt"}.`
+                ? `Quick link added · opens ${p.quickLinkHost} from ${p.quickLinkInitial.tracker === "anilist" ? "anilist.co" : "Trakt"}.`
                 : `Add a quick link on Trakt/AniList pages that opens ${p.quickLinkHost}.`}
             </p>
           )}

@@ -1,4 +1,4 @@
-import type { ParsedMedia } from "@tmsync/shared";
+import type { IdNamespace, ParsedMedia } from "@tmsync/shared";
 import type {
   RatingLevel,
   RecordPhase,
@@ -18,6 +18,15 @@ import type {
  */
 export interface TrackerAdapter {
   readonly tracker: Tracker;
+
+  /**
+   * Id namespaces this adapter resolves DIRECTLY (native), strongest first — e.g.
+   * Trakt `["tmdb","imdb","tvdb"]`, AniList `["anilist","mal"]`. A page id in one
+   * of these is looked up exactly; anything else is reached via the crosswalk
+   * (derived) or a title search. Drives native-vs-derived inference so adding a
+   * tracker never special-cases the shared engine (docs/IDENTITY-NAMESPACES.md).
+   */
+  readonly resolvableNamespaces: readonly IdNamespace[];
 
   /** Is the user connected to this tracker? */
   isConnected(): Promise<boolean>;

@@ -1,6 +1,8 @@
+import type { IdNamespace } from "./schema";
+
 /**
  * The normalized media identity scraped from a page by the engine.
- * This is what gets resolved against Trakt downstream.
+ * This is what gets resolved against a tracker downstream.
  */
 export interface ParsedMedia {
   mediaType: "movie" | "show";
@@ -8,11 +10,12 @@ export interface ParsedMedia {
   year?: number;
   season?: number;
   episode?: number;
-  /** TMDB id scraped from the page (usually the URL). When present the Trakt
-   * adapter resolves by id — exact, immune to same-title/remake ambiguity —
-   * instead of a title search. For shows it identifies the show; season/episode
-   * still come from their own fields. */
-  tmdbId?: number;
+  /** Identity ids scraped from the page (usually the URL), keyed by namespace
+   * (docs/IDENTITY-NAMESPACES.md). When one is present an adapter resolves by id —
+   * exact, immune to same-title/remake ambiguity — instead of a title search. For
+   * shows an id identifies the show; season/episode still come from their own
+   * fields. `imdb` values are strings ("tt…"); tmdb/tvdb/anilist/mal are numeric. */
+  ids?: Partial<Record<IdNamespace, string | number>>;
 }
 
 /**

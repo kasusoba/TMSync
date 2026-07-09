@@ -7,11 +7,15 @@
  *   { kind: "recipe"|"quicklink", tracker: "trakt"|"anilist",
  *     action: "add", id, schemaVersion?, data }
  *
- * Routing: recipe+trakt → recipes/index.json (recipes[]); recipe+anilist →
- * recipes/anime/index.json (recipes[]); quicklink → recipes/index.json (links[]).
- * Add by id; an existing id is an UPDATE (never a silent duplicate). Validation of
- * the recipe SHAPE is left to the repo's existing schema tests in CI — a malformed
- * recipe makes parseLibrary drop it and recipes.test.ts fails, blocking the merge.
+ * Routing: recipe → recipes/anime/index.json when it's an anime recipe (the payload
+ * `catalog: "anime"`, or a legacy `tracker: "anilist"`), else recipes/index.json;
+ * quicklink → recipes/index.json (links[]). Add by id; an existing id is an UPDATE
+ * (never a silent duplicate). Validation of the recipe SHAPE is left to the repo's
+ * existing schema tests in CI — a malformed recipe makes parseLibrary drop it and
+ * recipes.test.ts fails, blocking the merge.
+ *
+ * A single-entry contribution emits a content-keyed branch (`branch` output) so a
+ * re-contribution of the same site UPDATES its open PR instead of racing a twin.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 
@@ -44,7 +48,8 @@ for (const e of entries) {
     continue;
   }
   if (e.kind === "recipe") {
-    const path = e.tracker === "anilist" ? ANIME_INDEX : TRAKT_INDEX;
+    const anime = e.catalog === "anime" || e.tracker === "anilist";
+    const path = anime ? ANIME_INDEX : TRAKT_INDEX;
     const idx = load(path);
     idx.recipes ??= [];
     const at = idx.recipes.findIndex((r) => r.id === e.id);
@@ -75,8 +80,23 @@ for (const e of entries) {
 
 const text = summary.join("\n") || "- no changes";
 console.log(text);
+
+// Content-keyed branch for a single-entry contribution (so re-contributing the same
+// site updates its PR instead of racing a duplicate); else fall back to the issue.
+const single = entries.length === 1 && entries[0]?.id ? String(entries[0].id) : null;
+const slug = single
+  ? single
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+  : null;
+const issueNumber = process.env.ISSUE_NUMBER ?? "unknown";
+const branch = slug ? `contribution/${slug}` : `contribution/issue-${issueNumber}`;
+
 if (process.env.GITHUB_OUTPUT) {
-  writeFileSync(process.env.GITHUB_OUTPUT, `summary<<TMSYNC_EOF\n${text}\nTMSYNC_EOF\n`, {
-    flag: "a",
-  });
+  writeFileSync(
+    process.env.GITHUB_OUTPUT,
+    `summary<<TMSYNC_EOF\n${text}\nTMSYNC_EOF\nbranch=${branch}\n`,
+    { flag: "a" },
+  );
 }

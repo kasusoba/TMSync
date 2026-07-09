@@ -32,6 +32,9 @@ function toIdentity(item: Extract<TrackedItem, { tracker: "trakt" }>): ResolvedI
 export const traktAdapter: TrackerAdapter = {
   tracker: "trakt",
 
+  // Trakt's search/{id_type}/{id} lookup speaks these directly (strongest first).
+  resolvableNamespaces: ["tmdb", "imdb", "tvdb"],
+
   isConnected,
 
   async resolve(media: ParsedMedia): Promise<TrackedItem | null> {

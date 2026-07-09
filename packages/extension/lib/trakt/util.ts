@@ -1,4 +1,4 @@
-import type { ParsedMedia } from "@tmsync/shared";
+import { type ParsedMedia, primaryId } from "@tmsync/shared";
 import type {
   RatingSyncBody,
   ResolvedIdentity,
@@ -43,9 +43,10 @@ export function buildScrobbleBody(
 export function resolutionCacheKey(media: ParsedMedia): string {
   const mediaType =
     media.season !== undefined || media.episode !== undefined ? "show" : media.mediaType;
-  // The TMDB id is the strongest identity — key on it so an id-resolved item
-  // never collides with (or is shadowed by) a title-resolved one of the same name.
-  if (media.tmdbId !== undefined) return `${mediaType}:tmdb:${media.tmdbId}`;
+  // An id is the strongest identity — key on it (namespace-tagged) so an id-resolved
+  // item never collides with (or is shadowed by) a title-resolved one of the same name.
+  const id = primaryId(media);
+  if (id) return `${mediaType}:${id.namespace}:${id.value}`;
   return `${mediaType}:${media.title.trim().toLowerCase()}:${media.year ?? ""}`;
 }
 

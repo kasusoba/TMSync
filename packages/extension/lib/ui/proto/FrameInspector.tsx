@@ -81,7 +81,7 @@ export function FrameInspector(p: FrameInspectorProps) {
 
       {nodes === null ? (
         <p class={clsx("px-1 py-2 text-[11px] leading-relaxed", t.faint)}>
-          Press play, then scan to map the page's nested frames — finds the deep player frame even
+          Press play, then scan to map the page's nested frames · finds the deep player frame even
           when the site blocks DevTools.
         </p>
       ) : nodes.length === 0 ? (

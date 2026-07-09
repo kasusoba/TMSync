@@ -83,10 +83,19 @@ describe("resolutionCacheKey", () => {
   });
 
   it("keys on the TMDB id when present (independent of the scraped title)", () => {
-    const a: ParsedMedia = { mediaType: "movie", title: "Dune", year: 2021, tmdbId: 438631 };
-    const b: ParsedMedia = { mediaType: "movie", title: "completely different", tmdbId: 438631 };
+    const a: ParsedMedia = { mediaType: "movie", title: "Dune", year: 2021, ids: { tmdb: 438631 } };
+    const b: ParsedMedia = {
+      mediaType: "movie",
+      title: "completely different",
+      ids: { tmdb: 438631 },
+    };
     expect(resolutionCacheKey(a)).toBe("movie:tmdb:438631");
     expect(resolutionCacheKey(a)).toBe(resolutionCacheKey(b));
+  });
+
+  it("keys on an imdb id (namespace-tagged, so it can't collide with a tmdb id)", () => {
+    const m: ParsedMedia = { mediaType: "movie", title: "Heat", ids: { imdb: "tt0113277" } };
+    expect(resolutionCacheKey(m)).toBe("movie:imdb:tt0113277");
   });
 });
 

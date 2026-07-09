@@ -1,6 +1,6 @@
 import { RECIPES } from "@/config";
 import type { QuickLinkSite } from "@/lib/storage";
-import type { Recipe } from "@tmsync/shared";
+import { type Recipe, recipeTrackers } from "@tmsync/shared";
 
 /**
  * Contributing site config (recipes / quick links) to the central repo, with NO
@@ -15,9 +15,13 @@ import type { Recipe } from "@tmsync/shared";
 /** A self-describing contribution entry — routing lives in the payload. */
 export interface ContributionEntry {
   kind: "recipe" | "quicklink";
-  /** trakt → recipes/index.json, anilist → recipes/anime/index.json (recipes);
-   *  the `links` array (quick links). */
+  /** Which tracker(s) this writes to. Kept for display/back-compat; routing to a
+   *  file now uses `catalog` (a multi-track anime recipe may be tracker "trakt"). */
   tracker: "trakt" | "anilist";
+  /** Which recipe list this belongs in — the CATALOG, not the tracker: "anime" →
+   *  recipes/anime/index.json, "mainstream" → recipes/index.json. A recipe is anime
+   *  iff it (multi-)tracks to AniList (docs/IDENTITY-NAMESPACES.md). Quick links omit it. */
+  catalog?: "mainstream" | "anime";
   /** The client always proposes "add"; the bot/maintainer flips to "update" on an
    *  existing id (and reviews foreign-author updates) — never a silent overwrite. */
   action: "add";
@@ -38,10 +42,13 @@ export interface Contribution {
 
 function recipeEntry(r: Recipe): ContributionEntry {
   // Recipes carry no device-local fields beyond the schema, so the recipe IS the
-  // library payload.
+  // library payload. Catalog routes by whether it (multi-)tracks to AniList — an
+  // anime site multi-tracked to both Trakt+AniList still belongs in the anime list.
+  const anime = recipeTrackers(r).includes("anilist");
   return {
     kind: "recipe",
     tracker: r.tracker ?? "trakt",
+    catalog: anime ? "anime" : "mainstream",
     action: "add",
     id: r.id,
     schemaVersion: r.schemaVersion,

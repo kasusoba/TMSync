@@ -1,6 +1,9 @@
-import type { Field, Recipe } from "./schema";
+import type { Field, IdNamespace, Recipe } from "./schema";
 import { applyTransforms } from "./transforms";
 import type { EngineContext, ExtractResult, ParsedMedia } from "./types";
+
+/** The declared identity fields on a recipe (namespace → Field), post-transform. */
+type IdFields = NonNullable<NonNullable<Recipe["extract"]>["ids"]>;
 
 /**
  * The pure recipe-extraction engine.
@@ -15,14 +18,14 @@ export function extract(recipe: Recipe, ctx: EngineContext): ExtractResult {
   if (!recipe.extract) {
     // Manual recipe — there is nothing to scrape. Callers should branch on
     // isManualRecipe() before reaching here; this guard keeps extract() total.
-    return { ok: false, error: "manual recipe — pick the title in-page" };
+    return { ok: false, error: "manual recipe · pick the title in-page" };
   }
 
   const title = readField(recipe.extract.title, ctx);
-  const tmdbId = readInt(recipe.extract.tmdbId, ctx);
-  // A TMDB id can stand in for the title as the identity. Need at least one.
-  if (!title && tmdbId === undefined) {
-    return { ok: false, error: "could not read a title or TMDB id from this page" };
+  const ids = readIds(recipe.extract.ids, ctx);
+  // An id can stand in for the title as the identity. Need at least one.
+  if (!title && ids === undefined) {
+    return { ok: false, error: "could not read a title or id from this page" };
   }
 
   const year = readInt(recipe.extract.year, ctx);
@@ -36,9 +39,56 @@ export function extract(recipe: Recipe, ctx: EngineContext): ExtractResult {
   if (year !== undefined) media.year = year;
   if (season !== undefined) media.season = season;
   if (episode !== undefined) media.episode = episode;
-  if (tmdbId !== undefined) media.tmdbId = tmdbId;
+  if (ids !== undefined) media.ids = ids;
 
   return { ok: true, media };
+}
+
+/**
+ * Read each declared identity field into a namespace-keyed map. `imdb` keeps its
+ * "tt…" string; every other namespace is parsed to an int. A field that reads
+ * nothing (or a non-imdb id that isn't a number) is skipped. Returns undefined
+ * when no id resolved, so the caller can fall back to a title.
+ */
+function readIds(fields: IdFields | undefined, ctx: EngineContext): ParsedMedia["ids"] | undefined {
+  if (!fields) return undefined;
+  const ids: Partial<Record<IdNamespace, string | number>> = {};
+  for (const [ns, field] of Object.entries(fields) as [IdNamespace, Field][]) {
+    if (!field) continue;
+    if (ns === "imdb") {
+      const raw = readField(field, ctx);
+      if (raw) ids.imdb = raw;
+    } else {
+      const n = readInt(field, ctx);
+      if (n !== undefined) ids[ns] = n;
+    }
+  }
+  return Object.keys(ids).length ? ids : undefined;
+}
+
+/** Preference order for choosing a single "primary" id (strongest identity first). */
+export const ID_NAMESPACE_ORDER: readonly IdNamespace[] = [
+  "tmdb",
+  "imdb",
+  "tvdb",
+  "anilist",
+  "mal",
+];
+
+/**
+ * The strongest id a media carries (namespace + value), or undefined if title-only.
+ * A stable, namespace-tagged handle for cache/session keys and display fallbacks —
+ * so an id-resolved item never collides with a title-resolved one of the same name.
+ */
+export function primaryId(
+  media: ParsedMedia,
+): { namespace: IdNamespace; value: string | number } | undefined {
+  if (!media.ids) return undefined;
+  for (const ns of ID_NAMESPACE_ORDER) {
+    const value = media.ids[ns];
+    if (value !== undefined) return { namespace: ns, value };
+  }
+  return undefined;
 }
 
 /**

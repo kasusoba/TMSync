@@ -39,7 +39,9 @@ const ParsedMediaSchema: z.ZodType<ParsedMedia> = z.object({
   year: z.number().optional(),
   season: z.number().optional(),
   episode: z.number().optional(),
-  tmdbId: z.number().optional(),
+  ids: z
+    .record(z.enum(["tmdb", "imdb", "tvdb", "anilist", "mal"]), z.union([z.string(), z.number()]))
+    .optional(),
 });
 
 const QuickLinkSiteSchema = LinkTemplates.extend({

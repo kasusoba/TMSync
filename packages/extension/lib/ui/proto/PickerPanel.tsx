@@ -160,7 +160,7 @@ export function PickerPanel(p: PickerPanelProps) {
         <div class="fixed inset-x-0 top-4 z-10 flex justify-center px-4">
           <span class="inline-flex max-w-md items-center justify-center gap-2 rounded-2xl bg-ikura px-3.5 py-1.5 text-center text-[12px] font-medium leading-snug text-white shadow-lg shadow-black/20">
             <Icon name="target" class="shrink-0 text-[14px]" />
-            Click the {p.picking} on the page — or a number in the URL · Esc to cancel
+            Click the {p.picking} on the page · or a number in the URL · Esc to cancel
           </span>
         </div>
       )}
@@ -184,13 +184,13 @@ export function PickerPanel(p: PickerPanelProps) {
           {p.banner?.kind === "library" && (
             <div class={clsx("mb-3 rounded-lg px-2.5 py-2 text-[11px] leading-snug", t.infoBox)}>
               A library recipe (“{p.banner.name}”) already covers this page. Saving creates your
-              local override — it wins over the library one.
+              local override · it wins over the library one.
             </div>
           )}
 
           {p.siteRecipeNote && (
             <div class={clsx("mb-3 rounded-lg px-2.5 py-2 text-[11px] leading-snug", t.infoBox)}>
-              You already have a recipe for “{p.siteRecipeNote}” — it applies on its watch pages,
+              You already have a recipe for “{p.siteRecipeNote}” · it applies on its watch pages,
               not this one. (Quick links live in the popup, not here.)
             </div>
           )}
@@ -277,7 +277,7 @@ export function PickerPanel(p: PickerPanelProps) {
             )}
             {p.trackers.includes("anilist") && (
               <p class={clsx("mt-1 text-[10px] leading-snug", t.faint)}>
-                AniList tracks anime only — on a general site it’s mapped via the crosswalk
+                AniList tracks anime only · on a general site it’s mapped via the crosswalk
                 (non-anime skipped, ambiguous numbering refused).
               </p>
             )}
@@ -394,7 +394,7 @@ export function PickerPanel(p: PickerPanelProps) {
                         class={clsx("truncate text-[12px]", f.value ? t.heading : t.faint)}
                         title={f.value ?? undefined}
                       >
-                        {f.value ?? "—"}
+                        {f.value ?? "·"}
                       </span>
                       {f.source && (
                         <span

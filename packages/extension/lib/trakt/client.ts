@@ -89,12 +89,21 @@ export async function resolve(media: ParsedMedia): Promise<ResolvedIdentity | nu
   // 4977 is the film Paprika as a movie but a 1979 series as a show.
   const type: "movie" | "show" = media.mediaType;
 
-  // Prefer an exact TMDB-id lookup when the page gave us one — no title search,
-  // so same-title remakes / id-namespaced shows can't be confused. `type`
-  // disambiguates (TMDB movie and tv ids are separate namespaces).
+  // Prefer an exact id lookup when the page gave us one (tmdb → imdb → tvdb, the
+  // order Trakt resolves) — no title search, so same-title remakes / id-namespaced
+  // shows can't be confused. `type` disambiguates (a namespace's movie and tv ids
+  // are separate). Anything else (anilist/mal only) falls through to a title search.
   let res: Response;
-  if (media.tmdbId !== undefined) {
-    res = await api(`/search/tmdb/${media.tmdbId}?type=${type}`);
+  const idLookup =
+    media.ids?.tmdb !== undefined
+      ? `/search/tmdb/${media.ids.tmdb}?type=${type}`
+      : media.ids?.imdb !== undefined
+        ? `/search/imdb/${media.ids.imdb}?type=${type}`
+        : media.ids?.tvdb !== undefined
+          ? `/search/tvdb/${media.ids.tvdb}?type=${type}`
+          : undefined;
+  if (idLookup !== undefined) {
+    res = await api(idLookup);
   } else {
     const query = new URLSearchParams({ query: media.title });
     // Year filters results, so only use it for movies — a scraped show "year"
@@ -327,7 +336,7 @@ export async function commentItem(
     return {
       error:
         res.status === 404
-          ? `S${season}E${episode} not found on “${identity.title}” — wrong match?`
+          ? `S${season}E${episode} not found on “${identity.title}” · wrong match?`
           : `episode lookup failed (${res.status})`,
     };
   }

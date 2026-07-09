@@ -1,4 +1,5 @@
 import "@/lib/ui/theme.css";
+import { newRecipeId, slugifyHost } from "@/lib/recipe-id";
 import { loadRecipes } from "@/lib/recipes";
 import { customRecipes } from "@/lib/storage";
 import { useKeyShield } from "@/lib/ui/key-shield";
@@ -397,12 +398,20 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
   }
 
   async function save() {
-    const id = editingId ?? `custom-${location.hostname}-${Date.now()}`;
+    // Stable, human-readable id (docs/IDENTITY-NAMESPACES.md): a host slug, unique
+    // against existing recipe ids — so a re-authored site updates rather than dupes.
+    const existing = await customRecipes.getValue();
+    const id =
+      editingId ??
+      newRecipeId(
+        location.hostname,
+        existing.map((r) => r.id),
+      );
     const built = buildRecipe(draft, { id, name });
     if (!built.ok) return setStatus(built.error);
     // Replace the recipe being edited (same id) and any other for the same
     // urlPattern — so we never leave a stale duplicate behind.
-    const list = (await customRecipes.getValue()).filter(
+    const list = existing.filter(
       (r) => r.id !== built.recipe.id && r.match.urlPattern !== built.recipe.match.urlPattern,
     );
     await customRecipes.setValue([...list, built.recipe]);
@@ -412,7 +421,7 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
   }
 
   async function copyJson() {
-    const built = buildRecipe(draft, { id: `custom-${location.hostname}`, name });
+    const built = buildRecipe(draft, { id: slugifyHost(location.hostname), name });
     if (!built.ok) return setStatus(built.error);
     try {
       await navigator.clipboard.writeText(JSON.stringify(built.recipe, null, 2));
@@ -425,7 +434,7 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
   const preview = previewDraft(draft, ctx);
   const previewName = preview.ok
     ? preview.media.title ||
-      (preview.media.tmdbId !== undefined ? `TMDB ${preview.media.tmdbId}` : "")
+      (preview.media.ids?.tmdb !== undefined ? `TMDB ${preview.media.ids.tmdb}` : "")
     : "";
   const previewText = preview.ok
     ? `${preview.media.mediaType}: ${previewName}${
@@ -509,7 +518,7 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
           manualKeyValue={draft.manualKey ? readField(draft.manualKey, ctx) : null}
           preview={
             draft.manual
-              ? { ok: true, text: "Manual — pick each title from the badge" }
+              ? { ok: true, text: "Manual · pick each title from the badge" }
               : preview.ok
                 ? { ok: true, text: previewText }
                 : { ok: false, error: preview.error }

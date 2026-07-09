@@ -40,6 +40,7 @@ jobs:
         id: apply
         env:
           ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: node scripts/apply-contribution.mjs
 
       - name: Format recipe lists
@@ -48,7 +49,9 @@ jobs:
       - name: Open pull request
         uses: peter-evans/create-pull-request@v7
         with:
-          branch: contribution/issue-${{ github.event.issue.number }}
+          # Content-keyed for a single-site contribution (re-contributing the same
+          # site updates its PR); falls back to the issue number for a bundle.
+          branch: ${{ steps.apply.outputs.branch }}
           delete-branch: true
           title: "Contribution from #${{ github.event.issue.number }}: ${{ github.event.issue.title }}"
           body: |

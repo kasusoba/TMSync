@@ -11,8 +11,10 @@ export class AniListNotConnectedError extends Error {
   }
 }
 
-/** Cache key for an AniList resolution: title (+year), case-insensitive. */
+/** Cache key for an AniList resolution: a native id when present, else title (+year). */
 export function anilistCacheKey(media: ParsedMedia): string {
+  if (media.ids?.anilist !== undefined) return `id:${media.ids.anilist}`;
+  if (media.ids?.mal !== undefined) return `mal:${media.ids.mal}`;
   return `${media.title.trim().toLowerCase()}:${media.year ?? ""}`;
 }
 
@@ -103,12 +105,32 @@ export async function resolve(media: ParsedMedia): Promise<AniListIdentity | nul
   const cached = cache[key];
   if (cached) return cached;
 
-  const data = await gql<{ Media: MediaNode | null }>(SEARCH_QUERY, { search: media.title });
-  if (!data.Media) return null;
-  const identity = mediaToIdentity(data.Media);
+  // Native id first (exact, no same-title ambiguity): an anilist id, else a MAL id.
+  // Only fall back to a title search when the page exposed no AniList-native id.
+  let node: MediaNode | null;
+  if (media.ids?.anilist !== undefined) {
+    node = (await gql<{ Media: MediaNode | null }>(BY_ID_QUERY, { id: Number(media.ids.anilist) }))
+      .Media;
+  } else if (media.ids?.mal !== undefined) {
+    node = (await gql<{ Media: MediaNode | null }>(BY_MAL_QUERY, { idMal: Number(media.ids.mal) }))
+      .Media;
+  } else {
+    node = (await gql<{ Media: MediaNode | null }>(SEARCH_QUERY, { search: media.title })).Media;
+  }
+  if (!node) return null;
+  const identity = mediaToIdentity(node);
   await anilistResolutionCache.setValue({ ...cache, [key]: identity });
   return identity;
 }
+
+const BY_MAL_QUERY = `
+query ($idMal: Int) {
+  Media(idMal: $idMal, type: ANIME) {
+    id idMal episodes
+    startDate { year }
+    title { romaji english }
+  }
+}`;
 
 const BY_ID_QUERY = `
 query ($id: Int) {

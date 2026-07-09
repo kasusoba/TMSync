@@ -31,17 +31,31 @@ describe("routeTracker (route by type — constraint #1)", () => {
 });
 
 describe("inferNativeTracker (multi-track — which numbering the page speaks)", () => {
-  it("TMDB seasoning (tmdbId or a season) ⇒ Trakt native", () => {
+  it("TMDB seasoning (a tmdb id or a season) ⇒ Trakt native", () => {
     expect(
-      inferNativeTracker({ mediaType: "show", title: "x", tmdbId: 1429, season: 3, episode: 15 }),
+      inferNativeTracker({
+        mediaType: "show",
+        title: "x",
+        ids: { tmdb: 1429 },
+        season: 3,
+        episode: 15,
+      }),
     ).toBe("trakt");
     expect(inferNativeTracker({ mediaType: "show", title: "x", season: 1, episode: 2 })).toBe(
       "trakt",
     );
-    expect(inferNativeTracker({ mediaType: "movie", title: "Dune", tmdbId: 438631 })).toBe("trakt");
+    expect(inferNativeTracker({ mediaType: "movie", title: "Dune", ids: { tmdb: 438631 } })).toBe(
+      "trakt",
+    );
   });
 
-  it("a bare linear episode (no tmdbId, no season) ⇒ AniList native", () => {
+  it("an imdb id (also Trakt-native) ⇒ Trakt native", () => {
+    expect(inferNativeTracker({ mediaType: "movie", title: "x", ids: { imdb: "tt1160419" } })).toBe(
+      "trakt",
+    );
+  });
+
+  it("a bare linear episode (no Trakt-native id, no season) ⇒ AniList native", () => {
     expect(inferNativeTracker({ mediaType: "show", title: "Frieren", episode: 3 })).toBe("anilist");
   });
 });

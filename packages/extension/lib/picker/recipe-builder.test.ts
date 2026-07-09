@@ -308,11 +308,11 @@ describe("TMDB id (auto-detect + resolve-by-id)", () => {
       tracker: "trakt",
       video: { selector: "video", frame: "auto", watchedThreshold: 0.8 },
       // biome-ignore lint/style/noNonNullAssertion: asserted defined just above
-      extract: { title: { source: "title" }, tmdbId: field! },
+      extract: { title: { source: "title" }, ids: { tmdb: field! } },
     };
     expect(
       extract(recipe, { document: doc, url: "https://cineby.at/tv/273240/1/2" }),
-    ).toMatchObject({ ok: true, media: { tmdbId: 273240 } });
+    ).toMatchObject({ ok: true, media: { ids: { tmdb: 273240 } } });
   });
 
   it("returns undefined when there's no id in the URL", () => {
@@ -334,7 +334,7 @@ describe("TMDB id (auto-detect + resolve-by-id)", () => {
     const doc = new DOMParser().parseFromString("<title>x</title>", "text/html");
     expect(extract(built.recipe, { document: doc, url: "https://bcine.ru/movie/936075" })).toEqual({
       ok: true,
-      media: { mediaType: "movie", title: "", tmdbId: 936075 },
+      media: { mediaType: "movie", title: "", ids: { tmdb: 936075 } },
     });
   });
 
@@ -406,7 +406,7 @@ describe("TMDB id (auto-detect + resolve-by-id)", () => {
     const doc = new DOMParser().parseFromString("<title>x</title>", "text/html");
     expect(extract(built.recipe, { document: doc, url: "https://bcine.ru/movie/4977" })).toEqual({
       ok: true,
-      media: { mediaType: "movie", title: "", tmdbId: 4977 },
+      media: { mediaType: "movie", title: "", ids: { tmdb: 4977 } },
     });
   });
 
@@ -540,7 +540,13 @@ describe("buildRecipe + previewDraft", () => {
     expect(preview).toEqual({
       ok: true,
       // tmdbId auto-detected from the "/watch/1" path segment.
-      media: { mediaType: "show", title: "The Pixel Frontier", season: 2, episode: 4, tmdbId: 1 },
+      media: {
+        mediaType: "show",
+        title: "The Pixel Frontier",
+        season: 2,
+        episode: 4,
+        ids: { tmdb: 1 },
+      },
     });
   });
 });
@@ -552,7 +558,7 @@ describe("manual recipes", () => {
     expect(built.ok).toBe(true);
     if (built.ok) {
       expect(built.recipe.extract).toBeUndefined();
-      expect(built.recipe.schemaVersion).toBe(2);
+      expect(built.recipe.schemaVersion).toBe(3);
     }
   });
 

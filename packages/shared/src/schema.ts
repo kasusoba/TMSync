@@ -12,11 +12,28 @@ import { z } from "zod";
  *     with a `"trakt"` default, so it is purely additive — v1 recipes (and v2
  *     recipes that omit it) still parse and default to Trakt, the original
  *     behaviour. `tracker: "anilist"` recipes carry `schemaVersion: 2`.
+ *
+ * v3 generalises identity from the single `extract.tmdbId` to an OPEN, per-field
+ * `extract.ids` map keyed by id NAMESPACE (tmdb/imdb/tvdb/anilist/mal — see
+ * `IdNamespace`; docs/IDENTITY-NAMESPACES.md). A page may expose several ids;
+ * resolution tries them best-first. A v≤2 `extract.tmdbId` is folded into
+ * `ids.tmdb` by the transform below, so old recipes still parse (back-compat).
  */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export const Transform = z.enum(["trim", "lowercase", "uppercase", "toInt", "collapseSpaces"]);
 export type Transform = z.infer<typeof Transform>;
+
+/**
+ * An external id catalog a page can key into — the site's SOURCE identity, NOT a
+ * destination tracker (those are `tracker`/`trackers`). Open by design: it grows
+ * when a new adapter needs a namespace, exactly like the tracker list. Each tracker
+ * adapter declares which of these it resolves natively (`resolvableNamespaces`);
+ * anything else is reached via the anime-map crosswalk (derived) or a title search.
+ * `imdb` ids are strings ("tt1375666"); the rest are numeric.
+ */
+export const IdNamespace = z.enum(["tmdb", "imdb", "tvdb", "anilist", "mal"]);
+export type IdNamespace = z.infer<typeof IdNamespace>;
 
 /**
  * A `Field` says *where* a value is and *how to clean it* — never *how to
@@ -112,19 +129,27 @@ export const Recipe = z.object({
   // in-page instead; see `manualKey`. A recipe with no `extract` is manual.
   extract: z
     .object({
-      // Optional because a TMDB id can stand in as the identity (below). A recipe
-      // still needs ONE of title/tmdbId — enforced by the refine.
+      // Optional because an id can stand in as the identity (below). A recipe
+      // still needs ONE of title / an id — enforced by the refine.
       title: Field.optional(),
       year: Field.optional(), // helps movie disambiguation
       season: Field.optional(), // shows
       episode: Field.optional(), // shows
-      // The TMDB id (usually from the URL, e.g. /movie/693134 or ?id=276161).
-      // When present the Trakt adapter resolves by id — exact, no remake/same-
-      // title ambiguity — so the title is optional (and a mere display fallback).
+      // Identity ids the page exposes, keyed by namespace (tmdb/imdb/tvdb/anilist/
+      // mal — usually from the URL, e.g. /movie/693134 or ?id=276161). A recipe may
+      // supply several; the adapter resolves by the strongest it understands — exact,
+      // no remake/same-title ambiguity — so the title is optional (a display fallback).
+      ids: z.record(IdNamespace, Field).optional(),
+      // Deprecated v≤2 alias for `ids.tmdb`; folded in by the transform, not re-emitted.
       tmdbId: Field.optional(),
     })
-    .refine((e) => e.title !== undefined || e.tmdbId !== undefined, {
-      message: "a recipe needs a title or a TMDB id to resolve",
+    // Fold a legacy `tmdbId` into `ids.tmdb` (an explicit `ids.tmdb` wins), then drop it.
+    .transform(({ tmdbId, ...rest }) => {
+      if (!tmdbId) return rest;
+      return { ...rest, ids: { tmdb: tmdbId, ...(rest.ids ?? {}) } };
+    })
+    .refine((e) => e.title !== undefined || (!!e.ids && Object.keys(e.ids).length > 0), {
+      message: "a recipe needs a title or at least one id to resolve",
     })
     .optional(),
   // MANUAL recipes only: a field whose VALUE distinguishes the current content
