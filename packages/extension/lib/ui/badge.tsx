@@ -1,6 +1,6 @@
 import "@/lib/ui/theme.css";
 import { type BadgePrefs, badgePrefs } from "@/lib/storage";
-import type { Tracker } from "@/lib/tracker/types";
+import { type Tracker, trackerLabel } from "@/lib/tracker/types";
 import {
   type BadgeState,
   type BadgeStatus,
@@ -15,7 +15,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import type { ContentScriptContext } from "wxt/utils/content-script-context";
 import { createShadowRootUi } from "wxt/utils/content-script-ui/shadow-root";
 import { useKeyShield } from "./key-shield";
-import { AniListMark, Btn, Icon, IconBtn, TraktMark, tokens } from "./kit/kit";
+import { Btn, Icon, IconBtn, TrackerMark, tokens } from "./kit/kit";
 import {
   AniListCorrection,
   Correction,
@@ -135,8 +135,6 @@ const OUTCOME_DOT: Record<TrackerOutcome["state"], string> = {
   pending: "bg-zinc-400",
 };
 
-const trackerLabel = (tk: Tracker) => (tk === "anilist" ? "AniList" : "Trakt");
-
 /**
  * MULTI-TRACK: a compact row of tracker logos, each with a corner status dot (green
  * recorded / amber needs-attention / muted pending). Replaces per-tracker prose on
@@ -151,7 +149,7 @@ function TrackerMarks({ outcomes }: { outcomes: TrackerOutcome[] }) {
           class="relative inline-grid place-items-center"
           title={`${trackerLabel(o.tracker)}${o.note ? ` · ${o.note}` : ""}`}
         >
-          {o.tracker === "anilist" ? <AniListMark class="size-4" /> : <TraktMark class="size-4" />}
+          <TrackerMark tracker={o.tracker} class="size-4" />
           <span
             class={clsx(
               "absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full ring-1 ring-black/50",

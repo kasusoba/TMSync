@@ -1,6 +1,6 @@
 import { quickLinkSlugs } from "@/lib/storage";
 import { routeTracker } from "@/lib/tracker";
-import type { Tracker } from "@/lib/tracker/types";
+import { type Tracker, isSeasonless, trackerLabel } from "@/lib/tracker/types";
 import {
   type BadgeState,
   type BadgeStatus,
@@ -179,10 +179,10 @@ function primaryStatus(
   m: ParsedMedia,
   tracker: Tracker,
 ): BadgeStatus {
-  const name = tracker === "anilist" ? "AniList" : "Trakt";
-  // AniList is seasonless (the cour is the entry) — drop any scraped season so the
-  // label reads `E3`, not a misleading `S1E3`, on a seasoned site tracked to AniList.
-  const seasonless = tracker === "anilist";
+  const name = trackerLabel(tracker);
+  // A seasonless tracker (AniList) has no seasons — the cour IS the entry — so drop
+  // any scraped season: the label reads `E3`, not a misleading `S1E3`.
+  const seasonless = isSeasonless(tracker);
   // Prefer what the tracker actually matched (transparency); keep the scraped S/E.
   const title = reply.resolvedTitle
     ? resolvedLabel(
@@ -535,8 +535,8 @@ export class SessionManager {
     // Seed the badge immediately with the scraped title, then refine it with what
     // the tracker actually matched — so the user can verify (and fix) the target
     // BEFORE pressing play, not only after the first scrobble fires.
-    const trackerName = this.tracker === "anilist" ? "AniList" : "Trakt";
-    const seasonless = this.tracker === "anilist"; // AniList entries are per-cour (no seasons)
+    const trackerName = trackerLabel(this.tracker);
+    const seasonless = isSeasonless(this.tracker); // per-cour trackers have no seasons
     await sendMessage("reportScrobble", { state: "idle", title: label(media, seasonless) });
     const resolved = await sendMessage("resolveMedia", { media, tracker: this.tracker });
     if (!(resolved.resolved && resolved.title)) {
@@ -639,7 +639,7 @@ export class SessionManager {
     // The pick is locked to a Trakt entry via a correction, so resolveMedia hits;
     // either way the title is set, so seed the badge and let play scrobble it.
     const resolved = await sendMessage("resolveMedia", { media, tracker: this.tracker });
-    const seasonless = this.tracker === "anilist";
+    const seasonless = isSeasonless(this.tracker);
     await sendMessage("reportScrobble", {
       state: "idle",
       title:

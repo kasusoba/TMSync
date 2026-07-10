@@ -1,12 +1,42 @@
 /**
- * The tracker-adapter seam (CLAUDE.md → "Tracker adapters"). One interface, two
- * implementations (Trakt, AniList), picked per recipe by `recipe.tracker`. The
- * shared engine (extract/video/session/badge) stays tracker-agnostic; everything
- * tracker-specific lives behind `TrackerAdapter`.
+ * The tracker-adapter seam (CLAUDE.md → "Tracker adapters"). One interface, N
+ * implementations (Trakt, AniList so far), picked per recipe by its tracker list.
+ * The shared engine (extract/video/session/badge) stays tracker-agnostic; everything
+ * tracker-specific lives behind `TrackerAdapter` + the metadata below.
  */
 
-/** The two (and only two) trackers. Routed, never synced (constraint #1). */
+/** The trackers — a growing list (multi-track, constraint #1). Add a member here,
+ * then a `TRACKER_INFO` entry, an adapter (registered in `getAdapter`), a mark, and
+ * a picker toggle. Nothing should switch on the string with an "else ⇒ trakt" default. */
 export type Tracker = "trakt" | "anilist";
+
+/**
+ * Static per-tracker metadata — the SINGLE source for a tracker's display name and
+ * whether its numbering is seasonless. Pure data (no adapter/client code), so it
+ * imports weightlessly into the injected UI, and every `=== "anilist" ? … : "Trakt"`
+ * or `seasonless = tracker === "anilist"` reads from here instead of hardcoding two.
+ */
+export interface TrackerInfo {
+  /** Display name (badge, panels, account rows). */
+  label: string;
+  /** Numbering is linear/per-cour with no seasons (AniList) vs seasoned (Trakt). The
+   * badge drops the season for a seasonless tracker; the engine passes episode as-is. */
+  seasonless: boolean;
+}
+
+export const TRACKER_INFO: Record<Tracker, TrackerInfo> = {
+  trakt: { label: "Trakt", seasonless: false },
+  anilist: { label: "AniList", seasonless: true },
+};
+
+/** All trackers in a stable order — for UI iteration (toggles, tabs) + registries. */
+export const ALL_TRACKERS = Object.keys(TRACKER_INFO) as Tracker[];
+
+/** A tracker's display name. Use everywhere instead of `t === "anilist" ? … : "Trakt"`. */
+export const trackerLabel = (tracker: Tracker): string => TRACKER_INFO[tracker].label;
+
+/** Whether a tracker's numbering is seasonless (no seasons). */
+export const isSeasonless = (tracker: Tracker): boolean => TRACKER_INFO[tracker].seasonless;
 
 /**
  * A resolved item on a specific tracker — the seam-level identity. A discriminated

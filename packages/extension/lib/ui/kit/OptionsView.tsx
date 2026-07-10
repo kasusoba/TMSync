@@ -8,6 +8,7 @@ import {
   type IconName,
   Switch,
   type Tokens,
+  TrackerMark,
   TraktMark,
   type Variant,
   tokens,
@@ -508,11 +509,7 @@ export function OptionsView({ variant }: { variant: Variant }) {
                       )}
                     >
                       <span class="shrink-0">
-                        {i % 3 === 0 ? (
-                          <AniListMark class="size-4" />
-                        ) : (
-                          <TraktMark class="size-4" />
-                        )}
+                        <TrackerMark tracker={i % 3 === 0 ? "anilist" : "trakt"} class="size-4" />
                       </span>
                       <div class="min-w-0 flex-1">
                         <code class={clsx("block truncate font-mono text-[11px]", t.faint)}>

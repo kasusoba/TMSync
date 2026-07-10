@@ -1,3 +1,4 @@
+import type { Tracker } from "@/lib/tracker/types";
 import clsx from "clsx";
 import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
@@ -252,6 +253,19 @@ export function AniListMark({
       onError={() => setFailed(true)}
     />
   );
+}
+
+/** Per-tracker logo component — the ONE place tracker → mark is decided. Every
+ * `tk === "anilist" ? <AniListMark/> : <TraktMark/>` becomes `<TrackerMark tracker={tk}/>`,
+ * so adding a tracker = one entry here, not a hunt through the UI. */
+const TRACKER_MARK: Record<Tracker, (p: { class?: string }) => preact.JSX.Element> = {
+  trakt: TraktMark,
+  anilist: AniListMark,
+};
+
+export function TrackerMark({ tracker, class: cls }: { tracker: Tracker; class?: string }) {
+  const Mark = TRACKER_MARK[tracker];
+  return <Mark class={cls} />;
 }
 
 /** Consistent square icon button for row actions (edit / reorder / delete …). */

@@ -43,7 +43,7 @@ import {
   tabStatus,
 } from "@/lib/storage";
 import { getAdapter, inferNativeTracker, routeTracker } from "@/lib/tracker";
-import type { TrackedItem, Tracker } from "@/lib/tracker/types";
+import type { RatingLevel, TrackedItem, Tracker } from "@/lib/tracker/types";
 import { connect, disconnect, getRedirectUri, isConnected } from "@/lib/trakt/auth";
 import { TraktNotConnectedError, exportLetterboxd, resolve, search } from "@/lib/trakt/client";
 import {
@@ -69,6 +69,39 @@ import { browser } from "wxt/browser";
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const siteId = (origin: string) => `tmsync-${origin.replace(/[^a-z0-9]/gi, "-")}`;
+
+type OkResult = Promise<{ ok: boolean; error?: string }>;
+/** The rating + note seam per tracker (see the getReview/rateItem/… handlers). Each
+ * tracker uses only the params it supports; adding a tracker = one entry here. */
+interface ReviewHandler {
+  getReview(
+    media: ParsedMedia,
+    level: RatingLevel,
+  ): Promise<{ rating: number | null; note: { text: string; spoiler: boolean } | null }>;
+  rate(media: ParsedMedia, level: RatingLevel, rating: number): OkResult;
+  unrate(media: ParsedMedia, level: RatingLevel): OkResult;
+  saveNote(media: ParsedMedia, level: RatingLevel, text: string, spoiler: boolean): OkResult;
+  deleteNote(media: ParsedMedia, level: RatingLevel): OkResult;
+}
+
+const REVIEW: Record<Tracker, ReviewHandler> = {
+  // Trakt: per-level (episode/season/show) with a public comment + spoiler flag.
+  trakt: {
+    getReview: (m, level) => traktGetReview(m, level as ReviewLevel),
+    rate: (m, level, rating) => traktRate(m, level as ReviewLevel, rating),
+    unrate: (m, level) => traktUnrate(m, level as ReviewLevel),
+    saveNote: (m, level, text, spoiler) => traktSaveNote(m, level as ReviewLevel, text, spoiler),
+    deleteNote: (m, level) => traktDeleteNote(m, level as ReviewLevel),
+  },
+  // AniList: the cour entry only — private note, no per-level, no spoiler.
+  anilist: {
+    getReview: (m) => anilistGetReview(m),
+    rate: (m, _level, rating) => anilistRate(m, rating),
+    unrate: (m) => anilistUnrate(m),
+    saveNote: (m, _level, text) => anilistSaveNote(m, text),
+    deleteNote: (m) => anilistDeleteNote(m),
+  },
+};
 
 /**
  * MV3 service worker. STATELESS (constraint #4): every handler reads from
@@ -494,30 +527,26 @@ export default defineBackground(() => {
     return { levels, scoreFormat: (await viewerScoreFormat()) ?? undefined };
   });
 
-  onMessage("getReview", async ({ data }) => {
-    if ((data.tracker ?? "trakt") === "anilist") return anilistGetReview(data.media);
-    return traktGetReview(data.media, data.level as ReviewLevel); // trakt branch: never "cour"
-  });
-
-  onMessage("rateItem", async ({ data }) => {
-    if ((data.tracker ?? "trakt") === "anilist") return anilistRate(data.media, data.rating);
-    return traktRate(data.media, data.level as ReviewLevel, data.rating);
-  });
-
-  onMessage("unrateItem", async ({ data }) => {
-    if ((data.tracker ?? "trakt") === "anilist") return anilistUnrate(data.media);
-    return traktUnrate(data.media, data.level as ReviewLevel);
-  });
-
-  onMessage("saveNote", async ({ data }) => {
-    if ((data.tracker ?? "trakt") === "anilist") return anilistSaveNote(data.media, data.text);
-    return traktSaveNote(data.media, data.level as ReviewLevel, data.text, data.spoiler);
-  });
-
-  onMessage("deleteNote", async ({ data }) => {
-    if ((data.tracker ?? "trakt") === "anilist") return anilistDeleteNote(data.media);
-    return traktDeleteNote(data.media, data.level as ReviewLevel);
-  });
+  // Rating + notes route through a per-tracker REGISTRY, not a `=== "anilist" ? … :
+  // trakt` ternary — the review path never went through the adapter seam, so this is
+  // the seam for it. Adding a tracker = one entry (its rating/note semantics differ:
+  // Trakt rates per level with a public comment; AniList rates the cour with a
+  // private note; each impl uses only the params it needs).
+  onMessage("getReview", ({ data }) =>
+    REVIEW[data.tracker ?? "trakt"].getReview(data.media, data.level),
+  );
+  onMessage("rateItem", ({ data }) =>
+    REVIEW[data.tracker ?? "trakt"].rate(data.media, data.level, data.rating),
+  );
+  onMessage("unrateItem", ({ data }) =>
+    REVIEW[data.tracker ?? "trakt"].unrate(data.media, data.level),
+  );
+  onMessage("saveNote", ({ data }) =>
+    REVIEW[data.tracker ?? "trakt"].saveNote(data.media, data.level, data.text, data.spoiler),
+  );
+  onMessage("deleteNote", ({ data }) =>
+    REVIEW[data.tracker ?? "trakt"].deleteNote(data.media, data.level),
+  );
 
   // --- per-tab session coordination ---
   onMessage("publishMedia", async ({ data, sender }) => {

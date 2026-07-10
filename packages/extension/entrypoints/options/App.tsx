@@ -22,7 +22,7 @@ import {
   quickLinks,
   remoteRecipes,
 } from "@/lib/storage";
-import type { Tracker } from "@/lib/tracker/types";
+import { type Tracker, trackerLabel } from "@/lib/tracker/types";
 import type { ResolvedIdentity } from "@/lib/trakt/types";
 import { BadgeModeToggle } from "@/lib/ui/kit/PopupView";
 import { TrackerTab } from "@/lib/ui/kit/TrackerTab";
@@ -33,6 +33,7 @@ import {
   IconBtn,
   type IconName,
   Switch,
+  TrackerMark,
   TraktMark,
   tokens,
 } from "@/lib/ui/kit/kit";
@@ -280,11 +281,7 @@ function QuickLinkRow({
         </span>
         <Switch on={site.enabled} t={t} onClick={() => onToggle(site.id)} />
         {/* tracker indicator — which pages this link shows on */}
-        {(site.tracker ?? "trakt") === "anilist" ? (
-          <AniListMark class="size-4" />
-        ) : (
-          <TraktMark class="size-4" />
-        )}
+        <TrackerMark tracker={site.tracker ?? "trakt"} class="size-4" />
         <span class="min-w-0 flex-1 truncate">
           <span class={clsx("text-[13px] font-medium", t.heading)}>{site.name}</span>
           {site.source === "library" && (
@@ -1185,15 +1182,8 @@ export function App() {
                               t.card,
                             )}
                           >
-                            <span
-                              class="shrink-0"
-                              title={c.tracker === "anilist" ? "AniList" : "Trakt"}
-                            >
-                              {c.tracker === "anilist" ? (
-                                <AniListMark class="size-4" />
-                              ) : (
-                                <TraktMark class="size-4" />
-                              )}
+                            <span class="shrink-0" title={trackerLabel(c.tracker)}>
+                              <TrackerMark tracker={c.tracker} class="size-4" />
                             </span>
                             <div class="min-w-0 flex-1">
                               <code class={clsx("block truncate font-mono text-[11px]", t.faint)}>

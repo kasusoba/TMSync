@@ -1,7 +1,7 @@
-import type { Tracker } from "@/lib/tracker/types";
+import { type Tracker, trackerLabel } from "@/lib/tracker/types";
 import type { TrackerOutcome } from "@/messaging";
 import clsx from "clsx";
-import { AniListMark, Btn, Icon, IconBtn, Stars, TraktMark, type Variant, tokens } from "./kit";
+import { Btn, Icon, IconBtn, Stars, TrackerMark, type Variant, tokens } from "./kit";
 
 export type BadgeState = "idle" | "watching" | "paused" | "scrobbled" | "stopped" | "error";
 
@@ -11,8 +11,6 @@ const OUTCOME_DOT: Record<TrackerOutcome["state"], string> = {
   attention: "bg-amber-500",
   pending: "bg-zinc-400",
 };
-
-const trackerLabel = (tk: Tracker) => (tk === "anilist" ? "AniList" : "Trakt");
 
 /** MULTI-TRACK: a row of tracker logos, each with a corner status dot. Mirrors the
  * real badge's TrackerMarks; scales to any number of trackers without prose. */
@@ -25,7 +23,7 @@ function TrackerMarks({ outcomes }: { outcomes: TrackerOutcome[] }) {
           class="relative inline-grid place-items-center"
           title={`${trackerLabel(o.tracker)}${o.note ? ` · ${o.note}` : ""}`}
         >
-          {o.tracker === "anilist" ? <AniListMark class="size-4" /> : <TraktMark class="size-4" />}
+          <TrackerMark tracker={o.tracker} class="size-4" />
           <span
             class={clsx(
               "absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full ring-1 ring-black/50",
@@ -140,9 +138,9 @@ export function NowPanel({
           return (
             <div key={tk} class={clsx("flex items-center gap-1 rounded-lg pr-1 pl-2.5", t.card)}>
               <span class="flex min-w-0 flex-1 items-center gap-2 py-1.5">
-                {tk === "anilist" ? <AniListMark class="size-4" /> : <TraktMark class="size-4" />}
+                <TrackerMark tracker={tk} class="size-4" />
                 <span class={clsx("shrink-0 text-[12px] font-medium", t.heading)}>
-                  {tk === "anilist" ? "AniList" : "Trakt"}
+                  {trackerLabel(tk)}
                 </span>
                 <span class={clsx("ml-1 min-w-0 flex-1 truncate text-[10px]", t.faint)}>
                   → The Boondocks
@@ -256,10 +254,8 @@ export function RateNotePanel({
                     canSend ? "ring-2 ring-ikura" : "ring-1 ring-transparent opacity-40",
                   )}
                 >
-                  {tk === "anilist" ? <AniListMark class="size-4" /> : <TraktMark class="size-4" />}
-                  <span class={clsx("text-[12px] font-medium", t.heading)}>
-                    {tk === "anilist" ? "AniList" : "Trakt"}
-                  </span>
+                  <TrackerMark tracker={tk} class="size-4" />
+                  <span class={clsx("text-[12px] font-medium", t.heading)}>{trackerLabel(tk)}</span>
                   {canSend && <Icon name="check" class="text-[12px] text-ikura" />}
                 </span>
               );

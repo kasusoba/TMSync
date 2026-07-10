@@ -1,5 +1,11 @@
 import type { AniListSearchOption } from "@/lib/anilist/client";
-import type { RatingLevel, Tracker, WatchedEpisode, WatchedState } from "@/lib/tracker/types";
+import {
+  type RatingLevel,
+  type Tracker,
+  type WatchedEpisode,
+  type WatchedState,
+  trackerLabel,
+} from "@/lib/tracker/types";
 import type { ResolvedIdentity, ReviewLevel, TraktSearchOption } from "@/lib/trakt/types";
 import {
   type BadgeState,
@@ -11,7 +17,7 @@ import {
 import { type ParsedMedia, trackerItemUrl } from "@tmsync/shared";
 import clsx from "clsx";
 import { useEffect, useState } from "preact/hooks";
-import { AniListMark, Btn, Icon, IconBtn, type Tokens, TraktMark } from "./kit/kit";
+import { Btn, Icon, IconBtn, type Tokens, TrackerMark } from "./kit/kit";
 
 /**
  * The interactive scrobble panels — rate/note, fix-match, manual pick, episode
@@ -107,8 +113,6 @@ export function Stars({
   );
 }
 
-const trackerName = (tk: Tracker): string => (tk === "anilist" ? "AniList" : "Trakt");
-
 /**
  * The per-tracker destinations readout for the now-playing view (badge + popup):
  * what each enabled tracker resolved to, each with a "fix" (edit) that opens the
@@ -163,7 +167,7 @@ export function TrackingRows({
               : res.resolved
                 ? `→ ${res.title ?? "matched"}`
                 : res.reason === "no_match"
-                  ? `not on ${trackerName(tk)}`
+                  ? `not on ${trackerLabel(tk)}`
                   : res.reason === "ambiguous"
                     ? "ambiguous mapping"
                     : "not found";
@@ -179,9 +183,9 @@ export function TrackingRows({
               : undefined;
           const inner = (
             <>
-              {tk === "anilist" ? <AniListMark class="size-4" /> : <TraktMark class="size-4" />}
+              <TrackerMark tracker={tk} class="size-4" />
               <span class={clsx("shrink-0 text-[12px] font-medium", t.heading)}>
-                {trackerName(tk)}
+                {trackerLabel(tk)}
               </span>
               <span class={clsx("ml-1 min-w-0 flex-1 truncate text-[10px]", t.faint)}>
                 {detail}
@@ -208,7 +212,7 @@ export function TrackingRows({
                   href={url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  title={`Open on ${trackerName(tk)}`}
+                  title={`Open on ${trackerLabel(tk)}`}
                   class="group flex min-w-0 flex-1 items-center gap-2 py-1.5"
                 >
                   {inner}
@@ -219,7 +223,7 @@ export function TrackingRows({
               {outcome && (
                 <span
                   class="flex shrink-0 items-center gap-1"
-                  title={`${trackerName(tk)} · ${outcome.note ?? OUTCOME_GLYPH[outcome.state].label}`}
+                  title={`${trackerLabel(tk)} · ${outcome.note ?? OUTCOME_GLYPH[outcome.state].label}`}
                 >
                   {outcome.note && outcome.state !== "ok" && (
                     <span class={clsx("text-[10px]", t.faint)}>{outcome.note}</span>
@@ -231,7 +235,7 @@ export function TrackingRows({
                 <IconBtn
                   t={t}
                   name="edit"
-                  title={`Fix ${trackerName(tk)} match`}
+                  title={`Fix ${trackerLabel(tk)} match`}
                   onClick={() => onFix(tk)}
                 />
               )}
@@ -360,7 +364,7 @@ export function RateNote({
       const lv = trackerLevel(tk);
       if (rating !== null) {
         const r = await sendMessage("rateItem", { media, level: lv, rating, tracker: tk });
-        if (!r.ok) fails.push(`${trackerName(tk)}: ${r.error ?? "rating failed"}`);
+        if (!r.ok) fails.push(`${trackerLabel(tk)}: ${r.error ?? "rating failed"}`);
       }
       if (note.trim()) {
         const n = await sendMessage("saveNote", {
@@ -370,11 +374,11 @@ export function RateNote({
           spoiler: tk === "trakt" ? spoiler : false,
           tracker: tk,
         });
-        if (!n.ok) fails.push(`${trackerName(tk)}: ${n.error ?? "note failed"}`);
+        if (!n.ok) fails.push(`${trackerLabel(tk)}: ${n.error ?? "note failed"}`);
       }
     }
     if (note.trim()) setHasNote(true);
-    setMsg(fails.length ? fails.join(" · ") : `Saved to ${targets.map(trackerName).join(" & ")}`);
+    setMsg(fails.length ? fails.join(" · ") : `Saved to ${targets.map(trackerLabel).join(" & ")}`);
     setBusy(false);
   };
 
@@ -447,7 +451,7 @@ export function RateNote({
                     ? `→ ${res.title ?? "matched"}`
                     : "whole entry only · tap for “show”"
                   : res.reason === "no_match"
-                    ? `not on ${trackerName(tk)}`
+                    ? `not on ${trackerLabel(tk)}`
                     : res.reason === "ambiguous"
                       ? "ambiguous mapping"
                       : "not found";
@@ -466,9 +470,9 @@ export function RateNote({
                   !canSend && !wrongLevel && "opacity-60",
                 )}
               >
-                {tk === "anilist" ? <AniListMark class="size-4" /> : <TraktMark class="size-4" />}
+                <TrackerMark tracker={tk} class="size-4" />
                 <span class={clsx("shrink-0 text-[12px] font-medium", t.heading)}>
-                  {trackerName(tk)}
+                  {trackerLabel(tk)}
                 </span>
                 <span class={clsx("ml-1 min-w-0 flex-1 truncate text-[10px]", t.faint)}>
                   {detail}

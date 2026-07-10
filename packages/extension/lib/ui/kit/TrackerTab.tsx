@@ -1,17 +1,13 @@
-import type { Tracker } from "@/lib/tracker/types";
+import { ALL_TRACKERS, type Tracker, trackerLabel } from "@/lib/tracker/types";
 import clsx from "clsx";
-import { AniListMark, type Tokens, TraktMark } from "./kit";
-
-const TABS: [Tracker, string][] = [
-  ["trakt", "Trakt"],
-  ["anilist", "AniList"],
-];
+import { type Tokens, TrackerMark } from "./kit";
 
 /**
  * Single-select tracker tab — logo + name, matching the picker's tracker chips
  * (ring = selected). A quick link shows on ONE tracker's pages, so this is a
  * radio, not the picker's multi-toggle. Shared by the popup + Options quick-link
- * editors so the two stay identical.
+ * editors so the two stay identical. Iterates ALL_TRACKERS, so a new tracker shows
+ * up here automatically.
  */
 export function TrackerTab({
   t,
@@ -24,7 +20,7 @@ export function TrackerTab({
 }) {
   return (
     <div class="flex gap-1.5">
-      {TABS.map(([key, label]) => (
+      {ALL_TRACKERS.map((key) => (
         <button
           type="button"
           key={key}
@@ -35,8 +31,8 @@ export function TrackerTab({
             value === key ? "ring-2 ring-ikura" : "ring-1 ring-transparent",
           )}
         >
-          {key === "anilist" ? <AniListMark class="size-4" /> : <TraktMark class="size-4" />}
-          <span class={clsx("text-[12px] font-medium", t.heading)}>{label}</span>
+          <TrackerMark tracker={key} class="size-4" />
+          <span class={clsx("text-[12px] font-medium", t.heading)}>{trackerLabel(key)}</span>
         </button>
       ))}
     </div>
