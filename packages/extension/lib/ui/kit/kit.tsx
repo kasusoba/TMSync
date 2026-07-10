@@ -4,11 +4,13 @@ import { useState } from "preact/hooks";
 import { ANILIST_LOGO, TRAKT_LOGO } from "./marks.data";
 
 /**
- * Prototype design kit — presentational only (no browser APIs, no effects), so
- * the gallery can render every state with mock props. Two visual directions:
+ * The shared design kit — presentational only (no browser APIs, no effects), so
+ * the gallery can render every state with mock props and the real entrypoints
+ * feed it live props. This IS the production UI (badge/popup/picker/options all
+ * build on it), not a throwaway. Two token variants:
  *   "light" — light, neutral surfaces.
- *   "dark"  — dark surfaces.
- * Both use the ikura-orange brand accent. Pick one and we wire it into the real UI.
+ *   "dark"  — dark surfaces (the shipped direction).
+ * Both use the ikura-orange brand accent.
  */
 export type Variant = "light" | "dark";
 

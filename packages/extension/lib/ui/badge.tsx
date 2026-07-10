@@ -9,7 +9,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import type { ContentScriptContext } from "wxt/utils/content-script-context";
 import { createShadowRootUi } from "wxt/utils/content-script-ui/shadow-root";
 import { useKeyShield } from "./key-shield";
-import { Btn, Icon, IconBtn, tokens } from "./proto/kit";
+import { Btn, Icon, IconBtn, tokens } from "./kit/kit";
 import {
   AniListCorrection,
   Correction,

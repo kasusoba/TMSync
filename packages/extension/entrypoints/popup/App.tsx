@@ -1,10 +1,7 @@
 import {
   type FrameNode,
-  type FrameVideoReport,
-  type NavFrame,
   type RawFrame,
   buildFrameTree,
-  buildFrameTreeFromNav,
   flattenFrameTree,
 } from "@/lib/diagnostics/frame-tree";
 import { deriveQuickLink } from "@/lib/picker/recipe-builder";
@@ -19,9 +16,9 @@ import {
   tabStatus,
 } from "@/lib/storage";
 import type { Tracker } from "@/lib/tracker/types";
-import { PopupView } from "@/lib/ui/proto/PopupView";
-import type { QuickLinkValue } from "@/lib/ui/proto/QuickLinkEditor";
-import { tokens } from "@/lib/ui/proto/kit";
+import { PopupView } from "@/lib/ui/kit/PopupView";
+import type { QuickLinkValue } from "@/lib/ui/kit/QuickLinkEditor";
+import { tokens } from "@/lib/ui/kit/kit";
 import { NowPlaying } from "@/lib/ui/scrobble-panels";
 import type { BadgeStatus } from "@/messaging";
 import { type AniListStatus, type TraktStatus, sendMessage } from "@/messaging";
@@ -47,6 +44,34 @@ function httpOrigin(url: string | null): string | null {
 async function activeTabId(): Promise<number | null> {
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
   return tab?.id ?? null;
+}
+
+/**
+ * Inject the content script into the active tab NOW — registration only takes
+ * effect on FUTURE loads, so the already-open page needs a direct inject to start
+ * scrobbling without a reload. Right after the permission prompt is accepted, the
+ * new host permission can lag reaching the scripting API, so the first inject may
+ * throw ("Cannot access contents of the page") — retry once. Returns whether a
+ * content script is now running on the page.
+ */
+async function injectContentNow(tabId: number): Promise<boolean> {
+  const run = () =>
+    browser.scripting.executeScript({
+      target: { tabId, allFrames: true },
+      files: ["/content-scripts/content.js"],
+    });
+  try {
+    await run();
+    return true;
+  } catch {
+    await new Promise((r) => setTimeout(r, 250));
+    try {
+      await run();
+      return true;
+    } catch {
+      return false; // e.g. a restricted page — fall back to asking for a reload
+    }
+  }
 }
 
 /**
@@ -129,34 +154,6 @@ async function collectFrames(tabId: number): Promise<RawFrame[]> {
   }
 }
 
-/** Optional `webNavigation` permission, requested on the inspect gesture. Calling
- * request when already granted is a no-op that returns true. */
-async function ensureWebNav(): Promise<boolean> {
-  try {
-    return await browser.permissions.request({ permissions: ["webNavigation"] });
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Every frame's REAL committed URL + exact parent, via webNavigation — sees
- * through redirect-chain embeds (the iframe `src` attribute lies). null when the
- * permission isn't granted (caller falls back to src-attribute stitching).
- */
-async function getAllFrames(tabId: number): Promise<NavFrame[] | null> {
-  try {
-    const frames = await browser.webNavigation.getAllFrames({ tabId });
-    return (frames ?? []).map((f) => ({
-      frameId: f.frameId,
-      parentFrameId: f.parentFrameId,
-      url: f.url,
-    }));
-  } catch {
-    return null;
-  }
-}
-
 export function App() {
   const [status, setStatus] = useState<TraktStatus | null>(null);
   const [anilist, setAnilist] = useState<AniListStatus | null>(null);
@@ -171,9 +168,9 @@ export function App() {
   const [qlSite, setQlSite] = useState<QuickLinkSite | null>(null);
   // On-page badge visibility (Full / Dot / Off) — quick toggle mirrored from Options.
   const [badgeMode, setBadgeMode] = useState<BadgePrefs["mode"]>("full");
-  // Frame inspector (diagnostics).
+  // Frame map (diagnostics). Auto-populated (cheaply, from iframe src) on open when
+  // the page has embedded frames, and shown inline always-expanded.
   const [pageHasRecipe, setPageHasRecipe] = useState(false);
-  const [inspecting, setInspecting] = useState(false);
   const [frameTree, setFrameTree] = useState<FrameNode[] | null>(null);
   // "Now scrobbling" for the active tab (status + media for the prompts/panels).
   const [now, setNow] = useState<{
@@ -218,10 +215,11 @@ export function App() {
     const stored = tabId !== null ? ((await tabFrameOrigins.getValue())[tabId] ?? []) : [];
     const origin = httpOrigin(url);
     const hostname = origin ? new URL(origin).hostname : null;
+    const allOrigins = [...new Set([...found, ...stored])];
     setStatus(s);
     setAnilist(al);
     setTopOrigin(origin);
-    setOrigins([...new Set([...found, ...stored])]);
+    setOrigins(allOrigins);
     setEnabled(sites);
     setQlHost(hostname);
     setQlUrl(url);
@@ -241,6 +239,15 @@ export function App() {
           }
         }),
     );
+    // Map the page's frames (cheap: stitched from iframe `src`, NO permission prompt)
+    // so the top site and any embedded player frames show as ONE indented list. Scan
+    // any scriptable http page; a single-frame page just yields the one top node.
+    if (tabId !== null && origin) {
+      const raw = await collectFrames(tabId);
+      setFrameTree(flattenFrameTree(buildFrameTree(raw, sites)));
+    } else {
+      setFrameTree(null);
+    }
     await refreshNow();
   };
 
@@ -324,48 +331,6 @@ export function App() {
     setBusy(false);
   };
 
-  // Map the active tab's frames into a tree. webNavigation gives each frame's
-  // real committed URL (so a redirect-chain embed shows its true origin, not the
-  // misleading iframe src); executeScript adds video state where reachable.
-  // Enabling the real player origin and rescanning then reaches it.
-  const scanFrames = async () => {
-    // Request webNavigation first, while the click is still a fresh user gesture.
-    const haveNav = await ensureWebNav();
-    setBusy(true);
-    const tabId = await activeTabId();
-    if (tabId === null) {
-      setFrameTree([]);
-      setBusy(false);
-      return;
-    }
-    const [raw, sites] = await Promise.all([
-      collectFrames(tabId),
-      sendMessage("listEnabledSites", undefined),
-    ]);
-    const nav = haveNav ? await getAllFrames(tabId) : null;
-    if (nav) {
-      const reports: FrameVideoReport[] = raw.map((f) => ({
-        frameId: f.frameId,
-        title: f.title,
-        videos: f.videos,
-      }));
-      setFrameTree(flattenFrameTree(buildFrameTreeFromNav(nav, reports, sites)));
-    } else {
-      // Fallback (permission denied): stitch by the iframe src attribute.
-      setFrameTree(flattenFrameTree(buildFrameTree(raw, sites)));
-    }
-    setBusy(false);
-  };
-
-  const toggleInspect = async () => {
-    if (inspecting) {
-      setInspecting(false);
-      return;
-    }
-    setInspecting(true);
-    await scanFrames();
-  };
-
   const enableOrigin = async (origin: string) => {
     setBusy(true);
     setNote(null);
@@ -374,23 +339,11 @@ export function App() {
     if (granted) {
       const res = await sendMessage("registerSite", origin);
       if (res.ok) {
-        // Registration only affects FUTURE loads; the current tab has no content
-        // script yet. Granting access is a clear intent to use it now, so inject it
-        // into the open tab immediately — no manual reload, and (unlike a reload) it
-        // keeps the video where it is.
+        // Granting access is a clear intent to use it now, so inject into the open
+        // tab immediately (registration alone only covers future loads) — no reload,
+        // and it keeps the video where it is. Retries past the post-grant lag.
         const tabId = await activeTabId();
-        let injected = false;
-        if (tabId !== null) {
-          try {
-            await browser.scripting.executeScript({
-              target: { tabId, allFrames: true },
-              files: ["/content-scripts/content.js"],
-            });
-            injected = true;
-          } catch {
-            // e.g. a restricted page — fall back to asking for a reload.
-          }
-        }
+        const injected = tabId !== null && (await injectContentNow(tabId));
         setNote(injected ? "Enabled · now scrobbling on this page." : "Enabled · reload to start.");
       } else {
         setNote(res.error ?? "Failed");
@@ -398,9 +351,9 @@ export function App() {
     } else {
       setNote("Permission denied");
     }
+    // refresh() re-runs the cheap frame map, so a newly-enabled frame (now
+    // reachable) shows its video state and children automatically.
     await refresh();
-    // Re-map: a newly-enabled frame is now reachable, so its children appear.
-    if (inspecting) await scanFrames();
     setBusy(false);
   };
 
@@ -409,7 +362,6 @@ export function App() {
     await sendMessage("unregisterSite", origin);
     await browser.permissions.remove({ origins: [`${origin}/*`] });
     await refresh();
-    if (inspecting) await scanFrames();
     setBusy(false);
   };
 
@@ -510,10 +462,7 @@ export function App() {
       onRemoveQuickLink={removeQuickLink}
       badgeMode={badgeMode}
       onBadgeMode={changeBadgeMode}
-      inspecting={inspecting}
       frameTree={frameTree}
-      onToggleInspect={toggleInspect}
-      onScanFrames={scanFrames}
       onSetupFrame={setupFrame}
       nowPlaying={
         now && (

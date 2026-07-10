@@ -20,8 +20,8 @@ import {
 } from "@/lib/storage";
 import type { Tracker } from "@/lib/tracker/types";
 import type { ResolvedIdentity } from "@/lib/trakt/types";
-import { BadgeModeToggle } from "@/lib/ui/proto/PopupView";
-import { TrackerTab } from "@/lib/ui/proto/TrackerTab";
+import { BadgeModeToggle } from "@/lib/ui/kit/PopupView";
+import { TrackerTab } from "@/lib/ui/kit/TrackerTab";
 import {
   AniListMark,
   Btn,
@@ -31,7 +31,7 @@ import {
   Switch,
   TraktMark,
   tokens,
-} from "@/lib/ui/proto/kit";
+} from "@/lib/ui/kit/kit";
 import { type AniListStatus, type TraktStatus, sendMessage } from "@/messaging";
 import type { Recipe } from "@tmsync/shared";
 import clsx from "clsx";
@@ -375,7 +375,6 @@ export function App() {
   const [links, setLinks] = useState<QuickLinkSite[]>([]);
   const [corr, setCorr] = useState<Record<string, ResolvedIdentity>>({});
   const [remote, setRemote] = useState<RemoteRecipes | null>(null);
-  const [recipeNote, setRecipeNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   /** The one expanded quick-link row (accordion) — editing another collapses this. */
   const [openLinkId, setOpenLinkId] = useState<string | null>(null);
@@ -388,6 +387,7 @@ export function App() {
   const [exportNote, setExportNote] = useState<string | null>(null);
   const [backupBusy, setBackupBusy] = useState(false);
   const [backupNote, setBackupNote] = useState<string | null>(null);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [badge, setBadge] = useState<BadgePrefs>({ mode: "full", position: null });
   const has = (s: string) => s.toLowerCase().includes(q.toLowerCase());
@@ -419,11 +419,12 @@ export function App() {
     await badgePrefs.setValue(next);
   };
 
-  const refreshRecipes = async () => {
+  // Pull the whole shared library (recipes AND quick links) from the central repo.
+  const syncLibrary = async () => {
     setBusy(true);
-    setRecipeNote(null);
+    setSyncMsg(null);
     const out = await sendMessage("refreshRecipes", undefined);
-    setRecipeNote(out.ok ? `Synced · ${out.count} recipes.` : `Couldn’t sync: ${out.error}`);
+    setSyncMsg(out.ok ? `Synced · ${out.count} recipes` : `Couldn’t sync: ${out.error}`);
     setRemote(await remoteRecipes.getValue());
     setBusy(false);
   };
@@ -660,8 +661,20 @@ export function App() {
 
   return (
     <div class={clsx("flex min-h-screen flex-col font-sans", t.page)}>
-      <header class={clsx("flex items-center border-b px-5 py-3.5", t.divider)}>
+      <header class={clsx("flex items-center gap-3 border-b px-5 py-3.5", t.divider)}>
         <span class={clsx("text-[15px] font-semibold tracking-tight", t.heading)}>TMSync</span>
+        <div class="ml-auto flex items-center gap-2.5">
+          {syncMsg && <span class={clsx("text-[12px]", t.sub)}>{syncMsg}</span>}
+          <Btn
+            t={t}
+            tone="ghost"
+            disabled={busy}
+            onClick={syncLibrary}
+            title="Pull the latest recipes and quick links from the shared library"
+          >
+            <Icon name="refresh" class="text-[12px]" /> Sync library
+          </Btn>
+        </div>
       </header>
 
       <div class="flex flex-1">
@@ -899,21 +912,16 @@ export function App() {
                 <PaneHead
                   title="Recipes"
                   right={
-                    <div class="flex gap-1.5">
-                      {recipes.length > 0 && (
-                        <Btn
-                          t={t}
-                          tone="ghost"
-                          disabled={busy}
-                          onClick={() => openContribution(contributeAll(recipes, []))}
-                        >
-                          <Icon name="external" class="text-[12px]" /> Contribute all
-                        </Btn>
-                      )}
-                      <Btn t={t} tone="ghost" disabled={busy} onClick={refreshRecipes}>
-                        <Icon name="refresh" class="text-[12px]" /> Refresh
+                    recipes.length > 0 && (
+                      <Btn
+                        t={t}
+                        tone="ghost"
+                        disabled={busy}
+                        onClick={() => openContribution(contributeAll(recipes, []))}
+                      >
+                        <Icon name="external" class="text-[12px]" /> Contribute all
                       </Btn>
-                    </div>
+                    )
                   }
                 />
                 <p class={clsx("text-[12px] leading-relaxed", t.sub)}>
@@ -1042,9 +1050,6 @@ export function App() {
                   <p class={clsx("rounded-lg px-3 py-3 text-center text-[12px]", t.card, t.sub)}>
                     The shared library is empty · contribute a site to seed it.
                   </p>
-                )}
-                {recipeNote && (
-                  <p class={clsx("rounded-lg px-3 py-2 text-[12px]", t.infoBox)}>{recipeNote}</p>
                 )}
               </>
             )}

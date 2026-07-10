@@ -396,7 +396,7 @@ export function OptionsView({ variant }: { variant: Variant }) {
                   title="Recipes"
                   right={
                     <Btn t={t} tone="ghost">
-                      <Icon name="refresh" class="text-[12px]" /> Refresh
+                      <Icon name="refresh" class="text-[12px]" /> Sync library
                     </Btn>
                   }
                 />

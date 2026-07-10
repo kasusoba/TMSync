@@ -9,12 +9,12 @@ import {
   ManualPrompt,
   NowPanel,
   RateNotePanel,
-} from "@/lib/ui/proto/BadgeView";
-import { OptionsView } from "@/lib/ui/proto/OptionsView";
-import { PickerPanel, type UrlPart } from "@/lib/ui/proto/PickerPanel";
-import { PopupView } from "@/lib/ui/proto/PopupView";
-import { QuickLinksView } from "@/lib/ui/proto/QuickLinksView";
-import { Btn, Icon, type Tokens, type Variant, tokens } from "@/lib/ui/proto/kit";
+} from "@/lib/ui/kit/BadgeView";
+import { OptionsView } from "@/lib/ui/kit/OptionsView";
+import { PickerPanel, type UrlPart } from "@/lib/ui/kit/PickerPanel";
+import { PopupView } from "@/lib/ui/kit/PopupView";
+import { QuickLinksView } from "@/lib/ui/kit/QuickLinksView";
+import { Btn, Icon, type Tokens, type Variant, tokens } from "@/lib/ui/kit/kit";
 import clsx from "clsx";
 import { useState } from "preact/hooks";
 
@@ -210,11 +210,10 @@ export function App() {
           <Tile label="Connected · no streaming page" t={t}>
             <PopupView variant={variant} connected origins={[]} />
           </Tile>
-          <Tile label="Connected · frame inspector (nested player)" t={t}>
+          <Tile label="Connected · embedded frames (auto-mapped)" t={t}>
             <PopupView
               variant={variant}
               connected
-              inspecting
               onSetupFrame={() => {}}
               origins={[
                 { origin: "https://www.rivestream.app", isTop: true, enabled: true },

@@ -7,7 +7,6 @@ export interface FrameInspectorProps {
   /** Flattened (pre-order) frame nodes with `depth`; null until the first scan. */
   nodes: FrameNode[] | null;
   busy?: boolean;
-  onRescan?: () => void;
   onEnable?: (origin: string) => void;
   onDisable?: (origin: string) => void;
   /** Author a recipe inside this frame (injects the picker into it). */
@@ -69,20 +68,9 @@ export function FrameInspector(p: FrameInspectorProps) {
   const { t, nodes } = p;
   return (
     <div class={clsx("space-y-1.5 rounded-xl p-2.5", t.card)}>
-      <div class="flex items-center justify-between px-1">
-        <span class={clsx("text-[11px] font-medium", t.sub)}>
-          {nodes ? `${nodes.length} frame${nodes.length === 1 ? "" : "s"}` : "Frame tree"}
-        </span>
-        <Btn t={t} tone="ghost" disabled={p.busy} onClick={p.onRescan}>
-          <Icon name="refresh" class="text-[12px]" />
-          {nodes ? "Rescan" : "Scan"}
-        </Btn>
-      </div>
-
       {nodes === null ? (
         <p class={clsx("px-1 py-2 text-[11px] leading-relaxed", t.faint)}>
-          Press play, then scan to map the page's nested frames · finds the deep player frame even
-          when the site blocks DevTools.
+          Mapping this page's frames…
         </p>
       ) : nodes.length === 0 ? (
         <p class={clsx("px-1 py-2 text-[11px]", t.faint)}>No frames found on this page.</p>
@@ -139,6 +127,7 @@ export function FrameInspector(p: FrameInspectorProps) {
                       onClick={() => p.onDisable?.(n.origin)}
                     >
                       <Icon name="check" class="text-[12px] text-emerald-500" />
+                      Enabled
                     </Btn>
                   ) : (
                     <Btn

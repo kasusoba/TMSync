@@ -3,7 +3,7 @@ import { newRecipeId, slugifyHost } from "@/lib/recipe-id";
 import { loadRecipes } from "@/lib/recipes";
 import { customRecipes } from "@/lib/storage";
 import { useKeyShield } from "@/lib/ui/key-shield";
-import { PickerPanel } from "@/lib/ui/proto/PickerPanel";
+import { PickerPanel } from "@/lib/ui/kit/PickerPanel";
 import { sendMessage } from "@/messaging";
 import { finder } from "@medv/finder";
 import { type EngineContext, type Field, readField, selectRecipe } from "@tmsync/shared";

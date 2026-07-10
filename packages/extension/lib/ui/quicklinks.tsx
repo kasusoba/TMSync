@@ -2,7 +2,7 @@ import "@/lib/ui/theme.css";
 import { render } from "preact";
 import type { ContentScriptContext } from "wxt/utils/content-script-context";
 import { createShadowRootUi } from "wxt/utils/content-script-ui/shadow-root";
-import { type QuickLinkItem, QuickLinksView } from "./proto/QuickLinksView";
+import { type QuickLinkItem, QuickLinksView } from "./kit/QuickLinksView";
 
 export type { QuickLinkItem };
 

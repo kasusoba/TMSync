@@ -10,7 +10,7 @@ import {
 import type { ParsedMedia } from "@tmsync/shared";
 import clsx from "clsx";
 import { useEffect, useState } from "preact/hooks";
-import { AniListMark, Btn, Icon, IconBtn, type Tokens, TraktMark } from "./proto/kit";
+import { AniListMark, Btn, Icon, IconBtn, type Tokens, TraktMark } from "./kit/kit";
 
 /**
  * The interactive scrobble panels — rate/note, fix-match, manual pick, episode

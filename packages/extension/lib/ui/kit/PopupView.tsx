@@ -52,13 +52,11 @@ export interface PopupViewProps {
   quickLinkDerive?: (tracker: Tracker) => LinkTemplates;
   onSaveQuickLink?: (value: QuickLinkValue) => void;
   onRemoveQuickLink?: () => void;
-  // --- frame inspector (diagnostics) — rebuild the page's iframe tree in-extension ---
-  /** Whether the inspector is open. */
-  inspecting?: boolean;
-  /** Flattened frame tree (pre-order); null = open but not yet scanned. */
+  // --- frame map (diagnostics) — rebuild the page's iframe tree in-extension ---
+  // Shown inline (always expanded) whenever the page has embedded frames, mapped
+  // automatically on open. No toggle, no rescan.
+  /** Flattened frame tree (pre-order); null = not yet scanned / single frame. */
   frameTree?: FrameNode[] | null;
-  onToggleInspect?: () => void;
-  onScanFrames?: () => void;
   /** Author a recipe inside a (cross-origin) player frame — injects the picker there. */
   onSetupFrame?: (origin: string, frameId: number) => void;
   /** "Now scrobbling" surface (status + prompts) for the active tab, when one exists. */
@@ -117,10 +115,6 @@ export function BadgeModeToggle({
   );
 }
 
-function host(origin: string): string {
-  return origin.replace(/^https?:\/\//, "");
-}
-
 function SubLabel({ t, children }: { t: Tokens; children: preact.ComponentChildren }) {
   return (
     <span class={clsx("block px-1 text-[10px] font-semibold uppercase tracking-wide", t.faint)}>
@@ -129,57 +123,34 @@ function SubLabel({ t, children }: { t: Tokens; children: preact.ComponentChildr
   );
 }
 
-/** One enable/disable row for an origin (the top site; deeper frames live in the inspector). */
-function OriginRowView({
-  t,
-  o,
-  busy,
-  onEnable,
-  onDisable,
-}: {
-  t: Tokens;
-  o: OriginRow;
-  busy?: boolean;
-  onEnable?: (origin: string) => void;
-  onDisable?: (origin: string) => void;
-}) {
-  return (
-    <div class={clsx("flex items-center justify-between rounded-xl px-3 py-2", t.card)}>
-      <span class="flex min-w-0 items-center gap-2">
-        <code class={clsx("truncate font-mono text-[12px]", t.heading)} title={o.origin}>
-          {host(o.origin)}
-        </code>
-        {!o.isTop && (
-          <span
-            class={clsx(
-              "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium",
-              t.chip,
-            )}
-          >
-            <Icon name="frame" class="text-[10px]" />
-            frame
-          </span>
-        )}
-      </span>
-      {o.enabled ? (
-        <Btn t={t} tone="ghost" disabled={busy} onClick={() => onDisable?.(o.origin)}>
-          <Icon name="check" class="text-[13px] text-emerald-500" />
-          Enabled
-        </Btn>
-      ) : (
-        <Btn t={t} tone="primary" disabled={busy} onClick={() => onEnable?.(o.origin)}>
-          Enable
-        </Btn>
-      )}
-    </div>
-  );
-}
-
 export function PopupView(p: PopupViewProps) {
   const t = tokens(p.variant);
   const origins = p.origins ?? [];
   const topRow = origins.find((o) => o.isTop) ?? origins[0] ?? null;
-  const moreFrames = origins.length > 1;
+  // The unified video-detection list: the scanned frame tree (top + indented child
+  // frames) if present, else a single top-node fallback built from the top origin —
+  // so the row shows instantly (before the scan lands) and in the gallery.
+  const frameNodes: FrameNode[] =
+    p.frameTree && p.frameTree.length > 0
+      ? p.frameTree
+      : topRow
+        ? [
+            {
+              frameId: 0,
+              url: topRow.origin,
+              origin: topRow.origin,
+              isTop: true,
+              reached: false,
+              enabled: topRow.enabled,
+              title: "",
+              videos: [],
+              hasVideo: false,
+              hasActiveVideo: false,
+              children: [],
+              depth: 0,
+            },
+          ]
+        : [];
   const noAccount = !p.connected && !(p.anilistConnected ?? false);
   const [watchOpen, setWatchOpen] = useState(false);
 
@@ -212,21 +183,7 @@ export function PopupView(p: PopupViewProps) {
 
       {/* This page — video DETECTION (access + frames) and the RECIPE (picker),
           kept visibly separate so it's clear the two are different things. */}
-      <Section
-        title="This page"
-        t={t}
-        right={
-          moreFrames &&
-          topRow && (
-            <IconBtn
-              t={t}
-              name="frame"
-              title={p.inspecting ? "Hide frames" : "Inspect frames"}
-              onClick={p.onToggleInspect}
-            />
-          )
-        }
-      >
+      <Section title="This page" t={t}>
         {!topRow ? (
           <p class={clsx("rounded-xl px-3 py-4 text-center text-[12px]", t.card, t.sub)}>
             No streaming page in the active tab.
@@ -235,30 +192,16 @@ export function PopupView(p: PopupViewProps) {
           <div class="space-y-3">
             <div class="space-y-1.5">
               <SubLabel t={t}>Video detection</SubLabel>
-              <OriginRowView
+              {/* One list: the top site is the first row, embedded player frames are
+                  indented children (mapped automatically on open, no toggle). */}
+              <FrameInspector
                 t={t}
-                o={topRow}
+                nodes={frameNodes}
                 busy={p.busy}
                 onEnable={p.onEnable}
                 onDisable={p.onDisable}
+                onSetupFrame={p.onSetupFrame}
               />
-              {p.inspecting ? (
-                <FrameInspector
-                  t={t}
-                  nodes={p.frameTree ?? null}
-                  busy={p.busy}
-                  onRescan={p.onScanFrames}
-                  onEnable={p.onEnable}
-                  onDisable={p.onDisable}
-                  onSetupFrame={p.onSetupFrame}
-                />
-              ) : (
-                moreFrames && (
-                  <p class={clsx("px-1 text-[11px] leading-relaxed", t.faint)}>
-                    Player in an embedded frame? Tap the frame icon above to find and enable it.
-                  </p>
-                )
-              )}
             </div>
 
             <div class="space-y-1.5">
