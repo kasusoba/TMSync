@@ -866,8 +866,9 @@ export function App() {
                   }
                 />
                 <p class={clsx("text-[12px]", t.sub)}>
-                  “Watch on …” buttons on Trakt movie/show pages. Toggle a site on to show it; drag
-                  the handle to set display order.
+                  “Watch on …” buttons added to your trackers’ title pages (Trakt, AniList, and more
+                  as trackers are added). Toggle a site on to show it; drag the handle to set
+                  display order.
                 </p>
                 {links.length > 3 && <Filter q={q} setQ={setQ} placeholder="Filter quick links…" />}
                 {links.length === 0 ? (
@@ -1222,7 +1223,7 @@ export function App() {
                   on-page badge is optional · hide it or move it off your player’s controls.
                 </p>
 
-                <div class="mb-4 flex items-center justify-between">
+                <div class="flex items-center justify-between">
                   <span class={clsx("text-[11px] font-medium", t.faint)}>On-page badge</span>
                   <BadgeModeToggle
                     t={t}
@@ -1230,24 +1231,10 @@ export function App() {
                     onMode={(mode) => updateBadge({ mode })}
                   />
                 </div>
-
-                <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>Position</span>
-                <p class={clsx("mb-2 text-[12px] leading-relaxed", t.sub)}>
-                  Drag the badge (grab the status bar, or the dot) · it snaps to the nearest screen
-                  edge.
-                  {badge.position
-                    ? ` Currently docked to the ${badge.position.edge} edge.`
-                    : " Currently at the default bottom-left."}
+                <p class={clsx("mt-2 text-[12px] leading-relaxed", t.sub)}>
+                  Drag the badge to move it (grab the status bar, or the dot) · it snaps to the
+                  nearest screen edge.
                 </p>
-                <Btn
-                  t={t}
-                  tone="ghost"
-                  disabled={badge.mode === "off" || badge.position === null}
-                  onClick={() => updateBadge({ position: null })}
-                >
-                  <Icon name="refresh" class="text-[12px]" />
-                  Reset to default
-                </Btn>
               </>
             )}
           </div>

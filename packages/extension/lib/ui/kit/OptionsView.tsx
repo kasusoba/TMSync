@@ -298,8 +298,9 @@ export function OptionsView({ variant }: { variant: Variant }) {
                   }
                 />
                 <p class={clsx("text-[12px]", t.sub)}>
-                  “Watch on …” buttons on Trakt pages. Toggle a site on to show it; drag the handle
-                  to set display order.
+                  “Watch on …” buttons added to your trackers’ title pages (Trakt, AniList, and more
+                  as trackers are added). Toggle a site on to show it; drag the handle to set
+                  display order.
                 </p>
                 <Filter t={t} q={q} setQ={setQ} placeholder="Filter quick links…" />
                 <div class="space-y-1.5">
