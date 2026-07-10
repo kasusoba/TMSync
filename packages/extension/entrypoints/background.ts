@@ -8,6 +8,7 @@ import {
 } from "@/lib/anilist/auth";
 import {
   AniListNotConnectedError,
+  anilistCacheKey,
   resolve as anilistResolve,
   searchAniList,
   viewerScoreFormat,
@@ -25,6 +26,8 @@ import { bundledLinks } from "@/lib/recipes";
 import { statusDotColor } from "@/lib/scrobble/action-badge";
 import {
   type QuickLinkSite,
+  anilistCorrections,
+  anilistResolutionCache,
   animapOverrides,
   corrections,
   customRecipes,
@@ -157,7 +160,10 @@ export default defineBackground(() => {
     // natively (recorded directly). Every OTHER enabled tracker is derived via the
     // crosswalk. `trackers` is authoritative; fall back to the legacy single field.
     const enabled = data.trackers?.length ? data.trackers : [data.tracker ?? "trakt"];
-    const native = inferNativeTracker(data.media);
+    // Native must be an ENABLED tracker (a disabled one can't be recorded directly).
+    // So an AniList-only recipe on a TMDB/seasoned site records AniList directly with
+    // the scraped episode instead of forcing it through the crosswalk.
+    const native = inferNativeTracker(data.media, enabled);
     const nativeEnabled = enabled.includes(native);
     // Resolve the native item when we'll record it, OR to BRIDGE a reverse (→Trakt)
     // derive (which needs the AniList id). Forward (→AniList) uses the scraped
@@ -195,6 +201,8 @@ export default defineBackground(() => {
           resolved: true,
           reason: result.ok ? undefined : result.reason,
           completed: result.completed,
+          info: result.info,
+          atEpisode: result.atEpisode,
           resolvedTitle: result.reason === "no_episode" ? undefined : nativeItem.title,
           resolvedYear: result.reason === "no_episode" ? undefined : nativeItem.year,
           resolvedEpisodes: nativeItem.tracker === "anilist" ? nativeItem.episodes : undefined,
@@ -383,18 +391,38 @@ export default defineBackground(() => {
   // Pin/block the AniList entry for this TMDB item — a local override above Fribb.
   onMessage("setAniListMatch", async ({ data, sender }) => {
     const tmdbId = data.media.ids?.tmdb;
-    if (tmdbId === undefined) {
-      return { ok: false, error: "no TMDB id on this item to key the override" };
+    if (tmdbId !== undefined) {
+      // TMDB-keyed crosswalk override (the derived / multi-track path).
+      const ov = await animapOverrides.getValue();
+      ov.forward[forwardKey(Number(tmdbId), data.media.season)] = data.anilistId;
+      await animapOverrides.setValue(ov);
+    } else {
+      // No tmdb id → an AniList-NATIVE recipe resolved by title. Pin the entry under
+      // the title key (or null = "not on AniList"). Mirrors saveCorrection for Trakt.
+      const key = anilistCacheKey(data.media);
+      const corr = await anilistCorrections.getValue();
+      if (data.anilistId === null) {
+        corr[key] = null;
+      } else {
+        const identity = await resolveAniListById(data.anilistId);
+        if (!identity) return { ok: false, error: "couldn't load that AniList entry" };
+        corr[key] = identity;
+      }
+      await anilistCorrections.setValue(corr);
+      // Drop any stale auto-resolution so the pin takes effect immediately.
+      const cache = await anilistResolutionCache.getValue();
+      if (key in cache) {
+        delete cache[key];
+        await anilistResolutionCache.setValue(cache);
+      }
     }
-    const ov = await animapOverrides.getValue();
-    ov.forward[forwardKey(Number(tmdbId), data.media.season)] = data.anilistId;
-    await animapOverrides.setValue(ov);
     const tabId = data.tabId ?? sender.tab?.id;
     if (tabId !== undefined) void sendMessage("recheck", undefined, tabId);
     return { ok: true };
   });
 
-  // Undo an AniList override (pin or "Not on AniList") → back to the Fribb crosswalk.
+  // Undo an AniList override (pin or "Not on AniList") → back to auto-resolution
+  // (the Fribb crosswalk for a tmdb item, or the title search for a native one).
   onMessage("resetAniListMatch", async ({ data, sender }) => {
     const tmdbId = data.media.ids?.tmdb;
     if (tmdbId !== undefined) {
@@ -403,6 +431,18 @@ export default defineBackground(() => {
       if (key in ov.forward) {
         delete ov.forward[key];
         await animapOverrides.setValue(ov);
+      }
+    } else {
+      const key = anilistCacheKey(data.media);
+      const corr = await anilistCorrections.getValue();
+      if (key in corr) {
+        delete corr[key];
+        await anilistCorrections.setValue(corr);
+      }
+      const cache = await anilistResolutionCache.getValue();
+      if (key in cache) {
+        delete cache[key];
+        await anilistResolutionCache.setValue(cache);
       }
     }
     const tabId = data.tabId ?? sender.tab?.id;
@@ -676,7 +716,7 @@ async function resolveAcross(
   trackers: Tracker[],
   overrides: AnimapOverrides,
 ): Promise<TrackerResolution[]> {
-  const native = inferNativeTracker(media);
+  const native = inferNativeTracker(media, trackers); // native must be an enabled tracker
   const nativeEnabled = trackers.includes(native);
   const soloFallback = !nativeEnabled; // no enabled native anchor to bridge from
   const needNative = nativeEnabled || (native === "anilist" && trackers.includes("trakt"));

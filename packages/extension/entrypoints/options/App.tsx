@@ -1,4 +1,6 @@
 import { RECIPES } from "@/config";
+import type { AniListIdentity } from "@/lib/anilist/types";
+import type { AnimapOverrides } from "@/lib/animap/derive";
 import { defaultRecipeName } from "@/lib/picker/recipe-builder";
 import { applyBackup, buildBackup, parseBackup } from "@/lib/portability/backup";
 import {
@@ -12,6 +14,8 @@ import {
   type BadgePrefs,
   type QuickLinkSite,
   type RemoteRecipes,
+  anilistCorrections,
+  animapOverrides,
   badgePrefs,
   corrections,
   customRecipes,
@@ -390,6 +394,11 @@ export function App() {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [links, setLinks] = useState<QuickLinkSite[]>([]);
   const [corr, setCorr] = useState<Record<string, ResolvedIdentity>>({});
+  // AniList fix-match corrections: the title-keyed pins + the tmdb-keyed crosswalk
+  // overrides. Surfaced alongside the Trakt corrections so the pane is the complete
+  // fix-match ledger (constraint: every fix the badge can make is visible/clearable).
+  const [anilistCorr, setAnilistCorr] = useState<Record<string, AniListIdentity | null>>({});
+  const [animap, setAnimap] = useState<AnimapOverrides>({ forward: {}, reverse: {} });
   const [remote, setRemote] = useState<RemoteRecipes | null>(null);
   const [busy, setBusy] = useState(false);
   /** The one expanded quick-link row (accordion) — editing another collapses this. */
@@ -409,13 +418,15 @@ export function App() {
   const has = (s: string) => s.toLowerCase().includes(q.toLowerCase());
 
   const refresh = async () => {
-    const [s, al, sit, rec, ql, c, rem, bp] = await Promise.all([
+    const [s, al, sit, rec, ql, c, ac, am, rem, bp] = await Promise.all([
       sendMessage("getTraktStatus", undefined),
       sendMessage("getAniListStatus", undefined),
       sendMessage("listEnabledSites", undefined),
       customRecipes.getValue(),
       quickLinks.getValue(),
       corrections.getValue(),
+      anilistCorrections.getValue(),
+      animapOverrides.getValue(),
       remoteRecipes.getValue(),
       badgePrefs.getValue(),
     ]);
@@ -425,6 +436,8 @@ export function App() {
     setRecipes(rec);
     setLinks(ql);
     setCorr(c);
+    setAnilistCorr(ac);
+    setAnimap(am);
     setRemote(rem);
     setBadge(bp);
   };
@@ -647,21 +660,82 @@ export function App() {
     setBackupBusy(false);
   };
 
-  const deleteCorrection = (key: string) =>
+  const deleteTraktCorrection = (key: string) =>
     act(async () => {
       const next = { ...(await corrections.getValue()) };
       delete next[key];
       await corrections.setValue(next);
       setCorr(next);
     });
+  const deleteAnilistTitle = (key: string) =>
+    act(async () => {
+      const next = { ...(await anilistCorrections.getValue()) };
+      delete next[key];
+      await anilistCorrections.setValue(next);
+      setAnilistCorr(next);
+    });
+  const deleteAnimap = (dir: "forward" | "reverse", key: string) =>
+    act(async () => {
+      const ov = await animapOverrides.getValue();
+      const next: AnimapOverrides = { forward: { ...ov.forward }, reverse: { ...ov.reverse } };
+      if (dir === "forward") delete next.forward[key];
+      else delete next.reverse[Number(key)];
+      await animapOverrides.setValue(next);
+      setAnimap(next);
+    });
   const clearCorrections = () =>
     act(async () => {
-      await corrections.setValue({});
+      await Promise.all([
+        corrections.setValue({}),
+        anilistCorrections.setValue({}),
+        animapOverrides.setValue({ forward: {}, reverse: {} }),
+      ]);
       setCorr({});
+      setAnilistCorr({});
+      setAnimap({ forward: {}, reverse: {} });
     });
 
   const connected = status?.connected ?? false;
-  const corrEntries = Object.entries(corr);
+  // The complete fix-match ledger: Trakt corrections + AniList title pins + the
+  // tmdb-keyed crosswalk overrides. Each row names its tracker so the pane shows
+  // every correction the badge can make, regardless of tracker.
+  const yr = (y?: number) => (y ? ` (${y})` : "");
+  const allCorrections: {
+    key: string;
+    tracker: Tracker;
+    primary: string;
+    target: string;
+    onDelete: () => void;
+  }[] = [
+    ...Object.entries(corr).map(([key, id]) => ({
+      key: `t:${key}`,
+      tracker: "trakt" as Tracker,
+      primary: key,
+      target: `→ ${id.title}${yr(id.year)} · ${id.mediaType}`,
+      onDelete: () => deleteTraktCorrection(key),
+    })),
+    ...Object.entries(anilistCorr).map(([key, v]) => ({
+      key: `a:${key}`,
+      tracker: "anilist" as Tracker,
+      primary: key,
+      target: v ? `→ ${v.title}${yr(v.year)}` : "not on AniList",
+      onDelete: () => deleteAnilistTitle(key),
+    })),
+    ...Object.entries(animap.forward).map(([key, v]) => ({
+      key: `af:${key}`,
+      tracker: "anilist" as Tracker,
+      primary: `tmdb ${key}`,
+      target: v == null ? "not on AniList" : `→ AniList #${v}`,
+      onDelete: () => deleteAnimap("forward", key),
+    })),
+    ...Object.entries(animap.reverse).map(([key, v]) => ({
+      key: `ar:${key}`,
+      tracker: "anilist" as Tracker,
+      primary: `anilist ${key}`,
+      target: `→ tmdb ${v.tmdbId}${v.season != null ? ` S${v.season}` : ""}`,
+      onDelete: () => deleteAnimap("reverse", key),
+    })),
+  ];
   const suggestions = recipeSuggestions(recipes, links);
   const recipeGroups = new Map<string, Recipe[]>();
   for (const r of recipes) {
@@ -672,7 +746,7 @@ export function App() {
     sites: sites.length,
     links: links.length,
     recipes: recipes.length + (remote?.recipes.length ?? 0),
-    corrections: corrEntries.length,
+    corrections: allCorrections.length,
   };
 
   return (
@@ -734,7 +808,10 @@ export function App() {
                   onConnect={() => act(() => sendMessage("connectTrakt", undefined))}
                   onDisconnect={() => act(() => sendMessage("disconnectTrakt", undefined))}
                 />
-                {!connected && status?.redirectUri && (
+                {/* Dev-only: a forker running their OWN Trakt OAuth app needs to
+                    register this redirect URI. The published build uses bundled
+                    credentials with a fixed redirect, so end users never see it. */}
+                {import.meta.env.DEV && !connected && status?.redirectUri && (
                   <p class={clsx("text-[11px] leading-relaxed", t.sub)}>
                     Set this redirect URI in your Trakt app:
                     <code
@@ -786,19 +863,23 @@ export function App() {
                     <code class="font-mono">WXT_ANILIST_CLIENT_SECRET</code> to enable it.
                   </p>
                 )}
-                {anilist?.configured && !anilist.connected && anilist.redirectUri && (
-                  <p class={clsx("text-[11px] leading-relaxed", t.sub)}>
-                    Set this redirect URI in your AniList app:
-                    <code
-                      class={clsx(
-                        "mt-1 block break-all rounded-md px-2 py-1 font-mono text-[10px]",
-                        t.chip,
-                      )}
-                    >
-                      {anilist.redirectUri}
-                    </code>
-                  </p>
-                )}
+                {/* Dev-only, same as the Trakt redirect hint above. */}
+                {import.meta.env.DEV &&
+                  anilist?.configured &&
+                  !anilist.connected &&
+                  anilist.redirectUri && (
+                    <p class={clsx("text-[11px] leading-relaxed", t.sub)}>
+                      Set this redirect URI in your AniList app:
+                      <code
+                        class={clsx(
+                          "mt-1 block break-all rounded-md px-2 py-1 font-mono text-[10px]",
+                          t.chip,
+                        )}
+                      >
+                        {anilist.redirectUri}
+                      </code>
+                    </p>
+                  )}
               </>
             )}
 
@@ -1076,41 +1157,50 @@ export function App() {
                 <PaneHead
                   title="Corrections"
                   right={
-                    corrEntries.length > 0 ? (
+                    allCorrections.length > 0 ? (
                       <Btn t={t} tone="danger" disabled={busy} onClick={clearCorrections}>
                         Clear all
                       </Btn>
                     ) : undefined
                   }
                 />
-                {corrEntries.length === 0 ? (
+                {allCorrections.length === 0 ? (
                   <p class={clsx("rounded-lg px-3 py-4 text-center text-[12px]", t.card, t.sub)}>
-                    No saved corrections. When a match is wrong, click the badge to pick the right
-                    title.
+                    No saved corrections. When a match is wrong, click the badge to “fix match” and
+                    pick the right entry — Trakt or AniList — and it shows up here.
                   </p>
                 ) : (
                   <>
-                    {corrEntries.length > 3 && (
+                    {allCorrections.length > 3 && (
                       <Filter q={q} setQ={setQ} placeholder="Filter corrections…" />
                     )}
                     <div class="space-y-1.5">
-                      {corrEntries
-                        .filter(([key, id]) => has(key) || has(id.title))
-                        .map(([key, id]) => (
+                      {allCorrections
+                        .filter((c) => has(c.primary) || has(c.target))
+                        .map((c) => (
                           <div
-                            key={key}
+                            key={c.key}
                             class={clsx(
                               "flex items-center justify-between gap-2 rounded-lg px-3 py-2",
                               t.card,
                             )}
                           >
-                            <div class="min-w-0">
+                            <span
+                              class="shrink-0"
+                              title={c.tracker === "anilist" ? "AniList" : "Trakt"}
+                            >
+                              {c.tracker === "anilist" ? (
+                                <AniListMark class="size-4" />
+                              ) : (
+                                <TraktMark class="size-4" />
+                              )}
+                            </span>
+                            <div class="min-w-0 flex-1">
                               <code class={clsx("block truncate font-mono text-[11px]", t.faint)}>
-                                {key}
+                                {c.primary}
                               </code>
-                              <span class={clsx("text-[12px]", t.heading)}>
-                                → {id.title}
-                                {id.year ? ` (${id.year})` : ""} · {id.mediaType}
+                              <span class={clsx("block truncate text-[12px]", t.heading)}>
+                                {c.target}
                               </span>
                             </div>
                             <IconBtn
@@ -1119,7 +1209,7 @@ export function App() {
                               title="Remove"
                               danger
                               disabled={busy}
-                              onClick={() => deleteCorrection(key)}
+                              onClick={c.onDelete}
                             />
                           </div>
                         ))}

@@ -13,7 +13,8 @@ import type { AniListEntry, MediaListStatus } from "./types";
  * until the user confirms; only then do we switch to REPEATING and track again.
  */
 export type AniListPlan =
-  | { kind: "noop" } // start/pause, stop below threshold, or already-counted
+  | { kind: "noop" } // start/pause, or stop below threshold — nothing to say yet
+  | { kind: "already_watched"; episode: number; progress: number } // ep ≤ remote progress
   | { kind: "no_episode" } // a show with no scraped episode number
   | { kind: "mismatch"; episode: number; total: number } // numbering guardrail (step 6)
   | { kind: "needs_rewatch"; episode: number } // completed cour, awaiting confirmation
@@ -57,21 +58,43 @@ const EMPTY: AniListEntry = { status: null, progress: 0, repeat: 0 };
 export function planAniListWrite(input: AniListPlanInput): AniListPlan {
   const { phase, progress, watchedThreshold, episode, total, rewatchConfirmed } = input;
   const entry = input.entry ?? EMPTY;
+  const atThreshold = phase === "stop" && progress >= watchedThreshold * 100;
 
-  // AniList has nothing to receive start/pause; only a finished stop matters.
-  if (phase !== "stop") return { kind: "noop" };
-  if (progress < watchedThreshold * 100) return { kind: "noop" };
-  if (episode === undefined) return { kind: "no_episode" };
-  // Guardrail: a scraped episode beyond the entry's total is a numbering mismatch.
+  if (episode === undefined) {
+    // Only worth flagging a missing episode when we'd otherwise write (a finished stop).
+    return atThreshold ? { kind: "no_episode" } : { kind: "noop" };
+  }
+  // Guardrail: a scraped episode beyond the entry's total is a numbering mismatch —
+  // surface it on any phase (early), not only at the threshold.
   if (total !== null && episode > total) return { kind: "mismatch", episode, total };
 
   const isFinal = total !== null && episode >= total;
 
-  // A COMPLETED cour is sacred: never mutate it on a stray replay. Prompt first;
-  // write only once the user confirms the rewatch (rewatchConfirmed).
+  // A COMPLETED cour is sacred: never mutate it on a stray replay. Prompt on ANY
+  // episode/phase (upfront — the CLAUDE.md rewatch rule), write only once confirmed.
+  if (entry.status === "COMPLETED" && !rewatchConfirmed) {
+    return { kind: "needs_rewatch", episode };
+  }
+
+  // Already counted this episode: AniList never lowers progress, so nothing will be
+  // written. Report it on ANY phase (so the user learns at PLAY, not via a confusing
+  // "stopped" once the threshold passes) rather than a silent noop. NOT for a just-
+  // confirmed rewatch of a COMPLETED cour — that resets tracking and must write below.
+  if (
+    (entry.status === "CURRENT" || entry.status === "REPEATING") &&
+    !isFinal &&
+    episode <= entry.progress
+  ) {
+    return { kind: "already_watched", episode, progress: entry.progress };
+  }
+
+  // Not a write moment yet (start/pause, or a stop below threshold) → nothing to do.
+  if (!atThreshold) return { kind: "noop" };
+
+  // --- write paths (finished stop, and this episode advances progress) ---
+  // A confirmed rewatch of a COMPLETED cour: REPEATING until the final episode
+  // re-completes it (+1 repeat).
   if (entry.status === "COMPLETED") {
-    if (!rewatchConfirmed) return { kind: "needs_rewatch", episode };
-    // Confirmed rewatch: REPEATING until the final episode re-completes it (+1 repeat).
     return isFinal
       ? {
           kind: "write",
@@ -82,10 +105,8 @@ export function planAniListWrite(input: AniListPlanInput): AniListPlan {
         }
       : { kind: "write", progress: episode, status: "REPEATING", completed: false };
   }
-
   // Mid-rewatch from a prior session — already opted in (status is REPEATING).
   if (entry.status === "REPEATING") {
-    if (!isFinal && episode <= entry.progress) return { kind: "noop" };
     return isFinal
       ? {
           kind: "write",
@@ -101,12 +122,7 @@ export function planAniListWrite(input: AniListPlanInput): AniListPlan {
           completed: false,
         };
   }
-
   // First watch (not on list / planning / paused / dropped / currently watching).
-  // Already counted this episode while CURRENT ⇒ nothing to do.
-  if (entry.status === "CURRENT" && !isFinal && episode <= entry.progress) {
-    return { kind: "noop" };
-  }
   return {
     kind: "write",
     progress: Math.max(entry.progress, episode),

@@ -32,13 +32,21 @@ export function routeTracker(tracker: Tracker, mediaType: ParsedMedia["mediaType
  * ⇒ that tracker; a bare linear episode (dedicated anime site) ⇒ AniList. Trakt is
  * checked first (its namespaces cover the general/TMDB case). When more trackers are
  * added, extend the ordered list below — the shared engine stays untouched.
+ *
+ * `enabled` (when given) constrains the choice to trackers the user actually turned
+ * on. A DISABLED tracker can't be the "recorded directly" native one — e.g. an
+ * AniList-only recipe on a TMDB/seasoned site (Trakt off) must record AniList
+ * DIRECTLY with the scraped episode, not shove it through the crosswalk. Without
+ * this, native=Trakt (off) forced AniList onto the derived path and it failed to
+ * resolve. Omit `enabled` for a pure field-based answer (e.g. tests, pre-resolve).
  */
-export function inferNativeTracker(media: ParsedMedia): Tracker {
+export function inferNativeTracker(media: ParsedMedia, enabled?: Tracker[]): Tracker {
+  const on = (tk: Tracker) => !enabled || enabled.includes(tk);
   const speaks = (adapter: TrackerAdapter) =>
     adapter.resolvableNamespaces.some((ns) => media.ids?.[ns] !== undefined);
-  if (speaks(traktAdapter) || media.season !== undefined) return "trakt";
-  // Everything else (a bare linear episode on a dedicated anime site, or no id at
-  // all) falls to AniList. When a third tracker is added, insert its `speaks()`
-  // check above this line rather than after — the final return is the default.
+  if (on("trakt") && (speaks(traktAdapter) || media.season !== undefined)) return "trakt";
+  // Everything else (a bare linear episode on a dedicated anime site, no id at all,
+  // or Trakt disabled) falls to AniList. When a third tracker is added, insert its
+  // `on() && speaks()` check above this line — the final return is the default.
   return "anilist";
 }

@@ -384,26 +384,24 @@ describe("TMDB id (auto-detect + resolve-by-id)", () => {
     }
   });
 
-  it("labels a captured id by the tracker it feeds (anilist-only → ids.anilist)", () => {
+  it("keeps a captured id only for Trakt; AniList-only drops it (resolves by title)", () => {
     const id: Field = { source: "url", regex: "/watch/(\\d+)", transforms: ["toInt"] };
     const title = { title: { source: "title" as const } };
 
-    // AniList-only anime site: the /watch/<id> number is an AniList id, not TMDB.
+    // AniList-only: the auto-detected URL id is a TMDB id (a TMDB-shaped site's number,
+    // e.g. …/tmdb-tv-60564) — NOT an AniList id. Drop it; AniList resolves by title.
     const anime = buildRecipe(
       {
-        ...emptyDraft("https://www.miruro.to/watch/99423"),
+        ...emptyDraft("https://aether.bar/media/tmdb-tv-60564"),
         trackers: ["anilist"],
         fields: { ...title, tmdbId: id },
       },
-      { id: "miruro-to", name: "Miruro" },
+      { id: "aether", name: "Aether" },
     );
     expect(anime.ok).toBe(true);
-    if (anime.ok) {
-      expect(anime.recipe.extract?.ids).toEqual({ anilist: id });
-      expect(anime.recipe.extract?.ids?.tmdb).toBeUndefined();
-    }
+    if (anime.ok) expect(anime.recipe.extract?.ids).toBeUndefined();
 
-    // Trakt (or any Trakt-involving) recipe: the id is a TMDB id.
+    // Trakt (or any Trakt-involving) recipe: the id is a TMDB id, kept.
     const trakt = buildRecipe(
       {
         ...emptyDraft("https://cineby.at/tv/1429"),
@@ -428,25 +426,48 @@ describe("TMDB id (auto-detect + resolve-by-id)", () => {
     if (multi.ok) expect(multi.recipe.extract?.ids).toEqual({ tmdb: id });
   });
 
-  it("round-trips an anilist id through recipeToDraft → buildRecipe", () => {
-    const id: Field = { source: "url", regex: "/watch/(\\d+)", transforms: ["toInt"] };
-    const original = buildRecipe(
-      {
-        ...emptyDraft("https://www.miruro.to/watch/99423"),
-        trackers: ["anilist"],
-        fields: { title: { source: "title" }, tmdbId: id },
-      },
-      { id: "miruro-to", name: "Miruro" },
+  it("prunes Trakt-only fields (season + tmdb id) when Trakt is toggled off", () => {
+    // The aether case: a recipe built with BOTH trackers picks up season + tmdb id,
+    // then Trakt is unchecked. The saved recipe must reflect the toggle — keep only
+    // what AniList consumes (title + episode), not stale Trakt fields.
+    const id: Field = { source: "url", regex: "/(\\d+)", transforms: ["toInt"] };
+    const season: Field = {
+      source: "url",
+      regex: urlTokenRegex(0),
+      group: 1,
+      transforms: ["toInt"],
+    };
+    const episode: Field = {
+      source: "url",
+      regex: urlTokenRegex(1),
+      group: 1,
+      transforms: ["toInt"],
+    };
+    const fields = { title: { source: "title" as const }, season, episode, tmdbId: id };
+    const url = "https://aether.bar/media/tmdb-tv-60564";
+
+    const both = buildRecipe(
+      { ...emptyDraft(url), trackers: ["trakt", "anilist"], fields },
+      { id: "aether", name: "Aether" },
     );
-    expect(original.ok).toBe(true);
-    if (!original.ok) return;
-    // Editing it (draft → rebuild) must keep the id under `anilist`, not lose it.
-    const rebuilt = buildRecipe(recipeToDraft(original.recipe), {
-      id: original.recipe.id,
-      name: original.recipe.name,
-    });
-    expect(rebuilt.ok).toBe(true);
-    if (rebuilt.ok) expect(rebuilt.recipe.extract?.ids).toEqual({ anilist: id });
+    expect(both.ok).toBe(true);
+    if (both.ok) {
+      expect(both.recipe.extract?.season).toEqual(season);
+      expect(both.recipe.extract?.ids).toEqual({ tmdb: id });
+    }
+
+    // Same picked fields, Trakt OFF → season + tmdb id gone; title + episode remain.
+    const anilistOnly = buildRecipe(
+      { ...emptyDraft(url), trackers: ["anilist"], fields },
+      { id: "aether", name: "Aether" },
+    );
+    expect(anilistOnly.ok).toBe(true);
+    if (anilistOnly.ok) {
+      expect(anilistOnly.recipe.extract?.season).toBeUndefined();
+      expect(anilistOnly.recipe.extract?.ids).toBeUndefined();
+      expect(anilistOnly.recipe.extract?.title).toBeDefined();
+      expect(anilistOnly.recipe.extract?.episode).toEqual(episode);
+    }
   });
 
   it("drops season/episode from a movie recipe (would resolve as a show otherwise)", () => {

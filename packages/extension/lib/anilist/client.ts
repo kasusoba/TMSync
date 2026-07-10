@@ -1,5 +1,5 @@
 import type { ParsedMedia } from "@tmsync/shared";
-import { anilistResolutionCache } from "../storage";
+import { anilistCorrections, anilistResolutionCache } from "../storage";
 import { getValidAccessToken } from "./auth";
 import { ANILIST } from "./config";
 import type { AniListEntry, AniListIdentity, MediaListStatus, ScoreFormat } from "./types";
@@ -101,20 +101,39 @@ query ($search: String) {
  */
 export async function resolve(media: ParsedMedia): Promise<AniListIdentity | null> {
   const key = anilistCacheKey(media);
+
+  // A user title-match correction is authoritative — never overridden by search.
+  // `null` = the user said "not on AniList" (skip). Distinguish set-to-null from
+  // unset with `in`. (The tmdb-keyed crosswalk override is consulted separately, in
+  // the derived path; this covers the AniList-native, resolve-by-title case.)
+  const corr = await anilistCorrections.getValue();
+  if (key in corr) return corr[key] ?? null;
+
   const cache = await anilistResolutionCache.getValue();
   const cached = cache[key];
   if (cached) return cached;
 
   // Native id first (exact, no same-title ambiguity): an anilist id, else a MAL id.
-  // Only fall back to a title search when the page exposed no AniList-native id.
-  let node: MediaNode | null;
-  if (media.ids?.anilist !== undefined) {
-    node = (await gql<{ Media: MediaNode | null }>(BY_ID_QUERY, { id: Number(media.ids.anilist) }))
-      .Media;
-  } else if (media.ids?.mal !== undefined) {
-    node = (await gql<{ Media: MediaNode | null }>(BY_MAL_QUERY, { idMal: Number(media.ids.mal) }))
-      .Media;
-  } else {
+  // A WRONG id (e.g. a recipe that mislabels a TMDB id as `ids.anilist` by grabbing
+  // the number out of a `.../tmdb-tv-<id>` URL) makes AniList return a "Not Found"
+  // GraphQL error, which `gql` throws — so this is best-effort: on a throw OR a null,
+  // fall through to the title search rather than failing the whole resolution.
+  let node: MediaNode | null = null;
+  try {
+    if (media.ids?.anilist !== undefined) {
+      node = (
+        await gql<{ Media: MediaNode | null }>(BY_ID_QUERY, { id: Number(media.ids.anilist) })
+      ).Media;
+    } else if (media.ids?.mal !== undefined) {
+      node = (
+        await gql<{ Media: MediaNode | null }>(BY_MAL_QUERY, { idMal: Number(media.ids.mal) })
+      ).Media;
+    }
+  } catch {
+    node = null; // bad id → degrade to a title match below
+  }
+  // Fall back to a TITLE search when there was no native id, or the id didn't resolve.
+  if (!node && media.title) {
     node = (await gql<{ Media: MediaNode | null }>(SEARCH_QUERY, { search: media.title })).Media;
   }
   if (!node) return null;

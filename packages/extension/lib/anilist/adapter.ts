@@ -28,6 +28,10 @@ async function applyPlan(item: AniListItem, plan: AniListPlan): Promise<RecordRe
   switch (plan.kind) {
     case "noop":
       return { ok: true };
+    case "already_watched":
+      // Benign: the episode is at/below AniList's recorded progress, so it won't
+      // advance. Report it (not a silent "stopped") — never lower remote progress.
+      return { ok: true, info: "already_watched", atEpisode: plan.progress };
     case "no_episode":
       return { ok: false, reason: "no_episode" };
     case "mismatch":
@@ -94,9 +98,18 @@ export const anilistAdapter: TrackerAdapter = {
     watchedThreshold: number,
   ): Promise<RecordResult> {
     if (item.tracker !== "anilist") return { ok: false, reason: "unresolved" };
-    // Only a finished stop touches AniList — skip the entry read for start/pause.
-    if (phase !== "stop") return { ok: true };
+    // Surface the not-connected state on the FIRST event (play), not only when the
+    // threshold write fails at stop. AniList has no scrobble API, so start/pause
+    // never write — but without this gate the badge shows "watching"/"paused" for a
+    // whole episode and then abruptly errors "connect AniList" at the threshold.
+    // Checking here (a cheap token read, no network) makes the badge say "connect
+    // AniList" from play onward. Applies to the derived (multi-track) path too.
+    if (!(await isConnected())) return { ok: false, reason: "not_connected" };
 
+    // Read the entry on EVERY phase (not just stop). AniList still writes only at the
+    // threshold, but reading at play lets us surface "already watched" (episode ≤
+    // recorded progress → won't advance) and the rewatch prompt UP FRONT, instead of
+    // a confusing "stopped" once the threshold passes. One cheap read per phase.
     let entry: Awaited<ReturnType<typeof getListEntry>>;
     try {
       entry = await getListEntry(item.id);

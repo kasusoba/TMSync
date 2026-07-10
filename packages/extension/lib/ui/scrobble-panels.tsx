@@ -4,6 +4,7 @@ import type { ResolvedIdentity, ReviewLevel, TraktSearchOption } from "@/lib/tra
 import {
   type BadgeState,
   type BadgeStatus,
+  type TrackerOutcome,
   type TrackerResolution,
   sendMessage,
 } from "@/messaging";
@@ -114,15 +115,26 @@ const trackerName = (tk: Tracker): string => (tk === "anilist" ? "AniList" : "Tr
  * matching correction panel. Correction lives HERE — where the match is shown — not
  * buried in the rate/note composer. Does its own `resolveAll`.
  */
+/** Status-glyph colour per tracker outcome (mirrors the bar's presence dot). */
+const OUTCOME_GLYPH: Record<TrackerOutcome["state"], { dot: string; label: string }> = {
+  ok: { dot: "bg-emerald-500", label: "recorded" },
+  attention: { dot: "bg-amber-500", label: "needs attention" },
+  pending: { dot: "bg-zinc-400", label: "pending" },
+};
+
 export function TrackingRows({
   t,
   media,
   trackers,
+  outcomes,
   onFix,
 }: {
   t: Tokens;
   media: ParsedMedia;
   trackers: Tracker[];
+  /** MULTI-TRACK: the last scrobble's per-tracker outcome, shown as a status dot +
+   * note next to each row. Absent before the first scrobble (resolution only). */
+  outcomes?: TrackerOutcome[];
   onFix: (tracker: Tracker) => void;
 }) {
   const [resolutions, setResolutions] = useState<TrackerResolution[] | null>(null);
@@ -132,9 +144,11 @@ export function TrackingRows({
     void sendMessage("resolveAll", { media, trackers }).then(setResolutions);
   }, [media, trackers.join(",")]);
   const resFor = (tk: Tracker) => resolutions?.find((r) => r.tracker === tk);
-  // Trakt is always fixable; AniList only when we have a tmdbId to key the override.
+  // Trakt is always fixable. AniList is too: with a tmdbId we pin the crosswalk
+  // override; without one (a native, resolve-by-title recipe) we pin the title
+  // correction — so the fix affordance is no longer gated on having a tmdbId.
   const canFix = (tk: Tracker) =>
-    tk === "trakt" || (tk === "anilist" && media.ids?.tmdb !== undefined);
+    tk === "trakt" || (tk === "anilist" && (media.ids?.tmdb !== undefined || !!media.title));
 
   return (
     <div>
@@ -142,6 +156,7 @@ export function TrackingRows({
       <div class="space-y-1">
         {trackers.map((tk) => {
           const res = resFor(tk);
+          const outcome = outcomes?.find((o) => o.tracker === tk);
           const detail =
             res == null
               ? "…"
@@ -200,6 +215,17 @@ export function TrackingRows({
                 </a>
               ) : (
                 <span class="flex min-w-0 flex-1 items-center gap-2 py-1.5">{inner}</span>
+              )}
+              {outcome && (
+                <span
+                  class="flex shrink-0 items-center gap-1"
+                  title={`${trackerName(tk)} · ${outcome.note ?? OUTCOME_GLYPH[outcome.state].label}`}
+                >
+                  {outcome.note && outcome.state !== "ok" && (
+                    <span class={clsx("text-[10px]", t.faint)}>{outcome.note}</span>
+                  )}
+                  <span class={clsx("size-1.5 rounded-full", OUTCOME_GLYPH[outcome.state].dot)} />
+                </span>
               )}
               {canFix(tk) && (
                 <IconBtn

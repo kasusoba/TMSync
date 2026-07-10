@@ -1,7 +1,13 @@
 import "@/lib/ui/theme.css";
 import { type BadgePrefs, badgePrefs } from "@/lib/storage";
 import type { Tracker } from "@/lib/tracker/types";
-import { type BadgeState, type BadgeStatus, onMessage, sendMessage } from "@/messaging";
+import {
+  type BadgeState,
+  type BadgeStatus,
+  type TrackerOutcome,
+  onMessage,
+  sendMessage,
+} from "@/messaging";
 import { type ParsedMedia, primaryId } from "@tmsync/shared";
 import clsx from "clsx";
 import { render } from "preact";
@@ -9,7 +15,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import type { ContentScriptContext } from "wxt/utils/content-script-context";
 import { createShadowRootUi } from "wxt/utils/content-script-ui/shadow-root";
 import { useKeyShield } from "./key-shield";
-import { Btn, Icon, IconBtn, tokens } from "./kit/kit";
+import { AniListMark, Btn, Icon, IconBtn, TraktMark, tokens } from "./kit/kit";
 import {
   AniListCorrection,
   Correction,
@@ -121,6 +127,42 @@ const STATE: Record<BadgeState, { color: string; glow: string; label: string }> 
     label: "error",
   },
 };
+
+/** Status-dot colour per tracker outcome (the presence dot on each logo). */
+const OUTCOME_DOT: Record<TrackerOutcome["state"], string> = {
+  ok: "bg-emerald-500",
+  attention: "bg-amber-500",
+  pending: "bg-zinc-400",
+};
+
+const trackerLabel = (tk: Tracker) => (tk === "anilist" ? "AniList" : "Trakt");
+
+/**
+ * MULTI-TRACK: a compact row of tracker logos, each with a corner status dot (green
+ * recorded / amber needs-attention / muted pending). Replaces per-tracker prose on
+ * the bar so it scales to any number of trackers. The tooltip carries the specifics.
+ */
+function TrackerMarks({ outcomes }: { outcomes: TrackerOutcome[] }) {
+  return (
+    <span class="inline-flex shrink-0 items-center gap-1.5">
+      {outcomes.map((o) => (
+        <span
+          key={o.tracker}
+          class="relative inline-grid place-items-center"
+          title={`${trackerLabel(o.tracker)}${o.note ? ` · ${o.note}` : ""}`}
+        >
+          {o.tracker === "anilist" ? <AniListMark class="size-4" /> : <TraktMark class="size-4" />}
+          <span
+            class={clsx(
+              "absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full ring-1 ring-black/50",
+              OUTCOME_DOT[o.state],
+            )}
+          />
+        </span>
+      ))}
+    </span>
+  );
+}
 
 /** How long the rating prompt stays up after a scrobble before auto-collapsing. */
 const AUTO_COLLAPSE_MS = 12_000;
@@ -364,6 +406,14 @@ function BadgeRoot() {
     );
   }
 
+  // The tracker set for the "now" panel + rate/note. The live scrobble reply
+  // (`status.trackers`) is authoritative when present — it can't lag behind a recipe
+  // edit the way the fetched `trackers` state can — so prefer it, then append any
+  // enabled tracker it omitted (a silently-skipped one) so the panel can still fix it.
+  const activeTrackers = status.trackers?.length
+    ? Array.from(new Set([...status.trackers.map((o) => o.tracker), ...trackers]))
+    : trackers;
+
   const confirmRewatch = () => {
     if (!media) return;
     setRewatchHidden(true); // background pushes the resulting status back
@@ -398,7 +448,8 @@ function BadgeRoot() {
           <TrackingRows
             t={t}
             media={media}
-            trackers={trackers}
+            trackers={activeTrackers}
+            outcomes={status.trackers}
             onFix={(tk) =>
               setPanel(tk === "anilist" ? "anilist-fix" : manualMode ? "manual" : "fix")
             }
@@ -426,7 +477,7 @@ function BadgeRoot() {
       {panel === "review" && media && (
         <RateNote
           media={media}
-          trackers={trackers}
+          trackers={activeTrackers}
           t={t}
           onClose={() => setPanel(null)}
           onBack={() => setPanel("now")}
@@ -536,11 +587,18 @@ function BadgeRoot() {
                 : "Show tracking, rate, or fix the match · drag the bar to move"
           }
         >
-          <span class={clsx("block text-[12px] font-semibold", t.heading)}>
-            TMSync · {status.detail ?? s.label}
+          <span class={clsx("flex items-start gap-2 text-[12px] font-semibold", t.heading)}>
+            {/* Wrap, don't ellipsize: a long status ("already watched · AniList at
+                ep 3") must stay readable rather than truncate to "already wat…". */}
+            <span class="min-w-0 flex-1 break-words">TMSync · {status.detail ?? s.label}</span>
+            {status.trackers && status.trackers.length > 0 && (
+              <span class="mt-0.5">
+                <TrackerMarks outcomes={status.trackers} />
+              </span>
+            )}
           </span>
           {status.title && (
-            <span class={clsx("block truncate text-[12px]", t.sub)}>{status.title}</span>
+            <span class={clsx("mt-0.5 block truncate text-[12px]", t.sub)}>{status.title}</span>
           )}
         </button>
         <IconBtn

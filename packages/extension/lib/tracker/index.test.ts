@@ -58,4 +58,20 @@ describe("inferNativeTracker (multi-track — which numbering the page speaks)",
   it("a bare linear episode (no Trakt-native id, no season) ⇒ AniList native", () => {
     expect(inferNativeTracker({ mediaType: "show", title: "Frieren", episode: 3 })).toBe("anilist");
   });
+
+  it("a DISABLED tracker can't be native — AniList-only on a TMDB/seasoned page ⇒ AniList", () => {
+    // The aether case: recipe scrapes tmdb + season but the user enabled ONLY AniList.
+    // Field-wise it looks Trakt-native, but Trakt is off, so AniList records directly
+    // (scraped episode) instead of being forced through the crosswalk.
+    const media = {
+      mediaType: "show" as const,
+      title: "Akame ga Kill!",
+      ids: { tmdb: 60564 },
+      season: 1,
+      episode: 3,
+    };
+    expect(inferNativeTracker(media)).toBe("trakt"); // no enabled set ⇒ pure field answer
+    expect(inferNativeTracker(media, ["anilist"])).toBe("anilist"); // Trakt off ⇒ AniList native
+    expect(inferNativeTracker(media, ["trakt", "anilist"])).toBe("trakt"); // both ⇒ Trakt native
+  });
 });

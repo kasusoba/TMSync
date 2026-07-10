@@ -55,6 +55,11 @@ export interface ScrobbleReply {
     | "http";
   /** AniList only: this write completed the cour (drives the cour-rating prompt). */
   completed?: boolean;
+  /** Benign info outcome (ok, nothing written). `already_watched` = the scraped
+   * episode is at/below the tracker's recorded progress; the badge says so instead
+   * of a confusing "stopped". Paired with `atEpisode` (the tracker's progress). */
+  info?: "already_watched";
+  atEpisode?: number;
   /** What this resolved to on Trakt (transparency for the badge). */
   resolvedTitle?: string;
   resolvedYear?: number;
@@ -77,12 +82,31 @@ export interface ScrobbleReply {
 
 export type BadgeState = "idle" | "watching" | "paused" | "scrobbled" | "stopped" | "error";
 
+/** Per-tracker outcome for the multi-track badge. Rendered as a tinted logo on the
+ * status bar + a status glyph in the Tracking panel — a structure that scales to any
+ * number of trackers, unlike a concatenated "Trakt … · AniList …" string. */
+export interface TrackerOutcome {
+  tracker: Tracker;
+  /** ok = recorded this phase; attention = needs the user (connect / numbering /
+   * not found / failed); pending = enabled but nothing written yet (watching, or
+   * AniList before its threshold write). */
+  state: "ok" | "attention" | "pending";
+  /** Short per-tracker note for the glyph tooltip + panel row, e.g. "added to
+   * history", "saved", "connect", "numbering ✗". */
+  note?: string;
+}
+
 export interface BadgeStatus {
   state: BadgeState;
   /** e.g. "The Pixel Frontier S2E4". */
   title?: string;
   /** short human detail, e.g. "added to history" or "not connected". */
   detail?: string;
+  /** MULTI-TRACK: per-tracker outcomes, present when >1 tracker is involved. The bar
+   * then shows tracker logos (tinted by `state`) instead of per-tracker prose, and
+   * `detail` collapses to a neutral verb ("recorded"). Absent ⇒ single-tracker, use
+   * `detail`. */
+  trackers?: TrackerOutcome[];
   /** Manual mode awaiting a selection — the badge shows a "pick what you're
    * watching" prompt instead of (or alongside) the status line. */
   pick?: boolean;

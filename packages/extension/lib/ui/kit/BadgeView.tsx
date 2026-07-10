@@ -1,8 +1,42 @@
 import type { Tracker } from "@/lib/tracker/types";
+import type { TrackerOutcome } from "@/messaging";
 import clsx from "clsx";
 import { AniListMark, Btn, Icon, IconBtn, Stars, TraktMark, type Variant, tokens } from "./kit";
 
 export type BadgeState = "idle" | "watching" | "paused" | "scrobbled" | "stopped" | "error";
+
+/** Status-dot colour per tracker outcome — mirrors the real badge (badge.tsx). */
+const OUTCOME_DOT: Record<TrackerOutcome["state"], string> = {
+  ok: "bg-emerald-500",
+  attention: "bg-amber-500",
+  pending: "bg-zinc-400",
+};
+
+const trackerLabel = (tk: Tracker) => (tk === "anilist" ? "AniList" : "Trakt");
+
+/** MULTI-TRACK: a row of tracker logos, each with a corner status dot. Mirrors the
+ * real badge's TrackerMarks; scales to any number of trackers without prose. */
+function TrackerMarks({ outcomes }: { outcomes: TrackerOutcome[] }) {
+  return (
+    <span class="inline-flex shrink-0 items-center gap-1.5">
+      {outcomes.map((o) => (
+        <span
+          key={o.tracker}
+          class="relative inline-grid place-items-center"
+          title={`${trackerLabel(o.tracker)}${o.note ? ` · ${o.note}` : ""}`}
+        >
+          {o.tracker === "anilist" ? <AniListMark class="size-4" /> : <TraktMark class="size-4" />}
+          <span
+            class={clsx(
+              "absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full ring-1 ring-black/50",
+              OUTCOME_DOT[o.state],
+            )}
+          />
+        </span>
+      ))}
+    </span>
+  );
+}
 
 // `glow` is a soft outer glow in the state colour (used by the minimized dot).
 const STATE: Record<BadgeState, { color: string; glow: string; label: string }> = {
@@ -47,10 +81,16 @@ export function BadgePill({
   variant,
   state,
   title,
+  detail,
+  trackers,
 }: {
   variant: Variant;
   state: BadgeState;
   title?: string;
+  /** Overrides the state label (e.g. the neutral "recorded" verb when multi-track). */
+  detail?: string;
+  /** MULTI-TRACK: per-tracker outcomes → tinted logos next to the verb. */
+  trackers?: TrackerOutcome[];
 }) {
   const t = tokens(variant);
   const s = STATE[state];
@@ -63,7 +103,10 @@ export function BadgePill({
     >
       <span class={clsx("size-2.5 shrink-0 rounded-full", s.color)} />
       <span class="min-w-0 flex-1">
-        <span class={clsx("block text-[12px] font-semibold", t.heading)}>TMSync · {s.label}</span>
+        <span class={clsx("flex items-center gap-2 text-[12px] font-semibold", t.heading)}>
+          <span class="truncate">TMSync · {detail ?? s.label}</span>
+          {trackers && trackers.length > 0 && <TrackerMarks outcomes={trackers} />}
+        </span>
         {title && <span class={clsx("block truncate text-[12px]", t.sub)}>{title}</span>}
       </span>
       <IconBtn t={t} name="minimize" title="Minimize" />
@@ -80,29 +123,43 @@ export function BadgePill({
 export function NowPanel({
   variant,
   trackers = ["trakt"],
+  outcomes,
 }: {
   variant: Variant;
   trackers?: Tracker[];
+  /** MULTI-TRACK: per-tracker scrobble outcome → a status dot + note per row. */
+  outcomes?: TrackerOutcome[];
 }) {
   const t = tokens(variant);
   return (
     <div class={clsx("w-[300px] rounded-2xl p-3.5 shadow-2xl shadow-black/40", t.panel)}>
       <span class={clsx("mb-1 block text-[11px]", t.faint)}>Tracking</span>
       <div class="space-y-1">
-        {trackers.map((tk) => (
-          <div key={tk} class={clsx("flex items-center gap-1 rounded-lg pr-1 pl-2.5", t.card)}>
-            <span class="flex min-w-0 flex-1 items-center gap-2 py-1.5">
-              {tk === "anilist" ? <AniListMark class="size-4" /> : <TraktMark class="size-4" />}
-              <span class={clsx("shrink-0 text-[12px] font-medium", t.heading)}>
-                {tk === "anilist" ? "AniList" : "Trakt"}
+        {trackers.map((tk) => {
+          const o = outcomes?.find((x) => x.tracker === tk);
+          return (
+            <div key={tk} class={clsx("flex items-center gap-1 rounded-lg pr-1 pl-2.5", t.card)}>
+              <span class="flex min-w-0 flex-1 items-center gap-2 py-1.5">
+                {tk === "anilist" ? <AniListMark class="size-4" /> : <TraktMark class="size-4" />}
+                <span class={clsx("shrink-0 text-[12px] font-medium", t.heading)}>
+                  {tk === "anilist" ? "AniList" : "Trakt"}
+                </span>
+                <span class={clsx("ml-1 min-w-0 flex-1 truncate text-[10px]", t.faint)}>
+                  → The Boondocks
+                </span>
               </span>
-              <span class={clsx("ml-1 min-w-0 flex-1 truncate text-[10px]", t.faint)}>
-                → The Boondocks
-              </span>
-            </span>
-            <IconBtn t={t} name="edit" title="Fix match" />
-          </div>
-        ))}
+              {o && (
+                <span class="flex shrink-0 items-center gap-1">
+                  {o.note && o.state !== "ok" && (
+                    <span class={clsx("text-[10px]", t.faint)}>{o.note}</span>
+                  )}
+                  <span class={clsx("size-1.5 rounded-full", OUTCOME_DOT[o.state])} />
+                </span>
+              )}
+              <IconBtn t={t} name="edit" title="Fix match" />
+            </div>
+          );
+        })}
       </div>
       <Btn t={t} tone="primary" class="mt-3 w-full">
         <Icon name="edit" class="text-[12px]" />

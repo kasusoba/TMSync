@@ -64,6 +64,12 @@ export interface RecordResult {
   completed?: boolean;
   /** Tracker error body / detail for the badge. */
   httpError?: string;
+  /** Benign informational outcome (ok, but nothing written). `already_watched` =
+   * the scraped episode is at/below the tracker's recorded progress, so it won't
+   * advance — surfaced to the badge instead of a confusing "stopped". */
+  info?: "already_watched";
+  /** With `info: "already_watched"`: the tracker's current progress (episode #). */
+  atEpisode?: number;
 }
 
 /**

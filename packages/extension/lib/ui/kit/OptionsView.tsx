@@ -499,7 +499,7 @@ export function OptionsView({ variant }: { variant: Variant }) {
                 />
                 <Filter t={t} q={q} setQ={setQ} placeholder="Filter corrections…" />
                 <div class="space-y-1.5">
-                  {CORRECTIONS.filter(([k, v]) => has(k) || has(v)).map(([key, val]) => (
+                  {CORRECTIONS.filter(([k, v]) => has(k) || has(v)).map(([key, val], i) => (
                     <div
                       key={key}
                       class={clsx(
@@ -507,11 +507,18 @@ export function OptionsView({ variant }: { variant: Variant }) {
                         t.card,
                       )}
                     >
-                      <div class="min-w-0">
+                      <span class="shrink-0">
+                        {i % 3 === 0 ? (
+                          <AniListMark class="size-4" />
+                        ) : (
+                          <TraktMark class="size-4" />
+                        )}
+                      </span>
+                      <div class="min-w-0 flex-1">
                         <code class={clsx("block truncate font-mono text-[11px]", t.faint)}>
                           {key}
                         </code>
-                        <span class={clsx("text-[12px]", t.heading)}>→ {val}</span>
+                        <span class={clsx("block truncate text-[12px]", t.heading)}>→ {val}</span>
                       </div>
                       <IconBtn t={t} name="trash" title="Remove" danger />
                     </div>

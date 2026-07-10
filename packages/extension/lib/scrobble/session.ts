@@ -1,7 +1,15 @@
 import { quickLinkSlugs } from "@/lib/storage";
 import { routeTracker } from "@/lib/tracker";
 import type { Tracker } from "@/lib/tracker/types";
-import { type BadgeStatus, type ScrobbleReply, onMessage, sendMessage } from "@/messaging";
+import {
+  type BadgeState,
+  type BadgeStatus,
+  type DerivedOutcome,
+  type ScrobbleReply,
+  type TrackerOutcome,
+  onMessage,
+  sendMessage,
+} from "@/messaging";
 import {
   type ParsedMedia,
   type Recipe,
@@ -40,72 +48,129 @@ function mediaKey(m: ParsedMedia): string {
  * episode is scrobbling, including for season-less anime. `singleEpisode` (a resolved
  * AniList entry with exactly 1 episode — a movie, OVA, or special) drops the "E1":
  * the number is always 1, so it carries no information. (Not a movie-specific test.)
+ * `seasonless` forces the ` E{n}` form even when a season was scraped — AniList is
+ * seasonless (the cour IS the entry), so an AniList-tracked item on a seasoned site
+ * shows ` E3`, not a misleading ` S1E3`.
  */
-function episodeSuffix(m: ParsedMedia, singleEpisode = false): string {
-  if (m.season !== undefined) return ` S${m.season}E${m.episode ?? "?"}`;
+function episodeSuffix(m: ParsedMedia, singleEpisode = false, seasonless = false): string {
+  if (!seasonless && m.season !== undefined) return ` S${m.season}E${m.episode ?? "?"}`;
   if (singleEpisode) return "";
   if (m.episode !== undefined) return ` E${m.episode}`;
   return "";
 }
 
-function label(m: ParsedMedia): string {
+function label(m: ParsedMedia, seasonless = false): string {
   // A title-less, id-only recipe shows the id until the tracker resolves a real
   // title (which then replaces this in the badge).
   const idp = primaryId(m);
   const name = m.title || (idp ? `${idp.namespace.toUpperCase()} ${idp.value}` : "");
   const yr = m.year ? ` (${m.year})` : "";
-  return `${name}${episodeSuffix(m)}${yr}`;
+  return `${name}${episodeSuffix(m, false, seasonless)}${yr}`;
 }
 
 /** Title as the tracker matched it, keeping the scraped episode (transparency).
- * `singleEpisode` renders a 1-episode entry (movie / OVA / special) without "E1". */
+ * `singleEpisode` renders a 1-episode entry (movie / OVA / special) without "E1".
+ * `seasonless` drops the season (AniList entries are per-cour, not seasoned). */
 function resolvedLabel(
   title: string,
   year: number | undefined,
   m: ParsedMedia,
   singleEpisode = false,
+  seasonless = false,
 ): string {
-  return `${title}${year ? ` (${year})` : ""}${episodeSuffix(m, singleEpisode)}`;
+  return `${title}${year ? ` (${year})` : ""}${episodeSuffix(m, singleEpisode, seasonless)}`;
 }
 
-/** The DERIVED-tracker summary for the badge (multi-track). Silent crosswalk
- * misses are omitted (the item just isn't anime / mapped); real outcomes surface
- * so the user can verify both trackers. Success only shows at the write moment. */
-function derivedSuffix(reply: ScrobbleReply): string {
-  const parts: string[] = [];
+/** Short per-tracker note from a failure reason (for the mark's tooltip + panel). */
+function reasonNote(reason: string | undefined): string {
+  switch (reason) {
+    case "not_connected":
+      return "connect";
+    case "unresolved":
+      return "not found";
+    case "numbering_mismatch":
+      return "numbering ✗";
+    case "no_episode":
+      return "no episode";
+    case "needs_rewatch":
+      return "rewatch?";
+    default:
+      return "failed";
+  }
+}
+
+/** ok = recorded this phase; pending = enabled but nothing written yet (start/pause,
+ * or AniList before its threshold); attention = failed / needs the user. */
+function outcomeState(
+  ok: boolean,
+  action?: "start" | "pause" | "scrobble",
+): TrackerOutcome["state"] {
+  if (!ok) return "attention";
+  return action === "scrobble" ? "ok" : "pending";
+}
+
+/** A tracker's note when it recorded: Trakt "added to history"; AniList "saved" /
+ * "completed". Undefined while pending (nothing written yet). */
+function okNote(
+  tracker: Tracker,
+  action: DerivedOutcome["action"],
+  completed: boolean | undefined,
+): string | undefined {
+  if (action !== "scrobble") return undefined;
+  if (tracker === "anilist") return completed ? "completed" : "saved";
+  return "added to history";
+}
+
+/** Every per-tracker outcome for this scrobble: the native tracker (top-level reply
+ * fields) + each derived tracker. Silent crosswalk misses (skipped) are omitted —
+ * the item just isn't mapped there. This structure scales to any number of trackers;
+ * the badge renders it as tinted logos rather than an ever-growing prose string. */
+function trackerOutcomes(reply: ScrobbleReply, tracker: Tracker): TrackerOutcome[] {
+  const primary = reply.primaryTracker ?? tracker;
+  const out: TrackerOutcome[] = [
+    {
+      tracker: primary,
+      state: outcomeState(reply.ok, reply.action),
+      note: !reply.ok
+        ? reasonNote(reply.reason)
+        : reply.info === "already_watched"
+          ? "already watched"
+          : okNote(primary, reply.action, reply.completed),
+    },
+  ];
   for (const d of reply.derived ?? []) {
     if (d.skipped) continue;
-    const name = d.tracker === "anilist" ? "AniList" : "Trakt";
-    if (d.ok) {
-      if (d.action === "scrobble") parts.push(`${name} ${d.completed ? "completed" : "saved"}`);
-    } else {
-      const why =
-        d.reason === "numbering_mismatch"
-          ? "numbering ✗"
-          : d.reason === "unresolved"
-            ? "not found"
-            : d.reason === "not_connected"
-              ? "connect"
-              : d.reason === "no_episode"
-                ? "no episode"
-                : "failed";
-      parts.push(`${name} ${why}`);
-    }
+    out.push({
+      tracker: d.tracker,
+      state: outcomeState(d.ok, d.action),
+      note: d.ok ? okNote(d.tracker, d.action, d.completed) : reasonNote(d.reason),
+    });
   }
-  return parts.join(" · ");
+  return out;
 }
 
-/** Build the badge status: the native tracker's result, plus a compact derived
- * suffix ("added to history · AniList saved") when a recipe multi-tracks. */
-function statusFromReply(
+/** The neutral bar verb for a multi-track status — the per-tracker specifics live in
+ * the tinted marks, so the text stays tracker-agnostic and constant in length. */
+function neutralDetail(state: BadgeState, outcomes: TrackerOutcome[]): string | undefined {
+  const attention = outcomes.some((o) => o.state === "attention");
+  if (state === "scrobbled") return attention ? "recorded · needs attention" : "recorded";
+  if (state === "error") return "needs attention";
+  return undefined; // watching / paused / stopped / idle → use the state label
+}
+
+/** Build the badge status. Single-tracker keeps its specific text detail; a
+ * multi-track recipe attaches structured `trackers[]` (tinted logos) and collapses
+ * the detail to a neutral verb, so adding more trackers never bloats the bar text. */
+export function statusFromReply(
   action: "start" | "pause" | "stop",
   reply: ScrobbleReply,
   m: ParsedMedia,
   tracker: Tracker,
 ): BadgeStatus {
   const base = primaryStatus(action, reply, m, tracker);
-  const suffix = derivedSuffix(reply);
-  return suffix ? { ...base, detail: [base.detail, suffix].filter(Boolean).join(" · ") } : base;
+  const outcomes = trackerOutcomes(reply, tracker);
+  if (outcomes.length <= 1) return base; // single tracker — keep the specific detail
+  return { ...base, detail: neutralDetail(base.state, outcomes), trackers: outcomes };
 }
 
 function primaryStatus(
@@ -115,11 +180,29 @@ function primaryStatus(
   tracker: Tracker,
 ): BadgeStatus {
   const name = tracker === "anilist" ? "AniList" : "Trakt";
+  // AniList is seasonless (the cour is the entry) — drop any scraped season so the
+  // label reads `E3`, not a misleading `S1E3`, on a seasoned site tracked to AniList.
+  const seasonless = tracker === "anilist";
   // Prefer what the tracker actually matched (transparency); keep the scraped S/E.
   const title = reply.resolvedTitle
-    ? resolvedLabel(reply.resolvedTitle, reply.resolvedYear, m, reply.resolvedEpisodes === 1)
-    : label(m);
+    ? resolvedLabel(
+        reply.resolvedTitle,
+        reply.resolvedYear,
+        m,
+        reply.resolvedEpisodes === 1,
+        seasonless,
+      )
+    : label(m, seasonless);
   if (reply.ok) {
+    // Already at/above this episode on the tracker — nothing will be written (progress
+    // never goes backwards). Say so UP FRONT (any phase), not a bare confusing "stopped".
+    if (reply.info === "already_watched") {
+      return {
+        state: "stopped",
+        title,
+        detail: `already watched · ${name} at ep ${reply.atEpisode ?? "?"}`,
+      };
+    }
     if (action === "start") return { state: "watching", title };
     if (action === "pause") return { state: "paused", title };
     if (reply.action !== "scrobble") return { state: "stopped", title };
@@ -432,8 +515,11 @@ export class SessionManager {
       return;
     }
 
-    // Avoid churn from the head observer firing on unrelated mutations.
-    const key = mediaKey(media);
+    // Avoid churn from the head observer firing on unrelated mutations. The key
+    // includes the tracker set so re-toggling trackers on the SAME media (a recipe
+    // edit) still re-publishes — otherwise the "now playing" panel keeps the stale
+    // tracker list while the badge marks (from the live reply) show the new one.
+    const key = `${mediaKey(media)}|${this.tracker}|${this.trackers.join(",")}`;
     if (key === this.lastPublishedKey) return;
     this.lastPublishedKey = key;
 
@@ -450,22 +536,32 @@ export class SessionManager {
     // the tracker actually matched — so the user can verify (and fix) the target
     // BEFORE pressing play, not only after the first scrobble fires.
     const trackerName = this.tracker === "anilist" ? "AniList" : "Trakt";
-    await sendMessage("reportScrobble", { state: "idle", title: label(media) });
+    const seasonless = this.tracker === "anilist"; // AniList entries are per-cour (no seasons)
+    await sendMessage("reportScrobble", { state: "idle", title: label(media, seasonless) });
     const resolved = await sendMessage("resolveMedia", { media, tracker: this.tracker });
-    await sendMessage(
-      "reportScrobble",
-      resolved.resolved && resolved.title
-        ? {
-            state: "idle",
-            title: resolvedLabel(resolved.title, resolved.year, media),
-            detail: "press play to scrobble",
-          }
-        : {
-            state: "error",
-            title: label(media),
-            detail: `not found on ${trackerName} · click to fix`,
-          },
-    );
+    if (!(resolved.resolved && resolved.title)) {
+      await sendMessage("reportScrobble", {
+        state: "error",
+        title: label(media, seasonless),
+        detail: `not found on ${trackerName} · click to fix`,
+      });
+    } else {
+      // AniList never lowers progress: if this episode is already counted, say so UP
+      // FRONT instead of "press play to scrobble" — playing wouldn't record anything.
+      // (One cheap entry read; the resolve it does is already cached from above.)
+      let detail = "press play to scrobble";
+      if (this.tracker === "anilist" && media.episode !== undefined) {
+        const w = await sendMessage("getWatchedState", {});
+        if (w?.tracker === "anilist" && media.episode <= w.watchedCount) {
+          detail = `already watched · AniList at ep ${w.watchedCount}`;
+        }
+      }
+      await sendMessage("reportScrobble", {
+        state: "idle",
+        title: resolvedLabel(resolved.title, resolved.year, media, false, seasonless),
+        detail,
+      });
+    }
 
     // Anime crosswalk: when this anime site declares how to read its stable series
     // slug (`canonical`), remember `(host, AniList id) → slug` so AniList quick
@@ -543,12 +639,13 @@ export class SessionManager {
     // The pick is locked to a Trakt entry via a correction, so resolveMedia hits;
     // either way the title is set, so seed the badge and let play scrobble it.
     const resolved = await sendMessage("resolveMedia", { media, tracker: this.tracker });
+    const seasonless = this.tracker === "anilist";
     await sendMessage("reportScrobble", {
       state: "idle",
       title:
         resolved.resolved && resolved.title
-          ? resolvedLabel(resolved.title, resolved.year, media)
-          : label(media),
+          ? resolvedLabel(resolved.title, resolved.year, media, false, seasonless)
+          : label(media, seasonless),
       detail: "press play to scrobble",
     });
   }

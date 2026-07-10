@@ -44,10 +44,33 @@ describe("planAniListWrite — first watch", () => {
     ).toEqual({ kind: "write", progress: 6, status: "CURRENT", completed: false });
   });
 
-  it("is a no-op when CURRENT and the episode is already counted", () => {
+  it("reports already-watched when CURRENT and the episode is at/below progress", () => {
+    // Won't advance (never lower progress) → surface it, not a silent noop → "stopped".
     expect(
       planAniListWrite({ ...base, episode: 3, entry: entry({ status: "CURRENT", progress: 5 }) }),
-    ).toEqual({ kind: "noop" });
+    ).toEqual({ kind: "already_watched", episode: 3, progress: 5 });
+    // The current high-water episode itself is already counted too.
+    expect(
+      planAniListWrite({ ...base, episode: 5, entry: entry({ status: "CURRENT", progress: 5 }) }),
+    ).toEqual({ kind: "already_watched", episode: 5, progress: 5 });
+  });
+
+  it("surfaces already-watched EARLY (on play), not just at the stop threshold", () => {
+    expect(
+      planAniListWrite({
+        ...base,
+        phase: "start",
+        progress: 1,
+        episode: 2,
+        entry: entry({ status: "CURRENT", progress: 5 }),
+      }),
+    ).toEqual({ kind: "already_watched", episode: 2, progress: 5 });
+  });
+
+  it("still writes the next NEW episode normally (above progress)", () => {
+    expect(
+      planAniListWrite({ ...base, episode: 6, entry: entry({ status: "CURRENT", progress: 5 }) }),
+    ).toEqual({ kind: "write", progress: 6, status: "CURRENT", completed: false });
   });
 });
 

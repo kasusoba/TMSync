@@ -504,6 +504,30 @@ export function App() {
               ))}
             </div>
           </Tile>
+          <Tile label="Scrobble pill · multi-track (anime → Trakt + AniList)" t={t}>
+            <div class="flex flex-col items-center gap-3">
+              <BadgePill
+                variant={variant}
+                state="scrobbled"
+                detail="recorded"
+                title="Akame ga Kill S1E24"
+                trackers={[
+                  { tracker: "trakt", state: "ok", note: "added to history" },
+                  { tracker: "anilist", state: "ok", note: "saved" },
+                ]}
+              />
+              <BadgePill
+                variant={variant}
+                state="scrobbled"
+                detail="recorded · needs attention"
+                title="Akame ga Kill S1E24"
+                trackers={[
+                  { tracker: "trakt", state: "ok", note: "added to history" },
+                  { tracker: "anilist", state: "attention", note: "connect" },
+                ]}
+              />
+            </div>
+          </Tile>
           <Tile label="Minimized dot" t={t}>
             <div class="flex items-center gap-4">
               <BadgeMini state="watching" />
@@ -515,7 +539,14 @@ export function App() {
             <NowPanel variant={variant} trackers={["trakt"]} />
           </Tile>
           <Tile label="“Now” panel · multi-track (anime)" t={t}>
-            <NowPanel variant={variant} trackers={["trakt", "anilist"]} />
+            <NowPanel
+              variant={variant}
+              trackers={["trakt", "anilist"]}
+              outcomes={[
+                { tracker: "trakt", state: "ok", note: "added to history" },
+                { tracker: "anilist", state: "attention", note: "connect" },
+              ]}
+            />
           </Tile>
           <Tile label="Rate & note · movie" t={t}>
             <RateNotePanel

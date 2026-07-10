@@ -131,6 +131,20 @@ export const corrections = storage.defineItem<Record<string, ResolvedIdentity>>(
 );
 
 /**
+ * User AniList TITLE-match corrections: anilistCacheKey(media) → the AniList entry
+ * the user picked (or `null` = "not on AniList", skip). This is the title-keyed
+ * analogue of the tmdb-keyed crosswalk override (animapOverrides): it fixes an
+ * AniList-NATIVE recipe that resolves by TITLE, where there's no tmdb id to key a
+ * crosswalk pin. Authoritative over the title search (mirrors `corrections`).
+ * `local:` to sit alongside its sibling `animapOverrides` (the tmdb-keyed AniList
+ * corrections) rather than the Trakt `sync:corrections` — same quota/backup story.
+ */
+export const anilistCorrections = storage.defineItem<Record<string, AniListIdentity | null>>(
+  "local:anilist_corrections",
+  { fallback: {} },
+);
+
+/**
  * Ratings the user set through TMSync, keyed by reviewKey(identity, level, …).
  * A local mirror for instant UI — ratings made on the Trakt website aren't
  * reflected here (we don't pull the full ratings list). 1–10.
