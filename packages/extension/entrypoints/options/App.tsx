@@ -33,7 +33,12 @@ import {
   tokens,
 } from "@/lib/ui/kit/kit";
 import { type AniListStatus, type TraktStatus, sendMessage } from "@/messaging";
-import type { Recipe } from "@tmsync/shared";
+import {
+  ANILIST_PLACEHOLDERS,
+  type PlaceholderDoc,
+  type Recipe,
+  TRAKT_PLACEHOLDERS,
+} from "@tmsync/shared";
 import clsx from "clsx";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { browser } from "wxt/browser";
@@ -46,6 +51,23 @@ function recipeHost(r: Recipe): string {
   if (r.match.hostnames?.[0]) return r.match.hostnames[0];
   const unescaped = r.match.urlPattern.replace(/\\(.)/g, "$1");
   return unescaped.split("/")[0] || r.name;
+}
+
+/** Quick-link placeholder reference: each `{token}`, an example, and what it means. */
+function PlaceholderHelp({ list, note }: { list: readonly PlaceholderDoc[]; note: string }) {
+  return (
+    <div class={clsx("space-y-1 text-[11px] leading-relaxed", t.faint)}>
+      <p>Placeholders ({note}):</p>
+      <ul class="space-y-0.5">
+        {list.map((p) => (
+          <li key={p.token}>
+            <code class="font-mono">{`{${p.token}}`}</code> →{" "}
+            <code class="font-mono">{p.example}</code> <span class="opacity-70">{p.desc}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 const isShowRecipe = (r: Recipe) =>
@@ -289,20 +311,14 @@ function QuickLinkRow({
             <>
               {field("Anime URL", anime, setAnime, "https://site/anime/{slug}")}
               {field("Search URL", search, setSearch, "https://site/search?q={title}")}
-              <p class={clsx("text-[11px] leading-relaxed", t.faint)}>
-                Placeholders: {"{anilistId} {title} {romaji} {slug}"} · shown on anilist.co anime
-                pages.
-              </p>
+              <PlaceholderHelp list={ANILIST_PLACEHOLDERS} note="shown on anilist.co anime pages" />
             </>
           ) : (
             <>
               {field("Movie URL", movie, setMovie, "https://site/movie/{tmdb}")}
               {field("TV URL", tv, setTv, "https://site/tv/{tmdb}/{season}/{episode}")}
               {field("Search URL", search, setSearch, "https://site/search/{title}")}
-              <p class={clsx("text-[11px] leading-relaxed", t.faint)}>
-                Placeholders: {"{tmdb} {imdb} {season} {episode} {title} {slug}"} (year-free),{" "}
-                {"{slugyear}"} (with year).
-              </p>
+              <PlaceholderHelp list={TRAKT_PLACEHOLDERS} note="shown on trakt.tv movie/TV pages" />
             </>
           )}
           <Btn t={t} tone="primary" disabled={busy} onClick={save}>

@@ -1,4 +1,4 @@
-import type { LinkTemplates } from "./schema";
+import type { LinkTemplates, Tracker } from "./schema";
 
 /**
  * Media identified on a Trakt page, used to build an outbound quick link.
@@ -31,6 +31,67 @@ export interface AniListPageMedia {
 export interface SiteLinks {
   direct?: string;
   search?: string;
+}
+
+/** One quick-link placeholder: the `{token}`, what it is, and a concrete example. */
+export interface PlaceholderDoc {
+  token: string;
+  desc: string;
+  example: string;
+}
+
+/**
+ * Placeholders usable in a Trakt-page (movie/tv) quick-link template. Single
+ * source of truth for the editor + options help so the two never drift.
+ */
+export const TRAKT_PLACEHOLDERS: readonly PlaceholderDoc[] = [
+  { token: "tmdb", desc: "TMDB id", example: "603" },
+  { token: "imdb", desc: "IMDb id", example: "tt0133093" },
+  { token: "title", desc: "URL-encoded title", example: "The%20Matrix" },
+  { token: "slug", desc: "clean slug, year stripped", example: "the-matrix" },
+  { token: "slugyear", desc: "Trakt slug, may keep a year", example: "the-matrix-1999" },
+  { token: "season", desc: "season number (tv)", example: "1" },
+  { token: "episode", desc: "episode number (tv)", example: "5" },
+];
+
+/** Placeholders usable in an AniList-page (anime) quick-link template. */
+export const ANILIST_PLACEHOLDERS: readonly PlaceholderDoc[] = [
+  { token: "anilist", desc: "AniList id", example: "21" },
+  { token: "title", desc: "URL-encoded title", example: "Frieren" },
+  { token: "romaji", desc: "URL-encoded romaji", example: "Sousou%20no%20Frieren" },
+  { token: "slug", desc: "series slug", example: "frieren" },
+  {
+    token: "canonical",
+    desc: "site's real slug, from a prior watch",
+    example: "sousou-no-frieren",
+  },
+];
+
+/** Render a placeholder list as tooltip text: one `{token} → example` per line. */
+export function placeholderHint(list: readonly PlaceholderDoc[]): string {
+  return list.map((p) => `{${p.token}} → ${p.example}`).join("\n");
+}
+
+/**
+ * The tracker's OWN website URL for a resolved item — so the now-playing UI can
+ * "open on Trakt / AniList" in a new tab. Both sites redirect a numeric id in the
+ * path to the canonical slug page, so the resolved id is enough:
+ *   Trakt movie:   trakt.tv/movies/{id}
+ *   Trakt show:    trakt.tv/shows/{id}
+ *   Trakt episode: trakt.tv/shows/{id}/seasons/{s}/episodes/{e}  (when s+e known)
+ *   AniList:       anilist.co/anime/{id}  (no per-episode pages — always the entry)
+ */
+export function trackerItemUrl(
+  tracker: Tracker,
+  id: number,
+  opts?: { mediaType?: "movie" | "show"; season?: number; episode?: number },
+): string {
+  if (tracker === "anilist") return `https://anilist.co/anime/${id}`;
+  if (opts?.mediaType === "movie") return `https://trakt.tv/movies/${id}`;
+  const base = `https://trakt.tv/shows/${id}`;
+  return opts?.season !== undefined && opts?.episode !== undefined
+    ? `${base}/seasons/${opts.season}/episodes/${opts.episode}`
+    : base;
 }
 
 /** Lowercase, hyphen-joined slug of a title (e.g. "The Rookie" → "the-rookie"). */
@@ -104,8 +165,10 @@ export function buildSiteLinks(links: LinkTemplates, media: TraktPageMedia): Sit
 /**
  * Build the outbound links for an anime site from its templates and an AniList
  * page's media: the `anime` deep link (if fillable) and the title-based `search`
- * link. Placeholders: {anilistId}, {title} (URL-encoded English/romaji), {romaji}
- * (URL-encoded), {slug}, {canonical}.
+ * link. Placeholders: {anilist}, {title} (URL-encoded English/romaji), {romaji}
+ * (URL-encoded), {slug}, {canonical}. `{anilistId}` is still accepted as a
+ * back-compat alias for `{anilist}` (the token was renamed for consistency with
+ * the bare-id {tmdb}/{imdb} on the Trakt side).
  *
  * `canonical` is the site's REAL series slug, captured from a prior watch (the
  * crosswalk). When present it fills both `{canonical}` and `{slug}` — so a
@@ -119,7 +182,8 @@ export function buildAniListSiteLinks(
   canonical?: string,
 ): SiteLinks {
   const params = {
-    anilistId: media.anilistId,
+    anilist: media.anilistId,
+    anilistId: media.anilistId, // back-compat alias: {anilistId} was the pre-rename token
     title: media.title !== undefined ? encodeURIComponent(media.title) : undefined,
     romaji: media.romaji !== undefined ? encodeURIComponent(media.romaji) : undefined,
     slug: canonical ?? (media.title !== undefined ? slugify(media.title) : undefined),

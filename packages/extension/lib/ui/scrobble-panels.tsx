@@ -7,7 +7,7 @@ import {
   type TrackerResolution,
   sendMessage,
 } from "@/messaging";
-import type { ParsedMedia } from "@tmsync/shared";
+import { type ParsedMedia, trackerItemUrl } from "@tmsync/shared";
 import clsx from "clsx";
 import { useEffect, useState } from "preact/hooks";
 import { AniListMark, Btn, Icon, IconBtn, type Tokens, TraktMark } from "./kit/kit";
@@ -152,6 +152,33 @@ export function TrackingRows({
                   : res.reason === "ambiguous"
                     ? "ambiguous mapping"
                     : "not found";
+          // When resolved, the tracker's own page for this item — click to open it
+          // in a new tab (episode/movie/entry). Absent until we have an id.
+          const url =
+            res?.resolved && res.id !== undefined
+              ? trackerItemUrl(tk, res.id, {
+                  mediaType: media.mediaType,
+                  season: media.season,
+                  episode: media.episode,
+                })
+              : undefined;
+          const inner = (
+            <>
+              {tk === "anilist" ? <AniListMark class="size-4" /> : <TraktMark class="size-4" />}
+              <span class={clsx("shrink-0 text-[12px] font-medium", t.heading)}>
+                {trackerName(tk)}
+              </span>
+              <span class={clsx("ml-1 min-w-0 flex-1 truncate text-[10px]", t.faint)}>
+                {detail}
+              </span>
+              {url && (
+                <Icon
+                  name="external"
+                  class={clsx("shrink-0 text-[11px] opacity-0 group-hover:opacity-60", t.faint)}
+                />
+              )}
+            </>
+          );
           return (
             <div
               key={tk}
@@ -161,15 +188,19 @@ export function TrackingRows({
                 !res?.resolved && "opacity-70",
               )}
             >
-              <span class="flex min-w-0 flex-1 items-center gap-2 py-1.5">
-                {tk === "anilist" ? <AniListMark class="size-4" /> : <TraktMark class="size-4" />}
-                <span class={clsx("shrink-0 text-[12px] font-medium", t.heading)}>
-                  {trackerName(tk)}
-                </span>
-                <span class={clsx("ml-1 min-w-0 flex-1 truncate text-[10px]", t.faint)}>
-                  {detail}
-                </span>
-              </span>
+              {url ? (
+                <a
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={`Open on ${trackerName(tk)}`}
+                  class="group flex min-w-0 flex-1 items-center gap-2 py-1.5"
+                >
+                  {inner}
+                </a>
+              ) : (
+                <span class="flex min-w-0 flex-1 items-center gap-2 py-1.5">{inner}</span>
+              )}
               {canFix(tk) && (
                 <IconBtn
                   t={t}
@@ -277,11 +308,18 @@ export function RateNote({
   const spoilerApplies = targets.includes("trakt");
   const canSubmit = targets.length > 0 && (rating !== null || note.trim().length > 0) && !busy;
 
+  // Keep at least one destination selected: unchecking the ONLY selected tracker
+  // leaves nothing to save to (Save would just disable), so the last remaining
+  // check is locked. Symmetric for Trakt and AniList — whichever ends up sole.
+  const isSoleTarget = (tk: Tracker) => targets.length === 1 && targets[0] === tk;
   const toggleTarget = (tk: Tracker) =>
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(tk)) next.delete(tk);
-      else next.add(tk);
+      if (next.has(tk)) {
+        // No-op if nothing else applicable stays selected.
+        if (applicable.every((x) => x === tk || !next.has(x))) return prev;
+        next.delete(tk);
+      } else next.add(tk);
       return next;
     });
 
@@ -326,11 +364,17 @@ export function RateNote({
     setBusy(false);
   };
 
-  const notePlaceholder = !spoilerApplies
-    ? "Private note on AniList…"
-    : targets.includes("anilist")
+  // Describe where the note goes by the ACTUAL destinations — the selected
+  // targets, or (before anything is picked) what could receive it. Never infer
+  // "AniList" just because Trakt is deselected: on a Trakt-only item that left the
+  // box reading "Private note on AniList…" when no tracker was even AniList.
+  const noteTrackers = targets.length > 0 ? targets : applicable;
+  const notePlaceholder =
+    noteTrackers.includes("trakt") && noteTrackers.includes("anilist")
       ? "Public comment on Trakt · private note on AniList…"
-      : "Your note · public on Trakt, at least 5 words…";
+      : noteTrackers.includes("anilist")
+        ? "Private note on AniList…"
+        : "Your note · public on Trakt, at least 5 words…";
 
   return (
     <div class={panelClass(t)}>
@@ -364,6 +408,8 @@ export function RateNote({
             const res = resFor(tk);
             const canSend = applicable.includes(tk);
             const on = canSend && selected.has(tk);
+            // The only selected destination — locked on (can't leave zero targets).
+            const locked = on && isSoleTarget(tk);
             // Resolved but on the wrong tab (AniList on episode/season): make it a
             // shortcut to the level it CAN rate rather than a dead disabled row.
             const wrongLevel = !!res?.resolved && !levelOk(tk);
@@ -384,11 +430,13 @@ export function RateNote({
                 type="button"
                 key={tk}
                 disabled={!canSend && !wrongLevel}
+                title={locked ? "At least one tracker stays selected" : undefined}
                 onClick={() => (canSend ? toggleTarget(tk) : wrongLevel && setLevel("show"))}
                 class={clsx(
                   "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left ring-inset transition",
                   t.card,
                   on ? "ring-2 ring-ikura" : "ring-1 ring-transparent",
+                  locked && "cursor-default",
                   !canSend && !wrongLevel && "opacity-60",
                 )}
               >

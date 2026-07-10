@@ -1,6 +1,11 @@
 import { defaultRecipeName } from "@/lib/picker/recipe-builder";
 import type { Tracker } from "@/lib/tracker/types";
-import type { LinkTemplates } from "@tmsync/shared";
+import {
+  ANILIST_PLACEHOLDERS,
+  type LinkTemplates,
+  TRAKT_PLACEHOLDERS,
+  placeholderHint,
+} from "@tmsync/shared";
 import clsx from "clsx";
 import { useState } from "preact/hooks";
 import { TrackerTab } from "./TrackerTab";
@@ -114,11 +119,7 @@ export function QuickLinkEditor({
         Keep the URL, swap the dynamic part for a{" "}
         <span
           class="cursor-help underline decoration-dotted underline-offset-2"
-          title={
-            isAniList
-              ? "Placeholders: {anilistId} {title} {romaji} {slug}"
-              : "Placeholders: {tmdb} {imdb} {season} {episode} {title} {slug}"
-          }
+          title={placeholderHint(isAniList ? ANILIST_PLACEHOLDERS : TRAKT_PLACEHOLDERS)}
         >
           placeholder
         </span>

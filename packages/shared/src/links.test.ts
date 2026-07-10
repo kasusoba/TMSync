@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildAniListSiteLinks, buildSiteLinks, fillTemplate, slugify } from "./links";
+import {
+  buildAniListSiteLinks,
+  buildSiteLinks,
+  fillTemplate,
+  slugify,
+  trackerItemUrl,
+} from "./links";
 import type { LinkTemplates } from "./schema";
 
 describe("fillTemplate", () => {
@@ -121,6 +127,12 @@ describe("buildAniListSiteLinks", () => {
     expect(buildAniListSiteLinks({ anime: "https://s/anime/{slug}" }, media).direct).toBe(
       "https://s/anime/witch-hat-atelier",
     );
+    expect(buildAniListSiteLinks({ anime: "https://s/a/{anilist}" }, media).direct).toBe(
+      "https://s/a/147105",
+    );
+  });
+
+  it("still fills the legacy {anilistId} alias (back-compat)", () => {
     expect(buildAniListSiteLinks({ anime: "https://s/a/{anilistId}" }, media).direct).toBe(
       "https://s/a/147105",
     );
@@ -136,6 +148,29 @@ describe("buildAniListSiteLinks", () => {
   });
 
   it("skips a template whose placeholder is missing", () => {
-    expect(buildAniListSiteLinks({ anime: "https://s/a/{anilistId}" }, { title: "X" })).toEqual({});
+    expect(buildAniListSiteLinks({ anime: "https://s/a/{anilist}" }, { title: "X" })).toEqual({});
+  });
+});
+
+describe("trackerItemUrl", () => {
+  it("links a Trakt episode with season + episode", () => {
+    expect(trackerItemUrl("trakt", 1390, { mediaType: "show", season: 1, episode: 13 })).toBe(
+      "https://trakt.tv/shows/1390/seasons/1/episodes/13",
+    );
+  });
+
+  it("links a Trakt show (no episode) and a movie", () => {
+    expect(trackerItemUrl("trakt", 1390, { mediaType: "show" })).toBe(
+      "https://trakt.tv/shows/1390",
+    );
+    expect(trackerItemUrl("trakt", 42, { mediaType: "movie", season: 1, episode: 1 })).toBe(
+      "https://trakt.tv/movies/42",
+    );
+  });
+
+  it("links an AniList entry by id, ignoring season/episode", () => {
+    expect(trackerItemUrl("anilist", 154587, { season: 1, episode: 5 })).toBe(
+      "https://anilist.co/anime/154587",
+    );
   });
 });

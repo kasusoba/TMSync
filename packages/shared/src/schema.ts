@@ -55,11 +55,14 @@ export type Field = z.infer<typeof Field>;
  * URL templates for deep-linking FROM a tracker page OUT to a streaming site (the
  * "quick links" feature). Declarative data — placeholders are substituted, never
  * executed. Supported placeholders:
- *   Trakt page (movie/tv): {tmdb} {imdb} (ids from Trakt's external links),
- *     {title} (URL-encoded), {slug} (lowercase, hyphen-joined), {slugyear},
+ *   Trakt page (movie/tv): {tmdb} (603) {imdb} (tt0133093) (ids from Trakt's
+ *     external links), {title} (URL-encoded, The%20Matrix), {slug} (year-free,
+ *     the-matrix), {slugyear} (Trakt's raw slug, the-matrix-1999),
  *     {season} {episode} (tv: show → S1E1, season → S{n}E1, episode → S{n}E{m}).
- *   AniList page (`anime`): {anilistId}, {title} (English/romaji, URL-encoded),
- *     {romaji} (URL-encoded), {slug}.
+ *   AniList page (`anime`): {anilist} (21) (`{anilistId}` still accepted as a
+ *     back-compat alias), {title} (English/romaji, URL-encoded, Frieren),
+ *     {romaji} (URL-encoded, Sousou%20no%20Frieren), {slug} (frieren),
+ *     {canonical} (the site's real slug from a prior watch, sousou-no-frieren).
  * A direct template that references an id we don't have falls back to `search`.
  * Which tracker's pages a link shows on is decided by `tracker` (below); the
  * `anime` template is the AniList analogue of `movie`/`tv`. Quick links are
