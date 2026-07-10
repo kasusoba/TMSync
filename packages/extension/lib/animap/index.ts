@@ -12,7 +12,7 @@
  * `extract()` engine (CLAUDE.md #2 — the one rule that survives the multi-track
  * reversal). It NEVER guesses: every lookup returns resolved | ambiguous | miss.
  *
- * Not to be confused with the `animeCrosswalk` storage item, which is an unrelated
+ * Not to be confused with the `quickLinkSlugs` storage item, which is an unrelated
  * local `(host, AniList id) → slug` cache for anime quick links.
  */
 import seed from "./anime-map.seed.json";

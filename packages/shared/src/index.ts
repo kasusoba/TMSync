@@ -17,16 +17,6 @@ export { matchRecipe, selectRecipe } from "./match";
 export { type RecipeLibrary, parseLibrary, parseLinks, parseRecipes } from "./recipes";
 export { buildAniListSiteLinks, buildSiteLinks, fillTemplate, slugify } from "./links";
 export type { AniListPageMedia, SiteLinks, TraktPageMedia } from "./links";
-export {
-  buildLetterboxdRows,
-  convertRating,
-  formatWatchedDate,
-  toLetterboxdCsv,
-} from "./letterboxd";
-export type {
-  LetterboxdComment,
-  LetterboxdRow,
-  TraktHistoryMovie,
-  TraktMovieRef,
-  TraktRatedMovie,
-} from "./letterboxd";
+// Letterboxd CSV export lives in the extension's Trakt adapter (packages/extension/
+// lib/trakt/letterboxd.ts) — it's Trakt-shaped domain logic, not part of the
+// tracker-agnostic shared engine.

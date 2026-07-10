@@ -1,9 +1,8 @@
 import type { BadgeStatus } from "@/messaging";
-import { type LinkTemplates, type ParsedMedia, type Recipe, RecipeSchema } from "@tmsync/shared";
+import type { LinkTemplates, ParsedMedia, Recipe } from "@tmsync/shared";
 import { storage } from "wxt/utils/storage";
 import type { AniListIdentity, AniListTokens } from "./anilist/types";
 import type { AnimapOverrides } from "./animap/derive";
-import { migrateCustomRecipeIds } from "./recipe-id";
 import type { Tracker } from "./tracker/types";
 import type { ResolvedIdentity, TraktTokens } from "./trakt/types";
 
@@ -61,14 +60,17 @@ export const resolutionCache = storage.defineItem<Record<string, ResolvedIdentit
 );
 
 /**
- * Anime quick-link crosswalk: `${host}:${anilistId}` → the site's REAL series
+ * Quick-link slug cache: `${host}:${anilistId}` → the site's REAL series
  * slug/identifier, captured (via a recipe's `canonical` field) whenever TMSync
  * resolves a page on that anime site. Reused to deep-link AniList quick links to
  * the exact page instead of a guessed title-slug (anime sites append unguessable
  * junk to URLs). Local + regenerable on the next watch — the no-backend analogue
- * of MALSync's central id→url map (see STORAGE-SYNC.md / the quicklink crosswalk).
+ * of MALSync's central id→url map (see STORAGE-SYNC.md).
+ *
+ * NOTE: this is NOT the episode-numbering crosswalk in `lib/animap/` — this only
+ * maps a site page to its slug for deep-linking. Named distinctly on purpose.
  */
-export const animeCrosswalk = storage.defineItem<Record<string, string>>("local:anime_crosswalk", {
+export const quickLinkSlugs = storage.defineItem<Record<string, string>>("local:quicklink_slugs", {
   fallback: {},
 });
 
@@ -81,11 +83,6 @@ export const enabledOrigins = storage.defineItem<string[]>("local:enabled_origin
 export const customRecipes = storage.defineItem<Recipe[]>("sync:custom_recipes", {
   fallback: [],
   version: 2,
-  migrations: {
-    // v1 → v2: timestamped `custom-<host>-<ts>` ids → stable host slugs, and fold
-    // legacy `extract.tmdbId` → `extract.ids.tmdb` (schema v3). See lib/recipe-id.
-    2: (recipes: unknown) => migrateCustomRecipeIds(recipes),
-  },
 });
 
 /**
@@ -101,22 +98,6 @@ export interface RemoteRecipes {
 export const remoteRecipes = storage.defineItem<RemoteRecipes | null>("local:remote_recipes", {
   fallback: null,
   version: 2,
-  migrations: {
-    // v1 → v2: re-parse a pre-v3 cached list so any `extract.tmdbId` folds into
-    // `extract.ids.tmdb` (else it under-resolves until the next background refetch).
-    2: (entry: unknown) => {
-      if (!entry || typeof entry !== "object" || !Array.isArray((entry as RemoteRecipes).recipes)) {
-        return entry;
-      }
-      const cached = entry as RemoteRecipes;
-      const recipes: Recipe[] = [];
-      for (const raw of cached.recipes) {
-        const parsed = RecipeSchema.safeParse(raw);
-        if (parsed.success) recipes.push(parsed.data);
-      }
-      return { ...cached, recipes };
-    },
-  },
 });
 
 /**

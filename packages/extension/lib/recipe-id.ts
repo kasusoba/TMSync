@@ -1,5 +1,3 @@
-import { type Recipe, RecipeSchema } from "@tmsync/shared";
-
 /**
  * Human-readable, content-STABLE recipe ids (docs/IDENTITY-NAMESPACES.md).
  *
@@ -36,29 +34,4 @@ export function uniqueRecipeId(base: string, used: ReadonlySet<string>): string 
 /** A stable id for a new recipe on `hostname`, unique against existing recipe ids. */
 export function newRecipeId(hostname: string, existingIds: Iterable<string>): string {
   return uniqueRecipeId(slugifyHost(hostname), new Set(existingIds));
-}
-
-const LEGACY_ID = /^custom-(.+)-\d{10,}$/; // custom-<host>-<Date.now()>
-
-/**
- * Migrate stored custom recipes to stable ids (immediate migration). Re-parses each
- * through {@link RecipeSchema} — which also folds a legacy `extract.tmdbId` into
- * `extract.ids.tmdb` (schema v3) — drops anything that no longer validates, rewrites
- * timestamped ids to host slugs, and de-dupes. Non-legacy ids are kept as-is.
- */
-export function migrateCustomRecipeIds(list: unknown): Recipe[] {
-  const raw = Array.isArray(list) ? list : [];
-  const out: Recipe[] = [];
-  const used = new Set<string>();
-  for (const entry of raw) {
-    const parsed = RecipeSchema.safeParse(entry);
-    if (!parsed.success) continue;
-    const recipe = parsed.data;
-    const legacy = LEGACY_ID.exec(recipe.id);
-    const base = legacy?.[1] ? slugifyHost(legacy[1]) : recipe.id;
-    const id = uniqueRecipeId(base, used);
-    used.add(id);
-    out.push(id === recipe.id ? recipe : { ...recipe, id });
-  }
-  return out;
 }

@@ -22,15 +22,12 @@ export const TRAKT = {
  * client (constraint #6). The CDN origin needs a matching host permission.
  */
 export const RECIPES = {
+  /** One tracker-agnostic list. Each recipe carries its own `tracker` field, so
+   * Trakt and AniList (and future trackers) live in the same file — the engine
+   * routes per-recipe, nothing is baked into the layout. */
   url:
     import.meta.env.WXT_RECIPES_URL ||
     "https://raw.githubusercontent.com/kasusoba/TMSync/main/recipes/index.json",
-  /** The separate anime (AniList) recipe list — kept apart from the public Trakt
-   * list (CLAUDE.md), but still fetched so contributed anime recipes reach the
-   * library, not only the bundled seed. */
-  animeUrl:
-    import.meta.env.WXT_RECIPES_ANIME_URL ||
-    "https://raw.githubusercontent.com/kasusoba/TMSync/main/recipes/anime/index.json",
   /** Re-fetch at most this often. */
   refreshMs: 12 * 60 * 60 * 1000,
   /** Where contributors open a PR to add a site. */

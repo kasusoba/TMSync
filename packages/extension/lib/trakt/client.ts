@@ -1,14 +1,14 @@
 import { TRAKT } from "@/config";
 import { corrections, remoteRatings, resolutionCache } from "@/lib/storage";
+import type { ParsedMedia } from "@tmsync/shared";
+import { getValidAccessToken, refreshTokens } from "./auth";
 import {
   type LetterboxdComment,
-  type ParsedMedia,
   type TraktHistoryMovie,
   type TraktRatedMovie,
   buildLetterboxdRows,
   toLetterboxdCsv,
-} from "@tmsync/shared";
-import { getValidAccessToken, refreshTokens } from "./auth";
+} from "./letterboxd";
 import type {
   RatingSyncBody,
   ResolvedIdentity,

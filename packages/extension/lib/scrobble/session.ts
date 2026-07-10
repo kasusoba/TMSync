@@ -1,4 +1,4 @@
-import { animeCrosswalk } from "@/lib/storage";
+import { quickLinkSlugs } from "@/lib/storage";
 import { routeTracker } from "@/lib/tracker";
 import type { Tracker } from "@/lib/tracker/types";
 import { type BadgeStatus, type ScrobbleReply, onMessage, sendMessage } from "@/messaging";
@@ -480,10 +480,10 @@ export class SessionManager {
       if (slug) {
         const host = new URL(location.href).hostname;
         const k = `${host}:${resolved.id}`;
-        const map = await animeCrosswalk.getValue();
+        const map = await quickLinkSlugs.getValue();
         if (map[k] !== slug) {
           map[k] = slug;
-          await animeCrosswalk.setValue(map);
+          await quickLinkSlugs.setValue(map);
         }
       }
     }

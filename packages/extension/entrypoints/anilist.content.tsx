@@ -1,4 +1,4 @@
-import { animeCrosswalk, quickLinks } from "@/lib/storage";
+import { quickLinkSlugs, quickLinks } from "@/lib/storage";
 import { type QuickLinkItem, mountQuickLinks } from "@/lib/ui/quicklinks";
 import { type AniListPageMedia, buildAniListSiteLinks } from "@tmsync/shared";
 
@@ -37,7 +37,7 @@ export default defineContentScript({
 
     // Crosswalk: real per-site slugs learned from past watches. Refreshed per page
     // (in sync) since a recent watch may have just captured the one we need.
-    let crosswalk = await animeCrosswalk.getValue();
+    let crosswalk = await quickLinkSlugs.getValue();
 
     const getItems = (): QuickLinkItem[] => {
       const media = parseAniListPage();
@@ -66,7 +66,7 @@ export default defineContentScript({
       ui?.remove();
       ui = undefined;
       if (animeId() === null) return; // not an anime page
-      crosswalk = await animeCrosswalk.getValue(); // pick up slugs learned since last page
+      crosswalk = await quickLinkSlugs.getValue(); // pick up slugs learned since last page
       const created = await mountQuickLinks(ctx, getItems, {
         // Top of the left info column (above the rankings), so it's visible without
         // scrolling to the "External & Streaming links" block near the bottom. mb-4

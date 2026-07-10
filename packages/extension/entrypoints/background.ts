@@ -9,19 +9,22 @@ import {
 import {
   AniListNotConnectedError,
   resolve as anilistResolve,
-  saveNotes as anilistSaveNotes,
-  saveRating as anilistSaveRating,
   searchAniList,
   viewerScoreFormat,
 } from "@/lib/anilist/client";
 import { ANILIST } from "@/lib/anilist/config";
+import {
+  anilistDeleteNote,
+  anilistGetReview,
+  anilistRate,
+  anilistSaveNote,
+  anilistUnrate,
+} from "@/lib/anilist/review";
 import { type AnimapOverrides, deriveMediaWith, forwardKey } from "@/lib/animap/derive";
 import { bundledLinks } from "@/lib/recipes";
 import { statusDotColor } from "@/lib/scrobble/action-badge";
 import {
   type QuickLinkSite,
-  anilistNotes,
-  anilistRatings,
   animapOverrides,
   corrections,
   customRecipes,
@@ -29,10 +32,7 @@ import {
   episodeOverrides,
   manualContexts,
   manualSelections,
-  notes,
   quickLinks,
-  ratings,
-  remoteRatings,
   remoteRecipes,
   resolutionCache,
   tabFrameOrigins,
@@ -42,20 +42,16 @@ import {
 import { getAdapter, inferNativeTracker, routeTracker } from "@/lib/tracker";
 import type { TrackedItem, Tracker } from "@/lib/tracker/types";
 import { connect, disconnect, getRedirectUri, isConnected } from "@/lib/trakt/auth";
+import { TraktNotConnectedError, exportLetterboxd, resolve, search } from "@/lib/trakt/client";
 import {
-  TraktNotConnectedError,
-  commentItem,
-  deleteComment,
-  exportLetterboxd,
-  getRemoteRating,
-  postComment,
-  rate,
-  resolve,
-  search,
-  updateComment,
-} from "@/lib/trakt/client";
+  traktDeleteNote,
+  traktGetReview,
+  traktRate,
+  traktSaveNote,
+  traktUnrate,
+} from "@/lib/trakt/review";
 import type { ReviewLevel } from "@/lib/trakt/types";
-import { buildRatingBody, resolutionCacheKey, reviewKey } from "@/lib/trakt/util";
+import { resolutionCacheKey } from "@/lib/trakt/util";
 import {
   type BadgeStatus,
   type DerivedOutcome,
@@ -70,7 +66,6 @@ import { browser } from "wxt/browser";
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const siteId = (origin: string) => `tmsync-${origin.replace(/[^a-z0-9]/gi, "-")}`;
-const wordCount = (s: string) => s.split(/\s+/).filter(Boolean).length;
 
 /**
  * MV3 service worker. STATELESS (constraint #4): every handler reads from
@@ -83,10 +78,6 @@ export default defineBackground(() => {
   // (not browser restart). Re-establish them from the enabled-origins list so a
   // plain "reload the extension" is enough and survives updates.
   void reconcileRegistrations();
-
-  // One-time: lift any per-recipe `links` (the old quick-links shape) into the
-  // standalone quickLinks store, then strip them from the recipes.
-  void migrateRecipeLinks();
 
   // Seed quick links shipped in the bundled library (available offline, before
   // the first fetch), then refresh the CDN list on startup + a periodic alarm
@@ -465,137 +456,27 @@ export default defineBackground(() => {
 
   onMessage("getReview", async ({ data }) => {
     if ((data.tracker ?? "trakt") === "anilist") return anilistGetReview(data.media);
-    const level = data.level as ReviewLevel; // trakt branch: never "cour"
-    try {
-      const identity = await resolve(data.media);
-      if (!identity) return { rating: null, note: null };
-      const key = reviewKey(identity, level, data.media.season, data.media.episode);
-      const localRating = (await ratings.getValue())[key] ?? null;
-      // Prefer a recent local action; otherwise sync the rating from Trakt so
-      // ratings set on the website show up too. Mirror the remote value locally.
-      let rating = localRating;
-      if (localRating === null) {
-        try {
-          const remote = await getRemoteRating(
-            identity,
-            level,
-            data.media.season,
-            data.media.episode,
-          );
-          if (remote !== null) {
-            rating = remote;
-            const all = await ratings.getValue();
-            all[key] = remote;
-            await ratings.setValue(all);
-          }
-        } catch {
-          // not connected / network — fall back to local (null)
-        }
-      }
-      const stored = (await notes.getValue())[key];
-      return { rating, note: stored ? { text: stored.text, spoiler: stored.spoiler } : null };
-    } catch {
-      return { rating: null, note: null };
-    }
+    return traktGetReview(data.media, data.level as ReviewLevel); // trakt branch: never "cour"
   });
 
   onMessage("rateItem", async ({ data }) => {
     if ((data.tracker ?? "trakt") === "anilist") return anilistRate(data.media, data.rating);
-    const level = data.level as ReviewLevel;
-    try {
-      const identity = await resolve(data.media);
-      if (!identity) return { ok: false, error: "not found on Trakt" };
-      const body = buildRatingBody(
-        identity,
-        level,
-        data.media.season,
-        data.media.episode,
-        data.rating,
-      );
-      if (!body) return { ok: false, error: "missing season/episode" };
-      const out = await rate(body);
-      if (!out.ok) return { ok: false, error: out.error ?? `failed (${out.status})` };
-      const key = reviewKey(identity, level, data.media.season, data.media.episode);
-      const all = await ratings.getValue();
-      all[key] = data.rating;
-      await ratings.setValue(all);
-      await remoteRatings.setValue({}); // invalidate the sync cache
-      return { ok: true };
-    } catch (e) {
-      return { ok: false, error: errMsg(e) };
-    }
+    return traktRate(data.media, data.level as ReviewLevel, data.rating);
   });
 
   onMessage("unrateItem", async ({ data }) => {
     if ((data.tracker ?? "trakt") === "anilist") return anilistUnrate(data.media);
-    const level = data.level as ReviewLevel;
-    try {
-      const identity = await resolve(data.media);
-      if (!identity) return { ok: false, error: "not found on Trakt" };
-      const body = buildRatingBody(identity, level, data.media.season, data.media.episode);
-      if (!body) return { ok: false, error: "missing season/episode" };
-      const out = await rate(body, true);
-      if (!out.ok) return { ok: false, error: out.error ?? `failed (${out.status})` };
-      const key = reviewKey(identity, level, data.media.season, data.media.episode);
-      const all = await ratings.getValue();
-      delete all[key];
-      await ratings.setValue(all);
-      await remoteRatings.setValue({}); // invalidate the sync cache
-      return { ok: true };
-    } catch (e) {
-      return { ok: false, error: errMsg(e) };
-    }
+    return traktUnrate(data.media, data.level as ReviewLevel);
   });
 
   onMessage("saveNote", async ({ data }) => {
     if ((data.tracker ?? "trakt") === "anilist") return anilistSaveNote(data.media, data.text);
-    const level = data.level as ReviewLevel;
-    try {
-      const text = data.text.trim();
-      if (wordCount(text) < 5)
-        return { ok: false, error: "Trakt needs a note of at least 5 words" };
-      const identity = await resolve(data.media);
-      if (!identity) return { ok: false, error: "not found on Trakt" };
-      const key = reviewKey(identity, level, data.media.season, data.media.episode);
-      const all = await notes.getValue();
-      const existing = all[key];
-      if (existing) {
-        const out = await updateComment(existing.commentId, text, data.spoiler);
-        if (!out.ok) return { ok: false, error: out.error };
-        all[key] = { ...existing, text, spoiler: data.spoiler };
-      } else {
-        const ref = await commentItem(identity, level, data.media.season, data.media.episode);
-        if ("error" in ref) return { ok: false, error: ref.error };
-        const out = await postComment(ref.item, text, data.spoiler);
-        if (!out.ok || out.id === undefined)
-          return { ok: false, error: out.error ?? "comment failed" };
-        all[key] = { commentId: out.id, text, spoiler: data.spoiler };
-      }
-      await notes.setValue(all);
-      return { ok: true };
-    } catch (e) {
-      return { ok: false, error: errMsg(e) };
-    }
+    return traktSaveNote(data.media, data.level as ReviewLevel, data.text, data.spoiler);
   });
 
   onMessage("deleteNote", async ({ data }) => {
     if ((data.tracker ?? "trakt") === "anilist") return anilistDeleteNote(data.media);
-    const level = data.level as ReviewLevel;
-    try {
-      const identity = await resolve(data.media);
-      if (!identity) return { ok: false, error: "not found on Trakt" };
-      const key = reviewKey(identity, level, data.media.season, data.media.episode);
-      const all = await notes.getValue();
-      const existing = all[key];
-      if (!existing) return { ok: true };
-      const out = await deleteComment(existing.commentId);
-      if (!out.ok) return { ok: false, error: out.error };
-      delete all[key];
-      await notes.setValue(all);
-      return { ok: true };
-    } catch (e) {
-      return { ok: false, error: errMsg(e) };
-    }
+    return traktDeleteNote(data.media, data.level as ReviewLevel);
   });
 
   // --- per-tab session coordination ---
@@ -936,109 +817,8 @@ async function recordDerivedTrackers(
   return out;
 }
 
-// --- AniList rating + private note (step 7) ---
-// AniList rates the COUR ENTRY only — score + private notes both write through
-// SaveMediaListEntry, keyed by Media id (no per-episode score, no spoiler flag,
-// no word minimum). Stars are 1–10 in the UI; we store a format-agnostic
-// scoreRaw (0–100) and mirror it locally for instant display.
-
-async function anilistGetReview(
-  media: ParsedMedia,
-): Promise<{ rating: number | null; note: { text: string; spoiler: boolean } | null }> {
-  try {
-    const identity = await anilistResolve(media);
-    if (!identity) return { rating: null, note: null };
-    const scoreRaw = (await anilistRatings.getValue())[identity.id];
-    const noteText = (await anilistNotes.getValue())[identity.id];
-    return {
-      rating: scoreRaw === undefined ? null : Math.round(scoreRaw / 10),
-      note: noteText ? { text: noteText, spoiler: false } : null,
-    };
-  } catch {
-    return { rating: null, note: null };
-  }
-}
-
-async function anilistRate(
-  media: ParsedMedia,
-  rating: number,
-): Promise<{ ok: boolean; error?: string }> {
-  try {
-    const identity = await anilistResolve(media);
-    if (!identity) return { ok: false, error: "not found on AniList" };
-    const scoreRaw = Math.max(0, Math.min(100, Math.round(rating * 10)));
-    const out = await anilistSaveRating(identity.id, scoreRaw);
-    if (!out.ok) return { ok: false, error: out.error ?? "rating failed" };
-    const all = await anilistRatings.getValue();
-    all[identity.id] = scoreRaw;
-    await anilistRatings.setValue(all);
-    return { ok: true };
-  } catch (e) {
-    return {
-      ok: false,
-      error: e instanceof AniListNotConnectedError ? "Not connected to AniList" : errMsg(e),
-    };
-  }
-}
-
-async function anilistUnrate(media: ParsedMedia): Promise<{ ok: boolean; error?: string }> {
-  try {
-    const identity = await anilistResolve(media);
-    if (!identity) return { ok: false, error: "not found on AniList" };
-    const out = await anilistSaveRating(identity.id, 0);
-    if (!out.ok) return { ok: false, error: out.error ?? "failed" };
-    const all = await anilistRatings.getValue();
-    delete all[identity.id];
-    await anilistRatings.setValue(all);
-    return { ok: true };
-  } catch (e) {
-    return {
-      ok: false,
-      error: e instanceof AniListNotConnectedError ? "Not connected to AniList" : errMsg(e),
-    };
-  }
-}
-
-async function anilistSaveNote(
-  media: ParsedMedia,
-  text: string,
-): Promise<{ ok: boolean; error?: string }> {
-  try {
-    const trimmed = text.trim();
-    if (!trimmed) return { ok: false, error: "Note is empty" };
-    const identity = await anilistResolve(media);
-    if (!identity) return { ok: false, error: "not found on AniList" };
-    const out = await anilistSaveNotes(identity.id, trimmed);
-    if (!out.ok) return { ok: false, error: out.error ?? "note failed" };
-    const all = await anilistNotes.getValue();
-    all[identity.id] = trimmed;
-    await anilistNotes.setValue(all);
-    return { ok: true };
-  } catch (e) {
-    return {
-      ok: false,
-      error: e instanceof AniListNotConnectedError ? "Not connected to AniList" : errMsg(e),
-    };
-  }
-}
-
-async function anilistDeleteNote(media: ParsedMedia): Promise<{ ok: boolean; error?: string }> {
-  try {
-    const identity = await anilistResolve(media);
-    if (!identity) return { ok: false, error: "not found on AniList" };
-    const out = await anilistSaveNotes(identity.id, "");
-    if (!out.ok) return { ok: false, error: out.error ?? "failed" };
-    const all = await anilistNotes.getValue();
-    delete all[identity.id];
-    await anilistNotes.setValue(all);
-    return { ok: true };
-  } catch (e) {
-    return {
-      ok: false,
-      error: e instanceof AniListNotConnectedError ? "Not connected to AniList" : errMsg(e),
-    };
-  }
-}
+// AniList rating + notes live in lib/anilist/review.ts; Trakt rating + notes in
+// lib/trakt/review.ts. The message handlers above just dispatch by tracker.
 
 // MV3 (Chrome + Firefox 109+) expose `action`; Firefox MV2 uses `browserAction`.
 const tabAction = browser.action ?? browser.browserAction;
@@ -1159,9 +939,11 @@ async function claimScrobbleOwner(
 }
 
 /**
- * Fetch + cache the CDN recipe list. Skips when the cache is fresh (unless
- * forced); uses an ETag for conditional refetches. Validates with parseRecipes
- * so a malformed list never lands in the cache. Best-effort: on any failure the
+ * Fetch + cache the CDN recipe list — one tracker-agnostic file (each recipe
+ * carries its own `tracker`). Skips when the cache is fresh (unless forced), and
+ * sends `If-None-Match` so an unchanged list returns 304 and reuses the cache
+ * (only the freshness timestamp is bumped). Validates with parseLibrary so a
+ * malformed list never lands in the cache. Best-effort: on any failure the
  * existing cache (or the bundled seed) stays in use.
  */
 async function fetchRemoteRecipes(
@@ -1172,28 +954,25 @@ async function fetchRemoteRecipes(
     if (!force && current && Date.now() - current.fetchedAt < RECIPES.refreshMs) {
       return { ok: true, count: current.recipes.length };
     }
-    // Fetch BOTH lists — the public Trakt list and the separate anime (AniList)
-    // list — so contributed anime recipes reach the library too. They're kept in
-    // separate files (CLAUDE.md) but merged into one effective remote list here.
-    const [traktRes, animeRes] = await Promise.all([fetch(RECIPES.url), fetch(RECIPES.animeUrl)]);
-    if (!traktRes.ok && !animeRes.ok) {
-      return {
-        ok: false,
-        count: current?.recipes.length ?? 0,
-        error: `HTTP ${traktRes.status}/${animeRes.status}`,
-      };
+    const res = await fetch(
+      RECIPES.url,
+      current?.etag ? { headers: { "If-None-Match": current.etag } } : undefined,
+    );
+    // 304 Not Modified — the list is unchanged; keep the cache, just mark it fresh
+    // so we don't re-request until the next TTL window.
+    if (res.status === 304 && current) {
+      await remoteRecipes.setValue({ ...current, fetchedAt: Date.now() });
+      return { ok: true, count: current.recipes.length };
     }
-    const trakt = traktRes.ok
-      ? parseLibrary((await traktRes.json()) as unknown)
-      : { recipes: [], links: [] };
-    const anime = animeRes.ok
-      ? parseLibrary((await animeRes.json()) as unknown)
-      : { recipes: [], links: [] };
-    const recipes = [...trakt.recipes, ...anime.recipes];
-    await remoteRecipes.setValue({ recipes, fetchedAt: Date.now() });
-    await mergeLibraryLinks([...trakt.links, ...anime.links]);
-    await graduateRecipes(recipes);
-    return { ok: true, count: recipes.length };
+    if (!res.ok) {
+      return { ok: false, count: current?.recipes.length ?? 0, error: `HTTP ${res.status}` };
+    }
+    const library = parseLibrary((await res.json()) as unknown);
+    const etag = res.headers.get("ETag") ?? undefined;
+    await remoteRecipes.setValue({ recipes: library.recipes, fetchedAt: Date.now(), etag });
+    await mergeLibraryLinks(library.links);
+    await graduateRecipes(library.recipes);
+    return { ok: true, count: library.recipes.length };
   } catch (e) {
     return { ok: false, count: 0, error: errMsg(e) };
   }
@@ -1263,45 +1042,6 @@ async function mergeLibraryLinks(links: LibraryLink[]): Promise<void> {
   if (changed) await quickLinks.setValue([...byId.values()]);
 }
 
-/**
- * Migrate legacy per-recipe `links` (quick links used to live on the recipe)
- * into the standalone quickLinks store, deduped by name, then strip them from
- * the stored recipes. Idempotent: a no-op once recipes carry no `links`.
- */
-async function migrateRecipeLinks(): Promise<void> {
-  try {
-    const stored = (await customRecipes.getValue()) as (Recipe & { links?: QuickLinkSite })[];
-    const withLinks = stored.filter(
-      (r) => r.links && (r.links.movie || r.links.tv || r.links.search),
-    );
-    if (withLinks.length === 0) return;
-
-    const existing = await quickLinks.getValue();
-    const seen = new Set(existing.map((s) => s.name));
-    const additions: QuickLinkSite[] = [];
-    for (const r of withLinks) {
-      if (seen.has(r.name)) continue;
-      seen.add(r.name);
-      const l = r.links as { movie?: string; tv?: string; search?: string };
-      additions.push({
-        id: `ql-${r.id}`,
-        name: r.name,
-        enabled: true,
-        movie: l.movie,
-        tv: l.tv,
-        search: l.search,
-      });
-    }
-    if (additions.length > 0) await quickLinks.setValue([...existing, ...additions]);
-
-    // Strip `links` from every recipe so the migration doesn't run again.
-    const cleaned = stored.map(({ links: _drop, ...rest }) => rest);
-    await customRecipes.setValue(cleaned as Recipe[]);
-  } catch {
-    // best effort — a failed migration just leaves the old data in place
-  }
-}
-
 /** Re-register content scripts for every enabled origin (idempotent). */
 async function reconcileRegistrations(): Promise<void> {
   try {
@@ -1335,17 +1075,41 @@ async function registerScript(origin: string): Promise<void> {
  * Register the runtime content script for a single origin. The popup must have
  * already obtained the host permission via a user gesture. `persistAcrossSessions`
  * keeps the registration across browser restarts, so we don't re-register.
+ *
+ * `enabledOrigins` is persisted FIRST and unconditionally — it's the source of truth
+ * for the popup's enabled-state AND for reconcileRegistrations() — so it must NOT be
+ * gated on the scripting call. Right after the permission prompt is accepted, the
+ * new host permission often isn't visible to this service worker yet, so the first
+ * registerContentScripts() can throw; that used to leave the origin unpersisted, so
+ * the popup still showed "Enable" until a second click (a known bug). Now we persist,
+ * then register best-effort with one retry, and reconcileRegistrations() covers any
+ * remaining gap on the next wake (the popup also injects the current tab directly).
  */
 async function registerSite(origin: string): Promise<{ ok: boolean; error?: string }> {
   try {
-    const id = siteId(origin);
-    const existing = await browser.scripting.getRegisteredContentScripts({ ids: [id] });
-    if (existing.length === 0) await registerScript(origin);
     const list = await enabledOrigins.getValue();
     if (!list.includes(origin)) await enabledOrigins.setValue([...list, origin]);
-    return { ok: true };
   } catch (e) {
     return { ok: false, error: errMsg(e) };
+  }
+  await ensureRegistered(origin).catch(() => {});
+  return { ok: true };
+}
+
+/**
+ * Idempotently register the content script for an origin, tolerating the brief
+ * post-grant window where the new host permission hasn't propagated to the SW yet:
+ * one short retry, then leave it to reconcileRegistrations() on the next wake.
+ */
+async function ensureRegistered(origin: string): Promise<void> {
+  const id = siteId(origin);
+  const existing = await browser.scripting.getRegisteredContentScripts({ ids: [id] });
+  if (existing.length > 0) return;
+  try {
+    await registerScript(origin);
+  } catch {
+    await new Promise((r) => setTimeout(r, 200));
+    await registerScript(origin);
   }
 }
 

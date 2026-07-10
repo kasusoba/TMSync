@@ -37,6 +37,8 @@ export function inferNativeTracker(media: ParsedMedia): Tracker {
   const speaks = (adapter: TrackerAdapter) =>
     adapter.resolvableNamespaces.some((ns) => media.ids?.[ns] !== undefined);
   if (speaks(traktAdapter) || media.season !== undefined) return "trakt";
-  if (speaks(anilistAdapter)) return "anilist";
+  // Everything else (a bare linear episode on a dedicated anime site, or no id at
+  // all) falls to AniList. When a third tracker is added, insert its `speaks()`
+  // check above this line rather than after — the final return is the default.
   return "anilist";
 }
