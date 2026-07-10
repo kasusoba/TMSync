@@ -8,7 +8,7 @@ import { defineConfig } from "wxt";
 // dev and prod:
 //   Chrome ID  : hkfpacmhbiccimikfleemmhfemdnjfpf
 //   Redirect   : https://hkfpacmhbiccimikfleemmhfemdnjfpf.chromiumapp.org/
-//   Firefox    : tmsync@tmsync.app  (browser.identity.getRedirectURL() derives from it)
+//   Firefox    : tmsync@onesal.me  (browser.identity.getRedirectURL() derives from it)
 // The value below is the PUBLIC key (DER, base64) — safe to commit. The matching
 // private key is held by the Chrome Web Store, not us (we upload a zip; the store
 // signs it), so there's no .pem to keep.
@@ -58,7 +58,18 @@ export default defineConfig({
     optional_host_permissions: ["*://*/*"],
     // Stable extension identity (so the OAuth redirect URI is fixed).
     ...(browser === "firefox"
-      ? { browser_specific_settings: { gecko: { id: "tmsync@tmsync.app" } } }
+      ? {
+          browser_specific_settings: {
+            gecko: {
+              id: "tmsync@onesal.me",
+              // Required for new Firefox extensions (mzl.la/firefox-builtin-data-consent).
+              // TMSync collects nothing: watch data goes only to the user's OWN tracker
+              // accounts (Trakt/AniList) via their APIs, and any backend gets only
+              // anonymous recipe data, never watch history (CLAUDE.md constraint #6).
+              data_collection_permissions: { required: ["none"] },
+            },
+          },
+        }
       : { key: CHROME_KEY }),
   }),
   hooks: {
