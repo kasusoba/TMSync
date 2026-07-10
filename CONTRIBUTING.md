@@ -1,20 +1,34 @@
 # Contributing to TMSync
 
-The most useful thing you can contribute is a **site definition** — a recipe (so TMSync
-can scrobble a streaming site) and/or a quick link (so a "watch on …" button appears on
-Trakt pages). Both live in one file, [`recipes/index.json`](./recipes/index.json), and are
-added by pull request. There is no backend and no account: the library is just a versioned
-JSON file fetched from this repo.
+Two kinds of contribution are welcome: **site definitions** (the easy, high-value one) and
+**code**.
+
+The most useful thing most people can contribute is a **site definition** — a recipe (so TMSync
+can scrobble a streaming site) and/or a quick link (so a "watch on …" button appears on tracker
+pages). Both live in one tracker-agnostic file, [`recipes/index.json`](./recipes/index.json) —
+each recipe carries its own `tracker` field (`trakt` or `anilist`), so Trakt and anime sites
+coexist in the same list — and are added by pull request. There is no backend and no account:
+the library is just versioned JSON fetched from this repo.
 
 > **Recipes are data, never code.** A recipe describes *where* a value is on the page and
 > *how to clean it* — it can never run JavaScript. This is a hard requirement (MV3 + store
 > policy), so the schema has no code escape hatch. If a site seems impossible to express
 > declaratively, open an issue rather than trying to work around it.
 
-> **Out of scope** (please don't PR these): non-Trakt trackers (Simkl, Letterboxd, …),
-> anime sites or absolute-episode-numbering logic, and anything that sends watch history
-> anywhere but the user's own Trakt account. See [`CLAUDE.md`](./CLAUDE.md) for the full
-> constraint list.
+**Code contributions** are welcome too — bug fixes, new tracker adapters, engine/UI improvements.
+Because the architecture is deliberate, code PRs must respect the settled constraints in
+[`CLAUDE.md`](./CLAUDE.md) and the design in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md). The
+big ones: recipes never carry executable code; the background stays stateless; no broad host
+permissions at install; watch history only ever goes to the user's own tracker accounts; new
+trackers go **behind the tracker-adapter seam**, never special-cased in the shared `extract()`
+engine. **For anything non-trivial, open an issue first** so we can agree on the approach before
+you invest time — see [Code contributions](#code-contributions) below.
+
+> **Out of scope** (please don't PR these): sending watch history anywhere but the user's own
+> tracker accounts, putting tracker-specific or anime-numbering logic into the shared engine, or a
+> backend/hosted service (that's a deliberate future phase, not v1). Adding a *new tracker* behind
+> the adapter seam is welcome in principle, but open an issue first. See [`CLAUDE.md`](./CLAUDE.md)
+> for the full constraint list.
 
 ---
 
@@ -51,8 +65,10 @@ selectors:
 ```jsonc
 {
   "id": "cineby-movie",          // unique, kebab-case, usually "<site>-<movie|tv|episode>"
-  "schemaVersion": 1,            // must equal the current SCHEMA_VERSION
+  "schemaVersion": 3,            // must equal the current SCHEMA_VERSION (see packages/shared/src/schema.ts)
   "name": "Cineby",              // human-readable site name (shown in UI)
+  "tracker": "trakt",            // "trakt" (movies/live-action TV) | "anilist" (anime). Routes the
+                                 //   recipe at runtime; all recipes share one file. Omit → "trakt".
   "match": {
     "urlPattern": "www\\.cineby\\.at/movie",  // regex (escaped!) tested against location.href
     "hostnames": ["www.cineby.at"],           // hints only, not the primary match
@@ -126,11 +142,38 @@ If a `movie`/`tv` template references an id the page doesn't expose, TMSync fall
 
 ---
 
+## Code contributions
+
+Beyond recipes, PRs to the extension itself are welcome — bug fixes, a new tracker adapter, engine
+or UI improvements. A few things that make a code PR easy to accept:
+
+- **Read [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) first** — it's the map of how the pieces
+  fit together and where each concern lives.
+- **Respect the hard constraints in [`CLAUDE.md`](./CLAUDE.md).** They're settled decisions, not
+  preferences. The load-bearing ones: recipes are data (no `eval`/remote code); the background
+  service worker holds no session state; no broad host permissions at install; watch history goes
+  only to the user's own tracker accounts; anything tracker-specific (including anime episode
+  mapping) lives behind the tracker-adapter seam, never in the shared engine.
+- **Adding a tracker?** That's the intended way to grow TMSync — a new `lib/<tracker>/` adapter + a
+  picker toggle, without touching the other trackers or `extract()`. It's non-trivial, so **open an
+  issue to align on the approach before you build.**
+- **Open an issue before anything non-trivial.** For a typo or a small, obvious fix, just send the
+  PR. For anything that changes behaviour or architecture, an issue first saves us both from a PR
+  that has to be reworked.
+- **Keep it green.** `pnpm typecheck`, `pnpm test`, and `pnpm lint` must all pass. Match the
+  surrounding code style (Biome enforces formatting).
+
+This is a spare-time project — reviews are best-effort and may take a while. That's not a lack of
+interest; thanks for your patience.
+
+---
+
 ## Before you open a PR
 
 ```bash
 pnpm install
 pnpm test        # validates recipes/index.json against the schema + runs the snapshot tests
+pnpm typecheck   # required for code changes
 pnpm lint
 ```
 
@@ -140,5 +183,5 @@ Then:
 3. Open a PR describing the site and what you tested (movie page, episode page, scrobble fired).
 
 Shipping a recipe in this repo makes its selectors **public** — that's the intended,
-crowdsourced model. Don't include anything you wouldn't want public, and never commit Trakt
-OAuth credentials or signing keys (`.env`, `.keys/*.pem` are git-ignored for this reason).
+crowdsourced model. Don't include anything you wouldn't want public, and never commit Trakt or
+AniList OAuth credentials or signing keys (`.env`, `.keys/*.pem` are git-ignored for this reason).

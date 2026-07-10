@@ -55,7 +55,7 @@ Goal: a contributed item is **merge-ready** — lands in the right repo file wit
 { "kind": "recipe", "tracker": "trakt", "action": "add",
   "id": "cineby", "schemaVersion": 2, "data": { …canonical schema fields only… } }
 ```
-- routing is in the payload: `trakt → recipes/trakt/`, `anilist → recipes/anime/`, `quicklink → links index`
+- everything lands in one file, `recipes/index.json`: `recipe → recipes[]` (routed at runtime by its own `tracker`), `quicklink → links[]`
 - strip local-only fields (`source`, `enabled`) → already library-shaped, nothing to clean
 - **stable unique id** — both for no-collision placement AND so the local copy graduates cleanly later (same requirement)
 - contribute-all with many items exceeds the issue-URL length → fall back to copy-all-JSON + open the contribute page

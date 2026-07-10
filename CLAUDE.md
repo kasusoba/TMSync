@@ -38,11 +38,10 @@ TMSync is a cross-browser (Chrome + Firefox) WebExtension that passively scrobbl
 │  ├─ extension/      # WXT app: entrypoints/, content/, background/, options/, engine/
 │  ├─ shared/         # recipe schema (Zod) + types + pure helpers (no DOM, no browser APIs)
 │  └─ server/         # Phase 2 only — do not create until asked
-├─ recipes/           # versioned JSON recipe lists (Phase 1 source of truth, PR-contributed)
-│  ├─ trakt/          # public Trakt recipe list (movies + non-anime TV) — the shareable one
-│  └─ anime/          # separate AniList recipe list (dedicated anime sites) — kept apart so the
-│                     #   public Trakt list stays clean for sharing; routed via the recipe `tracker` field
-├─ docs/              # design notes: TMSync-PRD, ANIME-PLAN, STORAGE-SYNC
+├─ recipes/index.json # ONE tracker-agnostic recipe + quick-link list (Phase 1 source of truth,
+│                     #   PR-contributed). Trakt and AniList recipes coexist; each carries its own
+│                     #   `tracker` field and the engine routes per-recipe — no per-tracker files.
+├─ docs/              # design notes: TMSync-PRD, ARCHITECTURE, MULTI-TRACK, STORAGE-SYNC
 ├─ CONTRIBUTING.md
 ├─ README.md
 └─ CLAUDE.md
@@ -180,7 +179,7 @@ interface TrackerAdapter {
 ## UI & visual design (settled — `packages/extension/lib/ui`)
 The look and these rules are **settled**; don't relitigate spacing/colour/structure or invent new patterns without being asked. The user cares a lot about **consistency** — uniformity across surfaces is the bar. When adding UI, reuse the kit and match the rules below.
 
-- **Stack:** Tailwind v4 (tokens + base in `lib/ui/theme.css`, wired via `@tailwindcss/vite`). Brand accent is **Trakt red** (`bg-trakt` / `text-trakt`). A shared kit in `lib/ui/proto/` holds the tokens + primitives (`tokens()`, `Btn`, `IconBtn`, `Switch`, `Stars`, `Icon`, `TraktMark`) and the presentational views (`PopupView`, `PickerPanel`, `BadgeView`, `QuickLinksView`, `OptionsView`). Real entrypoints stay thin and feed these props. (Folder is named `proto/` for historical reasons — it's the real shared UI.)
+- **Stack:** Tailwind v4 (tokens + base in `lib/ui/theme.css`, wired via `@tailwindcss/vite`). Brand accent is **Trakt red** (`bg-trakt` / `text-trakt`). A shared kit in `lib/ui/kit/` holds the tokens + primitives (`tokens()`, `Btn`, `IconBtn`, `Switch`, `Stars`, `Icon`, `TraktMark`, `AniListMark`) and the presentational views (`PopupView`, `PickerPanel`, `BadgeView`, `QuickLinksView`, `OptionsView`). Real entrypoints stay thin and feed these props.
 - **Theme: dark is the chosen direction** (`tokens("dark")`). A light token set still exists and must keep working, but dark is what ships.
 - **Gallery harness:** `entrypoints/gallery/` renders every surface + state with mock data and a light/dark switch — the prototyping/review tool. Keep it updated when you add UI states. View via `pnpm dev` → `chrome-extension://<id>/gallery.html`.
 - **Consistency rules (keep uniform across popup / picker / badge / quicklinks / options):**
@@ -204,7 +203,7 @@ The look and these rules are **settled**; don't relitigate spacing/colour/struct
 - Do not resurrect a "primary tracker" tab/selector in the picker — trackers are **independent toggles**; native-vs-derived is inferred at runtime.
 - Do not multi-track **non-anime** — movies/Western TV are Trakt-only (they don't exist on AniList). Multi-track is anime-only.
 - Do not silently mis-write a derived tracker: **refuse-on-ambiguous** + per-tracker `progress > episodes` guardrail; each tracker is advance-only and never lowers remote progress (`docs/MULTI-TRACK.md` §9, §12).
-- Do not mix the anime recipe list into the public Trakt recipe list — keep `recipes/anime/` separate from `recipes/trakt/`.
+- Keep the recipe library as ONE tracker-agnostic file (`recipes/index.json`): every recipe carries its own `tracker` field and the engine routes per-recipe. Do NOT reintroduce per-tracker recipe files/directories (the old `recipes/trakt/` + `recipes/anime/` split was retired 2026-07 — it baked tracker into the layout and doesn't scale as trackers are added).
 - Do not give AniList a fake scrobble loop — it has no scrobble API; one `SaveMediaListEntry` write per episode at threshold.
 - Do not create `packages/server` or any hosted DB/voting system in v1.
 - Do not store session state, timers, or buffers in the background service worker.

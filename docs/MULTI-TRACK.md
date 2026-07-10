@@ -61,7 +61,7 @@ Native is inferred from the recipe's extracted fields (has `tmdbId` ⇒ TMDB-nat
 
 ## 5. The anime-map crosswalk (`lib/animap/`)
 
-> Naming: call this the **anime-map** (derived from Fribb `anime-lists`) to avoid collision with the *existing* `animeCrosswalk` storage item, which is an unrelated local `(host, AniList id) → slug` cache for anime quick links.
+> Naming: call this the **anime-map** (derived from Fribb `anime-lists`) to avoid collision with the *existing* `quickLinkSlugs` storage item, which is an unrelated local `(host, AniList id) → slug` cache for anime quick links.
 
 - **CDN from day one** (decided) — a versioned JSON list fetched like the recipe list (constraint #7: still no backend; a public GET, no watch data leaves the client — constraint #6). Bundled seed for offline/first-run, refreshed on the recipe cadence (new cours appear each season). Trimmed to what we need: `{ anilist_id, tmdb_id, tmdb_kind: "tv"|"movie", tmdb_season, episode_offset, type }` — ~33 KB gzipped.
 - **Two indices** built at load: `byTmdb` (forward, general sites) and `byAnilist` (reverse, dedicated sites).
@@ -77,7 +77,7 @@ Keep `recipe.tracker: Tracker` as the **primary/native** tracker and **add an op
 
 - **No `SCHEMA_VERSION` bump.** The field is additive-optional, so v1/older-v2 recipes are unchanged, and an older engine that ignores `trackers` degrades to native-only (`[tracker]`) — a graceful degrade, *better* than a version gate that would make old clients drop a multi-track recipe entirely.
 - **`tracker` doubles as the "native" signal** — no separate `primaryTracker` field needed (open Q1 resolved: infer). Native numbering = whatever the primary tracker speaks.
-- Anime recipe list stays separate (`recipes/anime/`); the public Trakt list stays clean for sharing.
+- Recipes live in ONE tracker-agnostic list (`recipes/index.json`); each recipe's `tracker` field routes it. (The old separate `recipes/anime/` file was retired 2026-07 — tracker is a field, not a directory.)
 - Shipped in `schema.ts` + `recipeTrackers()` + `test/multi-track-schema.test.ts` (7 cases: default, explicit, primary-guarantee, dedupe, back-compat, unknown-tracker reject).
 
 ## 7. Routing → `routeTrackers`

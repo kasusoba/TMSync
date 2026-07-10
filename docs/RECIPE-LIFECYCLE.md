@@ -37,7 +37,7 @@ Note: adding a new `source`/`Transform` value is **breaking** even though it "fe
 ## 3. Where recipes live
 
 - **User custom recipes** → local `customRecipes` storage. They never leave the browser (privacy, constraint #6). The client that authored a custom recipe always supports its schema, so the "old client, new recipe" case doesn't arise for them.
-- **Library recipes** → this repo (`recipes/trakt/`, `recipes/anime/`), PR-contributed (the in-extension *Contribute* button files an issue that `.github/workflows/contribution.yml` turns into a PR), **served from CDN**, refreshed client-side on a 12h alarm (`browser.alarms` → `refreshRecipes`).
+- **Library recipes** → this repo (`recipes/index.json`, one tracker-agnostic list), PR-contributed (the in-extension *Contribute* button files an issue that `.github/workflows/contribution.yml` turns into a PR), **served from CDN**, refreshed client-side on a 12h alarm (`browser.alarms` → `refreshRecipes`).
 
 **The CDN decoupling is the superpower:** fixing a rotted library recipe ships to every user on their next refresh, with no extension release. Recipes and the app evolve independently.
 

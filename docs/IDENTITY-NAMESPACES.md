@@ -84,14 +84,12 @@ This is exactly the existing **native → derived → title** ladder, generalize
 lives in each client's `resolve`; derived (2) is the multi-track fan-out
 (`deriveMediaWith` + `resolveAcross`/`recordDerivedTrackers` in the background).
 
-## Miruro — proof that namespace ≠ catalog ≠ tracker
+## Miruro — proof that namespace ≠ tracker
 
-`recipes/anime/index.json` → Miruro extracts a **`ids.tmdb`**, yet routes to AniList (and,
-multi-tracked, to both). So catalog is **not** derived from namespace, and there is **no
-`catalog` field on the recipe**. Catalog is purely a contribution-routing concern = which
-file it lands in, decided by `recipeTrackers(r).includes("anilist")` → anime list, else
-mainstream. (This also fixed a multi-track misfiling bug: the router no longer reads the
-singular `tracker`.)
+Miruro extracts a **`ids.tmdb`**, yet routes to AniList (and, multi-tracked, to both). So the
+tracker a recipe writes to is **not** derived from the id namespace it scrapes — it's the
+recipe's own `tracker`/`trackers` field. There is no separate anime file and no `catalog`
+concept: all recipes live in one `recipes/index.json`, routed per-recipe at runtime.
 
 ## Stable, human-readable recipe ids
 
@@ -101,16 +99,15 @@ conflict). New id: a **host slug** (`www.miruro.to` → `miruro-to`), disambigua
 on collision (`lib/recipe-id.ts`).
 
 The id is **not a foreign key** anywhere — corrections key on the scraped media
-(`resolutionCacheKey`), quick links carry their own ids, no store references a recipe id — so
-migrating ids only rewrites `customRecipes`. Migration is immediate: `customRecipes` storage
-`version: 2` re-parses each recipe through `RecipeSchema` (which also folds legacy
-`extract.tmdbId` → `ids.tmdb`), rewrites timestamped ids to slugs, and de-dupes.
+(`resolutionCacheKey`), quick links carry their own ids, no store references a recipe id — which
+is why ids can be regenerated freely. (The one-time v1→v2 id migration was removed once the
+installed base — a single user — no longer needed it.)
 
 ## Contribution flow
 
-- **Routing** by catalog, not tracker: `contributeRecipe` stamps `catalog: "anime" |
-  "mainstream"` from `recipeTrackers`; `scripts/apply-contribution.mjs` files anime recipes
-  into `recipes/anime/index.json` (falls back to legacy `tracker: "anilist"`).
+- **Routing**: every contribution lands in the single `recipes/index.json` —
+  `scripts/apply-contribution.mjs` adds recipes to `recipes[]` and quick links to `links[]`.
+  Each recipe's own `tracker` field routes it at runtime; there's no per-tracker file.
 - **Content-keyed branch**: a single-site contribution opens `contribution/<stable-id>`, so
   re-contributing the same site **updates its PR** instead of racing a duplicate. A bundle
   (`contributeAll`) falls back to `contribution/issue-<n>`.
