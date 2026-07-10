@@ -3,21 +3,22 @@
   <h1>TMSync</h1>
 </div>
 
-Track what you watch to your [Trakt](https://trakt.tv) and [AniList](https://anilist.co)
-profiles, automatically.
+Automatically scrobble what you watch to your media trackers, on any streaming site. TMSync is
+multi-tracker by design. Today it supports [Trakt](https://trakt.tv) and
+[AniList](https://anilist.co), with room for more.
 
 TMSync is a browser extension for Chrome and Firefox. While you watch on a streaming site it
 reads what's playing, finds it on the right tracker, and logs it for you. No manual check-ins.
 It also works on aggregator sites that don't have an official app or API, which most trackers
 can't touch.
 
-It routes each thing you watch to where it belongs: **movies and live-action TV → Trakt**,
-**anime → AniList** (and anime can be tracked to **both** at once). If you know MAL-Sync for
-anime, this is the same idea, generalised across trackers.
+Each thing you watch is routed to the tracker that fits it. Right now that means movies and
+live-action TV go to Trakt, and anime goes to AniList (anime can go to both at once). If you
+know MAL-Sync for anime, this is the same idea, made general across trackers.
 
 ## What it does
 
-- Detects the title and episode when you press play and records it to Trakt or AniList, so your
+- Detects the title and episode when you press play and records it to the right tracker, so your
   profile shows what you're currently watching and marks it watched when you finish. Movies and
   live-action TV go to Trakt in real time; anime goes to AniList (and can go to both).
 - Works on most sites with a video and a readable title, including ones with no API.
@@ -47,25 +48,26 @@ request, no server involved. Code contributions are welcome too. See
 
 ## Support & status
 
-This is a hobby project, maintained in spare time on a best-effort basis — no SLA, no guarantees.
-Issues and PRs are read and appreciated, but may be answered slowly. If something's broken or a
-site stopped matching, opening an issue with the details is the most useful thing you can do.
+This is a hobby project, maintained in spare time on a best-effort basis, with no SLA and no
+guarantees. Issues and PRs are read and appreciated, but may be answered slowly. If something's
+broken or a site stopped matching, opening an issue with the details is the most useful thing you
+can do.
 
 <!--
   Chrome Web Store listing copy, kept here so it stays in sync.
 
   Short description (max 132 chars):
-  Auto-track what you watch to Trakt (movies & TV) and AniList (anime). Works on most streaming sites, no manual logging.
+  Auto-scrobble what you watch to your trackers (Trakt and AniList so far). Works on most streaming sites, no manual logging.
 
   Full description: the "What it does" + "Getting started" sections above.
 -->
 
 ## For developers
 
-Cross-browser WebExtension that passively scrobbles **movies & TV → Trakt** and **anime →
-AniList** using declarative **recipes** (data, not code). Trackers sit behind a pluggable adapter
-seam — the long-term vision is more trackers (e.g. Simkl, MyAnimeList) added behind the same seam,
-never special-cased in the shared engine.
+Cross-browser WebExtension that passively scrobbles what you watch to the right tracker (movies
+and live-action TV to Trakt, anime to AniList) using declarative **recipes** (data, not code).
+Trackers sit behind a pluggable adapter seam, so the long-term vision is more trackers (for
+example Simkl or MyAnimeList) added behind the same seam, never special-cased in the shared engine.
 
 - [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) — **how the code works**, subsystem by subsystem (start here).
 - [`docs/TMSync-PRD.md`](./docs/TMSync-PRD.md) — the what/why (product).

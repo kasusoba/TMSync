@@ -2,7 +2,7 @@
   "name": "tmsync",
   "version": "0.0.0",
   "private": true,
-  "description": "Passive scrobbler for movies & TV (Trakt) and anime (AniList) on arbitrary streaming sites.",
+  "description": "Multi-tracker passive scrobbler (Trakt and AniList so far) for arbitrary streaming sites.",
   "license": "GPL-3.0-or-later",
   "type": "module",
   "engines": {
