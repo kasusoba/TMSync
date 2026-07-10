@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "license": "GPL-3.0-or-later",
   "description": "TMSync recipe schema, types, and the pure recipe-extraction engine (no DOM globals, no browser APIs).",
   "exports": {
     ".": "./src/index.ts"

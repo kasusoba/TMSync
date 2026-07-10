@@ -3,6 +3,7 @@
   "version": "1.4.1",
   "private": true,
   "type": "module",
+  "license": "GPL-3.0-or-later",
   "description": "TMSync WebExtension (WXT + Preact).",
   "scripts": {
     "dev": "wxt",
