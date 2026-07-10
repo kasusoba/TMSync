@@ -34,8 +34,7 @@ export default defineConfig({
   },
   manifest: ({ browser }) => ({
     name: "TMSync",
-    description:
-      "Passively scrobble what you watch to your trackers (Trakt and AniList so far), on any streaming site.",
+    description: "Automatically track what you watch and keep your trackers up to date.",
     // `identity` for Trakt OAuth; `activeTab` lets the popup read the current
     // tab's URL (on the action click) to offer "enable on this site".
     permissions: ["storage", "alarms", "scripting", "identity", "activeTab"],
