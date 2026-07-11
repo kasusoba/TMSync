@@ -35,6 +35,10 @@ export default defineConfig({
   manifest: ({ browser }) => ({
     name: "TMSync",
     description: "Automatically track what you watch and keep your trackers up to date.",
+    // Shown as the "homepage" link on the extension's card in the browser's
+    // management page — point it at the repo so installed users can reach the
+    // source, issues, and recipe library.
+    homepage_url: "https://github.com/kasusoba/TMSync",
     // `identity` for Trakt OAuth; `activeTab` lets the popup read the current
     // tab's URL (on the action click) to offer "enable on this site".
     permissions: ["storage", "alarms", "scripting", "identity", "activeTab"],

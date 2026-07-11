@@ -1,6 +1,11 @@
 <div align="center">
   <img src="packages/extension/public/icon/128.png" width="96" height="96" alt="TMSync icon">
   <h1>TMSync</h1>
+  <p>
+    <a href="https://chromewebstore.google.com/detail/tmsync/hkfpacmhbiccimikfleemmhfemdnjfpf"><b>Install for Chrome</b></a>
+    &nbsp;·&nbsp;
+    <a href="https://addons.mozilla.org/en-US/firefox/addon/tmsync/"><b>Install for Firefox</b></a>
+  </p>
 </div>
 
 Automatically scrobble what you watch to your media trackers, on any streaming site. TMSync is
@@ -34,7 +39,9 @@ know MAL-Sync for anime, this is the same idea, made general across trackers.
 
 ## Getting started
 
-1. Install it from the Chrome Web Store or Firefox Add-ons.
+1. Install it from the
+   [Chrome Web Store](https://chromewebstore.google.com/detail/tmsync/hkfpacmhbiccimikfleemmhfemdnjfpf)
+   or [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/tmsync/).
 2. Click the toolbar icon and connect your Trakt account, your AniList account, or both.
 3. Open something to watch on a supported site. A small badge shows what it matched. Press play.
 4. On a new site, click "Set it up with the picker," point at the title and episode, and you're
@@ -69,21 +76,21 @@ and live-action TV to Trakt, anime to AniList) using declarative **recipes** (da
 Trackers sit behind a pluggable adapter seam, so the long-term vision is more trackers (for
 example Simkl or MyAnimeList) added behind the same seam, never special-cased in the shared engine.
 
-- [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) — **how the code works**, subsystem by subsystem (start here).
-- [`docs/TMSync-PRD.md`](./docs/TMSync-PRD.md) — the what/why (product).
-- [`CLAUDE.md`](./CLAUDE.md) — the settled architecture rules and hard constraints.
-- [`docs/MULTI-TRACK.md`](./docs/MULTI-TRACK.md) — the anime multi-tracking design.
+- [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md): **how the code works**, subsystem by subsystem (start here).
+- [`docs/TMSync-PRD.md`](./docs/TMSync-PRD.md): the what/why (product).
+- [`CLAUDE.md`](./CLAUDE.md): the settled architecture rules and hard constraints.
+- [`docs/MULTI-TRACK.md`](./docs/MULTI-TRACK.md): the anime multi-tracking design.
 
 ### Monorepo layout
 
 ```
 packages/shared      # recipe schema (Zod) + types + pure extraction engine (no DOM/browser globals)
 packages/extension   # WXT app: entrypoints (background, content, options), engine, tracker adapters, picker, UI
-recipes/index.json   # one tracker-agnostic recipe + quick-link library — each recipe carries its own
+recipes/index.json   # one tracker-agnostic recipe + quick-link library; each recipe carries its own
                      #   `tracker` (trakt | anilist); the engine routes per-recipe (PR-contributed)
 ```
 
-**Adding a site or quick link?** See [`CONTRIBUTING.md`](./CONTRIBUTING.md) — the recipe library is
+**Adding a site or quick link?** See [`CONTRIBUTING.md`](./CONTRIBUTING.md); the recipe library is
 crowdsourced via PRs to `recipes/index.json`.
 
 ### Develop
@@ -103,50 +110,37 @@ pnpm format             # biome format --write
 
 ### Status
 
-In place:
-- **Foundation + engine** — monorepo, `@tmsync/shared` schema + pure `extract()`/`matchRecipe`,
-  recipe-snapshot tests. MV3 posture: no broad host access at install (constraint #5).
-- **Trakt + scrobbling** — OAuth (`launchWebAuthFlow`) + token refresh, search-based resolution
-  with caching, real-time `/scrobble start|pause|stop`, and a content-side state machine
-  (debounce, one start/session, stop on ended/leave).
-- **AniList + anime** — OAuth (authorization-code), GraphQL `Media` resolution, and threshold-based
-  `SaveMediaListEntry` writes behind the same tracker-adapter seam (read-before-write, never lowers
-  progress, "Rewatching?" confirm on a completed season). Anime can be **multi-tracked to both
-  Trakt and AniList** via the bundled TMDB↔AniList crosswalk (`docs/MULTI-TRACK.md`).
-- **Element picker** — uBlock-style point-and-click (`@medv/finder`) in a Shadow-DOM overlay with
+What works today:
+- **Foundation + engine**: monorepo, `@tmsync/shared` schema + pure `extract()`/`matchRecipe`,
+  recipe-snapshot tests. MV3 posture with no broad host access at install (constraint #5).
+- **Trakt**: OAuth (`launchWebAuthFlow`) + token refresh, search-based resolution with caching,
+  real-time `/scrobble start|pause|stop` driven by a content-side state machine (debounce, one
+  start per session, stop on ended/leave).
+- **AniList + anime**: OAuth (authorization-code), GraphQL `Media` resolution, and threshold-based
+  `SaveMediaListEntry` writes behind the same adapter seam (read-before-write, never lowers
+  progress, "Rewatching?" confirm on a completed season). Anime can be multi-tracked to **both**
+  trackers via the bundled TMDB↔AniList crosswalk (`docs/MULTI-TRACK.md`).
+- **Element picker**: uBlock-style point-and-click (`@medv/finder`) in a Shadow-DOM overlay with
   auto-detect + live extract preview; saves a custom recipe and enables the site.
-- **Ratings & notes** — rate the movie/show/season/episode (auto-prompted after a history write or
-  from the badge), keep one personal note per item, and sync existing ratings back from Trakt.
-- **Quick links** — on a trakt.tv movie/show page, injects deep "watch on …" links to your favourite
-  sites (movie → movie, show → S1E1, season → S{n}E1, episode → S{n}E{m}); managed per-site,
+- **Ratings & notes**: rate what you finish at the levels each tracker supports (Trakt does
+  show/season/episode, AniList does the cour), auto-prompted after a write or from the badge, plus
+  one private note per item. Existing scores are read back from the tracker.
+- **Quick links**: on a trakt.tv or anilist.co page, injects deep "watch on ..." links to your
+  sites at the right episode (movie, show S1E1, season S{n}E1, episode S{n}E{m}); managed per-site,
   reorderable, independent of recipes.
-- **Recipe library** — recipes **and** quick links are fetched from a versioned `index.json`
-  (ETag-conditional, schema-validated, cached), merged custom > remote > bundled. Local edits made
-  with the picker shadow a library recipe for the same site.
-- **Options page** — manage enabled sites, quick links (toggle/reorder/edit), the fetched library,
+- **Recipe library**: recipes and quick links fetch from a versioned `index.json` (ETag-conditional,
+  schema-validated, cached), merged custom > remote > bundled. Picker edits shadow a library recipe
+  for the same site.
+- **Options page**: manage enabled sites, quick links (toggle/reorder/edit), the fetched library,
   your custom recipes (grouped by host), and corrections.
+- **Runtime glue**: a Shadow-DOM scrobble badge showing live state and the matched title,
+  click-to-correct (search the tracker, fix a wrong match, remembered per scraped title), SPA
+  navigation + late-metadata re-matching, same-page and cross-origin iframe players (one frame
+  scrobbles per tab), background reconciliation (a stop if a tab dies), and re-registration on
+  startup.
 
-Also handled: a Shadow-DOM **scrobble badge** showing the live state **and what Trakt matched**,
-**click-to-correct** (search Trakt and fix a wrong match, remembered per scraped title),
-**SPA navigation** + late metadata (re-matches when the route/episode/og:title changes),
-same-page **and** cross-origin **iframe players** (only one frame scrobbles per tab), background
-**reconciliation** (a stop if a tab dies), and **re-registration on startup** (a plain extension
-reload re-enables your sites).
-
-First-run (Chrome):
-1. `pnpm build` → load `.output/chrome-mv3` unpacked. The extension ID is stable
-   (`aplaigellojlejhdjkklgihlmbmdaebk`). **After later `pnpm build`s, just hit the reload ↻ on the
-   extension card — no need to remove/re-add; enabled sites re-register automatically.**
-2. In your Trakt app (trakt.tv/oauth/applications) set the Redirect URI to
-   `https://aplaigellojlejhdjkklgihlmbmdaebk.chromiumapp.org/`.
-3. Popup → **Connect Trakt**.
-4. On a media page → **Enable** the site (and any player-frame origin the popup lists), or **Set it
-   up with the picker** for a new site. Reload, press play.
-5. The badge shows live state + the matched title. Wrong match? Click the badge → search → pick.
-
-Site definitions ship in [`recipes/index.json`](./recipes/index.json) and are fetched/refreshed at
-runtime; add your own with the picker or contribute one via PR (see
-[`CONTRIBUTING.md`](./CONTRIBUTING.md)).
+Running the extension locally (load unpacked, connect a tracker, test a scrobble) is covered in
+[`CONTRIBUTING.md`](./CONTRIBUTING.md#running-the-extension-locally).
 
 ## License
 

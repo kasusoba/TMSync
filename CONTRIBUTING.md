@@ -32,6 +32,26 @@ you invest time — see [Code contributions](#code-contributions) below.
 
 ---
 
+## Running the extension locally
+
+You'll want a local build to author recipes with the picker or to test a code change:
+
+1. `pnpm install`, then `pnpm build`, and load `.output/chrome-mv3` unpacked (chrome://extensions,
+   turn on Developer mode, "Load unpacked"). The extension ID is stable
+   (`aplaigellojlejhdjkklgihlmbmdaebk`). After later `pnpm build`s just hit the reload icon on the
+   extension card; no need to remove and re-add, and enabled sites re-register automatically.
+2. In your Trakt app (trakt.tv/oauth/applications) set the Redirect URI to
+   `https://aplaigellojlejhdjkklgihlmbmdaebk.chromiumapp.org/`. To track anime, register the same
+   redirect URI in your AniList app settings.
+3. Open the popup and connect Trakt and/or AniList.
+4. On a media page, **Enable** the site (and any player-frame origin the popup lists), or **Set it
+   up with the picker** for a new site. Reload, then press play.
+5. The badge shows live state and the matched title. Wrong match? Click the badge, search, pick.
+
+(`pnpm dev` / `pnpm dev:firefox` give an auto-reloading dev build instead; see the README.)
+
+---
+
 ## `recipes/index.json` shape
 
 ```jsonc
