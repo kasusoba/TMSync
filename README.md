@@ -21,6 +21,19 @@ Each thing you watch is routed to the tracker that fits it. Right now that means
 live-action TV go to Trakt, and anime goes to AniList (anime can go to both at once). If you
 know MAL-Sync for anime, this is the same idea, made general across trackers.
 
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <img src="docs/screenshots/scrobble.jpeg" alt="TMSync scrobbling a show, with the on-page badge and the point-and-click site editor">
+      <br><sub>Passive scrobbling with the on-page badge, plus the point-and-click site editor.</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="docs/screenshots/quick-links.png" alt="A TMSync 'watch on' quick link injected onto an AniList page">
+      <br><sub>"Watch on" quick links injected onto Trakt and AniList pages.</sub>
+    </td>
+  </tr>
+</table>
+
 ## What it does
 
 - Detects the title and episode when you press play and records it to the right tracker, so your
