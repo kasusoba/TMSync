@@ -89,7 +89,7 @@ function originOf(u: string): string {
   }
 }
 
-function reachedNode(f: RawFrame, enabled: Set<string>): FrameNode {
+function reachedNode(f: RawFrame, enabled: Set<string>, broad: boolean): FrameNode {
   const reals = realVideos(f.videos);
   return {
     frameId: f.frameId,
@@ -97,7 +97,7 @@ function reachedNode(f: RawFrame, enabled: Set<string>): FrameNode {
     origin: f.origin,
     isTop: f.isTop,
     reached: true,
-    enabled: enabled.has(f.origin),
+    enabled: broad || enabled.has(f.origin),
     title: f.title,
     videos: f.videos,
     hasVideo: reals.length > 0,
@@ -107,7 +107,7 @@ function reachedNode(f: RawFrame, enabled: Set<string>): FrameNode {
   };
 }
 
-function unreachedNode(src: string, enabled: Set<string>): FrameNode {
+function unreachedNode(src: string, enabled: Set<string>, broad: boolean): FrameNode {
   const origin = originOf(src);
   return {
     frameId: null,
@@ -115,7 +115,7 @@ function unreachedNode(src: string, enabled: Set<string>): FrameNode {
     origin,
     isTop: false,
     reached: false,
-    enabled: enabled.has(origin),
+    enabled: broad || enabled.has(origin),
     title: "",
     videos: [],
     hasVideo: false,
@@ -135,11 +135,17 @@ function setDepth(n: FrameNode, d: number): void {
  *
  * @param frames each reached frame's self-report (from executeScript allFrames)
  * @param enabledOrigins origins that currently have a registered content script
+ * @param broad the broad "enable all sites" grant is held → every frame is enabled
+ *   (the catch-all content script covers them all, even with `enabledOrigins` empty)
  * @returns the tree roots (the top frame first), depths filled in
  */
-export function buildFrameTree(frames: RawFrame[], enabledOrigins: string[]): FrameNode[] {
+export function buildFrameTree(
+  frames: RawFrame[],
+  enabledOrigins: string[],
+  broad = false,
+): FrameNode[] {
   const enabled = new Set(enabledOrigins);
-  const reached = frames.map((f) => reachedNode(f, enabled));
+  const reached = frames.map((f) => reachedNode(f, enabled, broad));
 
   // Index reached frames by normalized URL so a parent's iframe src can find them.
   const byUrl = new Map<string, FrameNode[]>();
@@ -164,7 +170,7 @@ export function buildFrameTree(frames: RawFrame[], enabledOrigins: string[]): Fr
       } else {
         // No reached frame here → an origin we can't inject into yet. Surfacing it
         // is the whole point: it's the candidate the user enables next.
-        parent.children.push(unreachedNode(src, enabled));
+        parent.children.push(unreachedNode(src, enabled, broad));
       }
     }
   });

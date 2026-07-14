@@ -78,6 +78,32 @@ describe("buildFrameTree", () => {
     expect(player.depth).toBe(2);
   });
 
+  it("marks every frame enabled under the broad grant, even the unreached leaf", () => {
+    // With the broad "enable all sites" grant, the catch-all content script covers
+    // every origin, so nothing reads "not enabled" while it's actually scrobbling —
+    // regardless of the (empty) per-origin enabledOrigins list.
+    const frames: RawFrame[] = [
+      frame({
+        frameId: 0,
+        url: "https://www.rivestream.app/watch?id=5",
+        isTop: true,
+        iframeSrcs: ["https://vsrc.su/embed/5"],
+      }),
+      frame({
+        frameId: 12,
+        url: "https://vsrc.su/embed/5",
+        iframeSrcs: ["https://deepcdn.xyz/stream/abc"],
+      }),
+    ];
+    const top = defined(buildFrameTree(frames, [], true)[0]);
+    expect(top.enabled).toBe(true);
+    const aggregator = defined(top.children[0]);
+    expect(aggregator.enabled).toBe(true);
+    const player = defined(aggregator.children[0]);
+    expect(player.reached).toBe(false); // still the unreached leaf…
+    expect(player.enabled).toBe(true); // …but the broad grant covers it
+  });
+
   it("matches an iframe src to a reached frame despite a trailing slash / hash", () => {
     const frames: RawFrame[] = [
       frame({

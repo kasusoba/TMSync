@@ -388,6 +388,8 @@ export function App() {
   const [status, setStatus] = useState<TraktStatus | null>(null);
   const [anilist, setAnilist] = useState<AniListStatus | null>(null);
   const [sites, setSites] = useState<string[]>([]);
+  /** Broad "enable all sites" grant held (then every recipe site is enabled). */
+  const [allSites, setAllSites] = useState(false);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [links, setLinks] = useState<QuickLinkSite[]>([]);
   const [corr, setCorr] = useState<Record<string, ResolvedIdentity>>({});
@@ -410,12 +412,15 @@ export function App() {
   const [backupBusy, setBackupBusy] = useState(false);
   const [backupNote, setBackupNote] = useState<string | null>(null);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  /** Feedback for a Connect attempt (Options mirrors the popup — a failed/cancelled
+   * OAuth used to silently do nothing here). */
+  const [accountMsg, setAccountMsg] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [badge, setBadge] = useState<BadgePrefs>({ mode: "full", position: null });
   const has = (s: string) => s.toLowerCase().includes(q.toLowerCase());
 
   const refresh = async () => {
-    const [s, al, sit, rec, ql, c, ac, am, rem, bp] = await Promise.all([
+    const [s, al, sit, rec, ql, c, ac, am, rem, bp, broad] = await Promise.all([
       sendMessage("getTraktStatus", undefined),
       sendMessage("getAniListStatus", undefined),
       sendMessage("listEnabledSites", undefined),
@@ -426,6 +431,7 @@ export function App() {
       animapOverrides.getValue(),
       remoteRecipes.getValue(),
       badgePrefs.getValue(),
+      browser.permissions.contains({ origins: ["*://*/*"] }),
     ]);
     setStatus(s);
     setAnilist(al);
@@ -437,7 +443,28 @@ export function App() {
     setAnimap(am);
     setRemote(rem);
     setBadge(bp);
+    setAllSites(broad);
   };
+
+  // Toggle the broad "enable all sites" grant. The request/remove must run in this
+  // page's user-gesture context; the SW then reconciles the catch-all vs per-origin
+  // scripts. On grant, every recipe (synced/imported/CDN) is live with no prompt.
+  const toggleAllSites = () =>
+    act(async () => {
+      if (allSites) {
+        await browser.permissions.remove({ origins: ["*://*/*"] });
+      } else if (!(await browser.permissions.request({ origins: ["*://*/*"] }))) {
+        return;
+      }
+      await sendMessage("syncSiteRegistrations", undefined);
+    });
+
+  // Grant a single recipe's origin from the "needs enabling" list.
+  const enablePending = (origin: string) =>
+    act(async () => {
+      if (!(await browser.permissions.request({ origins: [`${origin}/*`] }))) return;
+      await sendMessage("registerSite", origin);
+    });
 
   const updateBadge = async (patch: Partial<BadgePrefs>) => {
     const next = { ...badge, ...patch };
@@ -463,6 +490,18 @@ export function App() {
   const act = async (fn: () => Promise<unknown>) => {
     setBusy(true);
     await fn();
+    await refresh();
+    setBusy(false);
+  };
+
+  // Connect a provider AND surface the outcome. `act()` discards the reply, so a
+  // failed or cancelled OAuth (e.g. the auth window closed, or Trakt rejected the
+  // sign-in) showed no feedback in Options — the popup already reports it, so match.
+  const connectProvider = async (which: "trakt" | "anilist") => {
+    setBusy(true);
+    setAccountMsg(null);
+    const res = await sendMessage(which === "trakt" ? "connectTrakt" : "connectAniList", undefined);
+    if (!res.ok) setAccountMsg(res.error ?? "Connection failed — the sign-in didn’t complete.");
     await refresh();
     setBusy(false);
   };
@@ -641,6 +680,9 @@ export function App() {
         return;
       }
       const s = await applyBackup(backup);
+      // Imported recipes on an already-granted origin (or under the broad grant)
+      // should go live now, not on next reload.
+      await sendMessage("syncSiteRegistrations", undefined);
       await refresh();
       const parts = [
         `${s.recipes} recipe${s.recipes === 1 ? "" : "s"}`,
@@ -739,12 +781,29 @@ export function App() {
     const key = recipeHost(r);
     (recipeGroups.get(key) ?? recipeGroups.set(key, []).get(key))?.push(r);
   }
+  // Every site TMSync knows about = origins the user granted + each recipe's host
+  // (custom + library). Under the broad grant they're ALL enabled even if
+  // `enabledOrigins` (sites) is empty — that's the fix for "works but shows disabled".
+  const recipeOrigins = [
+    ...new Set(
+      [...recipes, ...(remote?.recipes ?? [])]
+        .map((r) => r.match.hostnames?.[0])
+        .filter((h): h is string => !!h)
+        .map((h) => `https://${h}`),
+    ),
+  ];
+  const knownOrigins = [...new Set([...sites, ...recipeOrigins])].sort();
+  const isSiteEnabled = (o: string) => allSites || sites.includes(o);
+  const notEnabledCount = allSites ? 0 : knownOrigins.filter((o) => !sites.includes(o)).length;
+
   const counts: Record<string, number> = {
-    sites: sites.length,
     links: links.length,
     recipes: recipes.length + (remote?.recipes.length ?? 0),
     corrections: allCorrections.length,
   };
+  // Sites badge surfaces sites that NEED enabling (an action prompt), not the enabled
+  // total — so the user notices a synced/imported recipe waiting for access.
+  if (notEnabledCount > 0) counts.sites = notEnabledCount;
 
   return (
     <div class={clsx("flex min-h-screen flex-col font-sans", t.page)}>
@@ -784,7 +843,14 @@ export function App() {
               <Icon name={sec.icon} class="text-[14px]" />
               <span class="flex-1">{sec.label}</span>
               {counts[sec.id] !== undefined && (
-                <span class={clsx("rounded-full px-1.5 py-0.5 text-[10px] tabular-nums", t.chip)}>
+                <span
+                  class={clsx(
+                    "rounded-full px-1.5 py-0.5 text-[10px] tabular-nums",
+                    // Sites count = sites awaiting access → an attention tint, not the
+                    // neutral chip the other (informational) counts use.
+                    sec.id === "sites" ? "bg-amber-500/20 text-amber-300" : t.chip,
+                  )}
+                >
                   {counts[sec.id]}
                 </span>
               )}
@@ -797,12 +863,17 @@ export function App() {
             {active === "account" && (
               <>
                 <PaneHead title="Account" />
+                {accountMsg && (
+                  <p class={clsx("rounded-md px-2.5 py-1.5 text-[11px]", t.infoBox)}>
+                    {accountMsg}
+                  </p>
+                )}
                 <ProviderRow
                   mark={<TraktMark />}
                   name="Trakt"
                   connected={connected}
                   busy={busy}
-                  onConnect={() => act(() => sendMessage("connectTrakt", undefined))}
+                  onConnect={() => connectProvider("trakt")}
                   onDisconnect={() => act(() => sendMessage("disconnectTrakt", undefined))}
                 />
                 {/* Dev-only: a forker running their OWN Trakt OAuth app needs to
@@ -850,7 +921,7 @@ export function App() {
                   name="AniList"
                   connected={anilist?.connected ?? false}
                   busy={busy}
-                  onConnect={() => act(() => sendMessage("connectAniList", undefined))}
+                  onConnect={() => connectProvider("anilist")}
                   onDisconnect={() => act(() => sendMessage("disconnectAniList", undefined))}
                 />
                 {anilist && !anilist.configured && (
@@ -882,39 +953,88 @@ export function App() {
 
             {active === "sites" && (
               <>
-                <PaneHead title="Enabled sites" />
-                {sites.length === 0 ? (
+                <PaneHead title="Sites" />
+
+                {/* Broad grant: one toggle makes every recipe (synced, imported, or
+                    from the library) work instantly, with no per-site prompt. */}
+                <div
+                  class={clsx(
+                    "mb-3 flex items-start justify-between gap-3 rounded-lg px-3 py-2.5",
+                    t.card,
+                  )}
+                >
+                  <div class="min-w-0">
+                    <div class={clsx("text-[13px] font-medium", t.heading)}>Enable all sites</div>
+                    <p class={clsx("mt-0.5 text-[12px]", t.sub)}>
+                      Grant access to every site so new and synced recipes work instantly. You can
+                      revoke access anytime — or enable sites one by one below.
+                    </p>
+                  </div>
+                  <Switch on={allSites} t={t} onClick={() => void toggleAllSites()} />
+                </div>
+
+                {/* One list of every site TMSync knows — granted origins AND each
+                    recipe's host — each with an enabled/needs-access indicator. Under
+                    the broad grant they all read "Enabled" (the catch-all covers them),
+                    which is the fix for an imported site working but showing nothing. */}
+                {knownOrigins.length === 0 ? (
                   <p class={clsx("rounded-lg px-3 py-4 text-center text-[12px]", t.card, t.sub)}>
-                    No sites enabled yet. Open the TMSync popup on a streaming site to enable it.
+                    No sites yet. Import or add a recipe, or open the TMSync popup on a streaming
+                    site to enable it.
                   </p>
                 ) : (
                   <>
                     <Filter q={q} setQ={setQ} placeholder="Filter sites…" />
                     <div class="space-y-1.5">
-                      {sites.filter(has).map((origin) => (
-                        <div
-                          key={origin}
-                          class={clsx(
-                            "flex items-center justify-between gap-3 rounded-lg px-3 py-2",
-                            t.card,
-                          )}
-                        >
-                          <code
-                            class={clsx("truncate font-mono text-[12px]", t.heading)}
-                            title={origin}
+                      {knownOrigins.filter(has).map((origin) => {
+                        const enabled = isSiteEnabled(origin);
+                        return (
+                          <div
+                            key={origin}
+                            class={clsx(
+                              "flex items-center justify-between gap-3 rounded-lg px-3 py-2",
+                              t.card,
+                            )}
                           >
-                            {host(origin)}
-                          </code>
-                          <Btn
-                            t={t}
-                            tone="ghost"
-                            disabled={busy}
-                            onClick={() => disableSite(origin)}
-                          >
-                            Disable
-                          </Btn>
-                        </div>
-                      ))}
+                            <span class="flex min-w-0 items-center gap-2">
+                              <span
+                                class={clsx(
+                                  "size-1.5 shrink-0 rounded-full",
+                                  enabled ? "bg-emerald-500" : "bg-amber-400",
+                                )}
+                                title={enabled ? "Enabled" : "Needs access"}
+                              />
+                              <code
+                                class={clsx("truncate font-mono text-[12px]", t.heading)}
+                                title={origin}
+                              >
+                                {host(origin)}
+                              </code>
+                            </span>
+                            {allSites ? (
+                              <span class={clsx("shrink-0 text-[11px]", t.sub)}>Enabled</span>
+                            ) : enabled ? (
+                              <Btn
+                                t={t}
+                                tone="ghost"
+                                disabled={busy}
+                                onClick={() => disableSite(origin)}
+                              >
+                                Disable
+                              </Btn>
+                            ) : (
+                              <Btn
+                                t={t}
+                                tone="primary"
+                                disabled={busy}
+                                onClick={() => void enablePending(origin)}
+                              >
+                                Enable
+                              </Btn>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </>
                 )}

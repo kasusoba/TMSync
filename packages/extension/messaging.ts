@@ -113,6 +113,10 @@ export interface BadgeStatus {
   /** A show page whose URL carries no episode (e.g. a "?play=true" deep link) —
    * the badge shows a season/episode chooser so scrobbling can start. */
   needEpisode?: boolean;
+  /** A recipe matched but the `<video>` lives in a cross-origin player frame that
+   * isn't enabled (or whose embed host changed), so playback can't be tracked — the
+   * badge points the user to enable the player frame in the popup. */
+  needFrame?: boolean;
   /** An already-COMPLETED AniList cour is being re-watched — the badge shows a
    * "rewatching?" confirmation; nothing is written until the user says yes. */
   rewatch?: boolean;
@@ -204,6 +208,18 @@ export interface ProtocolMap {
   registerSite(origin: string): { ok: boolean; error?: string };
   unregisterSite(origin: string): { ok: boolean };
   listEnabledSites(): string[];
+  /** Reconcile content-script registrations against permissions + recipes — call
+   * after toggling the broad "enable all sites" grant or importing a backup, so
+   * the change takes effect without a reload. */
+  syncSiteRegistrations(): void;
+  /** Recipe origins (from `hostnames`) the user hasn't granted host access to yet —
+   * the "needs enabling" list so a synced/imported/CDN recipe can be activated in
+   * one tap. Empty when the broad grant is held. */
+  pendingSites(): string[];
+  /** Whether the broad "enable all sites" grant is held. Content scripts can't read
+   * `permissions.contains`, so they ask the background (e.g. to suppress the
+   * "enable the player frame" hint when the catch-all already covers every frame). */
+  hasAllSitesGrant(): boolean;
 
   // --- per-tab session coordination (top frame ↔ player iframe ↔ background) ---
   /** The recipe-matching frame publishes the media so a cross-origin player iframe can pick it up. */

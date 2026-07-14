@@ -1,4 +1,5 @@
 import { browser } from "wxt/browser";
+import { launchAuthFlow } from "../oauth";
 import { anilistTokens } from "../storage";
 import { ANILIST } from "./config";
 import type { AniListTokens } from "./types";
@@ -31,8 +32,7 @@ export async function connect(): Promise<AniListTokens> {
   });
   const authUrl = `${ANILIST.authBase}?${authParams.toString()}`;
 
-  const redirect = await browser.identity.launchWebAuthFlow({ url: authUrl, interactive: true });
-  if (!redirect) throw new Error("OAuth flow was cancelled");
+  const redirect = await launchAuthFlow(authUrl, "AniList");
 
   // The code is in the query (authorization code grant), not the fragment.
   const params = new URL(redirect).searchParams;

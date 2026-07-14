@@ -583,6 +583,11 @@ export class SessionManager {
         }
       }
     }
+
+    // A recipe just resolved but the top frame has no <video> — re-check for an
+    // un-enabled player frame now (not only on the next DOM mutation), so a static
+    // watch page still gets the "enable the player frame" hint.
+    if (this.isTop && !this.findVideo()) void this.scanPlayerFrames();
   }
 
   /**
@@ -725,30 +730,7 @@ export class SessionManager {
    *    enabled yet, push an actionable badge hint (main feedback channel, no console).
    */
   private watchPlayerFrames(): void {
-    const scan = async () => {
-      const origins = this.crossOriginIframeOrigins();
-      if (origins.length === 0) return;
-
-      const fresh = origins.filter((o) => !this.seenFrameOrigins.has(o));
-      if (fresh.length > 0) {
-        for (const o of fresh) this.seenFrameOrigins.add(o);
-        void sendMessage("reportFrameOrigins", origins);
-      }
-
-      // Badge hint: top frame owns the badge, and only when the matched recipe
-      // expects an iframe player — avoids false hints from ad/analytics iframes.
-      if (!this.isTop || this.frame !== "iframe") return;
-      const enabled = new Set(await sendMessage("listEnabledSites", undefined));
-      // If any cross-origin frame is already enabled, the player is set up — the
-      // rest are almost certainly ads; stay quiet.
-      if (origins.some((o) => enabled.has(o))) return;
-      await sendMessage("reportScrobble", {
-        state: "error",
-        title: this.localMedia ? label(this.localMedia) : undefined,
-        detail: `enable player frame in TMSync popup: ${origins.join(", ")}`,
-      });
-    };
-    void scan();
+    void this.scanPlayerFrames();
     // Debounce: the subtree observer fires constantly on busy SPAs; we only need
     // to re-scan iframes occasionally.
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -756,11 +738,53 @@ export class SessionManager {
       if (timer) return;
       timer = setTimeout(() => {
         timer = null;
-        void scan();
+        void this.scanPlayerFrames();
       }, 500);
     });
     this.framesObserver.observe(document.documentElement, { childList: true, subtree: true });
     this.ctx.onInvalidated(() => this.framesObserver?.disconnect());
+  }
+
+  /**
+   * Accumulate the cross-origin iframe origins this frame sees (for the popup's
+   * enable list), and — top frame only — surface the "enable the player frame" badge
+   * hint. Re-run on iframe mutations AND right after a recipe resolves, so a static
+   * page (no further mutations) still gets the hint.
+   */
+  private async scanPlayerFrames(): Promise<void> {
+    const origins = this.crossOriginIframeOrigins();
+    if (origins.length === 0) return;
+
+    const fresh = origins.filter((o) => !this.seenFrameOrigins.has(o));
+    if (fresh.length > 0) {
+      for (const o of fresh) this.seenFrameOrigins.add(o);
+      void sendMessage("reportFrameOrigins", origins);
+    }
+
+    // The player is in a frame we can't see a <video> in. Fire when the recipe says
+    // the player is an iframe, OR it's "auto" and there's no <video> in the top
+    // document once a recipe has matched — the common real case: an imported recipe
+    // whose embed host isn't enabled, or a valid recipe whose embed the site owner
+    // has since swapped. Without a content script in that frame nothing tracks
+    // playback, so say so instead of resting on a "press play" badge that never
+    // advances.
+    if (!this.isTop) return;
+    const playerInFrame =
+      this.frame === "iframe" || (this.frame === "auto" && !!this.localMedia && !this.findVideo());
+    if (!playerInFrame) return;
+    // The broad "enable all sites" grant runs the content script in EVERY frame, so
+    // the player is already covered — never nag then.
+    if (await sendMessage("hasAllSitesGrant", undefined)) return;
+    const enabled = new Set(await sendMessage("listEnabledSites", undefined));
+    // A cross-origin frame is already enabled → the player is set up; the rest are
+    // almost certainly ads. Stay quiet.
+    if (origins.some((o) => enabled.has(o))) return;
+    await sendMessage("reportScrobble", {
+      state: "error",
+      title: this.localMedia ? label(this.localMedia) : undefined,
+      detail: "can’t see the video — enable the player frame in the TMSync popup",
+      needFrame: true,
+    });
   }
 
   private crossOriginIframeOrigins(): string[] {

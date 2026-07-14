@@ -153,6 +153,23 @@ export function App() {
               origins={[{ origin: "https://www.cineby.at", isTop: true, enabled: true }]}
             />
           </Tile>
+          <Tile label="Connected · recipes need access" t={t}>
+            <PopupView
+              variant={variant}
+              connected
+              origins={[{ origin: "https://www.cineby.at", isTop: true, enabled: true }]}
+              pendingSites={[
+                "https://hianime.to",
+                "https://www.tubi.tv",
+                "https://aniwatch.to",
+                "https://www.crunchyroll.com",
+                "https://gogoanime.tv",
+                "https://9animetv.to",
+              ]}
+              onEnablePending={() => {}}
+              onEnableAllPending={() => {}}
+            />
+          </Tile>
           <Tile label="Connected · now scrobbling (popup parity)" t={t}>
             <PopupView
               variant={variant}
@@ -503,6 +520,14 @@ export function App() {
                 <BadgePill key={s} variant={variant} state={s} title="Dune: Part Two" />
               ))}
             </div>
+          </Tile>
+          <Tile label="Scrobble pill · player frame needs enabling" t={t}>
+            <BadgePill
+              variant={variant}
+              state="error"
+              title="Frieren S1E4"
+              detail="can’t see the video — enable the player frame in the TMSync popup"
+            />
           </Tile>
           <Tile label="Scrobble pill · multi-track (anime → Trakt + AniList)" t={t}>
             <div class="flex flex-col items-center gap-3">

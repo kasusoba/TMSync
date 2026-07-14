@@ -70,6 +70,16 @@ import { browser } from "wxt/browser";
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const siteId = (origin: string) => `tmsync-${origin.replace(/[^a-z0-9]/gi, "-")}`;
 
+/** The broad optional grant (`optional_host_permissions`) + the single catch-all
+ * content-script it backs. When the user opts into "enable all sites", one grant
+ * covers every recipe origin, so we register ONE all-URLs (ALL_SITES) script
+ * instead of per-origin ones — and any synced/imported/CDN recipe is live with no
+ * further prompt. Kept mutually exclusive with the per-origin scripts (running both
+ * would inject the content script twice into the same frame). */
+const ALL_SITES = "*://*/*";
+const ALL_SITES_ID = "tmsync-all-sites";
+const hasAllSites = () => browser.permissions.contains({ origins: [ALL_SITES] });
+
 type OkResult = Promise<{ ok: boolean; error?: string }>;
 /** The rating + note seam per tracker (see the getReview/rateItem/… handlers). Each
  * tracker uses only the params it supports; adding a tracker = one entry here. */
@@ -111,9 +121,16 @@ const OWNER_TTL_MS = 5 * 60 * 1000;
 
 export default defineBackground(() => {
   // Dynamic content-script registrations are cleared on extension reload/update
-  // (not browser restart). Re-establish them from the enabled-origins list so a
-  // plain "reload the extension" is enough and survives updates.
-  void reconcileRegistrations();
+  // (not browser restart). Re-establish them (broad catch-all, or per enabled
+  // origin) so a plain "reload the extension" is enough and survives updates.
+  void syncRegistrations();
+
+  // Keep registrations in step with the recipe set: a recipe synced from another
+  // device, imported, or pulled from the CDN auto-activates on any origin the user
+  // already granted (or everywhere, under the broad grant) — no manual re-enable.
+  // These are event listeners re-established on each SW wake, not held state.
+  customRecipes.watch(() => void syncRegistrations());
+  remoteRecipes.watch(() => void syncRegistrations());
 
   // Seed quick links shipped in the bundled library (available offline, before
   // the first fetch), then refresh the CDN list on startup + a periodic alarm
@@ -298,6 +315,11 @@ export default defineBackground(() => {
   onMessage("registerSite", ({ data }) => registerSite(data));
   onMessage("unregisterSite", ({ data }) => unregisterSite(data));
   onMessage("listEnabledSites", () => enabledOrigins.getValue());
+  // Reconcile after a broad-grant toggle or a backup import (the caller changed
+  // permissions/recipes in its own page context, then asks the SW to catch up).
+  onMessage("syncSiteRegistrations", () => syncRegistrations());
+  onMessage("pendingSites", () => pendingSites());
+  onMessage("hasAllSitesGrant", () => hasAllSites());
 
   // --- manual mode (sites with no readable title) ---
   onMessage("getManualMedia", async ({ data }) => {
@@ -1111,20 +1133,99 @@ async function mergeLibraryLinks(links: LibraryLink[]): Promise<void> {
   if (changed) await quickLinks.setValue([...byId.values()]);
 }
 
-/** Re-register content scripts for every enabled origin (idempotent). */
-async function reconcileRegistrations(): Promise<void> {
+/**
+ * Reconcile the set of registered content scripts against permissions + recipes.
+ * The single source of truth for "what is injected where"; safe to call on startup,
+ * on a recipe change (sync/import/CDN refresh), and after the broad-grant toggle.
+ *
+ *  - Broad grant held → desired = the ONE catch-all all-URLs script; every
+ *    per-origin script is removed (avoids double-injection). All recipes go live
+ *    everywhere with no per-origin bookkeeping — the "enable all sites" path.
+ *  - Otherwise → per-origin: remove the catch-all, then adopt any recipe origin the
+ *    user ALREADY granted (so a synced/imported recipe activates silently, no
+ *    prompt) and ensure a script for every `enabledOrigins` entry.
+ *
+ * Best-effort throughout: a missing host permission just leaves that site off.
+ */
+async function syncRegistrations(): Promise<void> {
   try {
-    const origins = await enabledOrigins.getValue();
-    if (origins.length === 0) return;
-    const registered = new Set(
-      (await browser.scripting.getRegisteredContentScripts()).map((s) => s.id),
-    );
-    for (const origin of origins) {
-      if (!registered.has(siteId(origin))) await registerScript(origin);
+    const registered = await browser.scripting.getRegisteredContentScripts();
+    const ids = new Set(registered.map((s) => s.id));
+    if (await hasAllSites()) {
+      const perOrigin = registered.map((s) => s.id).filter((id) => id !== ALL_SITES_ID);
+      if (perOrigin.length)
+        await browser.scripting.unregisterContentScripts({ ids: perOrigin }).catch(() => {});
+      if (!ids.has(ALL_SITES_ID)) await registerAllSites().catch(() => {});
+      return;
+    }
+    if (ids.has(ALL_SITES_ID))
+      await browser.scripting.unregisterContentScripts({ ids: [ALL_SITES_ID] }).catch(() => {});
+    await adoptPermittedRecipeOrigins();
+    for (const origin of await enabledOrigins.getValue()) {
+      if (!ids.has(siteId(origin))) await registerScript(origin).catch(() => {});
     }
   } catch {
     // best effort — a missing host permission just means that site stays off
   }
+}
+
+/** Distinct origins a recipe could match, from the `hostnames` hint (the only part
+ * of `match` that yields a static origin — `urlPattern` is a regex). Custom +
+ * remote recipes; `https` is assumed (streaming sites are TLS). */
+async function recipeOrigins(): Promise<string[]> {
+  const custom = await customRecipes.getValue();
+  const remote = (await remoteRecipes.getValue())?.recipes ?? [];
+  const hosts = new Set<string>();
+  for (const r of [...custom, ...remote]) {
+    const h = r.match.hostnames?.[0];
+    if (h) hosts.add(`https://${h}`);
+  }
+  return [...hosts];
+}
+
+/** Fold any recipe origin the user already holds permission for into
+ * `enabledOrigins`, so a synced/imported/CDN recipe on an already-granted site
+ * becomes active with no prompt. Only ADDS — never revokes. */
+async function adoptPermittedRecipeOrigins(): Promise<void> {
+  const enabled = new Set(await enabledOrigins.getValue());
+  let changed = false;
+  for (const origin of await recipeOrigins()) {
+    if (enabled.has(origin)) continue;
+    if (await browser.permissions.contains({ origins: [`${origin}/*`] })) {
+      enabled.add(origin);
+      changed = true;
+    }
+  }
+  if (changed) await enabledOrigins.setValue([...enabled]);
+}
+
+/** Recipe origins the user has NOT granted (nor holds broadly) — the "needs
+ * enabling" list so a synced/imported/CDN recipe can be turned on in one tap.
+ * Empty when the broad grant is held (it already covers everything). */
+async function pendingSites(): Promise<string[]> {
+  if (await hasAllSites()) return [];
+  const enabled = new Set(await enabledOrigins.getValue());
+  const pending: string[] = [];
+  for (const origin of await recipeOrigins()) {
+    if (enabled.has(origin)) continue;
+    if (await browser.permissions.contains({ origins: [`${origin}/*`] })) continue;
+    pending.push(origin);
+  }
+  return pending;
+}
+
+/** Register the single catch-all content script backed by the broad grant. */
+async function registerAllSites(): Promise<void> {
+  await browser.scripting.registerContentScripts([
+    {
+      id: ALL_SITES_ID,
+      matches: [ALL_SITES],
+      js: ["content-scripts/content.js"],
+      runAt: "document_idle",
+      allFrames: true,
+      persistAcrossSessions: true,
+    },
+  ]);
 }
 
 async function registerScript(origin: string): Promise<void> {
@@ -1146,12 +1247,12 @@ async function registerScript(origin: string): Promise<void> {
  * keeps the registration across browser restarts, so we don't re-register.
  *
  * `enabledOrigins` is persisted FIRST and unconditionally — it's the source of truth
- * for the popup's enabled-state AND for reconcileRegistrations() — so it must NOT be
+ * for the popup's enabled-state AND for syncRegistrations() — so it must NOT be
  * gated on the scripting call. Right after the permission prompt is accepted, the
  * new host permission often isn't visible to this service worker yet, so the first
  * registerContentScripts() can throw; that used to leave the origin unpersisted, so
  * the popup still showed "Enable" until a second click (a known bug). Now we persist,
- * then register best-effort with one retry, and reconcileRegistrations() covers any
+ * then register best-effort with one retry, and syncRegistrations() covers any
  * remaining gap on the next wake (the popup also injects the current tab directly).
  */
 async function registerSite(origin: string): Promise<{ ok: boolean; error?: string }> {
@@ -1161,6 +1262,10 @@ async function registerSite(origin: string): Promise<{ ok: boolean; error?: stri
   } catch (e) {
     return { ok: false, error: errMsg(e) };
   }
+  // Under the broad grant the catch-all script already covers this origin; adding a
+  // per-origin script too would inject the content script twice into the same frame.
+  // Record the origin (so it survives the broad grant being revoked) but skip it.
+  if (await hasAllSites()) return { ok: true };
   await ensureRegistered(origin).catch(() => {});
   return { ok: true };
 }
@@ -1168,7 +1273,7 @@ async function registerSite(origin: string): Promise<{ ok: boolean; error?: stri
 /**
  * Idempotently register the content script for an origin, tolerating the brief
  * post-grant window where the new host permission hasn't propagated to the SW yet:
- * one short retry, then leave it to reconcileRegistrations() on the next wake.
+ * one short retry, then leave it to syncRegistrations() on the next wake.
  */
 async function ensureRegistered(origin: string): Promise<void> {
   const id = siteId(origin);

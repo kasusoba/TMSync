@@ -23,6 +23,11 @@ export interface OriginRow {
   enabled: boolean;
 }
 
+/** Cap on per-site "needs access" rows shown in the popup — beyond this the popup
+ * would grow unusably tall, so the rest live behind the "manage in Settings" link
+ * (the "Enable all" button still grants every pending site at once). */
+const MAX_PENDING_ROWS = 4;
+
 export interface PopupViewProps {
   variant: Variant;
   connected: boolean;
@@ -40,6 +45,15 @@ export interface PopupViewProps {
   onEnable?: (origin: string) => void;
   onDisable?: (origin: string) => void;
   onSetup?: () => void;
+  /** Recipe origins not yet granted host access (from recipes synced/imported/pulled
+   * from the library). Surfaced here so they can be enabled straight from the popup —
+   * a popup click is a user gesture, so the grant works without a detour to Options. */
+  pendingSites?: string[];
+  onEnablePending?: (origin: string) => void;
+  /** Grant every pending origin in one prompt (shown as an "Enable all" button when
+   * more than one site is pending). The broad "enable ALL sites" grant is a separate
+   * toggle that lives in Options only. */
+  onEnableAllPending?: () => void;
   /** A custom recipe already covers this page → the picker opens in edit mode. */
   pageHasRecipe?: boolean;
   onOpenOptions?: () => void;
@@ -126,6 +140,7 @@ function SubLabel({ t, children }: { t: Tokens; children: preact.ComponentChildr
 export function PopupView(p: PopupViewProps) {
   const t = tokens(p.variant);
   const origins = p.origins ?? [];
+  const pending = p.pendingSites ?? [];
   const topRow = origins.find((o) => o.isTop) ?? origins[0] ?? null;
   // The unified video-detection list: the scanned frame tree (top + indented child
   // frames) if present, else a single top-node fallback built from the top origin —
@@ -180,6 +195,66 @@ export function PopupView(p: PopupViewProps) {
 
       {/* Now scrobbling — status + any pending prompt for the active tab. */}
       {p.nowPlaying}
+
+      {/* Recipes that match sites you haven't granted access to yet (synced from
+          another device, imported, or from the library). "Enable all" grants them in
+          one prompt; each can also be granted on its own. A popup click is a user
+          gesture, so the grant works straight here — no notification, no Options detour.
+          (The broad "enable ALL sites forever" grant is a toggle in Options only.) */}
+      {pending.length > 0 && (
+        <Section
+          title={`${pending.length} recipe${pending.length === 1 ? "" : "s"} need access`}
+          t={t}
+        >
+          <div class="space-y-1.5">
+            {pending.length > 1 && (
+              <Btn
+                t={t}
+                tone="primary"
+                class="w-full"
+                disabled={p.busy}
+                onClick={p.onEnableAllPending}
+              >
+                <Icon name="target" class="text-[12px]" /> Enable all {pending.length}
+              </Btn>
+            )}
+            {/* Cap the per-site rows so a big backlog can't make the popup unusably
+                tall — "Enable all" above still covers every one, and the overflow
+                link jumps to the full, filterable list in Options. */}
+            {pending.slice(0, MAX_PENDING_ROWS).map((origin) => (
+              <div
+                key={origin}
+                class={clsx("flex items-center justify-between gap-2 rounded-lg px-3 py-2", t.card)}
+              >
+                <code class={clsx("truncate font-mono text-[12px]", t.heading)} title={origin}>
+                  {origin.replace(/^https?:\/\//, "")}
+                </code>
+                <Btn
+                  t={t}
+                  tone={pending.length > 1 ? "ghost" : "primary"}
+                  disabled={p.busy}
+                  onClick={() => p.onEnablePending?.(origin)}
+                >
+                  Enable
+                </Btn>
+              </div>
+            ))}
+            {pending.length > MAX_PENDING_ROWS && (
+              <button
+                type="button"
+                onClick={p.onOpenOptions}
+                class={clsx(
+                  "w-full rounded-lg px-3 py-2 text-center text-[12px] transition-colors",
+                  t.sub,
+                  "hover:bg-white/5",
+                )}
+              >
+                +{pending.length - MAX_PENDING_ROWS} more · manage in Settings
+              </button>
+            )}
+          </div>
+        </Section>
+      )}
 
       {/* This page — video DETECTION (access + frames) and the RECIPE (picker),
           kept visibly separate so it's clear the two are different things. */}

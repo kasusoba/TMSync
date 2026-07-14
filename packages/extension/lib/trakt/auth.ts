@@ -1,4 +1,5 @@
 import { TRAKT } from "@/config";
+import { launchAuthFlow } from "@/lib/oauth";
 import { traktTokens } from "@/lib/storage";
 import { browser } from "wxt/browser";
 import type { TraktTokens } from "./types";
@@ -31,8 +32,7 @@ export async function connect(): Promise<TraktTokens> {
     `&redirect_uri=${encodeURIComponent(redirectUri)}` +
     `&state=${state}`;
 
-  const redirect = await browser.identity.launchWebAuthFlow({ url: authUrl, interactive: true });
-  if (!redirect) throw new Error("OAuth flow was cancelled");
+  const redirect = await launchAuthFlow(authUrl, "Trakt");
 
   const params = new URL(redirect).searchParams;
   if (params.get("state") !== state) throw new Error("OAuth state mismatch");
