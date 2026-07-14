@@ -501,7 +501,7 @@ export function App() {
     setBusy(true);
     setAccountMsg(null);
     const res = await sendMessage(which === "trakt" ? "connectTrakt" : "connectAniList", undefined);
-    if (!res.ok) setAccountMsg(res.error ?? "Connection failed — the sign-in didn’t complete.");
+    if (!res.ok) setAccountMsg(res.error ?? "Connection failed. The sign-in didn’t complete.");
     await refresh();
     setBusy(false);
   };
@@ -967,7 +967,7 @@ export function App() {
                     <div class={clsx("text-[13px] font-medium", t.heading)}>Enable all sites</div>
                     <p class={clsx("mt-0.5 text-[12px]", t.sub)}>
                       Grant access to every site so new and synced recipes work instantly. You can
-                      revoke access anytime — or enable sites one by one below.
+                      revoke access anytime, or enable sites one by one below.
                     </p>
                   </div>
                   <Switch on={allSites} t={t} onClick={() => void toggleAllSites()} />

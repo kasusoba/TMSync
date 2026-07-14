@@ -526,7 +526,7 @@ export function App() {
               variant={variant}
               state="error"
               title="Frieren S1E4"
-              detail="can’t see the video — enable the player frame in the TMSync popup"
+              detail="can’t see the video. Enable the player frame in the TMSync popup"
             />
           </Tile>
           <Tile label="Scrobble pill · multi-track (anime → Trakt + AniList)" t={t}>
