@@ -1,5 +1,6 @@
 import { quickLinks } from "@/lib/storage";
 import { type QuickLinkItem, mountQuickLinks } from "@/lib/ui/quicklinks";
+import { sendMessage } from "@/messaging";
 import { type TraktPageMedia, buildSiteLinks } from "@tmsync/shared";
 
 /**
@@ -23,26 +24,121 @@ export default defineContentScript({
     const isApp = location.hostname.endsWith("app.trakt.tv");
     const parse = isApp ? parseAppTraktPage : parseTraktPage;
 
-    await mountQuickLinks(
-      ctx,
-      () => {
-        const media = parse();
-        if (!media) return [];
-        const items: QuickLinkItem[] = [];
-        for (const s of sites) {
-          const links = buildSiteLinks(s, media);
-          if (links.direct || links.search) items.push({ name: s.name, ...links });
+    // app.trakt.tv's DOM carries no TMDB id (see parseAppTraktPage) — resolve it
+    // from Trakt's own API by slug instead. Cached per (type,slug) so repeat
+    // paints of the same title don't re-hit the API; `pending` guards against
+    // firing a second lookup for a still-in-flight slug. `live` is every
+    // currently-mounted widget, so a resolved id repaints all of them at once.
+    const tmdbCache = new Map<string, string | undefined>();
+    const pending = new Set<string>();
+    const live = new Set<Awaited<ReturnType<typeof mountQuickLinks>>>();
+    const repaintAll = () => {
+      for (const m of live) m.update();
+    };
+
+    const getItems = (): QuickLinkItem[] => {
+      const media = parse();
+      if (!media) return [];
+      if (isApp && media.slug && media.tmdb === undefined) {
+        const apiType = media.type === "movie" ? "movie" : "show"; // TraktPageMedia uses "tv"
+        const key = `${apiType}:${media.slug}`;
+        if (tmdbCache.has(key)) {
+          media.tmdb = tmdbCache.get(key);
+        } else if (!pending.has(key)) {
+          pending.add(key);
+          void sendMessage("traktIdsForSlug", { type: apiType, slug: media.slug })
+            .then((ids) => {
+              tmdbCache.set(key, ids?.tmdb !== undefined ? String(ids.tmdb) : undefined);
+            })
+            .catch(() => {
+              // leave uncached so a later paint (e.g. after nav) retries
+            })
+            .finally(() => {
+              pending.delete(key);
+              repaintAll();
+            });
         }
-        return items;
-      },
-      isApp
-        ? // New app: place our links right AFTER the whole "Where to Watch"
-          // section (i.e. below the providers, above Sentiment), headerless, with
-          // gaps. We insert AFTER the section — not inside its provider list,
-          // which has a fixed height and would overlap the next section.
-          { anchor: whereToWatchAnchor, append: "after", label: null, class: "my-3" }
-        : { anchor: "ul.external", append: "after" },
+      }
+      const items: QuickLinkItem[] = [];
+      for (const s of sites) {
+        const links = buildSiteLinks(s, media);
+        if (links.direct || links.search) items.push({ name: s.name, ...links });
+      }
+      return items;
+    };
+
+    if (!isApp) {
+      await mountQuickLinks(ctx, getItems, { anchor: "ul.external", append: "after" });
+      return;
+    }
+
+    // The show/season page's own "Where to Watch" section: renders once and
+    // stays put for the life of the page, so autoMount's normal "wait for it to
+    // appear, then stay mounted" behaviour is all that's needed here.
+    live.add(
+      await mountQuickLinks(ctx, getItems, {
+        anchor: whereToWatchAnchor,
+        append: "after",
+        label: null,
+        class: "my-3",
+      }),
     );
+
+    // The season-browsing drawer (`?view=seasons`) and the per-episode drawer
+    // (`?view=episode`) are a different story: Svelte tears down and rebuilds
+    // each one's subtree on every open/close, and can flip DIRECTLY between the
+    // two kinds without a plain "closed" state in between. We track which one
+    // is relevant via the `view` query param and (re)mount fresh whenever it
+    // changes kind. This CANNOT go through WXT's `autoMount` (mountQuickLinks's
+    // default): its one-time up-front check throws "autoMount and Element
+    // anchor option cannot be combined" the instant the anchor function already
+    // resolves to a real Element — which it reliably does here, since we only
+    // call this once we've already confirmed (via `view`) the drawer is open.
+    // So this uses `auto: false` (a plain one-shot mount — see quicklinks.tsx)
+    // and drives mount/unmount entirely ourselves off the `view` param instead.
+    let drawerUi: Awaited<ReturnType<typeof mountQuickLinks>> | undefined;
+    let drawerKind: "episode" | "seasons" | null = null;
+    const syncDrawer = async () => {
+      const view = new URLSearchParams(location.search).get("view");
+      const kind = view === "episode" ? "episode" : view === "seasons" ? "seasons" : null;
+      if (kind === drawerKind) return;
+      const anchor =
+        kind === "episode" ? episodeDrawerAnchor : kind === "seasons" ? seasonsDrawerAnchor : null;
+      // `view` flips via pushState slightly BEFORE Svelte finishes rendering the
+      // drawer's DOM — if the anchor isn't there yet, leave `drawerKind` as-is so
+      // the next 500ms poll tick retries, instead of giving up on this drawer.
+      if (anchor && !anchor()) return;
+      if (drawerUi) {
+        drawerUi.remove();
+        live.delete(drawerUi);
+        drawerUi = undefined;
+      }
+      drawerKind = kind;
+      if (!anchor) return;
+      drawerUi = await mountQuickLinks(ctx, getItems, {
+        anchor,
+        append: "after",
+        label: null,
+        class: "my-3",
+        auto: false,
+      });
+      live.add(drawerUi);
+    };
+    await syncDrawer();
+
+    // Season/episode changing WITHIN an already-open drawer (prev/next) updates
+    // `location.search` via pushState without the `view` param changing, so
+    // syncDrawer() alone wouldn't notice — poll and repaint every mounted
+    // widget too, mirroring anilist.content.tsx's SPA-nav polling (same reason:
+    // history patching in the page's world doesn't reliably reach an isolated
+    // content script's wxt:locationchange).
+    let lastQuery = location.search;
+    ctx.setInterval(() => {
+      if (location.search === lastQuery) return;
+      lastQuery = location.search;
+      void syncDrawer();
+      repaintAll();
+    }, 500);
   },
 });
 
@@ -62,6 +158,29 @@ function whereToWatchAnchor(): Element | null {
     }
   }
   return null;
+}
+
+/**
+ * Resolve the anchor inside an OPEN episode drawer (`?view=episode`). The
+ * drawer has no "Where to Watch" section of its own, so we place our links
+ * right after the episode overview (description), before the Info/Reviews/
+ * Episodes tabs — the same relative spot as the show-page placement above.
+ * Returns null while no drawer is open.
+ */
+function episodeDrawerAnchor(): Element | null {
+  return document.querySelector(".trakt-episode-drawer .episode-info-overview");
+}
+
+/**
+ * Resolve the anchor inside an OPEN season-browsing drawer (`?view=seasons`,
+ * opened via the "Seasons" expand button) — a THIRD, separate surface from
+ * both the show page and the episode drawer, also with no "Where to Watch"
+ * section of its own. Placed right after the season-poster carousel, before
+ * the Episodes/Info/Reviews tabs (stable regardless of which tab is active).
+ * Returns null while no such drawer is open.
+ */
+function seasonsDrawerAnchor(): Element | null {
+  return document.querySelector(".seasons-drawer-content .seasons-section");
 }
 
 // --- classic trakt.tv ---
@@ -115,9 +234,15 @@ function parseTraktPage(): TraktPageMedia | null {
 /**
  * Map the current app.trakt.tv page to outbound media. The new app exposes the
  * slug (URL), the title, and an IMDB id (ratings link), plus season/episode from
- * the path/query — but NOT a TMDB id, so {tmdb}-only templates fall back to
- * search there. Shapes: `/movies/{slug}`, `/shows/{slug}` (+ `?season=N`),
- * `/shows/{slug}/seasons/{s}` and `…/seasons/{s}/episodes/{e}`.
+ * the path/query — but no TMDB id anywhere in its DOM (the classic site's
+ * `#external-link-tmdb` has no equivalent here), so the caller resolves `{tmdb}`
+ * separately via the Trakt API (see main() above). Shapes: `/movies/{slug}`,
+ * `/shows/{slug}` (+ `?season=N&episode=N`), `/shows/{slug}/seasons/{s}` and
+ * `…/seasons/{s}/episodes/{e}`. The season page (`?season=N`, no `episode`) has
+ * no single "current" episode, so it defaults to episode 1 — the episode-drawer/
+ * episode-page query param (`?season=N&view=episode&episode=M`) is what actually
+ * updates as the user steps through episodes, even though it's a client-side
+ * drawer overlay rather than a full navigation.
  */
 function parseAppTraktPage(): TraktPageMedia | null {
   const path = location.pathname;
@@ -142,6 +267,8 @@ function parseAppTraktPage(): TraktPageMedia | null {
   if (m) return { type: "tv", slug, season: Number(m[1]), episode: Number(m[2]), ...ids, title };
   m = path.match(/^\/shows\/[^/]+\/seasons\/(\d+)/);
   if (m) return { type: "tv", slug, season: Number(m[1]), episode: 1, ...ids, title };
+
   const season = Number(params.get("season")) || 1;
-  return { type: "tv", slug, season, episode: 1, ...ids, title };
+  const episode = Number(params.get("episode")) || 1;
+  return { type: "tv", slug, season, episode, ...ids, title };
 }

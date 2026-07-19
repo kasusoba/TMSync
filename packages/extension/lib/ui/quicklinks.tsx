@@ -27,6 +27,18 @@ export async function mountQuickLinks(
     label?: string | null;
     /** Extra spacing classes (margins) so the block doesn't touch host elements. */
     class?: string;
+    /**
+     * Whether to use WXT's `autoMount` (default true — waits for `anchor` and
+     * re-mounts as it comes and goes). Set `false` for a plain one-shot `mount`
+     * instead: WXT's `autoMount` throws ("autoMount and Element anchor option
+     * cannot be combined") the instant `anchor` is a function that resolves to
+     * an already-existing `Element` (it needs a re-evaluable selector/XPath
+     * STRING to poll, not a live element) — so any caller that only calls this
+     * once IT has already confirmed the anchor exists (e.g. driving its own
+     * mount/unmount off other page-state, like a drawer open/close signal) must
+     * pass `auto: false` and manage removal itself via the returned `remove()`.
+     */
+    auto?: boolean;
   } = {},
 ) {
   // Captured so `update()` can re-paint with fresh items — an SPA's data can land
@@ -60,7 +72,8 @@ export async function mountQuickLinks(
       container && render(null, container);
     },
   });
-  ui.autoMount();
+  if (opts.auto === false) ui.mount();
+  else ui.autoMount();
   // Returned so SPA hosts (AniList) can remove + re-mount on client-side nav, and
   // re-paint (`update`) as late-loading page data fills the links in.
   return { remove: () => ui.remove(), update: paint };

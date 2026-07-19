@@ -4,7 +4,7 @@ import { storage } from "wxt/utils/storage";
 import type { AniListIdentity, AniListTokens } from "./anilist/types";
 import type { AnimapOverrides } from "./animap/derive";
 import type { Tracker } from "./tracker/types";
-import type { ResolvedIdentity, TraktTokens } from "./trakt/types";
+import type { ResolvedIdentity, TraktIds, TraktTokens } from "./trakt/types";
 
 /**
  * All persisted state lives here. The background SW is stateless (constraint
@@ -56,6 +56,18 @@ export const anilistNotes = storage.defineItem<Record<number, string>>("local:an
 /** Resolution cache keyed by resolutionCacheKey(media). */
 export const resolutionCache = storage.defineItem<Record<string, ResolvedIdentity>>(
   "local:resolution_cache",
+  { fallback: {} },
+);
+
+/**
+ * TMDB/IMDB ids for a Trakt show/movie, keyed by `${type}:${slug}`. app.trakt.tv's
+ * SvelteKit UI renders no external-id links in its DOM (unlike the classic site's
+ * `#external-link-tmdb`), so quick links there resolve `{tmdb}` via GET
+ * /shows|movies/{slug} instead (see trakt.content.tsx). Cached since a title's
+ * ids never change.
+ */
+export const traktIdsBySlug = storage.defineItem<Record<string, TraktIds>>(
+  "local:trakt_ids_by_slug",
   { fallback: {} },
 );
 

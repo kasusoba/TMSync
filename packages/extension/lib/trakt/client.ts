@@ -1,5 +1,5 @@
 import { TRAKT } from "@/config";
-import { corrections, remoteRatings, resolutionCache } from "@/lib/storage";
+import { corrections, remoteRatings, resolutionCache, traktIdsBySlug } from "@/lib/storage";
 import type { ParsedMedia } from "@tmsync/shared";
 import { getValidAccessToken, refreshTokens } from "./auth";
 import {
@@ -16,6 +16,7 @@ import type {
   ScrobbleAction,
   ScrobbleBody,
   ScrobbleResponse,
+  TraktIds,
   TraktSearchOption,
   TraktSearchResult,
 } from "./types";
@@ -126,6 +127,26 @@ export async function resolve(media: ParsedMedia): Promise<ResolvedIdentity | nu
   };
   await resolutionCache.setValue({ ...cache, [key]: identity });
   return identity;
+}
+
+/**
+ * TMDB/IMDB ids for a show/movie by its Trakt URL slug — the analogue of the
+ * `#external-link-tmdb` DOM element the classic site exposes but app.trakt.tv's
+ * SvelteKit UI doesn't render (see trakt.content.tsx's parseAppTraktPage).
+ * Cached per (type,slug), since a title's ids never change. Returns null on any
+ * non-2xx (unknown slug, network error) — the caller falls back to search links.
+ */
+export async function idsForSlug(type: "movie" | "show", slug: string): Promise<TraktIds | null> {
+  const key = `${type}:${slug}`;
+  const cache = await traktIdsBySlug.getValue();
+  if (cache[key]) return cache[key];
+
+  const res = await api(`/${type === "movie" ? "movies" : "shows"}/${slug}`);
+  if (!res.ok) return null;
+  const obj = (await res.json()) as { ids?: TraktIds };
+  if (!obj.ids) return null;
+  await traktIdsBySlug.setValue({ ...cache, [key]: obj.ids });
+  return obj.ids;
 }
 
 /** Free-text Trakt search for the correction picker. */

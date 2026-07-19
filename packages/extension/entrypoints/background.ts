@@ -45,7 +45,13 @@ import {
 import { getAdapter, inferNativeTracker, routeTracker } from "@/lib/tracker";
 import type { RatingLevel, TrackedItem, Tracker } from "@/lib/tracker/types";
 import { connect, disconnect, getRedirectUri, isConnected } from "@/lib/trakt/auth";
-import { TraktNotConnectedError, exportLetterboxd, resolve, search } from "@/lib/trakt/client";
+import {
+  TraktNotConnectedError,
+  exportLetterboxd,
+  idsForSlug,
+  resolve,
+  search,
+} from "@/lib/trakt/client";
 import {
   traktDeleteNote,
   traktGetReview,
@@ -408,6 +414,14 @@ export default defineBackground(() => {
     const tabId = data?.tabId ?? sender.tab?.id;
     if (tabId === undefined) return null;
     return (await manualContexts.getValue())[tabId] ?? null;
+  });
+
+  onMessage("traktIdsForSlug", async ({ data }) => {
+    try {
+      return await idsForSlug(data.type, data.slug);
+    } catch {
+      return null;
+    }
   });
 
   // --- corrections ---

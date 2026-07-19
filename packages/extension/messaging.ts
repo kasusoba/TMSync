@@ -1,7 +1,12 @@
 import type { AniListSearchOption } from "@/lib/anilist/client";
 import type { ScoreFormat } from "@/lib/anilist/types";
 import type { RatingLevel, Tracker, WatchedState } from "@/lib/tracker/types";
-import type { ResolvedIdentity, ScrobbleAction, TraktSearchOption } from "@/lib/trakt/types";
+import type {
+  ResolvedIdentity,
+  ScrobbleAction,
+  TraktIds,
+  TraktSearchOption,
+} from "@/lib/trakt/types";
 import type { ParsedMedia } from "@tmsync/shared";
 import { defineExtensionMessaging } from "@webext-core/messaging";
 
@@ -278,6 +283,11 @@ export interface ProtocolMap {
   publishManualContext(ctx: { recipeId: string; pageKey: string } | null): void;
   /** Badge/popup reads the manual context for a tab (popup passes the active tabId). */
   getManualContext(q?: { tabId?: number }): { recipeId: string; pageKey: string } | null;
+
+  /** TMDB/IMDB ids for a Trakt show/movie by its URL slug — app.trakt.tv's DOM
+   * carries no external-id links (unlike the classic site), so its quick links
+   * resolve `{tmdb}` this way instead of scraping it. Null on any failure. */
+  traktIdsForSlug(q: { type: "movie" | "show"; slug: string }): TraktIds | null;
 
   // --- corrections (fix a wrong match) ---
   /** Free-text Trakt search for the correction picker. */
