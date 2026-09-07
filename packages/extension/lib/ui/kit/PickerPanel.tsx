@@ -1,3 +1,5 @@
+import type { NumberPart } from "@/lib/picker/recipe-builder";
+import type { Chip, PickSource } from "@/lib/picker/sources";
 import type { Tracker } from "@/lib/tracker/types";
 import clsx from "clsx";
 import {
@@ -19,7 +21,6 @@ export interface FieldRow {
   value: string | null;
   source?: "url" | "meta" | "jsonld" | "dom" | "title";
 }
-export type UrlPart = { text: string } | { num: string; ordinal: number; paramKey?: string };
 
 export interface PickerPanelProps {
   variant: Variant;
@@ -31,15 +32,17 @@ export interface PickerPanelProps {
   /** Whether the current urlPattern actually matches the page (a live footgun check). */
   patternMatchesPage?: boolean;
   fields: FieldRow[];
-  urlParts: UrlPart[];
-  /** Segments of the page <title> (for "use the Nth part of the tab title"). */
-  titleParts?: string[];
-  /** A picked DOM element holds several numbers → ask which is the season/episode
+  /**
+   * THE SOURCE PALETTE: every place this page exposes a value for the field being
+   * picked: the URL, the page <title>, a player iframe's src, a meta tag, a
+   * JSON-LD path. Uniform by design: the same sources are offered for every field,
+   * and each chip carries a finished Field, so the panel stays presentational.
+   * Supplied only while picking; empty otherwise.
+   */
+  sources?: PickSource[];
+  /** A picked page element holds several numbers → ask which one is this field
    * (e.g. "1x6 – Episode 6": season=1, episode=6). null when not awaiting a pick. */
-  domPick?: { field: "season" | "episode"; text: string; parts: UrlPart[] } | null;
-  /** Cross-origin player-iframe URLs whose numbers can be picked for a field —
-   * for embeds that carry the season/episode in their src (e.g. 1embed.cc). */
-  playerFrames?: { src: string; parts: UrlPart[] }[];
+  domPick?: { label: string; text: string; parts: NumberPart[] } | null;
   /** Field label currently being picked, or null. */
   picking?: string | null;
   mediaType: "auto" | "movie" | "show";
@@ -58,13 +61,10 @@ export interface PickerPanelProps {
   /** Manual only: the current "remember-by" element value, if one is picked. */
   manualKeyValue?: string | null;
   onPick?: (key: FieldKey) => void;
-  onPickToken?: (ordinal: number, paramKey?: string) => void;
-  /** Pick the Nth segment of the page <title> as the title field. */
-  onPickTitleSegment?: (index: number) => void;
-  /** Pick the Nth number of the just-picked DOM element (season/episode). */
+  /** Commit the palette chip with this id to the field being picked. */
+  onPickChip?: (chipId: string) => void;
+  /** Pick the Nth number of the just-picked page element. */
   onPickDomNumber?: (ordinal: number) => void;
-  /** Pick the Nth number of a player iframe's src (frame index, number ordinal). */
-  onPickFrameToken?: (frameIndex: number, ordinal: number) => void;
   onClear?: (key: FieldKey) => void;
   onClose?: () => void;
   onSave?: () => void;
@@ -136,6 +136,29 @@ function ToggleRow({
   );
 }
 
+/** One piece of a source's value: inert filler, or a clickable value chip. */
+function ChipView({
+  chip,
+  t,
+  onPick,
+}: {
+  chip: Chip;
+  t: Tokens;
+  onPick?: (chipId: string) => void;
+}) {
+  if (chip.kind === "lit") return <span>{chip.text}</span>;
+  return (
+    <button
+      type="button"
+      title={chip.title}
+      onClick={() => onPick?.(chip.id)}
+      class="mx-0.5 rounded bg-amber-400/20 px-1.5 py-0.5 text-[11px] text-amber-600 ring-1 ring-amber-400/40 transition-colors hover:bg-amber-400/40 dark:text-amber-300"
+    >
+      {chip.text}
+    </button>
+  );
+}
+
 export function PickerPanel(p: PickerPanelProps) {
   const t = tokens(p.variant);
   const fieldVal: FieldVal = (key) => p.fields.find((f) => f.key === key)?.value;
@@ -160,7 +183,7 @@ export function PickerPanel(p: PickerPanelProps) {
         <div class="fixed inset-x-0 top-4 z-10 flex justify-center px-4">
           <span class="inline-flex max-w-md items-center justify-center gap-2 rounded-2xl bg-ikura px-3.5 py-1.5 text-center text-[12px] font-medium leading-snug text-white shadow-lg shadow-black/20">
             <Icon name="target" class="shrink-0 text-[14px]" />
-            Click the {p.picking} on the page · or a number in the URL · Esc to cancel
+            Click the {p.picking} on the page · or choose a value in the panel · Esc to cancel
           </span>
         </div>
       )}
@@ -436,8 +459,7 @@ export function PickerPanel(p: PickerPanelProps) {
               {p.domPick && (
                 <div class="mb-3">
                   <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>
-                    From the picked element → click the number for{" "}
-                    <span class="capitalize">{p.domPick.field}</span>
+                    From the picked element → click the number for {p.domPick.label}
                   </span>
                   <div
                     class={clsx(
@@ -466,111 +488,61 @@ export function PickerPanel(p: PickerPanelProps) {
                 </div>
               )}
 
-              {/* URL tokens */}
-              <div class="mb-3">
-                <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>
-                  From URL{p.picking ? ` → click a number for ${p.picking}` : ""}
-                </span>
-                <div
-                  class={clsx(
-                    "rounded-lg px-2 py-1.5 font-mono text-[11px] leading-7 break-all",
-                    t.card,
-                    t.sub,
-                  )}
-                >
-                  {p.urlParts.map((part, i) =>
-                    "num" in part ? (
-                      <button
-                        // biome-ignore lint/suspicious/noArrayIndexKey: positional URL tokens are stable
-                        key={i}
-                        type="button"
-                        disabled={!p.picking}
-                        title={part.paramKey ? `${part.paramKey}=${part.num}` : undefined}
-                        onClick={() => p.onPickToken?.(part.ordinal, part.paramKey)}
-                        class={clsx(
-                          "mx-0.5 rounded px-1.5 py-0.5 text-[11px] transition-colors",
-                          p.picking
-                            ? "bg-amber-400/20 text-amber-600 ring-1 ring-amber-400/40 hover:bg-amber-400/40 dark:text-amber-300"
-                            : t.chip,
-                        )}
-                      >
-                        {part.num}
-                      </button>
-                    ) : (
-                      // biome-ignore lint/suspicious/noArrayIndexKey: positional URL tokens are stable
-                      <span key={i}>{part.text}</span>
-                    ),
-                  )}
-                </div>
-              </div>
-
-              {/* From player frame URL — a cross-origin embed (e.g. 1embed.cc) whose
-                src carries the season/episode the top page hides. Shown only while
-                picking season/episode, since it's a number source. */}
-              {(p.picking === "Season" || p.picking === "Episode") &&
-                (p.playerFrames?.length ?? 0) > 0 && (
-                  <div class="mb-3">
-                    <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>
-                      From player frame URL → click a number for {p.picking}
-                    </span>
-                    <div class="space-y-1.5">
-                      {p.playerFrames?.map((frame, fi) => (
-                        <div
-                          // biome-ignore lint/suspicious/noArrayIndexKey: positional frame list is stable
-                          key={fi}
-                          class={clsx(
-                            "rounded-lg px-2 py-1.5 font-mono text-[11px] leading-7 break-all",
-                            t.card,
-                            t.sub,
-                          )}
-                        >
-                          {frame.parts.map((part, i) =>
-                            "num" in part ? (
-                              <button
-                                // biome-ignore lint/suspicious/noArrayIndexKey: positional tokens are stable
-                                key={i}
-                                type="button"
-                                onClick={() => p.onPickFrameToken?.(fi, part.ordinal)}
-                                class="mx-0.5 rounded bg-amber-400/20 px-1.5 py-0.5 text-[11px] text-amber-600 ring-1 ring-amber-400/40 transition-colors hover:bg-amber-400/40 dark:text-amber-300"
-                              >
-                                {part.num}
-                              </button>
-                            ) : (
-                              // biome-ignore lint/suspicious/noArrayIndexKey: positional tokens are stable
-                              <span key={i}>{part.text}</span>
-                            ),
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-              {/* From page title — pick a segment of the browser tab title, for SPA
-                players whose real title is only in document.title (og:title is a
-                static site name). Only while picking the Title, since segments
-                only feed that field (shown elsewhere it just reads as noise). */}
-              {p.picking === "Title" && (p.titleParts?.length ?? 0) > 1 && (
-                <div class="mb-3">
-                  <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>
-                    From page title → click the part that is the title
+              {/* THE SOURCE PALETTE: every place this page exposes a value for
+                the field being picked, offered uniformly. It used to be three
+                special cases (URL numbers for any field, page-title segments for
+                the Title alone, player-frame numbers for Season/Episode alone);
+                the engine never had that restriction, so neither does the picker.
+                Shown only while picking, since that is when it can be acted on. */}
+              {p.picking && (p.sources?.length ?? 0) > 0 && (
+                <div class="mb-3 space-y-2.5">
+                  <span class={clsx("block text-[11px] font-medium", t.faint)}>
+                    Or take {p.picking} from
                   </span>
-                  <div class="flex flex-wrap gap-1">
-                    {p.titleParts?.map((seg, i) => (
-                      <button
-                        // biome-ignore lint/suspicious/noArrayIndexKey: positional title segments are stable
-                        key={i}
-                        type="button"
-                        onClick={() => p.onPickTitleSegment?.(i)}
+                  {p.sources?.map((source) => (
+                    <div key={source.id}>
+                      <span
                         class={clsx(
-                          "max-w-full truncate rounded px-1.5 py-0.5 text-[11px] transition-colors hover:bg-ikura hover:text-white",
-                          t.chip,
+                          "mb-1 block text-[10px] font-medium uppercase tracking-wide",
+                          t.faint,
                         )}
                       >
-                        {seg}
-                      </button>
-                    ))}
-                  </div>
+                        {source.label}
+                      </span>
+                      <div
+                        class={clsx(
+                          "space-y-1",
+                          // A metadata-heavy page can list dozens of tags; cap the
+                          // group's height so one source can't push the rest off-panel.
+                          source.entries.length > 5 && "max-h-44 overflow-y-auto",
+                        )}
+                      >
+                        {source.entries.map((entry, ei) => (
+                          <div key={entry.key ?? ei} class={clsx("rounded-lg px-2 py-1.5", t.card)}>
+                            {entry.key && (
+                              <span
+                                class={clsx("mb-0.5 block truncate font-mono text-[10px]", t.faint)}
+                                title={entry.key}
+                              >
+                                {entry.key}
+                              </span>
+                            )}
+                            <div class={clsx("font-mono text-[11px] leading-7 break-all", t.sub)}>
+                              {entry.chips.map((chip, ci) => (
+                                <ChipView
+                                  // biome-ignore lint/suspicious/noArrayIndexKey: positional chips are stable
+                                  key={ci}
+                                  chip={chip}
+                                  t={t}
+                                  onPick={p.onPickChip}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </>

@@ -18,14 +18,12 @@ import {
   defaultRecipeName,
   emptyDraft,
   previewDraft,
-  queryParamRegex,
   recipeMatchesHost,
   recipeToDraft,
   splitNumbers,
-  splitTitle,
-  titleSegmentRegex,
   urlTokenRegex,
 } from "./recipe-builder";
+import { buildPalette, shapeOf, textTransforms } from "./sources";
 
 const HOST_TAG = "tmsync-picker";
 const FIELD_LABELS: Record<DraftFieldKey, string> = {
@@ -104,61 +102,12 @@ interface Rect {
   height: number;
 }
 
-type UrlPart = { text: string } | { num: string; ordinal: number; paramKey?: string };
-
-/**
- * Split the current href into text + clickable numeric chips (in order). A number
- * that's a query-param value (`?…&season=1`) carries its `paramKey`, so the picker
- * can generate a robust key-anchored regex instead of a positional one.
- */
-function urlChips(): UrlPart[] {
-  const href = location.href;
-  const parts: UrlPart[] = [];
-  let last = 0;
-  let ordinal = 0;
-  for (const m of href.matchAll(/\d+/g)) {
-    const idx = m.index ?? 0;
-    if (idx > last) parts.push({ text: href.slice(last, idx) });
-    const paramKey = /[?&]([\w.-]+)=$/.exec(href.slice(0, idx))?.[1];
-    parts.push({ num: m[0], ordinal: ordinal++, paramKey });
-    last = idx + m[0].length;
-  }
-  if (last < href.length) parts.push({ text: href.slice(last) });
-  return parts;
-}
-
 export function PickerApp({ onClose }: { onClose: () => void }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   // Keep keys typed in the picker (recipe name, search…) from firing page &
   // other-extension shortcuts — see useKeyShield.
   useKeyShield(rootRef);
   const ctx: EngineContext = useMemo(() => ({ document, url: location.href }), []);
-  const parts = useMemo(urlChips, []);
-  // Segments of the page's <title> (for sites whose real title is only there).
-  const titleInfo = useMemo(() => splitTitle(document.title), []);
-  // Cross-origin player iframes: the season/episode often live in the embed's
-  // src (e.g. .../embed/tv/276161/1/6), which the top frame CAN read even though
-  // the player UI inside the iframe is unreachable. Offer those numbers to pick.
-  const playerFrames = useMemo<{ selector: string; src: string; parts: NumberPart[] }[]>(() => {
-    const out: { selector: string; src: string; parts: NumberPart[] }[] = [];
-    for (const f of Array.from(document.querySelectorAll("iframe"))) {
-      const raw = (f as HTMLIFrameElement).getAttribute("src");
-      if (!raw) continue;
-      let url: URL;
-      try {
-        url = new URL(raw, location.href);
-      } catch {
-        continue;
-      }
-      // cross-origin embeds with at least one number — same-origin/number-less
-      // frames are almost never the player and would just add noise.
-      if (url.protocol !== "http:" && url.protocol !== "https:") continue;
-      if (url.origin === location.origin || !/\d/.test(raw)) continue;
-      const selector = safeFinder(f);
-      if (selector && out.length < 4) out.push({ selector, src: raw, parts: splitNumbers(raw) });
-    }
-    return out;
-  }, []);
 
   const [draft, setDraft] = useState<RecipeDraft>(() => {
     const base = emptyDraft(ctx.url);
@@ -173,10 +122,11 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
   const [picking, setPicking] = useState<DraftFieldKey | "manualKey" | null>(null);
   const [highlight, setHighlight] = useState<Rect | null>(null);
   const [status, setStatus] = useState<string | null>(null);
-  // A DOM element was picked for season/episode but holds several numbers (e.g.
-  // "1x6 – Episode 6") — ask which one before committing the field.
+  // A page element was picked for a NUMBER field but holds several numbers (e.g.
+  // "1x6 - Episode 6"), so ask which one before committing. Only the element path
+  // needs this: every palette chip already names one specific number.
   const [domPick, setDomPick] = useState<{
-    field: "season" | "episode";
+    field: DraftFieldKey;
     selector: string;
     text: string;
     parts: NumberPart[];
@@ -215,6 +165,14 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
       if (match) setLibraryCovers(match.name);
     })();
   }, [ctx]);
+
+  // THE SOURCE PALETTE, rebuilt for the field being picked, because the chips a
+  // source offers depend on the field's shape (numbers vs text segments), not on
+  // which field it is. This is what makes every source available to every field.
+  const palette = useMemo(
+    () => (picking ? buildPalette(ctx, shapeOf(picking), { selectorFor: safeFinder }) : null),
+    [ctx, picking],
+  );
 
   // Element-picking mode: highlight on hover, capture the next page click.
   useEffect(() => {
@@ -287,106 +245,71 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
       setStatus("Couldn't build a selector for that element.");
       return;
     }
-    if (field === "manualKey") {
-      setDraft((d) => ({
-        ...d,
-        manualKey: { source: "dom", selector, transforms: ["trim", "collapseSpaces"] },
-      }));
+    commitFrom(
+      field,
+      { source: "dom", selector },
+      (el.textContent ?? "").replace(/\s+/g, " ").trim(),
+    );
+  }
+
+  /** Commit a Field to whichever slot is being picked (a draft field, or the
+   * manual remember-by key). The single write path for EVERY source. */
+  function commitField(field: DraftFieldKey | "manualKey", value: Field) {
+    setDraft((d) =>
+      field === "manualKey"
+        ? { ...d, manualKey: value }
+        : { ...d, fields: { ...d.fields, [field]: value } },
+    );
+    setPicking(null);
+    setHighlight(null);
+    setStatus(null);
+  }
+
+  /**
+   * Commit a value read straight off the page (a clicked element), shaping it for
+   * the target field: text is cleaned, a number is isolated. When the text packs
+   * several numbers ("1x6 - Episode 6") toInt would grab the FIRST one, so season
+   * and episode would both read 1, so we ask which number instead.
+   */
+  function commitFrom(field: DraftFieldKey | "manualKey", base: Field, text: string) {
+    if (shapeOf(field) === "text") {
+      commitField(field, { ...base, transforms: textTransforms(text) });
+      return;
+    }
+    const count = countNumbers(text);
+    if (count === 0) {
+      setStatus("That element holds no number.");
+      return;
+    }
+    if (count > 1 && base.selector !== undefined && field !== "manualKey") {
+      setDomPick({ field, selector: base.selector, text, parts: splitNumbers(text) });
       setStatus(null);
       return;
     }
-    // Season/episode from an element that packs several numbers (e.g.
-    // "Teach You a Lesson: 1x6 – Episode 6"): toInt would grab the FIRST number,
-    // so season and episode would both read 1. Ask which number instead.
-    if (field === "season" || field === "episode") {
-      const text = (el.textContent ?? "").replace(/\s+/g, " ").trim();
-      if (countNumbers(text) > 1) {
-        setDomPick({ field, selector, text, parts: splitNumbers(text) });
-        setStatus(null);
-        return;
-      }
-    }
-
-    const transforms: Field["transforms"] =
-      field === "title" ? ["trim", "collapseSpaces"] : ["trim", "toInt"];
-    setDraft((d) => ({
-      ...d,
-      fields: { ...d.fields, [field]: { source: "dom", selector, transforms } },
-    }));
-    setStatus(null);
+    commitField(field, { ...base, transforms: ["trim", "toInt"] });
   }
 
-  /** Commit a season/episode DOM field to the Nth number of the picked element. */
+  /** Commit the Nth number of the picked element (the "which number?" answer). */
   function selectDomNumber(ordinal: number) {
     if (!domPick) return;
     const { field, selector } = domPick;
-    setDraft((d) => ({
-      ...d,
-      fields: {
-        ...d.fields,
-        [field]: {
-          source: "dom",
-          selector,
-          regex: urlTokenRegex(ordinal),
-          group: 1,
-          transforms: ["toInt"],
-        },
-      },
-    }));
+    commitField(field, {
+      source: "dom",
+      selector,
+      regex: urlTokenRegex(ordinal),
+      group: 1,
+      transforms: ["toInt"],
+    });
     setDomPick(null);
-    setStatus(null);
   }
 
-  /** Use a URL number for this field — a query-param value by NAME when possible
-   * (robust), else the Nth number positionally. */
-  function selectUrlToken(field: DraftFieldKey, ordinal: number, paramKey?: string) {
-    const regex = paramKey ? queryParamRegex(paramKey) : urlTokenRegex(ordinal);
-    setDraft((d) => ({
-      ...d,
-      fields: { ...d.fields, [field]: { source: "url", regex, group: 1, transforms: ["toInt"] } },
-    }));
-    setPicking(null);
-    setHighlight(null);
-    setStatus(null);
-  }
-
-  /** Use the Nth number of a player iframe's `src` for the field being picked —
-   * for embeds that carry the season/episode in their URL (a DOM field reading
-   * the `src` attribute, so it re-reads live at scrobble time). */
-  function selectFrameToken(selector: string, ordinal: number) {
-    if (!picking || picking === "manualKey") return;
-    setDraft((d) => ({
-      ...d,
-      fields: {
-        ...d.fields,
-        [picking]: {
-          source: "dom",
-          selector,
-          attr: "src",
-          regex: urlTokenRegex(ordinal),
-          group: 1,
-          transforms: ["toInt"],
-        },
-      },
-    }));
-    setPicking(null);
-    setHighlight(null);
-    setStatus(null);
-  }
-
-  /** Use the Nth `separator`-delimited segment of the page <title> as the title —
-   * for SPA players whose only readable title is `document.title`. */
-  function selectTitleSegment(index: number) {
-    if (!titleInfo.separator) return;
-    const regex = titleSegmentRegex(titleInfo.separator, index);
-    setDraft((d) => ({
-      ...d,
-      fields: {
-        ...d.fields,
-        title: { source: "title", regex, group: 1, transforms: ["trim", "collapseSpaces"] },
-      },
-    }));
-    setStatus(null);
+  /** Commit a palette chip: the URL, the page title, a player frame's src, a meta
+   * tag or a JSON-LD path. Each chip already carries its finished Field, so every
+   * source commits through the exact same line. */
+  function selectChip(chipId: string) {
+    const value = palette?.fields.get(chipId);
+    if (!value || !picking) return;
+    commitField(picking, value);
   }
 
   function clearField(field: DraftFieldKey) {
@@ -505,12 +428,12 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
                 source: field?.source,
               };
             })}
-          urlParts={parts}
-          titleParts={titleInfo.parts}
+          sources={palette?.sources ?? []}
           domPick={
-            domPick ? { field: domPick.field, text: domPick.text, parts: domPick.parts } : null
+            domPick
+              ? { label: FIELD_LABELS[domPick.field], text: domPick.text, parts: domPick.parts }
+              : null
           }
-          playerFrames={playerFrames.map((f) => ({ src: f.src, parts: f.parts }))}
           mediaType={draft.mediaType}
           trackers={draft.trackers}
           iframe={draft.video.frame === "iframe"}
@@ -534,15 +457,8 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
             setDomPick(null); // a fresh pick supersedes a pending "which number?"
             setPicking(key);
           }}
-          onPickToken={(ord, paramKey) => {
-            if (picking && picking !== "manualKey") selectUrlToken(picking, ord, paramKey);
-          }}
-          onPickTitleSegment={selectTitleSegment}
+          onPickChip={selectChip}
           onPickDomNumber={selectDomNumber}
-          onPickFrameToken={(frameIndex, ordinal) => {
-            const frame = playerFrames[frameIndex];
-            if (frame) selectFrameToken(frame.selector, ordinal);
-          }}
           onClear={(key) => {
             if (domPick?.field === key) setDomPick(null);
             clearField(key);
@@ -570,7 +486,10 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
             setDraft((d) => ({ ...d, video: { ...d.video, frame: v ? "iframe" : "auto" } }))
           }
           onManualChange={(v) => setDraft((d) => ({ ...d, manual: v }))}
-          onPickManualKey={() => setPicking("manualKey")}
+          onPickManualKey={() => {
+            setDomPick(null);
+            setPicking("manualKey");
+          }}
           onClearManualKey={() => setDraft((d) => ({ ...d, manualKey: undefined }))}
         />
       </div>

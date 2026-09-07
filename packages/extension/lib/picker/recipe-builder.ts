@@ -91,14 +91,19 @@ export function urlTokenRegex(ordinal: number): string {
   return `(?:\\D*\\d+){${ordinal}}\\D*(\\d+)`;
 }
 
-/** A number chip in a picked string, with its positional ordinal (0-based). */
-export type NumberPart = { text: string } | { num: string; ordinal: number };
+/**
+ * A number chip in a picked string, with its positional ordinal (0-based) and,
+ * when the number is a query-param value (`?…&season=1`), that param's name, so
+ * the picker can generate a key-anchored regex instead of a positional one.
+ */
+export type NumberPart = { text: string } | { num: string; ordinal: number; paramKey?: string };
 
 /**
  * Split arbitrary text into literal runs + numbered chips (in order) — so the
- * picker can ask "which number is the episode?" when a DOM element packs several
+ * picker can ask "which number is the episode?" when a value packs several
  * (e.g. "Teach You a Lesson: 1x6 – Episode 6" → season=1, episode=6, both via
- * {@link urlTokenRegex} by ordinal). Same idea as the URL chips, on element text.
+ * {@link urlTokenRegex} by ordinal). Used for EVERY number source: the URL, a
+ * page element's text, a player frame's src, a meta tag, a JSON-LD scalar.
  */
 export function splitNumbers(text: string): NumberPart[] {
   const parts: NumberPart[] = [];
@@ -107,7 +112,8 @@ export function splitNumbers(text: string): NumberPart[] {
   for (const m of text.matchAll(/\d+/g)) {
     const idx = m.index ?? 0;
     if (idx > last) parts.push({ text: text.slice(last, idx) });
-    parts.push({ num: m[0], ordinal: ordinal++ });
+    const paramKey = /[?&]([\w.-]+)=$/.exec(text.slice(0, idx))?.[1];
+    parts.push({ num: m[0], ordinal: ordinal++, ...(paramKey ? { paramKey } : {}) });
     last = idx + m[0].length;
   }
   if (last < text.length) parts.push({ text: text.slice(last) });
@@ -135,35 +141,50 @@ export function queryParamRegex(key: string): string {
 const TITLE_SEPARATORS = ["|", "·", "—", "–", "•", " - "] as const;
 
 /**
- * Split a page title into trimmed segments by its delimiter — so the picker can
- * offer "use the Nth part of the tab title" when the real title is only in
- * `document.title` (common on SPA players whose `og:title` is a static site name).
+ * Regex capturing the Nth `separator`-delimited segment of a string. Index-based,
+ * so it generalises across pages on the same site ("Rive | Watch | X" at index 2
+ * captures X; "X - bCine" at index 0 captures X; a URL split on "/" captures the
+ * slug at its last index). Splits on the LITERAL separator (lazy), so it works
+ * for multi-char separators like " - " (a char-class approach can't).
+ * Leading/trailing space is trimmed by the field's transforms.
  */
-export function splitTitle(title: string): { separator: string; parts: string[] } {
-  for (const sep of TITLE_SEPARATORS) {
-    if (title.includes(sep)) {
-      const parts = title
-        .split(sep)
-        .map((s) => s.trim())
-        .filter(Boolean);
-      if (parts.length > 1) return { separator: sep, parts };
-    }
-  }
-  const only = title.trim();
-  return { separator: "", parts: only ? [only] : [] };
+export function segmentRegex(separator: string, index: number): string {
+  const s = escapeRegex(separator);
+  return `^(?:.*?${s}){${index}}(.*?)(?:${s}|$)`;
+}
+
+/** A text segment plus the index {@link segmentRegex} needs to capture it: the RAW
+ * split index, which differs from the display position whenever the value has
+ * empty segments (e.g. the "//" in a URL). */
+export interface TextSegment {
+  text: string;
+  index: number;
 }
 
 /**
- * Regex (for a `title` Field) capturing the Nth `separator`-delimited segment of
- * the page title — index-based, so it generalises across pages on the same site
- * ("Rive | Watch | X" → index 2 captures X; "X - bCine" → index 0 captures X).
- * Splits on the LITERAL separator (lazy), so it works for multi-char separators
- * like " - " (a char-class approach can't). Leading/trailing space is trimmed by
- * the field's transforms.
+ * Split a value into its pickable text segments, each carrying the raw split
+ * index its regex needs. An empty separator means "no delimiter": the whole
+ * trimmed value is the single segment.
  */
-export function titleSegmentRegex(separator: string, index: number): string {
-  const s = escapeRegex(separator);
-  return `^(?:.*?${s}){${index}}(.*?)(?:${s}|$)`;
+export function splitSegments(raw: string, separator: string): TextSegment[] {
+  const whole = raw.trim();
+  if (!separator) return whole ? [{ text: whole, index: 0 }] : [];
+  return raw
+    .split(separator)
+    .map((text, index) => ({ text: text.trim(), index }))
+    .filter((segment) => segment.text !== "");
+}
+
+/**
+ * The delimiter a raw value is built from: "/" for a URL (its segments are the
+ * path parts), else whichever page-title separator actually divides it, else ""
+ * for an undivided value (a meta tag's content, a JSON-LD scalar) picked whole.
+ * A separator only counts when it yields more than one segment, so a hyphenated
+ * title ("Spider-Man") is not mistaken for a delimited one.
+ */
+export function pickSeparator(raw: string): string {
+  if (/^[a-z][\w+.-]*:\/\//i.test(raw.trim())) return "/";
+  return TITLE_SEPARATORS.find((sep) => splitSegments(raw, sep).length > 1) ?? "";
 }
 
 /**

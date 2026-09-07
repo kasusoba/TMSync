@@ -13,13 +13,14 @@ import {
   detectTmdbIdField,
   emptyDraft,
   escapeRegex,
+  pickSeparator,
   previewDraft,
   queryParamRegex,
   recipeToDraft,
+  segmentRegex,
   splitNumbers,
-  splitTitle,
+  splitSegments,
   suggestUrlPattern,
-  titleSegmentRegex,
   urlTokenRegex,
 } from "./recipe-builder";
 
@@ -66,14 +67,18 @@ describe("deriveQuickLink", () => {
 
 describe("page-title segments (SPA players, e.g. rivestream)", () => {
   it("splits a title by its delimiter into trimmed parts", () => {
-    expect(splitTitle("Rive | Watch | The Super Mario Bros. Movie")).toEqual({
-      separator: "|",
-      parts: ["Rive", "Watch", "The Super Mario Bros. Movie"],
-    });
-    expect(splitTitle("Just A Title")).toEqual({ separator: "", parts: ["Just A Title"] });
+    const title = "Rive | Watch | The Super Mario Bros. Movie";
+    expect(pickSeparator(title)).toBe("|");
+    expect(splitSegments(title, "|")).toEqual([
+      { text: "Rive", index: 0 },
+      { text: "Watch", index: 1 },
+      { text: "The Super Mario Bros. Movie", index: 2 },
+    ]);
+    expect(pickSeparator("Just A Title")).toBe("");
+    expect(splitSegments("Just A Title", "")).toEqual([{ text: "Just A Title", index: 0 }]);
   });
 
-  it("titleSegmentRegex captures the Nth segment from the page title (via extract)", () => {
+  it("segmentRegex captures the Nth segment from the page title (via extract)", () => {
     const doc = new DOMParser().parseFromString(
       "<title>Rive | Watch | The Super Mario Bros. Movie</title>",
       "text/html",
@@ -89,7 +94,7 @@ describe("page-title segments (SPA players, e.g. rivestream)", () => {
       extract: {
         title: {
           source: "title",
-          regex: titleSegmentRegex("|", 2),
+          regex: segmentRegex("|", 2),
           group: 1,
           transforms: ["trim", "collapseSpaces"],
         },
@@ -102,15 +107,16 @@ describe("page-title segments (SPA players, e.g. rivestream)", () => {
   });
 
   it("splits a tab title on the spaced hyphen ('Michael - bCine')", () => {
-    expect(splitTitle("Michael - bCine")).toEqual({
-      separator: " - ",
-      parts: ["Michael", "bCine"],
-    });
+    expect(pickSeparator("Michael - bCine")).toBe(" - ");
+    expect(splitSegments("Michael - bCine", " - ")).toEqual([
+      { text: "Michael", index: 0 },
+      { text: "bCine", index: 1 },
+    ]);
     // a hyphenated title must NOT be split by the bare hyphen
-    expect(splitTitle("Spider-Man")).toEqual({ separator: "", parts: ["Spider-Man"] });
+    expect(pickSeparator("Spider-Man")).toBe("");
   });
 
-  it("titleSegmentRegex picks the movie from a '<title> - <site>' tab title", () => {
+  it("segmentRegex picks the movie from a '<title> - <site>' tab title", () => {
     const doc = new DOMParser().parseFromString("<title>Michael - bCine</title>", "text/html");
     const recipe: Recipe = {
       id: "r",
@@ -123,7 +129,7 @@ describe("page-title segments (SPA players, e.g. rivestream)", () => {
       extract: {
         title: {
           source: "title",
-          regex: titleSegmentRegex(" - ", 0),
+          regex: segmentRegex(" - ", 0),
           group: 1,
           transforms: ["trim", "collapseSpaces"],
         },
@@ -151,7 +157,7 @@ describe("page-title segments (SPA players, e.g. rivestream)", () => {
       extract: {
         title: {
           source: "title",
-          regex: titleSegmentRegex("|", 2),
+          regex: segmentRegex("|", 2),
           group: 1,
           transforms: ["trim"],
         },
@@ -250,7 +256,7 @@ describe("player-frame URL picking (S/E inside a cross-origin embed, e.g. 1embed
       extract: {
         title: {
           source: "title",
-          regex: titleSegmentRegex(" - ", 0),
+          regex: segmentRegex(" - ", 0),
           group: 1,
           transforms: ["trim", "collapseSpaces"],
         },

@@ -1,3 +1,4 @@
+import { type FieldShape, type PickSource, buildPalette } from "@/lib/picker/sources";
 import {
   BadgeMini,
   BadgePill,
@@ -11,28 +12,35 @@ import {
   RateNotePanel,
 } from "@/lib/ui/kit/BadgeView";
 import { OptionsView } from "@/lib/ui/kit/OptionsView";
-import { PickerPanel, type UrlPart } from "@/lib/ui/kit/PickerPanel";
+import { PickerPanel } from "@/lib/ui/kit/PickerPanel";
 import { PopupView } from "@/lib/ui/kit/PopupView";
 import { QuickLinksView } from "@/lib/ui/kit/QuickLinksView";
 import { Btn, Icon, type Tokens, type Variant, tokens } from "@/lib/ui/kit/kit";
 import clsx from "clsx";
 import { useState } from "preact/hooks";
 
-/** Split a URL into text + numeric tokens, like the real picker does. */
-function urlParts(href: string): UrlPart[] {
-  const parts: UrlPart[] = [];
-  let last = 0;
-  let ordinal = 0;
-  for (const m of href.matchAll(/\d+/g)) {
-    const idx = m.index ?? 0;
-    if (idx > last) parts.push({ text: href.slice(last, idx) });
-    const paramKey = /[?&]([\w.-]+)=$/.exec(href.slice(0, idx))?.[1];
-    parts.push({ num: m[0], ordinal: ordinal++, paramKey });
-    last = idx + m[0].length;
-  }
-  if (last < href.length) parts.push({ text: href.slice(last) });
-  return parts;
+/**
+ * The picker's real source palette, run against a mock page, so the gallery
+ * shows exactly what the extension renders (URL, page title, player frame, meta
+ * tags, JSON-LD), not a hand-written imitation that can drift.
+ */
+function mockPalette(url: string, shape: FieldShape, body = ""): PickSource[] {
+  const doc = new DOMParser().parseFromString(`<html><head>${body}</head></html>`, "text/html");
+  return buildPalette({ document: doc, url }, shape, { selectorFor: () => "iframe#player" })
+    .sources;
 }
+
+/** A mock page carrying the metadata a typical streaming site exposes. */
+const MOCK_HEAD = `
+  <title>Teach You a Lesson - bCine</title>
+  <meta property="og:title" content="Teach You a Lesson" />
+  <meta property="og:type" content="video.episode" />
+  <meta name="description" content="Episode 6 of season 1." />
+  <script type="application/ld+json">
+    {"@type":"TVEpisode","name":"Teach You a Lesson","episodeNumber":6,
+     "partOfTVSeason":{"seasonNumber":1},"datePublished":"2024-03-12"}
+  </script>
+  <iframe id="player" src="https://1embed.cc/embed/tv/276161/1/6?auto_play=1"></iframe>`;
 
 function Tile({
   label,
@@ -312,7 +320,6 @@ export function App() {
                 { key: "season", label: "Season", value: "1", source: "url" },
                 { key: "episode", label: "Episode", value: "1", source: "url" },
               ]}
-              urlParts={urlParts(EP_URL)}
               mediaType="auto"
               trackers={["trakt"]}
               iframe={false}
@@ -330,9 +337,6 @@ export function App() {
                 { key: "season", label: "Season", value: "1", source: "url" },
                 { key: "episode", label: "Episode", value: "1", source: "url" },
               ]}
-              urlParts={urlParts(
-                "https://www.rivestream.app/watch?type=tv&id=85552&season=1&episode=1",
-              )}
               mediaType="auto"
               trackers={["trakt"]}
               iframe
@@ -351,8 +355,7 @@ export function App() {
                 { key: "season", label: "Season", value: null },
                 { key: "episode", label: "Episode", value: null },
               ]}
-              urlParts={urlParts("bcine.ru/tv/276161")}
-              titleParts={["Teach You a Lesson", "bCine"]}
+              sources={mockPalette("https://bcine.ru/tv/276161", "text", MOCK_HEAD)}
               mediaType="auto"
               trackers={["trakt"]}
               iframe
@@ -371,24 +374,7 @@ export function App() {
                 { key: "season", label: "Season", value: "1", source: "dom" },
                 { key: "episode", label: "Episode", value: null },
               ]}
-              urlParts={urlParts("bcine.ru/tv/276161")}
-              playerFrames={[
-                {
-                  src: "https://1embed.cc/embed/tv/276161/1/6?auto_play=1",
-                  parts: [
-                    { text: "https://" },
-                    { num: "1", ordinal: 0 },
-                    { text: "embed.cc/embed/tv/" },
-                    { num: "276161", ordinal: 1 },
-                    { text: "/" },
-                    { num: "1", ordinal: 2 },
-                    { text: "/" },
-                    { num: "6", ordinal: 3 },
-                    { text: "?auto_play=" },
-                    { num: "1", ordinal: 4 },
-                  ],
-                },
-              ]}
+              sources={mockPalette("https://bcine.ru/tv/276161", "number", MOCK_HEAD)}
               mediaType="auto"
               trackers={["trakt"]}
               iframe
@@ -406,9 +392,8 @@ export function App() {
                 { key: "season", label: "Season", value: "1", source: "dom" },
                 { key: "episode", label: "Episode", value: null },
               ]}
-              urlParts={urlParts("cinevibe.asia/watch/tv/276161")}
               domPick={{
-                field: "episode",
+                label: "Episode",
                 text: "Teach You a Lesson: 1x6 – Episode 6",
                 parts: [
                   { text: "Teach You a Lesson: " },
@@ -436,7 +421,6 @@ export function App() {
                 { key: "season", label: "Season", value: null },
                 { key: "episode", label: "Episode", value: null },
               ]}
-              urlParts={urlParts("www.cineby.at/movie/693134")}
               mediaType="movie"
               trackers={["trakt"]}
               iframe
@@ -456,7 +440,6 @@ export function App() {
                 { key: "season", label: "Season", value: null },
                 { key: "episode", label: "Episode", value: null },
               ]}
-              urlParts={urlParts("popcornmovies.org/movie/srimulat-hidup-memang-komedi")}
               mediaType="auto"
               trackers={["trakt"]}
               iframe={false}
@@ -471,7 +454,6 @@ export function App() {
               manual
               manualKeyValue="The Bear S03E01.mkv"
               fields={[]}
-              urlParts={urlParts("twoseven.xyz/room/abc123")}
               mediaType="auto"
               trackers={["trakt"]}
               iframe
@@ -487,7 +469,6 @@ export function App() {
                 { key: "title", label: "Title", value: "Frieren", source: "dom" },
                 { key: "episode", label: "Episode", value: "3", source: "url" },
               ]}
-              urlParts={urlParts("reanime.to/watch/frieren/3")}
               mediaType="show"
               trackers={["anilist"]}
               iframe
@@ -503,7 +484,6 @@ export function App() {
                 { key: "title", label: "Title", value: "Frieren", source: "dom" },
                 { key: "episode", label: "Episode", value: "3", source: "url" },
               ]}
-              urlParts={urlParts("reanime.to/watch/frieren/3")}
               mediaType="show"
               trackers={["anilist", "trakt"]}
               iframe
