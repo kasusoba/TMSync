@@ -73,6 +73,9 @@ guarantees. Issues and PRs are read and appreciated, but may be answered slowly.
 broken or a site stopped matching, opening an issue with the details is the most useful thing you
 can do.
 
+Want to chat, ask a question, or request a site? Join the
+[TMSync Discord](https://discord.gg/XCRsUnrJR).
+
 <!--
   Chrome Web Store listing copy, kept here so it stays in sync.
 
