@@ -179,9 +179,13 @@ export function PickerPanel(p: PickerPanelProps) {
     <div class="relative w-[320px]">
       {p.picking && (
         // Pinned to the top-center of the VIEWPORT (not the panel) so it stays
-        // visible while picking even when the panel is tall.
-        <div class="fixed inset-x-0 top-4 z-10 flex justify-center px-4">
-          <span class="inline-flex max-w-md items-center justify-center gap-2 rounded-2xl bg-ikura px-3.5 py-1.5 text-center text-[12px] font-medium leading-snug text-white shadow-lg shadow-black/20">
+        // visible while picking even when the panel is tall. It must be exactly
+        // as wide as its text and must not take pointer events: a full-width
+        // band here (inset-x-0) sat over the whole top of the page and ate every
+        // click to the left and right of the pill, including the elements the
+        // user is being asked to pick.
+        <div class="pointer-events-none fixed top-4 left-1/2 z-10 w-max max-w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2">
+          <span class="inline-flex items-center justify-center gap-2 rounded-2xl bg-ikura px-3.5 py-1.5 text-center text-[12px] font-medium leading-snug text-white shadow-lg shadow-black/20">
             <Icon name="target" class="shrink-0 text-[14px]" />
             Click the {p.picking} on the page · or choose a value in the panel · Esc to cancel
           </span>

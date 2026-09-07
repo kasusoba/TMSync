@@ -94,7 +94,9 @@ export function App() {
     <div class={clsx("min-h-screen", t.page)}>
       {/* sticky toolbar */}
       <div
-        class={clsx("sticky top-0 z-10 border-b backdrop-blur", t.divider, t.page, "bg-opacity-80")}
+        // z-20: the picker's "click the X" pill is fixed at z-10, and several
+        // tiles render it at once here, so the toolbar has to stay above them.
+        class={clsx("sticky top-0 z-20 border-b backdrop-blur", t.divider, t.page, "bg-opacity-80")}
       >
         <div class="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-3">
           <div class="flex items-center gap-4">
