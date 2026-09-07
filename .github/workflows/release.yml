@@ -1,0 +1,85 @@
+name: Release
+
+# Publish the store artifacts for a version tag, so releases stop being built on
+# whichever laptop cut them. Tag with `pnpm release <version>` (scripts/release.mjs)
+# and push with --follow-tags; this builds Chrome + Firefox + sources zips and
+# attaches them to a GitHub Release.
+#
+# Uploading to the Chrome Web Store and AMO is still manual: both need a human for
+# review notes and store metadata anyway.
+#
+# The zips embed the OAuth client ids/secrets from the WXT_* repository secrets.
+# Without them the build still succeeds (they inline as undefined) and produces an
+# extension that CANNOT sign in, so the job checks for the ids up front rather than
+# shipping a broken artifact.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # create the release and upload its assets
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v6 # version comes from package.json "packageManager"
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # A tag whose version doesn't match the manifest would publish artifacts
+      # named after a different release. Cheap guard against a hand-made tag.
+      - name: Check the tag matches the extension version
+        run: |
+          version=$(node -p "require('./packages/extension/package.json').version")
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$version" != "$tag" ]; then
+            echo "tag $GITHUB_REF_NAME does not match packages/extension/package.json ($version)" >&2
+            exit 1
+          fi
+
+      - name: Check the signing secrets are present
+        env:
+          TRAKT: ${{ secrets.WXT_TRAKT_CLIENT_ID }}
+          ANILIST: ${{ secrets.WXT_ANILIST_CLIENT_ID }}
+          ANILIST_FIREFOX: ${{ secrets.WXT_ANILIST_CLIENT_ID_FIREFOX }}
+        run: |
+          for name in TRAKT ANILIST ANILIST_FIREFOX; do
+            if [ -z "${!name}" ]; then
+              echo "missing repository secret for $name; the build would ship an extension that cannot sign in" >&2
+              exit 1
+            fi
+          done
+
+      # CI parity: the same checks .github/workflows/ci.yml runs on main.
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+
+      # `wxt zip` builds as it packages, so this covers build + build:firefox.
+      # The Firefox run also emits the sources zip AMO requires.
+      - name: Build the store artifacts
+        env:
+          WXT_TRAKT_CLIENT_ID: ${{ secrets.WXT_TRAKT_CLIENT_ID }}
+          WXT_TRAKT_CLIENT_SECRET: ${{ secrets.WXT_TRAKT_CLIENT_SECRET }}
+          WXT_ANILIST_CLIENT_ID: ${{ secrets.WXT_ANILIST_CLIENT_ID }}
+          WXT_ANILIST_CLIENT_SECRET: ${{ secrets.WXT_ANILIST_CLIENT_SECRET }}
+          WXT_ANILIST_CLIENT_ID_FIREFOX: ${{ secrets.WXT_ANILIST_CLIENT_ID_FIREFOX }}
+          WXT_ANILIST_CLIENT_SECRET_FIREFOX: ${{ secrets.WXT_ANILIST_CLIENT_SECRET_FIREFOX }}
+        run: |
+          pnpm zip
+          pnpm zip:firefox
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true # so the notes can be edited before anyone sees the release
+          generate_release_notes: true
+          files: packages/extension/.output/*.zip

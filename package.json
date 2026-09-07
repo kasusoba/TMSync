@@ -15,11 +15,14 @@
     "dev:firefox": "pnpm -F @tmsync/extension dev:firefox",
     "build": "pnpm -F @tmsync/extension build",
     "build:firefox": "pnpm -F @tmsync/extension build:firefox",
+    "zip": "pnpm -F @tmsync/extension zip",
+    "zip:firefox": "pnpm -F @tmsync/extension zip:firefox",
     "prepare": "git config core.hooksPath .githooks 2>/dev/null || true; pnpm -F @tmsync/extension exec wxt prepare",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "lint": "biome check .",
-    "format": "biome format --write ."
+    "format": "biome format --write .",
+    "release": "node scripts/release.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

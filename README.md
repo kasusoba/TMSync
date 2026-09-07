@@ -124,6 +124,33 @@ pnpm lint               # biome (format + lint)
 pnpm format             # biome format --write
 ```
 
+Not sure whether the build you loaded is the one you just made? Every content
+script stamps its build time on the page, so in the page console:
+
+```js
+document.documentElement.dataset.tmsyncBuild
+```
+
+### Releasing
+
+Maintainers only.
+
+```bash
+pnpm release minor      # or major / patch / an explicit 1.10.0
+git push --follow-tags
+```
+
+`pnpm release` bumps `packages/extension/package.json`, commits it as
+`chore(release): vX.Y.Z`, and tags that commit. Pushing the tag runs
+`.github/workflows/release.yml`, which re-runs the CI checks, builds the Chrome,
+Firefox, and sources zips, and attaches them to a **draft** GitHub Release for you
+to write notes on and publish. Uploading to the Chrome Web Store and AMO stays
+manual.
+
+The workflow needs the `WXT_*` OAuth ids and secrets as repository secrets (see
+`packages/extension/.env.example`); it fails early rather than shipping a build
+that cannot sign in.
+
 ### Status
 
 What works today:
