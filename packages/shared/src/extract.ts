@@ -193,8 +193,13 @@ function readJsonLd(field: Field, document: Document): string | null {
   return null;
 }
 
-/** Parse every <script type="application/ld+json">, flattening arrays + @graph. */
-function collectJsonLd(document: Document): unknown[] {
+/**
+ * Parse every <script type="application/ld+json">, flattening arrays + @graph.
+ * Exported for the element picker, which lists the page's JSON-LD paths as
+ * pickable values. Sharing this flattening is what guarantees a path the picker
+ * offers is a path the engine can read back.
+ */
+export function collectJsonLd(document: Document): unknown[] {
   const out: unknown[] = [];
   const scripts = document.querySelectorAll('script[type="application/ld+json"]');
   for (const script of Array.from(scripts)) {
