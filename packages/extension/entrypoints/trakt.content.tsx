@@ -1,3 +1,4 @@
+import { stampBuild } from "@/lib/diagnostics/build-stamp";
 import { quickLinks } from "@/lib/storage";
 import { type QuickLinkItem, mountQuickLinks } from "@/lib/ui/quicklinks";
 import { sendMessage } from "@/messaging";
@@ -14,6 +15,8 @@ export default defineContentScript({
   matches: ["*://trakt.tv/*", "*://www.trakt.tv/*", "*://app.trakt.tv/*"],
   cssInjectionMode: "ui",
   async main(ctx) {
+    stampBuild();
+
     // Only Trakt-tracker quick links inject on Trakt pages (AniList ones show on
     // anilist.co — see anilist.content.tsx). Undefined tracker defaults to trakt.
     const sites = (await quickLinks.getValue()).filter(

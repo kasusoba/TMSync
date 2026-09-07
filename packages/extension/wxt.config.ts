@@ -110,5 +110,13 @@ export default defineConfig({
   },
   vite: () => ({
     plugins: [tailwindcss(), preact()],
+    define: {
+      // Build stamp, exposed on the page as `<html data-tmsync-build>`. A stale
+      // unpacked folder (or a store install shadowing it, both share `key` above
+      // so they share an id) injects OLD code while a rebuild silently changes
+      // nothing. This makes "which build is actually running?" a one-line check.
+      // See lib/diagnostics/build-stamp.ts.
+      __TMSYNC_BUILD__: JSON.stringify(new Date().toISOString()),
+    },
   }),
 });
