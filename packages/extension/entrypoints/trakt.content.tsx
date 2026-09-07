@@ -39,6 +39,30 @@ export default defineContentScript({
       for (const m of live) m.update();
     };
 
+    // Readiness gate for a client-side navigation to ANOTHER title: the URL flips
+    // before SvelteKit re-renders the summary, so for a moment the page still
+    // shows the PREVIOUS title and IMDb id, and links built then would pair the
+    // new slug with the old ids. `shownTitle` is what the header said for the page
+    // we last painted, so "still the stale title" (or none yet) means not ready:
+    // show placeholder chips until it turns over, bounded by a deadline so a page
+    // that never renders a header still gets whatever links can be built.
+    //
+    // Armed on a PATH change only. A query-only navigation (opening a drawer,
+    // stepping to the next episode) keeps the same header text, so gating on it
+    // would freeze those drawers in the placeholder state for the whole deadline.
+    let shownTitle: string | null = null;
+    let staleTitle: string | null = null;
+    let staleUntil = 0;
+    const armStaleGate = () => {
+      staleTitle = shownTitle;
+      staleUntil = Date.now() + 3000;
+    };
+    const loading = () => {
+      if (!isApp || Date.now() >= staleUntil) return false;
+      const now = appHeaderTitle();
+      return now === "" || now === staleTitle;
+    };
+
     const getItems = (): QuickLinkItem[] => {
       const media = parse();
       if (!media) return [];
@@ -70,22 +94,30 @@ export default defineContentScript({
       return items;
     };
 
+    /** Stable string form of what a paint would show, so we repaint only on a real change. */
+    const paintKey = () =>
+      loading()
+        ? "loading"
+        : getItems()
+            .map((i) => `${i.name}|${i.direct ?? ""}|${i.search ?? ""}`)
+            .join("\n");
+
     if (!isApp) {
       await mountQuickLinks(ctx, getItems, { anchor: "ul.external", append: "after" });
       return;
     }
 
-    // The show/season page's own "Where to Watch" section: renders once and
-    // stays put for the life of the page, so autoMount's normal "wait for it to
-    // appear, then stay mounted" behaviour is all that's needed here.
-    live.add(
-      await mountQuickLinks(ctx, getItems, {
-        anchor: whereToWatchAnchor,
-        append: "after",
-        label: null,
-        class: "my-3",
-      }),
-    );
+    // The show/movie page's own "Where to Watch" section. autoMount brings the
+    // block up as soon as that section renders; keeping it up across client-side
+    // navigation is the watchdog's job (see the poll at the end of main()).
+    const mainUi = await mountQuickLinks(ctx, getItems, {
+      anchor: whereToWatchAnchor,
+      append: "after",
+      label: null,
+      class: "my-3",
+      loading,
+    });
+    live.add(mainUi);
 
     // The season-browsing drawer (`?view=seasons`) and the per-episode drawer
     // (`?view=episode`) are a different story: Svelte tears down and rebuilds
@@ -101,59 +133,100 @@ export default defineContentScript({
     // and drives mount/unmount entirely ourselves off the `view` param instead.
     let drawerUi: Awaited<ReturnType<typeof mountQuickLinks>> | undefined;
     let drawerKind: "episode" | "seasons" | null = null;
+    let drawerBusy = false;
+    const drawerAnchor = (kind: "episode" | "seasons" | null) =>
+      kind === "episode" ? episodeDrawerAnchor : kind === "seasons" ? seasonsDrawerAnchor : null;
     const syncDrawer = async () => {
       const view = new URLSearchParams(location.search).get("view");
       const kind = view === "episode" ? "episode" : view === "seasons" ? "seasons" : null;
-      if (kind === drawerKind) return;
-      const anchor =
-        kind === "episode" ? episodeDrawerAnchor : kind === "seasons" ? seasonsDrawerAnchor : null;
+      if (kind === drawerKind || drawerBusy) return;
+      const anchor = drawerAnchor(kind);
       // `view` flips via pushState slightly BEFORE Svelte finishes rendering the
       // drawer's DOM — if the anchor isn't there yet, leave `drawerKind` as-is so
-      // the next 500ms poll tick retries, instead of giving up on this drawer.
+      // a later poll tick retries, instead of giving up on this drawer.
       if (anchor && !anchor()) return;
-      if (drawerUi) {
-        drawerUi.remove();
-        live.delete(drawerUi);
-        drawerUi = undefined;
+      drawerBusy = true;
+      try {
+        if (drawerUi) {
+          drawerUi.remove();
+          live.delete(drawerUi);
+          drawerUi = undefined;
+        }
+        drawerKind = kind;
+        if (!anchor) return;
+        drawerUi = await mountQuickLinks(ctx, getItems, {
+          anchor,
+          append: "after",
+          label: null,
+          class: "my-3",
+          auto: false,
+          loading,
+        });
+        live.add(drawerUi);
+      } finally {
+        drawerBusy = false;
       }
-      drawerKind = kind;
-      if (!anchor) return;
-      drawerUi = await mountQuickLinks(ctx, getItems, {
-        anchor,
-        append: "after",
-        label: null,
-        class: "my-3",
-        auto: false,
-      });
-      live.add(drawerUi);
     };
     await syncDrawer();
 
-    // Season/episode changing WITHIN an already-open drawer (prev/next) updates
-    // `location.search` via pushState without the `view` param changing, so
-    // syncDrawer() alone wouldn't notice — poll and repaint every mounted
-    // widget too, mirroring anilist.content.tsx's SPA-nav polling (same reason:
-    // history patching in the page's world doesn't reliably reach an isolated
-    // content script's wxt:locationchange).
-    let lastQuery = location.search;
+    // One watchdog for every kind of client-side navigation. It polls `location`
+    // rather than listening for `wxt:locationchange`, mirroring
+    // anilist.content.tsx (history patching in the page's world doesn't reliably
+    // reach an isolated content script). Three things need it:
+    //
+    //  1. The DRAWERS: mount/unmount them, and re-read the media after a
+    //     season/episode step WITHIN an open one (prev/next pushes a new
+    //     `location.search` without changing `view`, which syncDrawer alone
+    //     would not notice).
+    //  2. REPAINT once late page data lands. Nothing about the new page is in
+    //     the DOM at the instant the URL flips: the title and the IMDb id come
+    //     with the render, the TMDB id from our own API call. Repainting when
+    //     the built links change picks all of that up, and is also what ends
+    //     the readiness gate above.
+    //  3. RE-MOUNT a host the page discarded, as a safety net. autoMount only
+    //     watches the ANCHOR, so a re-render that drops our node while keeping
+    //     the anchor leaves nothing to bring it back (the same failure
+    //     anilist.content.tsx guards against).
+    let lastPath = location.pathname;
+    let lastPaint = paintKey();
     ctx.setInterval(() => {
-      if (location.search === lastQuery) return;
-      lastQuery = location.search;
+      if (location.pathname !== lastPath) {
+        lastPath = location.pathname;
+        armStaleGate();
+      }
+      // Cheap no-op while the open drawer already matches `view`; retries by
+      // itself on the tick after one whose DOM had not rendered yet.
       void syncDrawer();
+      // A torn-down host: put it back as soon as its anchor is there again.
+      if (!mainUi.attached() && whereToWatchAnchor()) mainUi.mount();
+      if (drawerUi && !drawerUi.attached() && drawerAnchor(drawerKind)?.()) drawerUi.mount();
+      if (!loading()) shownTitle = appHeaderTitle() || shownTitle;
+      const now = paintKey();
+      if (now === lastPaint) return;
+      lastPaint = now;
       repaintAll();
-    }, 500);
+    }, 250);
   },
 });
 
 /**
- * Resolve the "Where to Watch" section element on app.trakt.tv (its title is
- * text, not a stable class, so we match it). Returns null until the section is
- * present — so autoMount WAITS for it rather than dropping our row at the bottom
- * of the column (below Sentiment).
+ * Resolve the "Where to Watch" section element on app.trakt.tv. Returns null
+ * until the section is present, so autoMount WAITS for it rather than dropping
+ * our row at the bottom of the column (below Sentiment).
+ *
+ * The list's own wrapper class (`.trakt-where-to-watch-list`) is what we match,
+ * NOT the "Where to Watch" heading text. On a client-side navigation the wrapper
+ * and its `<section>` are rebuilt straight away while the heading inside them
+ * stays unrendered for a long time (often indefinitely, verified on app.trakt.tv
+ * 2026-09), so a heading-text match found nothing and the block only ever
+ * appeared after a full reload. The heading walk is kept as a fallback in case
+ * the wrapper class is renamed.
  */
 function whereToWatchAnchor(): Element | null {
   const root = document.querySelector(".trakt-summary-contextual-content");
   if (!root) return null;
+  const list = root.querySelector(".trakt-where-to-watch-list");
+  if (list) return list.querySelector("section") ?? list;
   for (const title of root.querySelectorAll(".shadow-list-title")) {
     if (title.textContent?.trim().toLowerCase() === "where to watch") {
       const section = title.closest("section");
@@ -235,6 +308,15 @@ function parseTraktPage(): TraktPageMedia | null {
 // --- new app.trakt.tv (SvelteKit) ---
 
 /**
+ * The title as app.trakt.tv's own summary header renders it, "" until it does.
+ * Doubles as the "has the page caught up with the URL?" signal: on a client-side
+ * navigation the URL is live while this still names the PREVIOUS title.
+ */
+function appHeaderTitle(): string {
+  return document.querySelector('[data-testid="summary-media-title"]')?.textContent?.trim() ?? "";
+}
+
+/**
  * Map the current app.trakt.tv page to outbound media. The new app exposes the
  * slug (URL), the title, and an IMDB id (ratings link), plus season/episode from
  * the path/query — but no TMDB id anywhere in its DOM (the classic site's
@@ -251,9 +333,7 @@ function parseAppTraktPage(): TraktPageMedia | null {
   const path = location.pathname;
   const params = new URLSearchParams(location.search);
   const title =
-    document.querySelector('[data-testid="summary-media-title"]')?.textContent?.trim() ||
-    document.querySelector("main h1")?.textContent?.trim() ||
-    undefined;
+    appHeaderTitle() || document.querySelector("main h1")?.textContent?.trim() || undefined;
   const imdb = document
     .querySelector<HTMLAnchorElement>('a[href*="imdb.com/title/"]')
     ?.href.match(/(tt\d+)/)?.[1];

@@ -78,9 +78,18 @@ export async function mountQuickLinks(
       mounted = container;
       paint();
     },
-    onRemove: (container) => {
+    // Unmount Preact from the container we actually rendered into. WXT passes
+    // this callback the RETURN VALUE of onMount (undefined here), NOT the
+    // container, so reading the argument silently skipped the unmount. WXT then
+    // stripped the container's DOM children itself while Preact still held the
+    // vdom for them, and the next mount's render() diffed against that stale
+    // tree, decided every node was already in place and appended nothing: the
+    // shadow root came up EMPTY. That is why a re-mounted block stayed invisible
+    // until a full reload (each drawer builds a fresh UI, so drawers, which are
+    // mounted once and thrown away, never hit it).
+    onRemove: () => {
+      if (mounted) render(null, mounted);
       mounted = null;
-      container && render(null, container);
     },
   });
   if (opts.auto === false) ui.mount();
