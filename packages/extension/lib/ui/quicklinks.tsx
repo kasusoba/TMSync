@@ -39,6 +39,11 @@ export async function mountQuickLinks(
      * pass `auto: false` and manage removal itself via the returned `remove()`.
      */
     auto?: boolean;
+    /**
+     * The host page hasn't produced the media details yet, so render placeholder
+     * chips instead of the (necessarily half-built) links. Re-read on every paint.
+     */
+    loading?: () => boolean;
   } = {},
 ) {
   // Captured so `update()` can re-paint with fresh items — an SPA's data can land
@@ -48,7 +53,13 @@ export async function mountQuickLinks(
   const paint = () => {
     if (!mounted) return;
     render(
-      <QuickLinksView variant="dark" items={getItems()} label={opts.label} class={opts.class} />,
+      <QuickLinksView
+        variant="dark"
+        items={getItems()}
+        loading={opts.loading?.() ?? false}
+        label={opts.label}
+        class={opts.class}
+      />,
       mounted,
     );
   };
@@ -76,5 +87,15 @@ export async function mountQuickLinks(
   else ui.autoMount();
   // Returned so SPA hosts (AniList) can remove + re-mount on client-side nav, and
   // re-paint (`update`) as late-loading page data fills the links in.
-  return { remove: () => ui.remove(), update: paint };
+  //
+  // `attached` + `mount` exist because WXT's `autoMount` only watches the ANCHOR:
+  // if the site's framework keeps the anchor but re-renders its children (Vue does
+  // this on AniList once the anime query resolves), our host is dropped and nothing
+  // brings it back. The caller polls `attached()` and re-`mount()`s.
+  return {
+    remove: () => ui.remove(),
+    update: paint,
+    mount: () => ui.mount(),
+    attached: () => ui.shadowHost.isConnected,
+  };
 }

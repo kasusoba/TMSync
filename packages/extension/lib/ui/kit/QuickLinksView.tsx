@@ -19,11 +19,20 @@ export interface QuickLinkItem {
 export function QuickLinksView({
   variant,
   items,
+  loading = false,
   label = "Watch on",
   class: cls,
 }: {
   variant: Variant;
   items: QuickLinkItem[];
+  /**
+   * The host page hasn't produced the media details yet, so the links can't be
+   * built. Shows placeholder chips instead of a half-built list: on a tracker's
+   * client-side navigation the id is known from the URL long before the title is
+   * on the page, so painting `items` right away shows the id-only links and then
+   * rearranges the block a beat later.
+   */
+  loading?: boolean;
   label?: string | null;
   /** Extra spacing/layout classes for the host page (e.g. margins so it doesn't
    * touch the page's own elements). */
@@ -38,41 +47,47 @@ export function QuickLinksView({
         </div>
       )}
       <div class="flex flex-wrap gap-1.5">
-        {items.map((i) => {
-          const primary = i.direct ?? i.search;
-          if (!primary) return null;
-          return (
-            <div class="inline-flex items-stretch gap-px" key={i.name}>
-              <a
-                href={primary}
-                target="_blank"
-                rel="noopener noreferrer"
-                class={clsx(
-                  "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-medium transition-colors",
-                  t.ghost,
-                  i.direct && i.search ? "rounded-r-none" : "",
-                )}
-              >
-                {i.name}
-                {!i.direct && <Icon name="search" class={clsx("text-[12px]", t.faint)} />}
-              </a>
-              {i.direct && i.search && (
+        {loading &&
+          // Widths vary so it reads as "sites are coming", not as one grey bar.
+          ["w-20", "w-16", "w-24"].map((w) => (
+            <div key={w} class={clsx("h-[30px] animate-pulse rounded-lg", w, t.card)} />
+          ))}
+        {!loading &&
+          items.map((i) => {
+            const primary = i.direct ?? i.search;
+            if (!primary) return null;
+            return (
+              <div class="inline-flex items-stretch gap-px" key={i.name}>
                 <a
-                  href={i.search}
+                  href={primary}
                   target="_blank"
                   rel="noopener noreferrer"
-                  title={`Search ${i.name}`}
                   class={clsx(
-                    "grid w-8 place-items-center rounded-lg rounded-l-none transition-colors",
+                    "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-medium transition-colors",
                     t.ghost,
+                    i.direct && i.search ? "rounded-r-none" : "",
                   )}
                 >
-                  <Icon name="search" class="text-[13px]" />
+                  {i.name}
+                  {!i.direct && <Icon name="search" class={clsx("text-[12px]", t.faint)} />}
                 </a>
-              )}
-            </div>
-          );
-        })}
+                {i.direct && i.search && (
+                  <a
+                    href={i.search}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={`Search ${i.name}`}
+                    class={clsx(
+                      "grid w-8 place-items-center rounded-lg rounded-l-none transition-colors",
+                      t.ghost,
+                    )}
+                  >
+                    <Icon name="search" class="text-[13px]" />
+                  </a>
+                )}
+              </div>
+            );
+          })}
       </div>
     </div>
   );

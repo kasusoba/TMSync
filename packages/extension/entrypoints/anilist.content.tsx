@@ -1,3 +1,4 @@
+import { stampBuild } from "@/lib/diagnostics/build-stamp";
 import { quickLinkSlugs, quickLinks } from "@/lib/storage";
 import { type QuickLinkItem, mountQuickLinks } from "@/lib/ui/quicklinks";
 import { type AniListPageMedia, buildAniListSiteLinks } from "@tmsync/shared";
@@ -32,6 +33,8 @@ export default defineContentScript({
   matches: ["*://anilist.co/*", "*://www.anilist.co/*"],
   cssInjectionMode: "ui",
   async main(ctx) {
+    stampBuild();
+
     const sites = (await quickLinks.getValue()).filter((s) => s.enabled && s.tracker === "anilist");
     if (sites.length === 0) return; // nothing to show
 
@@ -61,13 +64,32 @@ export default defineContentScript({
     // the page. `gen` discards a mount whose navigation was superseded mid-await.
     let ui: Awaited<ReturnType<typeof mountQuickLinks>> | undefined;
     let gen = 0;
+    // Titles of the anime we last mounted for, so a client-side nav can tell "the
+    // sidebar still shows the PREVIOUS anime" apart from "this anime has rendered".
+    let shownTitles: string | null = null;
     const sync = async () => {
       const my = ++gen;
       ui?.remove();
       ui = undefined;
       if (animeId() === null) return; // not an anime page
       crosswalk = await quickLinkSlugs.getValue(); // pick up slugs learned since last page
+
+      // Show the block right away, but as placeholder chips until this anime's own
+      // titles are on the page. The id is live in the URL immediately while the
+      // sidebar still holds the PREVIOUS anime, so painting the links at that point
+      // shows the id-only ones and then rearranges the block a beat later. `stale`
+      // is what the sidebar said for the anime we last mounted for, which is how we
+      // tell "not rendered yet" from "rendered". Bounded, so a page that never
+      // produces a title still ends up showing whatever links we could build.
+      const stale = shownTitles;
+      const deadline = Date.now() + 3000;
+      const loading = () => {
+        const now = sidebarTitles();
+        return (now === "" || now === stale) && Date.now() < deadline;
+      };
+
       const created = await mountQuickLinks(ctx, getItems, {
+        loading,
         // Top of the left info column (above the rankings), so it's visible without
         // scrolling to the "External & Streaming links" block near the bottom. mb-4
         // keeps it off the rankings element below.
@@ -78,16 +100,33 @@ export default defineContentScript({
       if (my !== gen) return created.remove(); // navigated again while mounting
       ui = created;
 
-      // The URL/id changes BEFORE AniList's Vue re-renders the sidebar `.data-set`
-      // rows we read the title from — so the first paint often has no links (just the
-      // "Watch on" header). Re-paint as the sidebar fills in, until links appear or a
-      // few seconds pass. Fixes the "only shows the header until I refresh" SPA bug.
-      let tries = 0;
+      // Keep the panel in sync with a page that is still assembling itself.
+      //
+      // Two things outlive the first paint on client-side navigation:
+      //  1. The links themselves. `loading` above holds the placeholder until the
+      //     sidebar rows land; this is what swaps them for the real links, and what
+      //     picks up any later re-render of those rows.
+      //  2. Our host element. When AniList's render lands it can discard the node we
+      //     injected, and WXT's `autoMount` only watches the ANCHOR (`.sidebar`),
+      //     which survives, so nothing re-mounts us.
+      //
+      // So: re-mount when the host is gone, and re-paint whenever the computed links
+      // change. Both checks are a handful of DOM reads, cheap enough to keep running
+      // for the life of the page (an AniList tab stays open for a long time, and the
+      // sidebar can re-render at any point).
+      const paintKey = () => (loading() ? "loading" : `links:${fingerprint(getItems())}`);
+      let last = paintKey();
       const timer = ctx.setInterval(() => {
         if (my !== gen) return clearInterval(timer); // superseded by a newer nav
+        if (!created.attached()) created.mount();
+        // Once the page has rendered, remember its titles: that's what the NEXT
+        // navigation compares against to know the sidebar hasn't turned over yet.
+        if (!loading()) shownTitles = sidebarTitles() || shownTitles;
+        const now = paintKey();
+        if (now === last) return;
+        last = now;
         created.update();
-        if (getItems().length > 0 || ++tries > 20) clearInterval(timer);
-      }, 300);
+      }, 200);
     };
 
     await sync();
@@ -101,6 +140,30 @@ export default defineContentScript({
     }, 500);
   },
 });
+
+/**
+ * The titles as they appear in AniList's OWN sidebar rows, empty until it renders
+ * them. This is deliberately narrower than `parseAniListPage().title`, which falls
+ * back to the page heading and `document.title`: those two are live almost
+ * immediately on a client-side navigation, while `{romaji}` (which most site search
+ * templates use) comes only from these rows. Treating a heading-derived title as
+ * "ready" is what made the panel paint its id-only links first and then rearrange.
+ *
+ * Doubles as the "has the sidebar caught up with the URL?" signal: the anime id
+ * changes before Vue swaps these rows, so during that window they still describe
+ * the previous anime.
+ */
+function sidebarTitles(): string {
+  const data = readDataSets();
+  const english = data.English ?? "";
+  const romaji = data.Romaji ?? "";
+  return english === "" && romaji === "" ? "" : `${english}|${romaji}`;
+}
+
+/** Stable string form of the built links, so we only re-paint on a real change. */
+function fingerprint(items: QuickLinkItem[]): string {
+  return items.map((i) => `${i.name}|${i.direct ?? ""}|${i.search ?? ""}`).join("\n");
+}
 
 /** Map the data rows in AniList's sidebar (`.data-set` → type/value) to a lookup. */
 function readDataSets(): Record<string, string> {

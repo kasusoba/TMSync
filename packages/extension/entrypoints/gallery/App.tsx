@@ -659,6 +659,9 @@ export function App() {
               ]}
             />
           </Tile>
+          <Tile label="Loading (page hasn't produced the title yet)" t={t}>
+            <QuickLinksView variant={variant} items={[]} loading />
+          </Tile>
         </Group>
 
         {/* OPTIONS */}
