@@ -21,7 +21,16 @@ import { z } from "zod";
  */
 export const SCHEMA_VERSION = 3;
 
-export const Transform = z.enum(["trim", "lowercase", "uppercase", "toInt", "collapseSpaces"]);
+export const Transform = z.enum([
+  "trim",
+  "lowercase",
+  "uppercase",
+  "toInt",
+  "collapseSpaces",
+  // v3.1: turns a URL slug into a title ("breaking-bad" → "breaking bad"), so the
+  // picker can take a title from a URL/path segment and still resolve on a tracker.
+  "deslugify",
+]);
 export type Transform = z.infer<typeof Transform>;
 
 /**

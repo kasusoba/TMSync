@@ -25,7 +25,16 @@ describe("applyTransforms", () => {
     expect(applyTransforms("none here", ["toInt"])).toBe("");
   });
 
+  it("deslugify turns a URL slug into spaced words", () => {
+    expect(applyTransforms("breaking-bad", ["deslugify"])).toBe("breaking bad");
+    expect(applyTransforms("sousou_no_frieren", ["deslugify"])).toBe("sousou no frieren");
+    expect(applyTransforms("spider--man", ["deslugify"])).toBe("spider man");
+  });
+
   it("applies transforms left to right", () => {
     expect(applyTransforms("  S03  ", ["trim", "toInt"])).toBe("3");
+    expect(applyTransforms(" the-matrix ", ["trim", "deslugify", "collapseSpaces"])).toBe(
+      "the matrix",
+    );
   });
 });

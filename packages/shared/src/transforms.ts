@@ -15,6 +15,11 @@ function applyOne(value: string, transform: Transform): string {
       return value.toUpperCase();
     case "collapseSpaces":
       return value.replace(/\s+/g, " ").trim();
+    case "deslugify":
+      // Hyphen/underscore separated slug → spaced words. Applied only where the
+      // picker saw a slug-shaped value, so a real hyphen ("Spider-Man") is never
+      // broken up by accident.
+      return value.replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
     case "toInt": {
       const match = value.match(/-?\d+/);
       return match ? String(Number.parseInt(match[0], 10)) : "";
