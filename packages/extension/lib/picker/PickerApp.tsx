@@ -455,7 +455,9 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
           }
           onPick={(key) => {
             setDomPick(null); // a fresh pick supersedes a pending "which number?"
-            setPicking(key);
+            // Pressing the armed field's own Pick again cancels, like Esc.
+            setPicking((cur) => (cur === key ? null : key));
+            setHighlight(null);
           }}
           onPickChip={selectChip}
           onPickDomNumber={selectDomNumber}
@@ -488,7 +490,8 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
           onManualChange={(v) => setDraft((d) => ({ ...d, manual: v }))}
           onPickManualKey={() => {
             setDomPick(null);
-            setPicking("manualKey");
+            setPicking((cur) => (cur === "manualKey" ? null : "manualKey"));
+            setHighlight(null);
           }}
           onClearManualKey={() => setDraft((d) => ({ ...d, manualKey: undefined }))}
         />
