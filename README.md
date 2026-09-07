@@ -151,6 +151,19 @@ The workflow needs the `WXT_*` OAuth ids and secrets as repository secrets (see
 `packages/extension/.env.example`); it fails early rather than shipping a build
 that cannot sign in.
 
+The version in `packages/extension/package.json` is the version being *prepared*;
+the tag is the decision to *ship* it. So tag when you actually want a release, not
+every time something lands. To call one off before it goes out, delete the draft
+and its tag (`gh release delete vX.Y.Z --yes --cleanup-tag`), keep working on the
+same prepared version, and tag the final commit when you are ready:
+
+```bash
+git tag -a vX.Y.Z -m vX.Y.Z && git push origin vX.Y.Z
+```
+
+Only ever delete a tag whose release was never published. Once it is out, supersede
+it with a new version instead.
+
 ### Status
 
 What works today:
