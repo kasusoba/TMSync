@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { Animap, type AnimapRow, defaultAnimap } from "./index";
+import published from "../../../../recipes/anime-map.json";
+import { Animap, type AnimapRow, EMPTY_ANIMAP } from "./index";
+import { parseAnimeMap } from "./load";
 
 // Synthetic fixture mirroring the tricky Attack on Titan shape: TMDB tv 1429 season
 // 3 is split into two AniList entries by an offset; season 1/2 are 1:1.
@@ -108,20 +110,43 @@ describe("animap reverse (AniList-native site → TMDB/Trakt)", () => {
   });
 });
 
-describe("bundled seed (real Fribb data)", () => {
-  it("resolves the Attack on Titan S3 split from the shipped seed", () => {
-    // Anchors against real data; regenerating the seed shouldn't move these.
-    expect(defaultAnimap.forward(1429, "tv", 3, 15)).toEqual({
+describe("the published crosswalk (real Fribb data)", () => {
+  // recipes/anime-map.json is what the CDN serves. Importing it here anchors the
+  // resolver against real data WITHOUT bundling it into the extension (the build
+  // only sees what entrypoints import, and this is a test-only import).
+  const { rows } = parseAnimeMap(published);
+  const map = new Animap(rows);
+
+  it("parses every published row", () => {
+    expect(rows.length).toBe((published as { rows: unknown[] }).rows.length);
+    expect(rows.length).toBeGreaterThan(5000);
+  });
+
+  it("carries no non-numeric tmdb id (movie ids arrive as arrays upstream)", () => {
+    expect(rows.every((r) => typeof r.t === "number")).toBe(true);
+  });
+
+  it("resolves the Attack on Titan S3 split", () => {
+    // Anchors against real data; regenerating the map shouldn't move these.
+    expect(map.forward(1429, "tv", 3, 15)).toEqual({
       kind: "resolved",
       value: { anilistId: 104578, localEpisode: 3 },
     });
   });
 
   it("reverse-resolves a known AniList id to its TMDB show", () => {
-    const r = defaultAnimap.reverse(16498, 1); // AoT S1 ep1
+    const r = map.reverse(16498, 1); // AoT S1 ep1
     expect(r).toEqual({
       kind: "resolved",
       value: { tmdbId: 1429, tmdbKind: "tv", tmdbSeason: 1, tmdbEpisode: 1 },
     });
+  });
+});
+
+describe("an unloaded crosswalk", () => {
+  it("misses everything, so a derived tracker degrades to native-only", () => {
+    expect(EMPTY_ANIMAP.size).toBe(0);
+    expect(EMPTY_ANIMAP.forward(1429, "tv", 3, 15)).toEqual({ kind: "miss" });
+    expect(EMPTY_ANIMAP.reverse(16498, 1)).toEqual({ kind: "miss" });
   });
 });

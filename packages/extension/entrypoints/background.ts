@@ -1,4 +1,4 @@
-import { RECIPES } from "@/config";
+import { ANIME_MAP, RECIPES } from "@/config";
 import { confirmAniListRewatch, resolveAniListById } from "@/lib/anilist/adapter";
 import {
   connect as anilistConnect,
@@ -22,6 +22,8 @@ import {
   anilistUnrate,
 } from "@/lib/anilist/review";
 import { type AnimapOverrides, deriveMediaWith, forwardKey } from "@/lib/animap/derive";
+import type { Animap } from "@/lib/animap/index";
+import { loadAnimap, parseAnimeMap } from "@/lib/animap/load";
 import { bundledLinks } from "@/lib/recipes";
 import { statusDotColor } from "@/lib/scrobble/action-badge";
 import {
@@ -29,6 +31,7 @@ import {
   anilistCorrections,
   anilistResolutionCache,
   animapOverrides,
+  animeMap,
   corrections,
   customRecipes,
   enabledOrigins,
@@ -143,13 +146,20 @@ export default defineBackground(() => {
   // (the SW is ephemeral, so we can't hold a timer — constraint #4).
   void mergeLibraryLinks(bundledLinks);
   void fetchRemoteRecipes();
+  // The anime-map crosswalk rides the same pattern (fetched, never bundled), on its
+  // own daily alarm. Upstream regenerates weekly.
+  void fetchAnimeMap();
   browser.alarms.create("tmsync-recipes", { periodInMinutes: 720 });
+  browser.alarms.create("tmsync-anime-map", { periodInMinutes: 1440 });
   browser.alarms.onAlarm.addListener((alarm) => {
     if (alarm.name === "tmsync-recipes") void fetchRemoteRecipes(true);
+    if (alarm.name === "tmsync-anime-map") void fetchAnimeMap(true);
   });
 
   onMessage("refreshRecipes", async () => {
-    const out = await fetchRemoteRecipes(true);
+    // One "Refresh" button, both CDN lists. Awaited so the options page reads a
+    // fresh anime-map cache right after this resolves.
+    const [out] = await Promise.all([fetchRemoteRecipes(true), fetchAnimeMap(true)]);
     return out;
   });
 
@@ -276,6 +286,7 @@ export default defineBackground(() => {
       enabled.filter((t) => t !== native),
       data,
       await animapOverrides.getValue(),
+      await loadAnimap(),
       !nativeEnabled,
     );
 
@@ -312,7 +323,12 @@ export default defineBackground(() => {
   onMessage("resolveAll", async ({ data }) => {
     const trackers = data.trackers?.length ? data.trackers : (["trakt"] as Tracker[]);
     try {
-      return await resolveAcross(data.media, trackers, await animapOverrides.getValue());
+      return await resolveAcross(
+        data.media,
+        trackers,
+        await animapOverrides.getValue(),
+        await loadAnimap(),
+      );
     } catch {
       return trackers.map((tracker) => ({ tracker, resolved: false, reason: "http" }));
     }
@@ -780,6 +796,7 @@ async function resolveAcross(
   media: ParsedMedia,
   trackers: Tracker[],
   overrides: AnimapOverrides,
+  animap: Animap,
 ): Promise<TrackerResolution[]> {
   const native = inferNativeTracker(media, trackers); // native must be an enabled tracker
   const nativeEnabled = trackers.includes(native);
@@ -812,12 +829,14 @@ async function resolveAcross(
       );
       continue;
     }
-    const d = deriveMediaWith(tk, media, nativeItem, overrides);
+    const d = deriveMediaWith(tk, media, nativeItem, overrides, animap);
     if (d.kind === "miss") {
       out.push(
         soloFallback
           ? await resolveDirect(tk)
-          : { tracker: tk, resolved: false, reason: "no_match" },
+          : // An empty crosswalk means the CDN copy hasn't landed yet, not that the
+            // item is unmapped, so say that instead of "not on this tracker".
+            { tracker: tk, resolved: false, reason: animap.size > 0 ? "no_match" : "map_loading" },
       );
       continue;
     }
@@ -847,6 +866,7 @@ async function recordDerivedTrackers(
   targets: Tracker[],
   data: ScrobbleRequest,
   overrides: AnimapOverrides,
+  animap: Animap,
   // True when NO enabled tracker speaks the page's numbering natively — i.e. the
   // crosswalk has no native partner to bridge FROM. Then a miss isn't "skip"; the
   // target resolves itself (its own id, else title) with the scraped episode.
@@ -882,7 +902,7 @@ async function recordDerivedTrackers(
   };
 
   for (const target of targets) {
-    const d = deriveMediaWith(target, data.media, nativeItem, overrides);
+    const d = deriveMediaWith(target, data.media, nativeItem, overrides, animap);
     if (d.kind === "miss") {
       // No crosswalk row. Standing alone (no enabled native anchor) ⇒ resolve this
       // tracker directly rather than give up — a mislabeled/unmapped id degrades to
@@ -896,7 +916,12 @@ async function recordDerivedTrackers(
           continue;
         }
       }
-      out.push({ tracker: target, ok: false, skipped: true, reason: "no_match" });
+      out.push({
+        tracker: target,
+        ok: false,
+        skipped: true,
+        reason: animap.size > 0 ? "no_match" : "map_loading",
+      });
       continue;
     }
     if (d.kind === "ambiguous") {
@@ -1080,6 +1105,45 @@ async function fetchRemoteRecipes(
     return { ok: true, count: library.recipes.length };
   } catch (e) {
     return { ok: false, count: 0, error: errMsg(e) };
+  }
+}
+
+/**
+ * Fetch + cache the anime-map crosswalk from the CDN (multi-track). Same shape as
+ * the recipe fetch: TTL-gated, `If-None-Match` conditional, validated before it
+ * lands, best-effort (a failure leaves the previous copy in use). It is NOT
+ * bundled, so until the first fetch succeeds the map is empty and every derived
+ * lookup misses, so a derived tracker simply degrades to native-only.
+ */
+async function fetchAnimeMap(
+  force = false,
+): Promise<{ ok: boolean; rows: number; error?: string }> {
+  try {
+    const current = await animeMap.getValue();
+    if (!force && current && Date.now() - current.fetchedAt < ANIME_MAP.refreshMs) {
+      return { ok: true, rows: current.rows.length };
+    }
+    const res = await fetch(
+      ANIME_MAP.url,
+      current?.etag ? { headers: { "If-None-Match": current.etag } } : undefined,
+    );
+    if (res.status === 304 && current) {
+      await animeMap.setValue({ ...current, fetchedAt: Date.now() });
+      return { ok: true, rows: current.rows.length };
+    }
+    if (!res.ok) return { ok: false, rows: current?.rows.length ?? 0, error: `HTTP ${res.status}` };
+    const { rows, generatedAt } = parseAnimeMap(await res.json());
+    // An empty/garbage list would silently disable multi-track, so keep the old copy.
+    if (!rows.length) return { ok: false, rows: current?.rows.length ?? 0, error: "empty list" };
+    await animeMap.setValue({
+      rows,
+      fetchedAt: Date.now(),
+      etag: res.headers.get("ETag") ?? undefined,
+      generatedAt,
+    });
+    return { ok: true, rows: rows.length };
+  } catch (e) {
+    return { ok: false, rows: 0, error: errMsg(e) };
   }
 }
 

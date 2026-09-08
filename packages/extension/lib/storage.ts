@@ -3,6 +3,7 @@ import type { LinkTemplates, ParsedMedia, Recipe } from "@tmsync/shared";
 import { storage } from "wxt/utils/storage";
 import type { AniListIdentity, AniListTokens } from "./anilist/types";
 import type { AnimapOverrides } from "./animap/derive";
+import type { AnimapRow } from "./animap/index";
 import type { Tracker } from "./tracker/types";
 import type { ResolvedIdentity, TraktIds, TraktTokens } from "./trakt/types";
 
@@ -312,4 +313,21 @@ export const badgePrefs = storage.defineItem<BadgePrefs>("sync:badge_prefs", {
  */
 export const animapOverrides = storage.defineItem<AnimapOverrides>("local:animap_overrides", {
   fallback: { forward: {}, reverse: {} },
+});
+
+/**
+ * Cached copy of the TMDB<->AniList crosswalk fetched from the CDN (multi-track,
+ * docs/MULTI-TRACK.md). Not bundled: ~8k rows / ~300 KB would otherwise be inlined
+ * into the service-worker bundle and parsed on every wake, and a stale copy could
+ * only be fixed by an extension release. `etag` enables conditional (304) refetches,
+ * `generatedAt` is the upstream build date (shown in the options page).
+ */
+export interface AnimeMapCache {
+  rows: AnimapRow[];
+  fetchedAt: number;
+  etag?: string;
+  generatedAt?: string;
+}
+export const animeMap = storage.defineItem<AnimeMapCache | null>("local:anime_map", {
+  fallback: null,
 });

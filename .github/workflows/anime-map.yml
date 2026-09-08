@@ -1,0 +1,59 @@
+name: Refresh anime map
+
+# Rebuild recipes/anime-map.json from Fribb/anime-lists, which regenerates weekly.
+# The extension fetches this file from the CDN, so a merged refresh reaches every
+# user without a release. It opens a PR rather than pushing, so an upstream
+# breakage is caught before it ships.
+#
+# The branch is FIXED (`anime-map/refresh`), so a week where the last PR is still
+# open force-pushes the newer map onto it and reuses the same PR. Skipping a few
+# weeks costs nothing: each run rebuilds from scratch, so one merge always brings
+# you fully current. There is never more than one of these PRs open.
+
+on:
+  schedule:
+    # Mondays 18:00 UTC. Upstream's bot commits around 16:10 UTC.
+    - cron: "0 18 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  BRANCH: anime-map/refresh
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - run: node scripts/build-anime-map.mjs
+
+      - name: Open or update the refresh PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- recipes/anime-map.json; then
+            echo "map unchanged, nothing to do"
+            exit 0
+          fi
+          rows=$(node -e "console.log(require('./recipes/anime-map.json').rows.length)")
+          body="Automated rebuild of \`recipes/anime-map.json\` from Fribb/anime-lists ($rows rows). Rebuilt from scratch each run, so merging this brings the crosswalk fully current."
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          git add recipes/anime-map.json
+          git commit -m "chore(animap): refresh the crosswalk from Fribb" -m "$rows rows. Built by scripts/build-anime-map.mjs."
+          git push -f origin "$BRANCH"
+          if [ -z "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[].number')" ]; then
+            gh pr create --head "$BRANCH" --title "chore(animap): refresh the crosswalk from Fribb" --body "$body"
+          else
+            gh pr edit "$BRANCH" --body "$body"
+          fi

@@ -1,6 +1,6 @@
 import type { ParsedMedia } from "@tmsync/shared";
 import type { TrackedItem, Tracker } from "../tracker/types";
-import { type Animap, defaultAnimap } from "./index";
+import type { Animap } from "./index";
 
 /**
  * The result of deriving a DERIVED tracker's media coordinates from a natively-
@@ -49,7 +49,7 @@ export function deriveMedia(
   target: Tracker,
   media: ParsedMedia,
   nativeItem: TrackedItem | null,
-  animap: Animap = defaultAnimap,
+  animap: Animap,
 ): DeriveOutcome {
   if (target === "anilist") {
     // TMDB-native → AniList (forward). Needs the scraped TMDB id.
@@ -109,7 +109,7 @@ export function deriveMediaWith(
   media: ParsedMedia,
   nativeItem: TrackedItem | null,
   overrides: AnimapOverrides,
-  animap: Animap = defaultAnimap,
+  animap: Animap,
 ): DeriveOutcome {
   if (target === "anilist") {
     const tmdbId = media.ids?.tmdb;
