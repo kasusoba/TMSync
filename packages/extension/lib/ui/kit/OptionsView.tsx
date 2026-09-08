@@ -164,7 +164,10 @@ const SECTIONS: { id: string; label: string; icon: IconName; count?: number }[] 
   { id: "corrections", label: "Corrections", icon: "check", count: CORRECTIONS.length },
 ];
 
-export function OptionsView({ variant }: { variant: Variant }) {
+export function OptionsView({
+  variant,
+  version = browser.runtime.getManifest().version,
+}: { variant: Variant; version?: string }) {
   const t = tokens(variant);
   const [active, setActive] = useState("sites");
   const [openLink, setOpenLink] = useState<string | null>(QUICK_LINKS[1]?.name ?? null);
@@ -179,7 +182,7 @@ export function OptionsView({ variant }: { variant: Variant }) {
 
       <div class="flex flex-1">
         {/* tab rail */}
-        <nav class={clsx("w-52 shrink-0 space-y-0.5 border-r p-3", t.divider)}>
+        <nav class={clsx("flex w-52 shrink-0 flex-col space-y-0.5 border-r p-3", t.divider)}>
           {SECTIONS.map((s) => (
             <button
               key={s.id}
@@ -204,6 +207,9 @@ export function OptionsView({ variant }: { variant: Variant }) {
               )}
             </button>
           ))}
+          <span class={clsx("mt-auto px-2.5 pt-3 text-[10px] tabular-nums", t.sub)}>
+            v{version}
+          </span>
         </nav>
 
         {/* active pane */}

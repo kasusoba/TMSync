@@ -320,7 +320,6 @@ export class SessionManager {
   /** Latest time the currently pending reconcile may be postponed to. */
   private reconcileDeadline = 0;
   private videoObserver: MutationObserver | null = null;
-  private metadataObserver: MutationObserver | null = null;
   /** Bounded count of synthetic player-nudges this session (reveal hover-gated bars). */
   private metadataNudges = 0;
   /** Until when the page counts as "settling" after a client-side navigation. The
@@ -376,7 +375,6 @@ export class SessionManager {
         if (this.awaitingMetadata || Date.now() < this.urlSettleUntil) this.scheduleReconcile();
       });
       metaObserver.observe(document.body, { childList: true, subtree: true, characterData: true });
-      this.metadataObserver = metaObserver;
       this.ctx.onInvalidated(() => metaObserver.disconnect());
     }
 
@@ -538,7 +536,7 @@ export class SessionManager {
     this.localMedia = media;
     // Still missing something this recipe scrapes (a title or an episode)? Keep
     // watching the DOM — a hover-gated player bar (e.g. aether.bar's `S1 - E5`)
-    // may render it a moment later, and the metadataObserver will re-extract.
+    // may render it a moment later, and the body observer will re-extract.
     this.awaitingMetadata =
       (recipe.extract?.title !== undefined && !media.title) ||
       ((recipe.extract?.episode !== undefined || recipe.extract?.season !== undefined) &&
@@ -964,7 +962,7 @@ export class SessionManager {
    * a synthetic pointer/mouse move so a hover-gated control bar (e.g. aether.bar's
    * `S1 - E5`) renders WITHOUT the user having to move their mouse. Bounded per
    * session; a re-extract follows shortly after. Some players ignore untrusted
-   * events — then the metadataObserver still catches it on the user's first hover.
+   * events — then the body observer still catches it on the user's first hover.
    */
   private maybeNudgeForMetadata(): void {
     if (!this.awaitingMetadata || this.metadataNudges >= 6) return;

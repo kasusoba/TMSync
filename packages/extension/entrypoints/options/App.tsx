@@ -824,7 +824,7 @@ export function App() {
       </header>
 
       <div class="flex flex-1">
-        <nav class={clsx("w-52 shrink-0 space-y-0.5 border-r p-3", t.divider)}>
+        <nav class={clsx("flex w-52 shrink-0 flex-col space-y-0.5 border-r p-3", t.divider)}>
           {SECTIONS.map((sec) => (
             <button
               key={sec.id}
@@ -856,6 +856,11 @@ export function App() {
               )}
             </button>
           ))}
+          {/* Which build is running. An unpacked extension is easy to leave stale,
+              and a bug report is worth little without the version. */}
+          <span class={clsx("mt-auto px-2.5 pt-3 text-[10px] tabular-nums", t.sub)}>
+            v{browser.runtime.getManifest().version}
+          </span>
         </nav>
 
         <main class="min-w-0 flex-1 p-6">
