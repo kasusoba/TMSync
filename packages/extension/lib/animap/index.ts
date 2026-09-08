@@ -1,8 +1,11 @@
 /**
  * The anime-map crosswalk (multi-track — docs/MULTI-TRACK.md). Resolves an item's
  * identity + episode ACROSS the two numbering systems, so an anime watch can be
- * written to BOTH trackers. Derived from Fribb/anime-lists; shipped as a trimmed
- * `anime-map.seed.json` (bundled seed; CDN refresh wired separately).
+ * written to BOTH trackers. Derived from Fribb/anime-lists (regenerated weekly
+ * upstream), trimmed by `scripts/build-anime-map.mjs` and fetched from the CDN
+ * like the recipe list, NOT bundled, so ~300 KB of rows never sit in the
+ * service-worker bundle and a refresh needs no extension release. Loading lives
+ * in `lib/animap/load.ts`; this file stays pure (rows in, lookups out).
  *
  * Two directions, used by whichever tracker the site does NOT natively speak:
  *   - forward  (general/TMDB-native site → AniList): tmdb+season+ep → anilist entry + local ep
@@ -15,8 +18,6 @@
  * Not to be confused with the `quickLinkSlugs` storage item, which is an unrelated
  * local `(host, AniList id) → slug` cache for anime quick links.
  */
-import seed from "./anime-map.seed.json";
-
 /** A trimmed crosswalk row. `s`/`o` are TV-only (TMDB season, episode offset). */
 export interface AnimapRow {
   /** AniList id. */
@@ -56,7 +57,13 @@ export class Animap {
   private readonly byTmdb = new Map<string, AnimapRow[]>();
   private readonly byAnilist = new Map<number, AnimapRow[]>();
 
+  /** How many rows are loaded. 0 = the CDN copy hasn't landed yet, so every
+   *  lookup misses. Callers use this to say "still downloading" rather than
+   *  report a genuine "not on this tracker". */
+  readonly size: number;
+
   constructor(rows: readonly AnimapRow[]) {
+    this.size = rows.length;
     for (const r of rows) {
       const key = `${r.k}:${r.t}`;
       const byT = this.byTmdb.get(key);
@@ -147,5 +154,6 @@ export class Animap {
   }
 }
 
-/** The bundled crosswalk. Rebuilt per SW wake (cheap, ~8k rows). */
-export const defaultAnimap = new Animap(seed as AnimapRow[]);
+/** An empty crosswalk: every lookup misses, so a derived tracker degrades to
+ *  native-only. Used before the first CDN fetch lands. */
+export const EMPTY_ANIMAP = new Animap([]);

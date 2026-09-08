@@ -33,3 +33,18 @@ export const RECIPES = {
   /** Where contributors open a PR to add a site. */
   contributeUrl: import.meta.env.WXT_RECIPES_REPO || "https://github.com/kasusoba/TMSync",
 } as const;
+
+/**
+ * The TMDB<->AniList crosswalk used by the multi-track fan-out (docs/MULTI-TRACK.md).
+ * Fetched from the same CDN as the recipe list rather than bundled: the rows are
+ * ~300 KB, and upstream (Fribb/anime-lists) regenerates weekly, so a bundled copy
+ * would both bloat the service worker and go stale between releases. A plain public
+ * GET, no watch data leaves the client (constraint #6).
+ */
+export const ANIME_MAP = {
+  url:
+    import.meta.env.WXT_ANIME_MAP_URL ||
+    "https://raw.githubusercontent.com/kasusoba/TMSync/main/recipes/anime-map.json",
+  /** Re-fetch at most this often. Upstream updates weekly, so daily is generous. */
+  refreshMs: 24 * 60 * 60 * 1000,
+} as const;

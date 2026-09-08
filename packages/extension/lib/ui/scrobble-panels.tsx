@@ -170,7 +170,9 @@ export function TrackingRows({
                   ? `not on ${trackerLabel(tk)}`
                   : res.reason === "ambiguous"
                     ? "ambiguous mapping"
-                    : "not found";
+                    : res.reason === "map_loading"
+                      ? "anime map still downloading"
+                      : "not found";
           // When resolved, the tracker's own page for this item — click to open it
           // in a new tab (episode/movie/entry). Absent until we have an id.
           const url =
@@ -454,7 +456,9 @@ export function RateNote({
                     ? `not on ${trackerLabel(tk)}`
                     : res.reason === "ambiguous"
                       ? "ambiguous mapping"
-                      : "not found";
+                      : res.reason === "map_loading"
+                        ? "anime map still downloading"
+                        : "not found";
             return (
               <button
                 type="button"

@@ -480,6 +480,11 @@ export function OptionsView({
                 <p class={clsx("px-1 text-[11px]", t.faint)}>
                   Shared via the repo · updated just now
                 </p>
+                {/* The CDN anime-map crosswalk (multi-track): fetched, never bundled,
+                    so the pane says how current the episode mapping is. */}
+                <p class={clsx("px-1 text-[11px]", t.faint)}>
+                  Anime map · 8,215 entries · built 2026-09-08 · updated just now
+                </p>
                 <div class="space-y-1.5">
                   {LIBRARY.filter(([n, p]) => has(n) || has(p)).map(([name, patt]) => (
                     <Card t={t} key={patt}>

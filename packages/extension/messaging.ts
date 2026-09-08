@@ -161,7 +161,8 @@ export interface TrackerResolution {
   title?: string;
   id?: number;
   /** When unresolved: "no_match" (crosswalk miss / not anime) | "ambiguous" |
-   * "unresolved" (searched, nothing) | "http". */
+   * "map_loading" (the CDN crosswalk hasn't landed yet) | "unresolved" (searched,
+   * nothing) | "http". */
   reason?: string;
 }
 

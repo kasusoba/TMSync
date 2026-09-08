@@ -15,7 +15,7 @@
       "**/node_modules",
       "**/test-results",
       "**/playwright-report",
-      "**/anime-map.seed.json"
+      "**/anime-map.json"
     ]
   },
   "formatter": {

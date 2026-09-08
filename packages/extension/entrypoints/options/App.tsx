@@ -11,11 +11,13 @@ import {
   contributeRecipe,
 } from "@/lib/portability/contribute";
 import {
+  type AnimeMapCache,
   type BadgePrefs,
   type QuickLinkSite,
   type RemoteRecipes,
   anilistCorrections,
   animapOverrides,
+  animeMap,
   badgePrefs,
   corrections,
   customRecipes,
@@ -399,6 +401,9 @@ export function App() {
   const [anilistCorr, setAnilistCorr] = useState<Record<string, AniListIdentity | null>>({});
   const [animap, setAnimap] = useState<AnimapOverrides>({ forward: {}, reverse: {} });
   const [remote, setRemote] = useState<RemoteRecipes | null>(null);
+  /** The CDN anime-map crosswalk cache (multi-track). Shown in the Library pane so
+   * "how current is my episode mapping?" is answerable without the devtools. */
+  const [mapCache, setMapCache] = useState<AnimeMapCache | null>(null);
   const [busy, setBusy] = useState(false);
   /** The one expanded quick-link row (accordion) — editing another collapses this. */
   const [openLinkId, setOpenLinkId] = useState<string | null>(null);
@@ -420,7 +425,7 @@ export function App() {
   const has = (s: string) => s.toLowerCase().includes(q.toLowerCase());
 
   const refresh = async () => {
-    const [s, al, sit, rec, ql, c, ac, am, rem, bp, broad] = await Promise.all([
+    const [s, al, sit, rec, ql, c, ac, am, rem, amap, bp, broad] = await Promise.all([
       sendMessage("getTraktStatus", undefined),
       sendMessage("getAniListStatus", undefined),
       sendMessage("listEnabledSites", undefined),
@@ -430,6 +435,7 @@ export function App() {
       anilistCorrections.getValue(),
       animapOverrides.getValue(),
       remoteRecipes.getValue(),
+      animeMap.getValue(),
       badgePrefs.getValue(),
       browser.permissions.contains({ origins: ["*://*/*"] }),
     ]);
@@ -442,6 +448,7 @@ export function App() {
     setAnilistCorr(ac);
     setAnimap(am);
     setRemote(rem);
+    setMapCache(amap);
     setBadge(bp);
     setAllSites(broad);
   };
@@ -479,6 +486,7 @@ export function App() {
     const out = await sendMessage("refreshRecipes", undefined);
     setSyncMsg(out.ok ? `Synced · ${out.count} recipes` : `Couldn’t sync: ${out.error}`);
     setRemote(await remoteRecipes.getValue());
+    setMapCache(await animeMap.getValue());
     setBusy(false);
   };
 
@@ -1250,6 +1258,15 @@ export function App() {
                   {remote
                     ? `Shared via the repo · updated ${new Date(remote.fetchedAt).toLocaleString()}`
                     : "Not fetched yet · it syncs automatically in the background."}
+                </p>
+                {/* The anime map rides the same CDN + Refresh as the recipe list, so its
+                    freshness belongs next to the library's. It is fetched, never bundled. */}
+                <p class={clsx("px-1 text-[11px]", t.faint)}>
+                  {mapCache
+                    ? `Anime map · ${mapCache.rows.length.toLocaleString()} entries${
+                        mapCache.generatedAt ? ` · built ${mapCache.generatedAt}` : ""
+                      } · updated ${new Date(mapCache.fetchedAt).toLocaleString()}`
+                    : "Anime map · not fetched yet · anime multi-tracking waits for it."}
                 </p>
                 {remote && remote.recipes.length > 0 ? (
                   <div class="space-y-1.5">
