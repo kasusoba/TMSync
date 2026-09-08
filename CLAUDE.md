@@ -178,27 +178,41 @@ interface TrackerAdapter {
 - **No em/en dashes in user-facing text** (UI copy, docs, release notes, store listings, PR text). Use commas, periods, or parentheses instead. This covers internal text too (code comments, commit messages). (Existing prose in this file predates the rule; do not mass-rewrite it, just follow the rule going forward.)
 - **Build after every change.** Run `pnpm build` after editing the extension so type/build errors surface; `pnpm dev:edge` auto-rebuilds while running. Prefer verifying with `./node_modules/.bin/tsc` directly over wrapped typecheck commands.
 
-## Releases (settled)
-Cut and publish a release like this. Do not leave it as a draft, and do not invent a different note format.
+## Shipping work (settled)
+Never commit to `main`. Every change reaches `main` through a branch and a PR, so the
+release notes generate themselves from the merged PRs instead of being written by hand.
+The whole sequence, from a finished change to a published release:
 
-1. `pnpm release <patch|minor|major>` bumps `packages/extension/package.json`, commits, and tags. A bug fix is a patch. A new capability is a minor.
-2. `git push --follow-tags`. The tag starts `.github/workflows/release.yml`, which builds the Chrome, Firefox, and sources zips and opens a DRAFT release.
-3. Wait for that run, then publish it with your own notes:
-   `gh release edit v<x.y.z> --title "v<x.y.z>" --notes-file <file> --draft=false --latest`
+1. **Branch.** `git checkout -b <type>/<slug>` off an up-to-date `main`. Type is the same
+   word the commit uses: `feat`, `fix`, `docs`, `chore`, `refactor`.
+2. **Commit.** The existing message conventions apply (Simplified Technical English, WHY in
+   the body). Run `pnpm lint`, `tsc --noEmit`, `pnpm test`, and `pnpm build` first.
+3. **PR.** `git push -u origin <branch>` then `gh pr create`. **The PR title becomes a line
+   in the release notes**, so write it for a user: what changed for them, in plain words, no
+   type prefix and no scope. The body carries the detail.
+4. **Merge** when the owner asks: `gh pr merge --squash --delete-branch`, then
+   `git checkout main && git pull`.
+5. **Bump.** `pnpm release <patch|minor|major>` bumps `packages/extension/package.json`,
+   commits, and tags. A bug fix is a patch. A new capability is a minor.
+6. **Push the tag.** `git push --follow-tags`. The tag starts
+   `.github/workflows/release.yml`, which builds the Chrome, Firefox, and sources zips and
+   opens a DRAFT release whose notes are generated from the PRs merged since the last tag.
+7. **Publish.** Wait for that run, then
+   `gh release edit v<x.y.z> --title "v<x.y.z>" --draft=false --latest`. Do not leave it as a
+   draft.
+
+**Notes are generated, not written.** Keep GitHub's `## What's Changed` list and its
+`**Full Changelog**` link. Only edit them to drop noise (a revert pair, a chore nobody
+sees) or to fix a PR title that reads badly. Never replace them with a hand-written file,
+and never add install, usage, or contributor sections. A good PR title is what makes this
+work, so spend the effort there.
 
 **Title: the version and nothing else.** `v1.10.2`. No summary after it.
 
-**Notes: one `## What's Changed` section and nothing else.** No install, usage, or contributor sections. One bullet per user-visible change. Say what changed for the user, not how the code changed. Name the author and link the commit or PR. Close with the compare link:
-
-```markdown
-## What's Changed
-
-* <what changed, in plain words> by @<author> in <sha or #pr>
-
-**Full Changelog**: https://github.com/kasusoba/TMSync/compare/v<previous>...v<this>
-```
-
-**Prose style for notes and commit messages: Simplified Technical English.** Short sentences, one idea each. Active voice. Plain, common words. No idiom, no marketing. A commit body still explains WHY, it just says it plainly. This matches the terse style the owner reads everything else in.
+**Prose style for notes, PR titles, and commit messages: Simplified Technical English.**
+Short sentences, one idea each. Active voice. Plain, common words. No idiom, no marketing.
+A commit body still explains WHY, it just says it plainly. This matches the terse style the
+owner reads everything else in.
 
 ## UI & visual design (settled — `packages/extension/lib/ui`)
 The look and these rules are **settled**; don't relitigate spacing/colour/structure or invent new patterns without being asked. The user cares a lot about **consistency** — uniformity across surfaces is the bar. When adding UI, reuse the kit and match the rules below.
