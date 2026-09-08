@@ -175,8 +175,30 @@ interface TrackerAdapter {
 - Background handlers are stateless functions; persist via storage helpers.
 - Recipes prefer `url`/`meta`/`jsonld` over `dom`; the picker should auto-detect page metadata before asking the user to click.
 - Errors degrade quietly: a failed scrape shows "couldn't read this page," never throws into the host page.
-- **No em/en dashes in user-facing text** (UI copy, docs, release notes, store listings, PR text). Use commas, periods, or parentheses instead. Internal text (code comments, commit messages) is exempt. (Existing prose in this file predates the rule; do not mass-rewrite it, just follow the rule going forward.)
+- **No em/en dashes in user-facing text** (UI copy, docs, release notes, store listings, PR text). Use commas, periods, or parentheses instead. This covers internal text too (code comments, commit messages). (Existing prose in this file predates the rule; do not mass-rewrite it, just follow the rule going forward.)
 - **Build after every change.** Run `pnpm build` after editing the extension so type/build errors surface; `pnpm dev:edge` auto-rebuilds while running. Prefer verifying with `./node_modules/.bin/tsc` directly over wrapped typecheck commands.
+
+## Releases (settled)
+Cut and publish a release like this. Do not leave it as a draft, and do not invent a different note format.
+
+1. `pnpm release <patch|minor|major>` bumps `packages/extension/package.json`, commits, and tags. A bug fix is a patch. A new capability is a minor.
+2. `git push --follow-tags`. The tag starts `.github/workflows/release.yml`, which builds the Chrome, Firefox, and sources zips and opens a DRAFT release.
+3. Wait for that run, then publish it with your own notes:
+   `gh release edit v<x.y.z> --title "v<x.y.z>" --notes-file <file> --draft=false --latest`
+
+**Title: the version and nothing else.** `v1.10.2`. No summary after it.
+
+**Notes: one `## What's Changed` section and nothing else.** No install, usage, or contributor sections. One bullet per user-visible change. Say what changed for the user, not how the code changed. Name the author and link the commit or PR. Close with the compare link:
+
+```markdown
+## What's Changed
+
+* <what changed, in plain words> by @<author> in <sha or #pr>
+
+**Full Changelog**: https://github.com/kasusoba/TMSync/compare/v<previous>...v<this>
+```
+
+**Prose style for notes and commit messages: Simplified Technical English.** Short sentences, one idea each. Active voice. Plain, common words. No idiom, no marketing. A commit body still explains WHY, it just says it plainly. This matches the terse style the owner reads everything else in.
 
 ## UI & visual design (settled — `packages/extension/lib/ui`)
 The look and these rules are **settled**; don't relitigate spacing/colour/structure or invent new patterns without being asked. The user cares a lot about **consistency** — uniformity across surfaces is the bar. When adding UI, reuse the kit and match the rules below.
