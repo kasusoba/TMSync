@@ -131,6 +131,21 @@ script stamps its build time on the page, so in the page console:
 document.documentElement.dataset.tmsyncBuild
 ```
 
+### Contributing a change
+
+Work never lands on `main` directly. Branch, open a PR, and let it merge:
+
+```bash
+git checkout -b feat/short-slug
+# commit, then
+git push -u origin feat/short-slug
+gh pr create
+gh pr merge --squash --delete-branch
+```
+
+The PR title becomes a line in the next release notes, so write it for a user:
+what changed for them, in plain words.
+
 ### Releasing
 
 Maintainers only.
@@ -143,9 +158,15 @@ git push --follow-tags
 `pnpm release` bumps `packages/extension/package.json`, commits it as
 `chore(release): vX.Y.Z`, and tags that commit. Pushing the tag runs
 `.github/workflows/release.yml`, which re-runs the CI checks, builds the Chrome,
-Firefox, and sources zips, and attaches them to a **draft** GitHub Release for you
-to write notes on and publish. Uploading to the Chrome Web Store and AMO stays
-manual.
+Firefox, and sources zips, and attaches them to a **draft** GitHub Release whose
+notes are generated from the PRs merged since the last tag. Check them over, then
+publish:
+
+```bash
+gh release edit vX.Y.Z --title vX.Y.Z --draft=false --latest
+```
+
+Uploading to the Chrome Web Store and AMO stays manual.
 
 The workflow needs the `WXT_*` OAuth ids and secrets as repository secrets (see
 `packages/extension/.env.example`); it fails early rather than shipping a build
