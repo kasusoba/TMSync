@@ -24,6 +24,12 @@ import type { ContentScriptContext } from "wxt/utils/content-script-context";
 import { ScrobbleController } from "./controller";
 
 const RECONCILE_DEBOUNCE_MS = 600;
+/** Hard cap on how long a mutation burst may postpone a pending reconcile. */
+const RECONCILE_MAX_WAIT_MS = 2000;
+/** How often to check `location.href` for a client-side navigation. */
+const LOCATION_POLL_MS = 400;
+/** How long after a URL change late DOM still counts as "this page settling". */
+const URL_SETTLE_MS = 4000;
 const PROGRESS_PERSIST_MS = 5000;
 const TAB_MEDIA_POLL_MS = 750;
 const TAB_MEDIA_POLL_TRIES = 8;
@@ -238,21 +244,35 @@ function primaryStatus(
   return { state: "error", title, detail };
 }
 
-/** Patch history once per frame so SPA navigations emit a window event. */
-let historyPatched = false;
-function ensureLocationChangeEvents(): void {
-  if (historyPatched) return;
-  historyPatched = true;
-  const fire = () => window.dispatchEvent(new Event("tmsync:locationchange"));
-  for (const method of ["pushState", "replaceState"] as const) {
-    const original = history[method];
-    history[method] = function patched(this: History, ...args: Parameters<History["pushState"]>) {
-      const result = original.apply(this, args);
-      fire();
-      return result;
-    } as History[typeof method];
-  }
-  window.addEventListener("popstate", fire);
+/**
+ * Emit a window event once per frame whenever the URL changes client-side.
+ *
+ * This POLLS `location.href` (plus `popstate` for an instant back/forward). It
+ * used to patch `history.pushState`/`replaceState` instead, which never worked:
+ * a content script runs in an isolated world with its OWN `history` wrapper, so
+ * the patch only ever saw calls we made ourselves, never the page's. (The
+ * Navigation API's `navigate` event doesn't fire in the isolated world either,
+ * which is why `wxt:locationchange` is no use here.) `location` is the one thing
+ * that always reflects the real URL from any world, so poll it, mirroring
+ * anilist.content.tsx / trakt.content.tsx.
+ *
+ * Without this, an SPA episode swap (anikototv `/ep-10` to `/ep-11`) only got
+ * re-extracted if the site happened to also mutate <head> (the title observer) or
+ * reload the top frame's <video>. On a site that changes neither, the badge kept
+ * scrobbling the previous episode.
+ */
+let locationWatched = false;
+function ensureLocationChangeEvents(ctx: ContentScriptContext): void {
+  if (locationWatched) return;
+  locationWatched = true;
+  let lastHref = location.href;
+  const fire = () => {
+    if (location.href === lastHref) return;
+    lastHref = location.href;
+    window.dispatchEvent(new Event("tmsync:locationchange"));
+  };
+  ctx.addEventListener(window, "popstate", fire); // dropped on invalidation
+  ctx.setInterval(fire, LOCATION_POLL_MS);
 }
 
 /**
@@ -297,10 +317,17 @@ export class SessionManager {
   private controller: ScrobbleController | null = null;
   private abort: AbortController | null = null;
   private reconcileTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Latest time the currently pending reconcile may be postponed to. */
+  private reconcileDeadline = 0;
   private videoObserver: MutationObserver | null = null;
   private metadataObserver: MutationObserver | null = null;
   /** Bounded count of synthetic player-nudges this session (reveal hover-gated bars). */
   private metadataNudges = 0;
+  /** Until when the page counts as "settling" after a client-side navigation. The
+   * URL flips FIRST and the new episode's DOM lands a moment later, so a single
+   * post-nav extract can still read the outgoing episode. While this is live, body
+   * mutations re-extract (debounced) even though nothing is `awaitingMetadata`. */
+  private urlSettleUntil = 0;
   /** True while the extract is still missing something the recipe expects (a title
    * or an episode). Some players only render those into their chrome (top/bottom
    * bar) on hover/play, so an early extract falls back to a movie-by-URL-id. While
@@ -318,8 +345,8 @@ export class SessionManager {
   }
 
   start(): void {
-    ensureLocationChangeEvents();
-    window.addEventListener("tmsync:locationchange", this.scheduleReconcile, {
+    ensureLocationChangeEvents(this.ctx);
+    window.addEventListener("tmsync:locationchange", this.onLocationChange, {
       signal: this.frameSignal(),
     });
     this.ctx.onInvalidated(() => this.teardownSession());
@@ -346,7 +373,7 @@ export class SessionManager {
     // observed, so this can't loop on our own UI.)
     if (document.body) {
       const metaObserver = new MutationObserver(() => {
-        if (this.awaitingMetadata) this.scheduleReconcile();
+        if (this.awaitingMetadata || Date.now() < this.urlSettleUntil) this.scheduleReconcile();
       });
       metaObserver.observe(document.body, { childList: true, subtree: true, characterData: true });
       this.metadataObserver = metaObserver;
@@ -383,9 +410,30 @@ export class SessionManager {
     return ac.signal;
   }
 
+  /** A client-side navigation (SPA episode swap, back/forward). Re-extract now, and
+   * keep re-extracting on DOM changes for a moment: the new episode's markup often
+   * lands after the URL does. */
+  private onLocationChange = (): void => {
+    this.urlSettleUntil = Date.now() + URL_SETTLE_MS;
+    this.scheduleReconcile();
+  };
+
   private scheduleReconcile = (): void => {
-    if (this.reconcileTimer) clearTimeout(this.reconcileTimer);
-    this.reconcileTimer = setTimeout(() => void this.reconcile(), RECONCILE_DEBOUNCE_MS);
+    const now = Date.now();
+    if (this.reconcileTimer) {
+      // Re-arming on every call starves the extract on a page that never goes
+      // quiet (a player repainting its progress bar, an ad carousel): each
+      // mutation pushes the timer out another RECONCILE_DEBOUNCE_MS. Past the
+      // cap, let the pending timer fire instead of postponing it again.
+      if (now >= this.reconcileDeadline) return;
+      clearTimeout(this.reconcileTimer);
+    } else {
+      this.reconcileDeadline = now + RECONCILE_MAX_WAIT_MS;
+    }
+    this.reconcileTimer = setTimeout(() => {
+      this.reconcileTimer = null;
+      void this.reconcile();
+    }, RECONCILE_DEBOUNCE_MS);
   };
 
   private async reconcile(): Promise<void> {
