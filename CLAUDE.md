@@ -72,9 +72,12 @@ const Recipe = z.object({
   schemaVersion: z.number().int(),      // client ignores recipes with a newer schemaVersion than it supports
   name: z.string(),                     // human-readable site name
   match: z.object({
-    urlPattern: z.string(),             // regex tested against location.href
+    urlPattern: z.string(),             // regex tested against location.href; the PATH, no host
     domFingerprint: z.string().optional(), // a selector that must exist; primary clone-resilient key
-    hostnames: z.array(z.string()).optional(), // hints only, not the primary match
+    hostnames: z.array(z.string()).optional(), // the host SCOPE + the origins we request permission
+                                               //   for. A site that moves domain gains a hostname
+                                               //   here (docs/RECIPE-LIFECYCLE.md §4b). Absent ⇒
+                                               //   matches any host.
   }),
   mediaType: z.enum(["auto", "movie", "show"]).default("auto"),
   tracker: z.enum(["trakt", "anilist"]).default("trakt"), // which adapter records this site. anilist ⇒ anime

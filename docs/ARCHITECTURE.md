@@ -74,9 +74,11 @@ watched". Follow the numbers:
    runtime* — it isn't on every page by default (constraint #5: no broad host access at install).
    You grant a site in the popup, which registers the script for that origin.
 2. **Match.** On load it calls `loadRecipes()` and `selectRecipe()`/`matchRecipe()`
-   (`packages/shared/src/match.ts`) — the first enabled recipe whose `urlPattern` regex matches and
-   whose `domFingerprint` selector exists. The fingerprint is the *clone-resilient* key: it matches
-   a site across its many mirror domains.
+   (`packages/shared/src/match.ts`): the first enabled recipe whose `match.hostnames` covers the
+   page's host, whose `urlPattern` regex matches, and whose `domFingerprint` selector exists. The
+   host lives in `hostnames`, so a site that moves domain keeps its recipe and gains a hostname
+   (docs/RECIPE-LIFECYCLE.md §4b). The fingerprint is the *clone-resilient* key: it matches a site
+   across its mirror domains, and it is what lets the badge offer a known recipe on a new domain.
 3. **Extract.** `extract(recipe, { document, url })` (`packages/shared/src/extract.ts`) reads each
    field from its `source` (`url` / `meta` / `jsonld` / `dom` / `title`), applies `regex` → `group`
    → `transforms`, and returns a `ParsedMedia` (`{ mediaType, title, year?, season?, episode?,
@@ -116,8 +118,11 @@ The heart of the "recipes are data, not code" guarantee. Everything here is pure
   show a live preview using the exact same logic that runs in production. `readJsonLd` flattens
   arrays and `@graph` and walks dotted paths. `readIds` builds a namespace-keyed id map; `primaryId`
   picks the strongest id by `ID_NAMESPACE_ORDER` (tmdb, imdb, tvdb, anilist, mal).
-- **`match.ts`** — `matchRecipe` (urlPattern + domFingerprint) and `selectRecipe` (first match whose
-  `schemaVersion ≤ SCHEMA_VERSION`). Hostnames are hints only.
+- **`match.ts`**: `matchRecipe` (host scope + urlPattern + domFingerprint) and `selectRecipe`
+  (first match whose `schemaVersion ≤ SCHEMA_VERSION`), plus `findHostAdoption` (a recipe that fits
+  the page except for the hostname, which is what a moved site looks like).
+- **`hosts.ts`**: the one place that reads and rewrites a recipe's host: `recipeHosts`,
+  `withRecipeHosts`, and the parser for the host anchor older patterns carry.
 - **`schema.ts`** — the Zod source of truth. `SCHEMA_VERSION = 3`. A recipe is validated here before
   it's ever used; an invalid recipe is discarded, never partially applied. `recipeTrackers()` reads
   the multi-track set (`trackers` if present, else `[tracker]`). Schema evolution is handled with
