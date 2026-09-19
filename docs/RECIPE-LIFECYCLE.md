@@ -64,7 +64,7 @@ The pages are unchanged, so the recipe is still correct. Only the hostname is ne
 
 Three ways a move gets handled, cheapest first:
 
-1. **The badge offers it.** On the new domain, if a recipe fits the page except for the hostname (its fingerprint is on the page), the badge asks "Did this site move?". One tap adds the host. `findHostAdoption` in `match.ts`.
+1. **The popup offers it.** Open the popup on the new domain. If one of your sites has the same name on another domain (`cinejoy.to` for `cinejoy.pk`), it asks "Did Cinejoy move here?". One click asks for access, adds the domain to every recipe of that site, and starts tracking. It matches by name, not page content, so it works for URL-only recipes too. `findMovedSite` in `packages/extension/lib/sites.ts`.
 2. **Options → Sites, the site's card.** Each site shows its domains as chips next to its recipes. Add the new domain (access to it is requested), then remove the old one (its access is revoked, and a quick link on it moves to a domain the site still has). Every recipe of the site gets the same domain list. A library recipe is forked locally under the same id, so the next library sync cannot undo the edit.
 3. **A contributed recipe.** Add the new hostname to `hostnames` and keep the old one while it still resolves.
 

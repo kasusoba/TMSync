@@ -329,33 +329,6 @@ export function ManualPrompt({ variant }: { variant: Variant }) {
   );
 }
 
-/** Moved-site prompt bar: no recipe covers this page, but one fits it except for
- * the hostname. Accepting adds this host to that recipe. */
-export function MovedSitePrompt({ variant, name }: { variant: Variant; name: string }) {
-  const t = tokens(variant);
-  return (
-    <div
-      class={clsx(
-        "inline-flex items-center gap-3 rounded-xl py-2 pr-2 pl-3 shadow-xl shadow-black/30",
-        t.panel,
-      )}
-    >
-      <span class="min-w-0">
-        <span class={clsx("block whitespace-nowrap text-[12px] font-semibold", t.heading)}>
-          Did this site move?
-        </span>
-        <span class={clsx("block max-w-[200px] truncate text-[11px]", t.sub)}>
-          {name} fits this page
-        </span>
-      </span>
-      <Btn t={t} tone="primary" class="ml-auto">
-        Use it here
-      </Btn>
-      <IconBtn t={t} name="x" title="Dismiss" />
-    </div>
-  );
-}
-
 /** Episode prompt bar: a show URL with no episode (e.g. a "?play=true" link). */
 export function EpisodePrompt({ variant }: { variant: Variant }) {
   const t = tokens(variant);

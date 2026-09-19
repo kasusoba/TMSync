@@ -24,7 +24,7 @@ import {
 import { type AnimapOverrides, deriveMediaWith, forwardKey } from "@/lib/animap/derive";
 import type { Animap } from "@/lib/animap/index";
 import { loadAnimap, parseAnimeMap } from "@/lib/animap/load";
-import { bundledLinks, loadRecipes } from "@/lib/recipes";
+import { bundledLinks } from "@/lib/recipes";
 import { statusDotColor } from "@/lib/scrobble/action-badge";
 import {
   type QuickLinkSite,
@@ -77,10 +77,8 @@ import {
   type LibraryLink,
   type ParsedMedia,
   type Recipe,
-  hostText,
   parseLibrary,
   recipeHosts,
-  withRecipeHosts,
 } from "@tmsync/shared";
 import { browser } from "wxt/browser";
 
@@ -541,26 +539,6 @@ export default defineBackground(() => {
     const tabId = data.tabId ?? sender.tab?.id;
     if (tabId !== undefined) void sendMessage("recheck", undefined, tabId);
     return { ok: true };
-  });
-
-  // The content script reloads on the customRecipes write, so the page matches next.
-  onMessage("adoptRecipeHost", async ({ data }) => {
-    try {
-      const host = hostText(data.host);
-      if (!host) return { ok: false, error: "no host" };
-      const source = (await loadRecipes()).find((r) => r.id === data.recipeId);
-      if (!source) return { ok: false, error: "recipe not found" };
-      const moved = withRecipeHosts(source, [...recipeHosts(source), host]);
-      const custom = await customRecipes.getValue();
-      const next = custom.some((r) => r.id === moved.id)
-        ? custom.map((r) => (r.id === moved.id ? moved : r))
-        : [moved, ...custom];
-      await customRecipes.setValue(next);
-      await registerSite(`https://${host}`);
-      return { ok: true };
-    } catch (e) {
-      return { ok: false, error: errMsg(e) };
-    }
   });
 
   // The user confirmed a rewatch of a COMPLETED AniList cour → write REPEATING

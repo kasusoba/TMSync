@@ -20,7 +20,7 @@ export {
   primaryId,
   readField,
 } from "./extract";
-export { findHostAdoption, matchRecipe, matchesUrl, selectRecipe } from "./match";
+export { matchRecipe, matchesUrl, selectRecipe } from "./match";
 export {
   escapeRegex,
   hostOf,
@@ -28,6 +28,7 @@ export {
   normalizeHost,
   patternPath,
   recipeHosts,
+  siteLabel,
   withRecipeHosts,
 } from "./hosts";
 export { type RecipeLibrary, parseLibrary, parseLinks, parseRecipes } from "./recipes";

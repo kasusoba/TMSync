@@ -1,6 +1,6 @@
 import type { Recipe } from "@tmsync/shared";
 import { describe, expect, it } from "vitest";
-import { groupSites, uniqueHosts, withSiteHosts, withSiteName } from "./sites";
+import { findMovedSite, groupSites, uniqueHosts, withSiteHosts, withSiteName } from "./sites";
 
 function recipe(id: string, match: Recipe["match"], name = id): Recipe {
   return {
@@ -89,5 +89,41 @@ describe("withSiteName", () => {
     if (!site) throw new Error("no site");
     const next = withSiteName(site, "A", [mine, other]);
     expect(next.map((r) => r.name)).toEqual(["A", "X"]);
+  });
+});
+
+describe("findMovedSite", () => {
+  const cinejoyMovie = recipe(
+    "m",
+    { urlPattern: "/watch/movie", hostnames: ["cinejoy.to"] },
+    "Cinejoy",
+  );
+  const cinejoyTv = recipe("t", { urlPattern: "/watch/tv", hostnames: ["cinejoy.to"] }, "Cinejoy");
+  const other = recipe("o", { urlPattern: "/watch", hostnames: ["other.tld"] }, "Other");
+
+  it("finds the site with the same name on another domain", () => {
+    const sites = groupSites([cinejoyMovie, cinejoyTv, other], []);
+    expect(findMovedSite(sites, "https://cinejoy.pk/watch/movie/1423191")?.name).toBe("Cinejoy");
+  });
+
+  it("finds it even when no recipe path fits this URL", () => {
+    const sites = groupSites([cinejoyTv], []);
+    expect(findMovedSite(sites, "https://cinejoy.pk/")?.name).toBe("Cinejoy");
+  });
+
+  it("prefers the site whose recipe path fits when two share the name", () => {
+    const tv = recipe("a", { urlPattern: "/tv", hostnames: ["cinejoy.net"] }, "Cinejoy TV");
+    const movie = recipe("b", { urlPattern: "/watch/movie", hostnames: ["cinejoy.to"] }, "Cinejoy");
+    const sites = groupSites([tv, movie], []);
+    expect(findMovedSite(sites, "https://cinejoy.pk/watch/movie/1")?.name).toBe("Cinejoy");
+  });
+
+  it("offers nothing when a site already lists this domain", () => {
+    const both = recipe("b", { urlPattern: "/x", hostnames: ["cinejoy.to", "www.cinejoy.pk"] });
+    expect(findMovedSite(groupSites([both], []), "https://cinejoy.pk/x")).toBeNull();
+  });
+
+  it("offers nothing when no site shares the name", () => {
+    expect(findMovedSite(groupSites([other], []), "https://cinejoy.pk/watch")).toBeNull();
   });
 });

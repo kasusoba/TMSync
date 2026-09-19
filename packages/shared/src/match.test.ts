@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findHostAdoption, matchRecipe, matchesUrl, selectRecipe } from "./match";
+import { matchRecipe, matchesUrl, selectRecipe } from "./match";
 import type { Recipe } from "./schema";
 
 function parse(html: string): Document {
@@ -64,51 +64,6 @@ describe("matchesUrl", () => {
     const r = recipe({ match: { urlPattern: "/watch", hostnames: ["stream.tld"] } });
     expect(matchesUrl(r, "https://stream.tld/watch/1")).toBe(true);
     expect(matchesUrl(r, "https://other.tld/watch/1")).toBe(false);
-  });
-});
-
-describe("findHostAdoption", () => {
-  const doc = parse('<html><body><div id="player"></div></body></html>');
-  const moved = { document: doc, url: "https://stream.app/watch/1" };
-
-  it("offers a recipe whose only mismatch is the host", () => {
-    const r = recipe({
-      match: { urlPattern: "/watch", domFingerprint: "#player", hostnames: ["stream.tld"] },
-    });
-    expect(findHostAdoption([r], moved)?.id).toBe("test");
-  });
-
-  it("offers an older recipe that anchors the host in its pattern", () => {
-    const r = recipe({
-      match: { urlPattern: "stream\\.tld/watch", domFingerprint: "#player" },
-    });
-    expect(findHostAdoption([r], moved)?.id).toBe("test");
-  });
-
-  it("skips a recipe with no fingerprint (too weak to offer)", () => {
-    const r = recipe({ match: { urlPattern: "/watch", hostnames: ["stream.tld"] } });
-    expect(findHostAdoption([r], moved)).toBeNull();
-  });
-
-  it("skips a recipe whose fingerprint is absent from the page", () => {
-    const r = recipe({
-      match: { urlPattern: "/watch", domFingerprint: "#nope", hostnames: ["stream.tld"] },
-    });
-    expect(findHostAdoption([r], moved)).toBeNull();
-  });
-
-  it("skips a recipe whose path does not fit", () => {
-    const r = recipe({
-      match: { urlPattern: "/series", domFingerprint: "#player", hostnames: ["stream.tld"] },
-    });
-    expect(findHostAdoption([r], moved)).toBeNull();
-  });
-
-  it("skips a recipe that already covers this host", () => {
-    const r = recipe({
-      match: { urlPattern: "/watch", domFingerprint: "#player", hostnames: ["stream.app"] },
-    });
-    expect(findHostAdoption([r], moved)).toBeNull();
   });
 });
 

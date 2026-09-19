@@ -8,7 +8,6 @@ import {
   EpisodePrompt,
   ManualPickPanel,
   ManualPrompt,
-  MovedSitePrompt,
   NowPanel,
   RateNotePanel,
 } from "@/lib/ui/kit/BadgeView";
@@ -234,6 +233,14 @@ export function App() {
                 tv: "/tv/{tmdb}/{season}/{episode}",
               }}
               quickLinkDerive={() => ({})}
+            />
+          </Tile>
+          <Tile label="Site moved · same name on a new domain" t={t}>
+            <PopupView
+              variant={variant}
+              connected
+              origins={[{ origin: "https://cinejoy.pk", isTop: true, enabled: false }]}
+              movedSite={{ name: "Cinejoy", host: "cinejoy.pk" }}
             />
           </Tile>
           <Tile label="Connected · no streaming page" t={t}>
@@ -625,9 +632,6 @@ export function App() {
           </Tile>
           <Tile label="Episode chooser · prompt (S/E-less URL)" t={t}>
             <EpisodePrompt variant={variant} />
-          </Tile>
-          <Tile label="Site moved · offer a known recipe here" t={t}>
-            <MovedSitePrompt variant={variant} name="Cineby" />
           </Tile>
           <Tile label="Episode chooser · panel" t={t}>
             <EpisodePickPanel variant={variant} title="Severance" />
