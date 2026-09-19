@@ -1,3 +1,4 @@
+import type { Tracker } from "@/lib/tracker/types";
 import clsx from "clsx";
 import { useState } from "preact/hooks";
 import {
@@ -13,14 +14,6 @@ import {
   type Variant,
   tokens,
 } from "./kit";
-
-function Mono({ t, children }: { t: Tokens; children: preact.ComponentChildren }) {
-  return <code class={clsx("truncate font-mono text-[12px]", t.heading)}>{children}</code>;
-}
-
-function Card({ t, children }: { t: Tokens; children: preact.ComponentChildren }) {
-  return <div class={clsx("rounded-lg px-3 py-2", t.card)}>{children}</div>;
-}
 
 function PaneHead({
   t,
@@ -120,22 +113,37 @@ const hostOf = (n: string, i: number) =>
   `${n.toLowerCase().replace(/[^a-z0-9]+/g, "")}.${TLDS[i % TLDS.length] ?? "to"}`;
 const nameAt = (i: number) => NAMES[i % NAMES.length] ?? "Site";
 
-const SITES = NAMES.slice(0, 24).map(hostOf);
+/** Sites as the options page groups them: domains + the recipes that read them. The
+ * first one moved domain (two hosts); the third still needs access. */
+const SITE_CARDS = NAMES.slice(0, 10).map((name, i) => ({
+  name,
+  hosts: i === 0 ? [hostOf(name, 0), hostOf(name, 1)] : [hostOf(name, i)],
+  needsAccess: i === 2,
+  recipes:
+    i % 2 === 0
+      ? [
+          { pattern: "/movie", kind: "movie", trackers: ["trakt"] as Tracker[], library: false },
+          {
+            pattern: "/tv",
+            kind: i % 4 === 0 ? "show · library" : "show",
+            trackers: ["trakt", "anilist"] as Tracker[],
+            library: i % 4 === 0,
+          },
+        ]
+      : [
+          {
+            pattern: "/watch",
+            kind: "manual pick",
+            trackers: ["trakt"] as Tracker[],
+            library: false,
+          },
+        ],
+}));
 const QUICK_LINKS = NAMES.slice(0, 22).map((name, i) => ({
   name,
   on: i % 3 !== 0,
   library: i % 4 === 0,
 }));
-const LIBRARY: Pair[] = NAMES.slice(0, 16).flatMap((n, i) => [
-  pair(n, `${hostOf(n, i).replace(/\./g, "\\.")}/movie`),
-  pair(n, `${hostOf(n, i).replace(/\./g, "\\.")}/tv`),
-]);
-const RECIPES = NAMES.slice(0, 7).map((n, i) => {
-  const e = hostOf(n, i).replace(/\./g, "\\.");
-  const items: Pair[] =
-    i % 2 === 0 ? [pair(n, `${e}/movie`), pair(n, `${e}/tv`)] : [pair(n, `${e}/watch`)];
-  return { host: hostOf(n, i), items };
-});
 const SUGGESTIONS = NAMES.slice(24, 42).map(hostOf);
 const TITLES = [
   "Dune: Part Two (2024) · movie",
@@ -153,14 +161,8 @@ const CORRECTIONS: Pair[] = TITLES.map((title, i) =>
 
 const SECTIONS: { id: string; label: string; icon: IconName; count?: number }[] = [
   { id: "trakt", label: "Account", icon: "play" },
-  { id: "sites", label: "Sites", icon: "frame", count: SITES.length },
+  { id: "sites", label: "Sites", icon: "frame", count: 1 },
   { id: "links", label: "Quick links", icon: "link", count: QUICK_LINKS.length },
-  {
-    id: "recipes",
-    label: "Recipes",
-    icon: "edit",
-    count: RECIPES.reduce((a, g) => a + g.items.length, 0) + LIBRARY.length,
-  },
   { id: "corrections", label: "Corrections", icon: "check", count: CORRECTIONS.length },
 ];
 
@@ -171,6 +173,8 @@ export function OptionsView({
   const t = tokens(variant);
   const [active, setActive] = useState("sites");
   const [openLink, setOpenLink] = useState<string | null>(QUICK_LINKS[1]?.name ?? null);
+  /** The site card with its "add a domain" input open. */
+  const [addingHost, setAddingHost] = useState<string | null>(SITE_CARDS[0]?.name ?? null);
   const [q, setQ] = useState("");
   const has = (s: string) => s.toLowerCase().includes(q.toLowerCase());
 
@@ -272,21 +276,104 @@ export function OptionsView({
 
             {active === "sites" && (
               <>
-                <PaneHead t={t} title="Enabled sites" />
+                <PaneHead t={t} title="Sites" />
                 <Filter t={t} q={q} setQ={setQ} placeholder="Filter sites…" />
-                <div class="space-y-1.5">
-                  {SITES.filter(has).map((h) => (
-                    <div
-                      key={h}
-                      class={clsx(
-                        "flex items-center justify-between gap-3 rounded-lg px-3 py-2",
-                        t.card,
-                      )}
-                    >
-                      <Mono t={t}>{h}</Mono>
-                      <Btn t={t} tone="ghost">
-                        Disable
-                      </Btn>
+                <div class="space-y-2">
+                  {SITE_CARDS.filter((c) => has(c.name) || c.hosts.some(has)).map((c) => (
+                    <div key={c.name} class={clsx("space-y-2.5 rounded-lg px-3 py-2.5", t.card)}>
+                      <div class="flex items-center justify-between gap-3">
+                        <span class="flex min-w-0 items-center gap-0.5">
+                          <span class={clsx("truncate text-[13px] font-semibold", t.heading)}>
+                            {c.name}
+                          </span>
+                          <IconBtn t={t} name="edit" title="Rename site" />
+                        </span>
+                        <Btn t={t} tone={c.needsAccess ? "primary" : "ghost"}>
+                          {c.needsAccess ? "Enable" : "Disable"}
+                        </Btn>
+                      </div>
+                      <div>
+                        <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>
+                          Domains
+                        </span>
+                        <div class="flex flex-wrap items-center gap-1.5">
+                          {c.hosts.map((h) => (
+                            <span
+                              key={h}
+                              class={clsx(
+                                "inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 font-mono text-[11px]",
+                                t.chip,
+                              )}
+                            >
+                              <span
+                                class={clsx(
+                                  "size-1.5 rounded-full",
+                                  c.needsAccess ? "bg-amber-400" : "bg-emerald-500",
+                                )}
+                              />
+                              {h}
+                              {c.hosts.length > 1 && (
+                                <IconBtn t={t} name="x" title={`Remove ${h}`} small />
+                              )}
+                            </span>
+                          ))}
+                          {addingHost !== c.name && (
+                            <IconBtn
+                              t={t}
+                              name="plus"
+                              title="Add a domain (the site moved)"
+                              onClick={() => setAddingHost(c.name)}
+                            />
+                          )}
+                        </div>
+                        {addingHost === c.name && (
+                          <div class="mt-2 flex items-center gap-1.5">
+                            <input
+                              value=""
+                              placeholder="new-domain.tld"
+                              class={clsx(
+                                "min-w-0 flex-1 rounded-lg px-2.5 py-1.5 font-mono text-[11px] outline-none ring-inset focus:ring-2",
+                                t.input,
+                              )}
+                            />
+                            <Btn t={t} tone="primary">
+                              Add
+                            </Btn>
+                            <Btn t={t} tone="ghost" onClick={() => setAddingHost(null)}>
+                              Cancel
+                            </Btn>
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>
+                          Recipes
+                        </span>
+                        <div class="space-y-1">
+                          {c.recipes.map((r) => (
+                            <div key={r.pattern} class="flex items-center justify-between gap-2">
+                              <div class="min-w-0">
+                                <span class="flex items-center gap-1.5">
+                                  <code class={clsx("font-mono text-[12px]", t.heading)}>
+                                    {r.pattern}
+                                  </code>
+                                  {r.trackers.map((tr) => (
+                                    <TrackerMark key={tr} tracker={tr} class="size-3.5" />
+                                  ))}
+                                </span>
+                                <span class={clsx("block text-[11px]", t.faint)}>{r.kind}</span>
+                              </div>
+                              {!r.library && (
+                                <div class="flex shrink-0 items-center">
+                                  <IconBtn t={t} name="external" title="Contribute to library" />
+                                  <IconBtn t={t} name="copy" title="Copy JSON" />
+                                  <IconBtn t={t} name="trash" title="Delete" danger />
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -393,107 +480,6 @@ export function OptionsView({
                       <Icon name="plus" class="text-[10px]" />
                       {h}
                     </button>
-                  ))}
-                </div>
-              </>
-            )}
-
-            {active === "recipes" && (
-              <>
-                <PaneHead
-                  t={t}
-                  title="Recipes"
-                  right={
-                    <Btn t={t} tone="ghost">
-                      <Icon name="refresh" class="text-[12px]" /> Sync library
-                    </Btn>
-                  }
-                />
-                <p class={clsx("text-[12px] leading-relaxed", t.sub)}>
-                  Your own recipes and the shared library, together. Yours win where they overlap.
-                  Add a site with “Set up this site” in the popup, or{" "}
-                  <a href="#contribute" class={clsx("underline underline-offset-2", t.link)}>
-                    contribute here
-                  </a>
-                  .
-                </p>
-                <Filter t={t} q={q} setQ={setQ} placeholder="Filter recipes…" />
-
-                {/* Your recipes (editable) */}
-                <div class={clsx("flex items-center gap-2 px-1 pt-1 text-[11px]", t.faint)}>
-                  <span class="font-medium uppercase tracking-wide">Yours</span>
-                  <span class="h-px flex-1 bg-current opacity-20" />
-                  <span>{RECIPES.reduce((a, g) => a + g.items.length, 0)}</span>
-                </div>
-                <div class="space-y-3">
-                  {RECIPES.map((g) => {
-                    const items = g.items.filter(([n, p]) => has(n) || has(p) || has(g.host));
-                    if (items.length === 0) return null;
-                    return (
-                      <div key={g.host}>
-                        <div
-                          class={clsx(
-                            "mb-1.5 flex items-center justify-between px-1 text-[11px]",
-                            t.faint,
-                          )}
-                        >
-                          <code class="font-mono">{g.host}</code>
-                          <span>
-                            {items.length} recipe{items.length > 1 ? "s" : ""}
-                          </span>
-                        </div>
-                        <div class="space-y-1.5">
-                          {items.map(([name, patt]) => (
-                            <div
-                              key={patt}
-                              class={clsx(
-                                "flex items-center justify-between gap-2 rounded-lg px-3 py-2",
-                                t.card,
-                              )}
-                            >
-                              <div class="min-w-0">
-                                <span class={clsx("block text-[13px] font-medium", t.heading)}>
-                                  {name}
-                                </span>
-                                <code class={clsx("block truncate font-mono text-[11px]", t.faint)}>
-                                  {patt}
-                                </code>
-                              </div>
-                              <div class="flex shrink-0 items-center">
-                                <IconBtn t={t} name="external" title="Contribute to library" />
-                                <IconBtn t={t} name="copy" title="Copy JSON" />
-                                <IconBtn t={t} name="trash" title="Delete" danger />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Library (read-only, from the repo) */}
-                <div class={clsx("flex items-center gap-2 px-1 pt-3 text-[11px]", t.faint)}>
-                  <span class="font-medium uppercase tracking-wide">Library</span>
-                  <span class="h-px flex-1 bg-current opacity-20" />
-                  <span>{LIBRARY.length}</span>
-                </div>
-                <p class={clsx("px-1 text-[11px]", t.faint)}>
-                  Shared via the repo · updated just now
-                </p>
-                {/* The CDN anime-map crosswalk (multi-track): fetched, never bundled,
-                    so the pane says how current the episode mapping is. */}
-                <p class={clsx("px-1 text-[11px]", t.faint)}>
-                  Anime map · 8,215 entries · built 2026-09-08 · updated just now
-                </p>
-                <div class="space-y-1.5">
-                  {LIBRARY.filter(([n, p]) => has(n) || has(p)).map(([name, patt]) => (
-                    <Card t={t} key={patt}>
-                      <span class={clsx("block text-[13px] font-medium", t.heading)}>{name}</span>
-                      <code class={clsx("block truncate font-mono text-[11px]", t.faint)}>
-                        {patt}
-                      </code>
-                    </Card>
                   ))}
                 </div>
               </>

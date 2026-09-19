@@ -274,6 +274,7 @@ export function IconBtn({
   t,
   title,
   danger,
+  small,
   disabled,
   onClick,
 }: {
@@ -281,6 +282,8 @@ export function IconBtn({
   t: Tokens;
   title: string;
   danger?: boolean;
+  /** Fits inside a line of text (a chip), so the host doesn't grow around it. */
+  small?: boolean;
   disabled?: boolean;
   onClick?: () => void;
 }) {
@@ -292,12 +295,13 @@ export function IconBtn({
       disabled={disabled}
       onClick={onClick}
       class={clsx(
-        "grid size-7 shrink-0 place-items-center rounded-md transition-colors disabled:pointer-events-none disabled:opacity-50",
+        "grid shrink-0 place-items-center transition-colors disabled:pointer-events-none disabled:opacity-50",
+        small ? "size-4 rounded" : "size-7 rounded-md",
         t.faint,
         danger ? "hover:bg-rose-500/10 hover:text-rose-500" : "hover:bg-white/5",
       )}
     >
-      <Icon name={name} class="text-[13px]" />
+      <Icon name={name} class={small ? "text-[9px]" : "text-[13px]"} />
     </button>
   );
 }

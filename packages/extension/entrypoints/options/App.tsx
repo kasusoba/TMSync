@@ -10,6 +10,7 @@ import {
   contributeQuickLink,
   contributeRecipe,
 } from "@/lib/portability/contribute";
+import { type SiteGroup, groupSites, withSiteHosts, withSiteName } from "@/lib/sites";
 import {
   type AnimeMapCache,
   type BadgePrefs,
@@ -45,9 +46,13 @@ import {
   type PlaceholderDoc,
   type Recipe,
   TRAKT_PLACEHOLDERS,
+  hostText,
+  isManualRecipe,
   linkHost,
+  normalizeHost,
   patternPath,
   recipeHosts,
+  recipeTrackers,
   withLinkHost,
 } from "@tmsync/shared";
 import clsx from "clsx";
@@ -56,6 +61,17 @@ import { browser } from "wxt/browser";
 
 const t = tokens("dark");
 const host = (origin: string) => origin.replace(/^https?:\/\//, "");
+
+/** A hostname from whatever the user typed: a bare domain, or a pasted URL. Kept
+ * as typed (minus case), because it becomes an origin we ask permission for. */
+function parseHostInput(value: string): string {
+  const bare =
+    value
+      .trim()
+      .replace(/^[a-z]+:\/\//i, "")
+      .split(/[/?#]/)[0] ?? "";
+  return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(bare) ? hostText(bare) : "";
+}
 
 /** Hostname a recipe is grouped under: the first host in its scope. */
 function recipeHost(r: Recipe): string {
@@ -82,6 +98,10 @@ function PlaceholderHelp({ list, note }: { list: readonly PlaceholderDoc[]; note
 const isShowRecipe = (r: Recipe) =>
   r.mediaType === "show" || !!r.extract?.season || !!r.extract?.episode;
 
+/** What a recipe records, in a word: a manual pick, a show, or a movie. */
+const recipeKind = (r: Recipe) =>
+  isManualRecipe(r) ? "manual pick" : isShowRecipe(r) ? "show" : "movie";
+
 /** `https://host/segment/` from a recipe: the inferable part of a quick link. */
 function recipeBaseUrl(r: Recipe): string {
   const segments = patternPath(r.match.urlPattern).replace(/\\(.)/g, "$1").replace(/^\/+/, "");
@@ -97,8 +117,8 @@ interface RecipeSuggestion {
 
 /** What we CAN infer for a quick link from existing recipes (name + URL base). */
 function recipeSuggestions(recipes: Recipe[], links: QuickLinkSite[]): RecipeSuggestion[] {
-  const linked = new Set(links.map(linkHost).filter(Boolean));
-  const hasLinkFor = (h: string) => linked.has(h);
+  const linked = new Set(links.map((l) => normalizeHost(linkHost(l))).filter(Boolean));
+  const hasLinkFor = (h: string) => linked.has(normalizeHost(h));
   const byHost = new Map<string, Recipe[]>();
   for (const r of recipes) {
     // Quick-link suggestions are Trakt-only (we can derive a movie/tv URL base
@@ -327,11 +347,249 @@ function QuickLinkRow({
   );
 }
 
+/** One domain of a site: its access dot and, when the site has others, a remove button. */
+function HostChip({
+  host,
+  enabled,
+  removable,
+  busy,
+  onRemove,
+}: {
+  host: string;
+  enabled: boolean;
+  removable: boolean;
+  busy: boolean;
+  onRemove: () => void;
+}) {
+  return (
+    <span
+      class={clsx(
+        "inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 font-mono text-[11px]",
+        t.chip,
+      )}
+    >
+      <span
+        class={clsx("size-1.5 shrink-0 rounded-full", enabled ? "bg-emerald-500" : "bg-amber-400")}
+        title={enabled ? "Enabled" : "Needs access"}
+      />
+      {host}
+      {removable && (
+        <IconBtn t={t} name="x" title={`Remove ${host}`} small disabled={busy} onClick={onRemove} />
+      )}
+    </span>
+  );
+}
+
+/**
+ * One site: its domains and its recipes, in one card. A domain move is done here
+ * (add the new domain, remove the old), next to the recipes it changes.
+ */
+function SiteCard({
+  site,
+  isHostEnabled,
+  allSites,
+  busy,
+  copied,
+  adding,
+  newHost,
+  hostNote,
+  onEnable,
+  onDisable,
+  onStartAdd,
+  onNewHost,
+  onAddHost,
+  onRemoveHost,
+  onRename,
+  onContribute,
+  onCopy,
+  onDelete,
+}: {
+  site: SiteGroup;
+  isHostEnabled: (host: string) => boolean;
+  /** The broad grant is held: access is on everywhere, so no per-site toggle. */
+  allSites: boolean;
+  busy: boolean;
+  copied: string | null;
+  /** The "add a domain" input is open on this card. */
+  adding: boolean;
+  newHost: string;
+  hostNote: string | null;
+  onEnable: () => void;
+  onDisable: () => void;
+  onStartAdd: () => void;
+  onNewHost: (v: string) => void;
+  onAddHost: () => void;
+  onRemoveHost: (host: string) => void;
+  onRename: (name: string) => void;
+  onContribute: (r: Recipe) => void;
+  onCopy: (r: Recipe) => void;
+  onDelete: (id: string) => void;
+}) {
+  const needsAccess = site.hosts.some((h) => !isHostEnabled(h));
+  const renamable = site.recipes.some((r) => !r.library);
+  const [naming, setNaming] = useState(false);
+  const [draftName, setDraftName] = useState(site.name);
+  const saveName = () => {
+    const name = draftName.trim();
+    if (name && name !== site.name) onRename(name);
+    setNaming(false);
+  };
+  return (
+    <div class={clsx("space-y-2.5 rounded-lg px-3 py-2.5", t.card)}>
+      <div class="flex items-center justify-between gap-3">
+        {naming ? (
+          <div class="flex min-w-0 flex-1 items-center gap-1.5">
+            <input
+              value={draftName}
+              onInput={(e) => setDraftName((e.target as HTMLInputElement).value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") saveName();
+                if (e.key === "Escape") setNaming(false);
+              }}
+              class={clsx(
+                "min-w-0 flex-1 rounded-lg px-2.5 py-1 text-[13px] outline-none ring-inset focus:ring-2",
+                t.input,
+              )}
+            />
+            <Btn t={t} tone="primary" disabled={busy || !draftName.trim()} onClick={saveName}>
+              Save
+            </Btn>
+            <Btn t={t} tone="ghost" onClick={() => setNaming(false)}>
+              Cancel
+            </Btn>
+          </div>
+        ) : (
+          <span class="flex min-w-0 items-center gap-0.5">
+            <span class={clsx("truncate text-[13px] font-semibold", t.heading)}>{site.name}</span>
+            {renamable && (
+              <IconBtn
+                t={t}
+                name="edit"
+                title="Rename site"
+                onClick={() => {
+                  setDraftName(site.name);
+                  setNaming(true);
+                }}
+              />
+            )}
+          </span>
+        )}
+        {!naming &&
+          !allSites &&
+          site.hosts.length > 0 &&
+          (needsAccess ? (
+            <Btn t={t} tone="primary" disabled={busy} onClick={onEnable}>
+              Enable
+            </Btn>
+          ) : (
+            <Btn t={t} tone="ghost" disabled={busy} onClick={onDisable}>
+              Disable
+            </Btn>
+          ))}
+      </div>
+
+      <div>
+        <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>Domains</span>
+        <div class="flex flex-wrap items-center gap-1.5">
+          {site.hosts.length === 0 && (
+            <span class={clsx("text-[11px]", t.sub)}>Any site with this page shape</span>
+          )}
+          {site.hosts.map((h) => (
+            <HostChip
+              key={h}
+              host={h}
+              enabled={isHostEnabled(h)}
+              removable={site.hosts.length > 1}
+              busy={busy}
+              onRemove={() => onRemoveHost(h)}
+            />
+          ))}
+          {!adding && (
+            <IconBtn t={t} name="plus" title="Add a domain (the site moved)" onClick={onStartAdd} />
+          )}
+        </div>
+        {adding && (
+          <div class="mt-2 flex items-center gap-1.5">
+            <input
+              value={newHost}
+              placeholder="new-domain.tld"
+              spellcheck={false}
+              onInput={(e) => onNewHost((e.target as HTMLInputElement).value)}
+              onKeyDown={(e) => e.key === "Enter" && onAddHost()}
+              class={clsx(
+                "min-w-0 flex-1 rounded-lg px-2.5 py-1.5 font-mono text-[11px] outline-none ring-inset focus:ring-2",
+                t.input,
+              )}
+            />
+            <Btn t={t} tone="primary" disabled={busy || !newHost.trim()} onClick={onAddHost}>
+              Add
+            </Btn>
+            <Btn t={t} tone="ghost" onClick={onStartAdd}>
+              Cancel
+            </Btn>
+          </div>
+        )}
+        {adding && hostNote && <p class={clsx("mt-1.5 text-[11px]", t.sub)}>{hostNote}</p>}
+      </div>
+
+      <div>
+        <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>Recipes</span>
+        <div class="space-y-1">
+          {site.recipes.map(({ recipe: r, library }) => (
+            <div key={r.id} class="flex items-center justify-between gap-2">
+              {/* The card already names the site; a recipe's name shows only when it differs. */}
+              <div class="min-w-0">
+                <span class="flex items-center gap-1.5">
+                  <code class={clsx("truncate font-mono text-[12px]", t.heading)}>
+                    {r.match.urlPattern}
+                  </code>
+                  {recipeTrackers(r).map((tr) => (
+                    <span key={tr} title={trackerLabel(tr)}>
+                      <TrackerMark tracker={tr} class="size-3.5" />
+                    </span>
+                  ))}
+                </span>
+                <span class={clsx("block text-[11px]", t.faint)}>
+                  {[recipeKind(r), r.name !== site.name && r.name, library && "library"]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </span>
+              </div>
+              {!library && (
+                <div class="flex shrink-0 items-center">
+                  <IconBtn
+                    t={t}
+                    name="external"
+                    title="Contribute to library"
+                    onClick={() => onContribute(r)}
+                  />
+                  <IconBtn
+                    t={t}
+                    name={copied === r.id ? "check" : "copy"}
+                    title={copied === r.id ? "Copied!" : "Copy JSON"}
+                    onClick={() => onCopy(r)}
+                  />
+                  <IconBtn
+                    t={t}
+                    name="trash"
+                    title="Delete"
+                    danger
+                    onClick={() => onDelete(r.id)}
+                  />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const SECTIONS: { id: string; label: string; icon: IconName }[] = [
   { id: "account", label: "Account", icon: "play" },
   { id: "sites", label: "Sites", icon: "frame" },
   { id: "links", label: "Quick links", icon: "link" },
-  { id: "recipes", label: "Recipes", icon: "edit" },
   { id: "corrections", label: "Corrections", icon: "check" },
   { id: "backup", label: "Backup", icon: "copy" },
   { id: "display", label: "Display", icon: "settings" },
@@ -404,6 +662,10 @@ export function App() {
   /** The single unsaved quick-link draft (from "Add blank"), if any — cleared on save. */
   const [draftId, setDraftId] = useState<string | null>(null);
   const [active, setActive] = useState("account");
+  /** The site whose "add a domain" input is open, if any. */
+  const [addingHostFor, setAddingHostFor] = useState<string | null>(null);
+  const [newHost, setNewHost] = useState("");
+  const [hostNote, setHostNote] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -460,11 +722,68 @@ export function App() {
       await sendMessage("syncSiteRegistrations", undefined);
     });
 
-  // Grant a single recipe's origin from the "needs enabling" list.
-  const enablePending = (origin: string) =>
+  // --- a site's domains ---
+  // Streaming sites move domain and keep their pages, so a site's recipes stay
+  // right and only the domain list changes. A move is "add the new, remove the old".
+  const startAddHost = (key: string) => {
+    setAddingHostFor((cur) => (cur === key ? null : key));
+    setNewHost("");
+    setHostNote(null);
+  };
+
+  const addHost = (site: SiteGroup) =>
     act(async () => {
-      if (!(await browser.permissions.request({ origins: [`${origin}/*`] }))) return;
-      await sendMessage("registerSite", origin);
+      const to = parseHostInput(newHost);
+      if (!to) return setHostNote("That doesn't look like a domain.");
+      if (site.hosts.some((h) => normalizeHost(h) === normalizeHost(to))) {
+        return setHostNote("This site already has that domain.");
+      }
+      if (!allSites && !(await browser.permissions.request({ origins: [`https://${to}/*`] }))) {
+        return setHostNote("TMSync needs access to the new domain to work there.");
+      }
+      await customRecipes.setValue(
+        withSiteHosts(site, [...site.hosts, to], await customRecipes.getValue()),
+      );
+      await sendMessage("registerSite", `https://${to}`);
+      setAddingHostFor(null);
+    });
+
+  // Drop a domain: the recipes stop matching there, its access is revoked, and a
+  // quick link that pointed at it follows the site to a domain it still has.
+  const removeHost = (site: SiteGroup, gone: string) =>
+    act(async () => {
+      const isGone = (h: string) => normalizeHost(h) === normalizeHost(gone);
+      const rest = site.hosts.filter((h) => !isGone(h));
+      const target = rest[0];
+      if (!target) return; // the last domain goes with the recipes, not on its own
+      await customRecipes.setValue(withSiteHosts(site, rest, await customRecipes.getValue()));
+      const ql = await quickLinks.getValue();
+      await quickLinks.setValue(ql.map((l) => (isGone(linkHost(l)) ? withLinkHost(l, target) : l)));
+      await sendMessage("unregisterSite", `https://${gone}`);
+      await browser.permissions.remove({ origins: [`https://${gone}/*`] });
+    });
+
+  const renameSite = (site: SiteGroup, name: string) =>
+    act(async () => {
+      await customRecipes.setValue(withSiteName(site, name, await customRecipes.getValue()));
+    });
+
+  // One prompt for every domain of the site that still needs access.
+  const enableSite = (site: SiteGroup) =>
+    act(async () => {
+      const missing = site.hosts.map((h) => `https://${h}`).filter((o) => !sites.includes(o));
+      if (missing.length === 0) return;
+      const ok = await browser.permissions.request({ origins: missing.map((o) => `${o}/*`) });
+      if (!ok) return;
+      for (const origin of missing) await sendMessage("registerSite", origin);
+    });
+
+  const disableSiteGroup = (site: SiteGroup) =>
+    act(async () => {
+      for (const h of site.hosts) {
+        await sendMessage("unregisterSite", `https://${h}`);
+        await browser.permissions.remove({ origins: [`https://${h}/*`] });
+      }
     });
 
   const updateBadge = async (patch: Partial<BadgePrefs>) => {
@@ -778,28 +1097,23 @@ export function App() {
     })),
   ];
   const suggestions = recipeSuggestions(recipes, links);
-  const recipeGroups = new Map<string, Recipe[]>();
-  for (const r of recipes) {
-    const key = recipeHost(r);
-    (recipeGroups.get(key) ?? recipeGroups.set(key, []).get(key))?.push(r);
-  }
-  // Every site TMSync knows about = origins the user granted + each recipe's host
-  // (custom + library). Under the broad grant they're ALL enabled even if
-  // `enabledOrigins` (sites) is empty — that's the fix for "works but shows disabled".
-  const recipeOrigins = [
-    ...new Set(
-      [...recipes, ...(remote?.recipes ?? [])].flatMap((r) =>
-        recipeHosts(r).map((h) => `https://${h}`),
-      ),
-    ),
-  ];
-  const knownOrigins = [...new Set([...sites, ...recipeOrigins])].sort();
-  const isSiteEnabled = (o: string) => allSites || sites.includes(o);
-  const notEnabledCount = allSites ? 0 : knownOrigins.filter((o) => !sites.includes(o)).length;
+  const siteGroups = groupSites(recipes, remote?.recipes ?? []);
+  const isHostEnabled = (h: string) => allSites || sites.includes(`https://${h}`);
+  const siteNeedsAccess = (site: SiteGroup) => site.hosts.some((h) => !isHostEnabled(h));
+  // Origins the user enabled that no recipe covers: player iframes, enabled from
+  // the popup so a cross-origin player can be tracked.
+  const siteHosts = new Set(siteGroups.flatMap((g) => g.hosts.map(normalizeHost)));
+  const playerFrames = sites.filter((o) => !siteHosts.has(normalizeHost(host(o)))).sort();
+  const notEnabledCount = allSites
+    ? 0
+    : siteGroups.flatMap((g) => g.hosts).filter((h) => !isHostEnabled(h)).length;
+  const siteMatches = (site: SiteGroup) =>
+    has(site.name) ||
+    site.hosts.some(has) ||
+    site.recipes.some(({ recipe }) => has(recipe.name) || has(recipe.match.urlPattern));
 
   const counts: Record<string, number> = {
     links: links.length,
-    recipes: recipes.length + (remote?.recipes.length ?? 0),
     corrections: allCorrections.length,
   };
   // Sites badge surfaces sites that NEED enabling (an action prompt), not the enabled
@@ -959,7 +1273,35 @@ export function App() {
 
             {active === "sites" && (
               <>
-                <PaneHead title="Sites" />
+                <PaneHead
+                  title="Sites"
+                  right={
+                    recipes.length > 0 && (
+                      <Btn
+                        t={t}
+                        tone="ghost"
+                        disabled={busy}
+                        onClick={() => openContribution(contributeAll(recipes, []))}
+                      >
+                        <Icon name="external" class="text-[12px]" /> Contribute all
+                      </Btn>
+                    )
+                  }
+                />
+                <p class={clsx("text-[12px] leading-relaxed", t.sub)}>
+                  Each site, its domains, and the recipes that read it. Yours win over the shared
+                  library where they overlap. If a site moves, add its new domain. Add a site with
+                  “Set up this site” in the popup, or{" "}
+                  <a
+                    href={RECIPES.contributeUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    class={clsx("underline underline-offset-2", t.link)}
+                  >
+                    contribute here
+                  </a>
+                  .
+                </p>
 
                 {/* Broad grant: one toggle makes every recipe (synced, imported, or
                     from the library) work instantly, with no per-site prompt. */}
@@ -979,71 +1321,94 @@ export function App() {
                   <Switch on={allSites} t={t} onClick={() => void toggleAllSites()} />
                 </div>
 
-                {/* One list of every site TMSync knows — granted origins AND each
-                    recipe's host — each with an enabled/needs-access indicator. Under
-                    the broad grant they all read "Enabled" (the catch-all covers them),
-                    which is the fix for an imported site working but showing nothing. */}
-                {knownOrigins.length === 0 ? (
+                {siteGroups.length + playerFrames.length === 0 ? (
                   <p class={clsx("rounded-lg px-3 py-4 text-center text-[12px]", t.card, t.sub)}>
-                    No sites yet. Import or add a recipe, or open the TMSync popup on a streaming
-                    site to enable it.
+                    No sites yet. Open the TMSync popup on a streaming site and use “Set up this
+                    site”, or import a backup.
                   </p>
                 ) : (
+                  <Filter q={q} setQ={setQ} placeholder="Filter sites…" />
+                )}
+
+                <div class="space-y-2">
+                  {siteGroups.filter(siteMatches).map((site) => (
+                    <SiteCard
+                      key={site.key}
+                      site={site}
+                      isHostEnabled={isHostEnabled}
+                      allSites={allSites}
+                      busy={busy}
+                      copied={copied}
+                      adding={addingHostFor === site.key}
+                      newHost={newHost}
+                      hostNote={hostNote}
+                      onEnable={() => void enableSite(site)}
+                      onDisable={() => void disableSiteGroup(site)}
+                      onStartAdd={() => startAddHost(site.key)}
+                      onNewHost={setNewHost}
+                      onAddHost={() => void addHost(site)}
+                      onRemoveHost={(h) => void removeHost(site, h)}
+                      onRename={(name) => void renameSite(site, name)}
+                      onContribute={(r) => openContribution(contributeRecipe(r))}
+                      onCopy={copyRecipe}
+                      onDelete={deleteRecipe}
+                    />
+                  ))}
+                </div>
+
+                {/* Origins enabled with no recipe behind them: the player iframes a
+                    site embeds, enabled from the popup so playback can be tracked. */}
+                {playerFrames.filter(has).length > 0 && (
                   <>
-                    <Filter q={q} setQ={setQ} placeholder="Filter sites…" />
+                    <div class={clsx("flex items-center gap-2 px-1 pt-3 text-[11px]", t.faint)}>
+                      <span class="font-medium uppercase tracking-wide">Player frames</span>
+                      <span class="h-px flex-1 bg-current opacity-20" />
+                      <span>{playerFrames.length}</span>
+                    </div>
                     <div class="space-y-1.5">
-                      {knownOrigins.filter(has).map((origin) => {
-                        const enabled = isSiteEnabled(origin);
-                        return (
-                          <div
-                            key={origin}
-                            class={clsx(
-                              "flex items-center justify-between gap-3 rounded-lg px-3 py-2",
-                              t.card,
-                            )}
-                          >
-                            <span class="flex min-w-0 items-center gap-2">
-                              <span
-                                class={clsx(
-                                  "size-1.5 shrink-0 rounded-full",
-                                  enabled ? "bg-emerald-500" : "bg-amber-400",
-                                )}
-                                title={enabled ? "Enabled" : "Needs access"}
-                              />
-                              <code
-                                class={clsx("truncate font-mono text-[12px]", t.heading)}
-                                title={origin}
-                              >
-                                {host(origin)}
-                              </code>
-                            </span>
-                            {allSites ? (
-                              <span class={clsx("shrink-0 text-[11px]", t.sub)}>Enabled</span>
-                            ) : enabled ? (
-                              <Btn
-                                t={t}
-                                tone="ghost"
-                                disabled={busy}
-                                onClick={() => disableSite(origin)}
-                              >
-                                Disable
-                              </Btn>
-                            ) : (
-                              <Btn
-                                t={t}
-                                tone="primary"
-                                disabled={busy}
-                                onClick={() => void enablePending(origin)}
-                              >
-                                Enable
-                              </Btn>
-                            )}
-                          </div>
-                        );
-                      })}
+                      {playerFrames.filter(has).map((origin) => (
+                        <div
+                          key={origin}
+                          class={clsx(
+                            "flex items-center justify-between gap-3 rounded-lg px-3 py-2",
+                            t.card,
+                          )}
+                        >
+                          <code class={clsx("truncate font-mono text-[12px]", t.heading)}>
+                            {host(origin)}
+                          </code>
+                          {!allSites && (
+                            <Btn
+                              t={t}
+                              tone="ghost"
+                              disabled={busy}
+                              onClick={() => disableSite(origin)}
+                            >
+                              Disable
+                            </Btn>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   </>
                 )}
+
+                {/* Where the shared recipes and the anime map come from, and how fresh
+                    they are. Both ride the same CDN and the same "Sync library". */}
+                <div class={clsx("space-y-0.5 px-1 pt-3 text-[11px]", t.faint)}>
+                  <p>
+                    {remote
+                      ? `Library · ${remote.recipes.length} shared recipes · updated ${new Date(remote.fetchedAt).toLocaleString()}`
+                      : "Library · not fetched yet · it syncs automatically in the background."}
+                  </p>
+                  <p>
+                    {mapCache
+                      ? `Anime map · ${mapCache.rows.length.toLocaleString()} entries${
+                          mapCache.generatedAt ? ` · built ${mapCache.generatedAt}` : ""
+                        } · updated ${new Date(mapCache.fetchedAt).toLocaleString()}`
+                      : "Anime map · not fetched yet · anime multi-tracking waits for it."}
+                  </p>
+                </div>
               </>
             )}
 
@@ -1124,162 +1489,6 @@ export function App() {
                       </button>
                     ))}
                   </div>
-                )}
-              </>
-            )}
-
-            {active === "recipes" && (
-              <>
-                <PaneHead
-                  title="Recipes"
-                  right={
-                    recipes.length > 0 && (
-                      <Btn
-                        t={t}
-                        tone="ghost"
-                        disabled={busy}
-                        onClick={() => openContribution(contributeAll(recipes, []))}
-                      >
-                        <Icon name="external" class="text-[12px]" /> Contribute all
-                      </Btn>
-                    )
-                  }
-                />
-                <p class={clsx("text-[12px] leading-relaxed", t.sub)}>
-                  Your own recipes and the shared library, together. Yours win where they overlap.
-                  Add a site with “Set up this site” in the popup, or{" "}
-                  <a
-                    href={RECIPES.contributeUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    class={clsx("underline underline-offset-2", t.link)}
-                  >
-                    contribute here
-                  </a>
-                  .
-                </p>
-                {recipes.length + (remote?.recipes.length ?? 0) > 3 && (
-                  <Filter q={q} setQ={setQ} placeholder="Filter recipes…" />
-                )}
-
-                {/* Your recipes (editable) */}
-                <div class={clsx("flex items-center gap-2 px-1 pt-1 text-[11px]", t.faint)}>
-                  <span class="font-medium uppercase tracking-wide">Yours</span>
-                  <span class="h-px flex-1 bg-current opacity-20" />
-                  <span>{recipes.length}</span>
-                </div>
-                {recipes.length === 0 ? (
-                  <p class={clsx("rounded-lg px-3 py-3 text-center text-[12px]", t.card, t.sub)}>
-                    No custom recipes yet. Use “Set up this site” in the popup to author one.
-                  </p>
-                ) : (
-                  <div class="space-y-3">
-                    {[...recipeGroups.entries()].map(([hostname, group]) => {
-                      const items = group.filter(
-                        (r) => has(r.name) || has(r.match.urlPattern) || has(hostname),
-                      );
-                      if (items.length === 0) return null;
-                      return (
-                        <div key={hostname}>
-                          <div
-                            class={clsx(
-                              "mb-1.5 flex items-center justify-between px-1 text-[11px]",
-                              t.faint,
-                            )}
-                          >
-                            <code class="font-mono">{hostname}</code>
-                            <span>
-                              {items.length} recipe{items.length > 1 ? "s" : ""}
-                            </span>
-                          </div>
-                          <div class="space-y-1.5">
-                            {items.map((r) => (
-                              <div
-                                key={r.id}
-                                class={clsx(
-                                  "flex items-center justify-between gap-2 rounded-lg px-3 py-2",
-                                  t.card,
-                                )}
-                              >
-                                <div class="min-w-0">
-                                  <span class={clsx("block text-[13px] font-medium", t.heading)}>
-                                    {r.name}
-                                  </span>
-                                  <code
-                                    class={clsx("block truncate font-mono text-[11px]", t.faint)}
-                                  >
-                                    {r.match.urlPattern}
-                                  </code>
-                                </div>
-                                <div class="flex shrink-0 items-center">
-                                  <IconBtn
-                                    t={t}
-                                    name="external"
-                                    title="Contribute to library"
-                                    onClick={() => openContribution(contributeRecipe(r))}
-                                  />
-                                  <IconBtn
-                                    t={t}
-                                    name={copied === r.id ? "check" : "copy"}
-                                    title={copied === r.id ? "Copied!" : "Copy JSON"}
-                                    onClick={() => copyRecipe(r)}
-                                  />
-                                  <IconBtn
-                                    t={t}
-                                    name="trash"
-                                    title="Delete"
-                                    danger
-                                    onClick={() => deleteRecipe(r.id)}
-                                  />
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* Library (read-only, from the repo) */}
-                <div class={clsx("flex items-center gap-2 px-1 pt-3 text-[11px]", t.faint)}>
-                  <span class="font-medium uppercase tracking-wide">Library</span>
-                  <span class="h-px flex-1 bg-current opacity-20" />
-                  <span>{remote?.recipes.length ?? 0}</span>
-                </div>
-                <p class={clsx("px-1 text-[11px]", t.faint)}>
-                  {remote
-                    ? `Shared via the repo · updated ${new Date(remote.fetchedAt).toLocaleString()}`
-                    : "Not fetched yet · it syncs automatically in the background."}
-                </p>
-                {/* The anime map rides the same CDN + Refresh as the recipe list, so its
-                    freshness belongs next to the library's. It is fetched, never bundled. */}
-                <p class={clsx("px-1 text-[11px]", t.faint)}>
-                  {mapCache
-                    ? `Anime map · ${mapCache.rows.length.toLocaleString()} entries${
-                        mapCache.generatedAt ? ` · built ${mapCache.generatedAt}` : ""
-                      } · updated ${new Date(mapCache.fetchedAt).toLocaleString()}`
-                    : "Anime map · not fetched yet · anime multi-tracking waits for it."}
-                </p>
-                {remote && remote.recipes.length > 0 ? (
-                  <div class="space-y-1.5">
-                    {remote.recipes
-                      .filter((r) => has(r.name) || has(r.match.urlPattern))
-                      .map((r) => (
-                        <div class={clsx("rounded-lg px-3 py-2", t.card)} key={r.id}>
-                          <span class={clsx("block text-[13px] font-medium", t.heading)}>
-                            {r.name}
-                          </span>
-                          <code class={clsx("block truncate font-mono text-[11px]", t.faint)}>
-                            {r.match.urlPattern}
-                          </code>
-                        </div>
-                      ))}
-                  </div>
-                ) : (
-                  <p class={clsx("rounded-lg px-3 py-3 text-center text-[12px]", t.card, t.sub)}>
-                    The shared library is empty · contribute a site to seed it.
-                  </p>
                 )}
               </>
             )}
