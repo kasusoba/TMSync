@@ -11,9 +11,11 @@ import {
   sendMessage,
 } from "@/messaging";
 import {
+  type EngineContext,
   type ParsedMedia,
   type Recipe,
   extract,
+  findHostAdoption,
   isManualRecipe,
   primaryId,
   readField,
@@ -304,6 +306,9 @@ export class SessionManager {
   private badgeActive = false;
   /** Manual recipe matched but no selection yet — wait for the user's pick. */
   private manualAwaiting = false;
+  /** The "this site moved here?" offer already made for this URL, so a mutation
+   * burst re-offers nothing and the badge stays quiet after a dismissal. */
+  private adoptOfferedFor: string | null = null;
   /** Show page matched but its URL carries no episode — wait for the user to
    * supply season/episode via the badge (e.g. a "?play=true" deep link). */
   private episodeAwaiting = false;
@@ -445,6 +450,31 @@ export class SessionManager {
     await this.ensurePlaying();
   }
 
+  /**
+   * No recipe covers this page, but one fits it except for the hostname: the
+   * shape of a site that moved domain. Offer it on the badge instead of asking the
+   * user to author the same recipe again. Offered once per URL; accepting it is
+   * `adoptRecipeHost`, which adds this host to the recipe.
+   */
+  private async offerHostAdoption(ctx: EngineContext): Promise<void> {
+    if (this.adoptOfferedFor === ctx.url) return;
+    const candidate = findHostAdoption(this.recipes, ctx);
+    if (!candidate) return;
+    this.adoptOfferedFor = ctx.url;
+    await sendMessage("reportScrobble", {
+      state: "idle",
+      title: candidate.name,
+      detail: "this site looks like one you set up",
+      // The page's real hostname: the background asks permission for it, and
+      // `https://www.site.tld/*` is not `https://site.tld/*`.
+      adopt: {
+        recipeId: candidate.id,
+        recipeName: candidate.name,
+        host: location.hostname,
+      },
+    });
+  }
+
   /** If this frame matches a recipe, extract + publish the media and seed the badge. */
   private async matchAndPublish(): Promise<void> {
     const engineCtx = { document, url: location.href };
@@ -477,11 +507,14 @@ export class SessionManager {
           await sendMessage("stopTabSession", undefined);
           await sendMessage("reportScrobble", { state: "stopped", hide: true });
         }
+        // After the teardown, so a "site moved?" offer isn't wiped by the hide above.
+        await this.offerHostAdoption(engineCtx);
       }
       return;
     }
     // A recipe covers this page → the top frame owns a badge for it now.
     if (this.isTop) this.badgeActive = true;
+    this.adoptOfferedFor = null;
 
     // Manual recipe: nothing to scrape. The top frame derives the page key,
     // looks up a remembered pick, and otherwise prompts the user via the badge.
@@ -953,6 +986,7 @@ export class SessionManager {
   updateRecipes(recipes: Recipe[]): void {
     this.recipes = recipes;
     this.lastPublishedKey = null;
+    this.adoptOfferedFor = null;
     this.teardownSession();
     void this.reconcile();
   }

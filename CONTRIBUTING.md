@@ -38,10 +38,12 @@ You'll want a local build to author recipes with the picker or to test a code ch
 
 1. `pnpm install`, then `pnpm build`, and load `.output/chrome-mv3` unpacked (chrome://extensions,
    turn on Developer mode, "Load unpacked"). The extension ID is stable
-   (`aplaigellojlejhdjkklgihlmbmdaebk`). After later `pnpm build`s just hit the reload icon on the
-   extension card; no need to remove and re-add, and enabled sites re-register automatically.
+   (`hkfpacmhbiccimikfleemmhfemdnjfpf`). It is the same ID as the Chrome Web Store version, so in a
+   profile that has the store TMSync, turn that one off first. After later `pnpm build`s just hit
+   the reload icon on the extension card; no need to remove and re-add, and enabled sites
+   re-register automatically.
 2. In your Trakt app (trakt.tv/oauth/applications) set the Redirect URI to
-   `https://aplaigellojlejhdjkklgihlmbmdaebk.chromiumapp.org/`. To track anime, register the same
+   `https://hkfpacmhbiccimikfleemmhfemdnjfpf.chromiumapp.org/`. To track anime, register the same
    redirect URI in your AniList app settings.
 3. Open the popup and connect Trakt and/or AniList.
 4. On a media page, **Enable** the site (and any player-frame origin the popup lists), or **Set it
@@ -77,7 +79,7 @@ selectors:
 2. Open the picker, point-and-click the title / year / season / episode (it auto-detects page
    metadata like `og:title` and JSON-LD first, and shows a live extract preview).
 3. Save — it stores a working recipe locally.
-4. Copy that recipe's JSON (Options → your custom recipes) into a new entry under `"recipes"`
+4. Copy that recipe's JSON (Options → Sites, the copy icon on the recipe) into a new entry under `"recipes"`
    and open a PR.
 
 ### Recipe fields
@@ -90,9 +92,10 @@ selectors:
   "tracker": "trakt",            // "trakt" (movies/live-action TV) | "anilist" (anime). Routes the
                                  //   recipe at runtime; all recipes share one file. Omit → "trakt".
   "match": {
-    "urlPattern": "www\\.cineby\\.at/movie",  // regex (escaped!) tested against location.href
-    "hostnames": ["www.cineby.at"],           // hints only, not the primary match
-    "domFingerprint": ".player"               // optional: a selector that must exist — clone-resilient
+    "urlPattern": "/movie",        // regex tested against location.href: the PATH, no host
+    "hostnames": ["cineby.at"],    // the site's domain(s). A site that moves keeps its recipe
+                                   //   and gains a hostname. Omit → the recipe matches any host.
+    "domFingerprint": ".player"    // optional: a selector that must exist (clone-resilient)
   },
   "mediaType": "auto",           // "auto" | "movie" | "show" ("auto" infers show when season/episode present)
   "video": {
@@ -128,7 +131,10 @@ show (with `mediaType: "auto"`).
   far less than class names.
 - Keep `urlPattern` specific enough to distinguish movie vs. TV/episode pages — usually a
   separate recipe per page type (see the cineby/popcornmovies pairs in the file).
-- Remember `urlPattern` is a **regex string in JSON**: escape backslashes (`www\\.site\\.com`).
+- Keep the domain out of `urlPattern` and in `hostnames`. Streaming sites move domain often,
+  and the recipe then survives the move: add the new domain to `hostnames` and nothing else
+  changes. Older recipes that carry the host in the pattern still work.
+- Remember `urlPattern` is a **regex string in JSON**: escape backslashes (`/tv\\-shows`).
 
 ---
 
@@ -139,11 +145,12 @@ templates — independent of whether a recipe exists for that site.
 
 ```jsonc
 {
-  "id": "cineby",                                    // unique, kebab-case
-  "name": "Cineby",                                  // shown on the button
-  "movie": "https://www.cineby.at/movie/{tmdb}",
-  "tv":    "https://www.cineby.at/tv/{tmdb}/{season}/{episode}",
-  "search": "https://www.cineby.at/search?q={title}" // fallback when ids are missing
+  "id": "cineby",                            // unique, kebab-case
+  "name": "Cineby",                          // shown on the button
+  "host": "cineby.at",                       // the site's domain, the one field to change if it moves
+  "movie": "/movie/{tmdb}",
+  "tv":    "/tv/{tmdb}/{season}/{episode}",
+  "search": "/search?q={title}"              // fallback when ids are missing
 }
 ```
 

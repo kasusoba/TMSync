@@ -1,6 +1,6 @@
 import "@/lib/ui/theme.css";
 import { newRecipeId, slugifyHost } from "@/lib/recipe-id";
-import { loadRecipes } from "@/lib/recipes";
+import { loadRecipes, recipeTarget } from "@/lib/recipes";
 import { customRecipes } from "@/lib/storage";
 import { useKeyShield } from "@/lib/ui/key-shield";
 import { PickerPanel } from "@/lib/ui/kit/PickerPanel";
@@ -144,7 +144,7 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
   // Populate ONLY from the user's own custom recipe — never from the library, so
   // fixing a wrong library recipe starts fresh rather than inheriting its fields.
   // Separately note if a library recipe covers this page (transparency); the
-  // local save will shadow it (loadRecipes dedupes by urlPattern, custom-first).
+  // local save will shadow it (loadRecipes dedupes by target, custom-first).
   useEffect(() => {
     void (async () => {
       const custom = await customRecipes.getValue();
@@ -332,11 +332,10 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
       );
     const built = buildRecipe(draft, { id, name });
     if (!built.ok) return setStatus(built.error);
-    // Replace the recipe being edited (same id) and any other for the same
-    // urlPattern — so we never leave a stale duplicate behind.
-    const list = existing.filter(
-      (r) => r.id !== built.recipe.id && r.match.urlPattern !== built.recipe.match.urlPattern,
-    );
+    // Replace the recipe being edited (same id) and any other with the same
+    // target (same hosts + pattern), so we never leave a stale duplicate behind.
+    const target = recipeTarget(built.recipe);
+    const list = existing.filter((r) => r.id !== built.recipe.id && recipeTarget(r) !== target);
     await customRecipes.setValue([...list, built.recipe]);
     setEditingId(built.recipe.id);
     await sendMessage("registerSite", location.origin);

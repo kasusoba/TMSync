@@ -78,6 +78,10 @@ export type Field = z.infer<typeof Field>;
  * managed per-SITE, independent of recipes — see the extension's quickLinks store.
  */
 export const LinkTemplates = z.object({
+  /** The site's domain. Templates below may then be paths ("/movie/{tmdb}"), so a
+   * site that moves domain is fixed in one field. An absolute template (the older
+   * shape, "https://site/movie/{tmdb}") still works and ignores this. */
+  host: z.string().optional(),
   movie: z.string().optional(),
   tv: z.string().optional(),
   anime: z.string().optional(),
@@ -104,9 +108,14 @@ export const Recipe = z.object({
   schemaVersion: z.number().int(), // client ignores recipes with a newer schemaVersion than it supports
   name: z.string(), // human-readable site name
   match: z.object({
-    urlPattern: z.string(), // regex tested against location.href
+    // Regex tested against location.href. The host belongs in `hostnames`, not
+    // here; older recipes that anchor it in the pattern still work.
+    urlPattern: z.string(),
     domFingerprint: z.string().optional(), // a selector that must exist; primary clone-resilient key
-    hostnames: z.array(z.string()).optional(), // hints only, not the primary match
+    // The recipe's HOST SCOPE, and the origins the background asks permission for.
+    // A site that moves domain keeps its recipe and gains a hostname here (see
+    // lib/hosts.ts). Absent ⇒ host-free: the pattern + fingerprint decide alone.
+    hostnames: z.array(z.string()).optional(),
   }),
   mediaType: z.enum(["auto", "movie", "show"]).default("auto"),
   // Which tracker adapter records this site. Routed, never synced (one item →

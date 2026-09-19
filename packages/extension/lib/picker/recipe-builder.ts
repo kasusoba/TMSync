@@ -7,8 +7,12 @@ import {
   type Recipe,
   RecipeSchema,
   SCHEMA_VERSION,
+  escapeRegex,
   extract,
+  hostText,
+  normalizeHost,
   readField,
+  recipeHosts,
   recipeTrackers,
 } from "@tmsync/shared";
 
@@ -55,31 +59,26 @@ export function deriveQuickLink(url: string, tracker: Tracker, isShow = false): 
   let path: string;
   try {
     const u = new URL(url);
-    host = u.host;
+    host = hostText(u.host);
     path = u.pathname.replace(/\/$/, "");
   } catch {
     return {};
   }
-  const base = `https://${host}`;
 
   if (tracker === "anilist") {
-    return { anime: `${base}${path.replace(/\/[^/]+$/, "/{slug}")}` };
+    return { host, anime: path.replace(/\/[^/]+$/, "/{slug}") };
   }
   if (isShow) {
     const numbered = path.match(/^(.*?)\/\d+\/\d+\/\d+$/); // …/{id}/{season}/{episode}
-    if (numbered) return { tv: `${base}${numbered[1]}/{tmdb}/{season}/{episode}` };
+    if (numbered) return { host, tv: `${numbered[1]}/{tmdb}/{season}/{episode}` };
     const hyphenated = path.match(/^(.*?)\/[^/]+\/\d+-\d+$/); // …/{slug}/{s}-{e}
-    if (hyphenated) return { tv: `${base}${hyphenated[1]}/{slug}/{season}-{episode}` };
-    if (/\/\d+$/.test(path)) return { tv: `${base}${path.replace(/\/\d+$/, "/{tmdb}")}` };
-    return { tv: `${base}${path.replace(/\/[^/]+$/, "/{slug}")}` };
+    if (hyphenated) return { host, tv: `${hyphenated[1]}/{slug}/{season}-{episode}` };
+    if (/\/\d+$/.test(path)) return { host, tv: path.replace(/\/\d+$/, "/{tmdb}") };
+    return { host, tv: path.replace(/\/[^/]+$/, "/{slug}") };
   }
   // movie: a numeric id → {tmdb}; otherwise a slug → {slug}.
-  if (/\/\d+$/.test(path)) return { movie: `${base}${path.replace(/\/\d+$/, "/{tmdb}")}` };
-  return { movie: `${base}${path.replace(/\/[^/]+$/, "/{slug}")}` };
-}
-
-export function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (/\/\d+$/.test(path)) return { host, movie: path.replace(/\/\d+$/, "/{tmdb}") };
+  return { host, movie: path.replace(/\/[^/]+$/, "/{slug}") };
 }
 
 /**
@@ -218,9 +217,10 @@ export function detectTmdbIdField(url: string): Field | undefined {
 }
 
 /**
- * A urlPattern matching the hostname + first path segment (e.g. "cineby\.at/movie"),
- * so a recipe doesn't fire on the home/search pages. Hostname-scoped rather than
- * full-URL so it survives the dynamic id segment.
+ * A urlPattern matching the first path segment (e.g. "/movie"), so a recipe
+ * doesn't fire on the home/search pages. The HOST is not in here: it lives in
+ * `match.hostnames` (see @tmsync/shared lib/hosts.ts), so a site that moves
+ * domain keeps its pattern and gains a hostname.
  *
  * PLUS: if the next segment is a "typed id" — a static prefix before a number, like
  * `tmdb-tv-2604` or `tmdb-movie-1244492` — the prefix is kept. That's what makes a
@@ -230,17 +230,16 @@ export function detectTmdbIdField(url: string): Field | undefined {
  */
 export function suggestUrlPattern(url: string): string {
   try {
-    const u = new URL(url);
-    const segments = u.pathname.split("/").filter(Boolean);
+    const segments = new URL(url).pathname.split("/").filter(Boolean);
     const first = segments[0];
-    if (!first) return escapeRegex(u.hostname);
-    const parts = [u.hostname, first];
+    if (!first) return ".*"; // no path to key on; the host scope is the whole match
+    const parts = [first];
     // A meaningful (≥2-char) non-digit lead before the first digit of the 2nd
     // segment marks a type ("tmdb-tv-"); a pure number ("42") or a slug
-    // ("breaking-bad") has none, so those stay hostname/first-segment as before.
+    // ("breaking-bad") has none, so those stay at the first segment as before.
     const lead = segments[1] ? /^(\D{2,}?)\d/.exec(segments[1])?.[1] : undefined;
     if (lead) parts.push(lead);
-    return escapeRegex(parts.join("/"));
+    return `/${escapeRegex(parts.join("/"))}`;
   } catch {
     return escapeRegex(url);
   }
@@ -256,7 +255,9 @@ export function emptyDraft(url: string): RecipeDraft {
   return {
     match: {
       urlPattern: suggestUrlPattern(url),
-      hostnames: hostname ? [hostname] : undefined,
+      // The recipe's host scope. One entry now; a site that moves domain adds the
+      // new one (options → Sites, or the badge offer on the new host).
+      hostnames: hostname ? [hostText(hostname)] : undefined,
     },
     mediaType: "auto",
     trackers: ["trakt"],
@@ -314,12 +315,10 @@ export function defaultRecipeName(hostname: string): string {
 /**
  * Whether a saved recipe belongs to this host — used to reload it into the
  * picker for editing, even from a non-media page (homepage) where its urlPattern
- * wouldn't match the current URL. Checks the hostnames hint, then falls back to
- * the escaped hostname appearing in the urlPattern (how the picker builds them).
+ * wouldn't match the current URL.
  */
 export function recipeMatchesHost(recipe: Recipe, hostname: string): boolean {
-  if (recipe.match.hostnames?.includes(hostname)) return true;
-  return recipe.match.urlPattern.includes(escapeRegex(hostname));
+  return recipeHosts(recipe).map(normalizeHost).includes(normalizeHost(hostname));
 }
 
 function firstWorking(candidates: Field[], ctx: EngineContext): Field | undefined {

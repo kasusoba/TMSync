@@ -177,6 +177,8 @@ function BadgeRoot() {
    * across these; `tracker` stays the primary for the quick prompt. */
   const [trackers, setTrackers] = useState<Tracker[]>(["trakt"]);
   const [rewatchHidden, setRewatchHidden] = useState(false);
+  /** The "this site moved here?" offer was dismissed or accepted; don't re-show it. */
+  const [adoptHidden, setAdoptHidden] = useState(false);
   const [manualMode, setManualMode] = useState(false);
   // Hide the badge while the page is in native fullscreen (player gone immersive) —
   // an overlay over fullscreen video is intrusive. Tracked separately from prefs so
@@ -297,6 +299,7 @@ function BadgeRoot() {
       }
       setStatus(data);
       setRewatchHidden(false); // a fresh status may carry a new rewatch prompt
+      setAdoptHidden(false);
     });
     return () => off();
   }, []);
@@ -411,6 +414,15 @@ function BadgeRoot() {
   const activeTrackers = status.trackers?.length
     ? Array.from(new Set([...status.trackers.map((o) => o.tracker), ...trackers]))
     : trackers;
+
+  const adoptHost = () => {
+    if (!status?.adopt) return;
+    setAdoptHidden(true);
+    void sendMessage("adoptRecipeHost", {
+      recipeId: status.adopt.recipeId,
+      host: status.adopt.host,
+    });
+  };
 
   const confirmRewatch = () => {
     if (!media) return;
@@ -528,6 +540,28 @@ function BadgeRoot() {
           <Btn t={t} tone="primary" class="ml-auto" onClick={() => setPanel("episode")}>
             Set episode
           </Btn>
+        </div>
+      )}
+
+      {status.adopt && panel === null && !adoptHidden && (
+        <div
+          class={clsx(
+            "inline-flex items-center gap-3 rounded-xl py-2 pr-2 pl-3 shadow-xl shadow-black/30",
+            t.panel,
+          )}
+        >
+          <span class="min-w-0">
+            <span class={clsx("block whitespace-nowrap text-[12px] font-semibold", t.heading)}>
+              Did this site move?
+            </span>
+            <span class={clsx("block max-w-[200px] truncate text-[11px]", t.sub)}>
+              {status.adopt.recipeName} fits this page
+            </span>
+          </span>
+          <Btn t={t} tone="primary" class="ml-auto" onClick={adoptHost}>
+            Use it here
+          </Btn>
+          <IconBtn t={t} name="x" title="Dismiss" onClick={() => setAdoptHidden(true)} />
         </div>
       )}
 

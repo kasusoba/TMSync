@@ -24,7 +24,7 @@ import {
 import { type AnimapOverrides, deriveMediaWith, forwardKey } from "@/lib/animap/derive";
 import type { Animap } from "@/lib/animap/index";
 import { loadAnimap, parseAnimeMap } from "@/lib/animap/load";
-import { bundledLinks } from "@/lib/recipes";
+import { bundledLinks, loadRecipes } from "@/lib/recipes";
 import { statusDotColor } from "@/lib/scrobble/action-badge";
 import {
   type QuickLinkSite,
@@ -73,7 +73,15 @@ import {
   onMessage,
   sendMessage,
 } from "@/messaging";
-import { type LibraryLink, type ParsedMedia, type Recipe, parseLibrary } from "@tmsync/shared";
+import {
+  type LibraryLink,
+  type ParsedMedia,
+  type Recipe,
+  hostText,
+  parseLibrary,
+  recipeHosts,
+  withRecipeHosts,
+} from "@tmsync/shared";
 import { browser } from "wxt/browser";
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -533,6 +541,26 @@ export default defineBackground(() => {
     const tabId = data.tabId ?? sender.tab?.id;
     if (tabId !== undefined) void sendMessage("recheck", undefined, tabId);
     return { ok: true };
+  });
+
+  // The content script reloads on the customRecipes write, so the page matches next.
+  onMessage("adoptRecipeHost", async ({ data }) => {
+    try {
+      const host = hostText(data.host);
+      if (!host) return { ok: false, error: "no host" };
+      const source = (await loadRecipes()).find((r) => r.id === data.recipeId);
+      if (!source) return { ok: false, error: "recipe not found" };
+      const moved = withRecipeHosts(source, [...recipeHosts(source), host]);
+      const custom = await customRecipes.getValue();
+      const next = custom.some((r) => r.id === moved.id)
+        ? custom.map((r) => (r.id === moved.id ? moved : r))
+        : [moved, ...custom];
+      await customRecipes.setValue(next);
+      await registerSite(`https://${host}`);
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: errMsg(e) };
+    }
   });
 
   // The user confirmed a rewatch of a COMPLETED AniList cour → write REPEATING
@@ -1165,6 +1193,7 @@ function linkMatchesLibrary(cur: QuickLinkSite, l: LibraryLink): boolean {
   return (
     cur.name === l.name &&
     (cur.tracker ?? "trakt") === l.tracker &&
+    cur.host === l.host &&
     cur.movie === l.movie &&
     cur.tv === l.tv &&
     cur.anime === l.anime &&
@@ -1190,6 +1219,7 @@ async function mergeLibraryLinks(links: LibraryLink[]): Promise<void> {
     const fields = {
       name: l.name,
       tracker: l.tracker,
+      host: l.host,
       movie: l.movie,
       tv: l.tv,
       anime: l.anime,
@@ -1247,16 +1277,15 @@ async function syncRegistrations(): Promise<void> {
   }
 }
 
-/** Distinct origins a recipe could match, from the `hostnames` hint (the only part
- * of `match` that yields a static origin — `urlPattern` is a regex). Custom +
- * remote recipes; `https` is assumed (streaming sites are TLS). */
+/** Distinct origins a recipe could match: EVERY host in its scope, not just the
+ * first, so a site that moved domain is enabled on its old and new hosts alike.
+ * Custom + remote recipes; `https` is assumed (streaming sites are TLS). */
 async function recipeOrigins(): Promise<string[]> {
   const custom = await customRecipes.getValue();
   const remote = (await remoteRecipes.getValue())?.recipes ?? [];
   const hosts = new Set<string>();
   for (const r of [...custom, ...remote]) {
-    const h = r.match.hostnames?.[0];
-    if (h) hosts.add(`https://${h}`);
+    for (const h of recipeHosts(r)) hosts.add(`https://${h}`);
   }
   return [...hosts];
 }

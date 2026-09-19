@@ -22,7 +22,7 @@ import { tokens } from "@/lib/ui/kit/kit";
 import { NowPlaying } from "@/lib/ui/scrobble-panels";
 import type { BadgeStatus } from "@/messaging";
 import { type AniListStatus, type TraktStatus, sendMessage } from "@/messaging";
-import type { ParsedMedia } from "@tmsync/shared";
+import { type ParsedMedia, matchesUrl } from "@tmsync/shared";
 import { useEffect, useState } from "preact/hooks";
 import { browser } from "wxt/browser";
 
@@ -237,18 +237,9 @@ export function App() {
     setBadgeMode(badge.mode);
     // Does one of the user's OWN recipes already cover this page? Then the picker
     // opens in edit mode — so the button says "Edit recipe", not "Set up recipe".
-    // urlPattern-only (the popup has no page DOM to check a domFingerprint), which
-    // is enough for picker-authored recipes.
-    setPageHasRecipe(
-      !!url &&
-        custom.some((r) => {
-          try {
-            return new RegExp(r.match.urlPattern).test(url);
-          } catch {
-            return false;
-          }
-        }),
-    );
+    // Host scope + urlPattern (the popup has no page DOM to check a
+    // domFingerprint), which is enough for picker-authored recipes.
+    setPageHasRecipe(!!url && custom.some((r) => matchesUrl(r, url)));
     // Map the page's frames (cheap: stitched from iframe `src`, NO permission prompt)
     // so the top site and any embedded player frames show as ONE indented list. Scan
     // any scriptable http page; a single-frame page just yields the one top node.
@@ -319,6 +310,7 @@ export function App() {
       enabled: true,
       source: "user",
       tracker: v.tracker,
+      host: v.host,
       movie: v.movie,
       tv: v.tv,
       anime: v.anime,
@@ -521,6 +513,7 @@ export function App() {
           ? {
               name: qlSite.name,
               tracker: qlSite.tracker ?? "trakt",
+              host: qlSite.host,
               movie: qlSite.movie,
               tv: qlSite.tv,
               anime: qlSite.anime,

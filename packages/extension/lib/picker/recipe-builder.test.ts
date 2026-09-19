@@ -12,7 +12,6 @@ import {
   deriveQuickLink,
   detectTmdbIdField,
   emptyDraft,
-  escapeRegex,
   pickSeparator,
   previewDraft,
   queryParamRegex,
@@ -42,25 +41,28 @@ describe("defaultRecipeName", () => {
 describe("deriveQuickLink", () => {
   it("derives a movie template from a numeric id", () => {
     expect(deriveQuickLink("https://cineby.at/movie/693134", "trakt")).toEqual({
-      movie: "https://cineby.at/movie/{tmdb}",
+      host: "cineby.at",
+      movie: "/movie/{tmdb}",
     });
   });
 
   it("derives a tv template from a /{id}/{season}/{episode} path", () => {
     expect(deriveQuickLink("https://cineby.at/tv/273240/1/2", "trakt", true)).toEqual({
-      tv: "https://cineby.at/tv/{tmdb}/{season}/{episode}",
+      host: "cineby.at",
+      tv: "/tv/{tmdb}/{season}/{episode}",
     });
   });
 
   it("derives a tv template from a /{slug}/{s}-{e} path", () => {
     expect(
       deriveQuickLink("https://popcornmovies.org/episode/the-rookie/2-4", "trakt", true),
-    ).toEqual({ tv: "https://popcornmovies.org/episode/{slug}/{season}-{episode}" });
+    ).toEqual({ host: "popcornmovies.org", tv: "/episode/{slug}/{season}-{episode}" });
   });
 
   it("derives an anime template (slug) for AniList", () => {
     expect(deriveQuickLink("https://reanime.to/watch/frieren-eu9jz6", "anilist")).toEqual({
-      anime: "https://reanime.to/watch/{slug}",
+      host: "reanime.to",
+      anime: "/watch/{slug}",
     });
   });
 });
@@ -518,34 +520,27 @@ describe("TMDB id (auto-detect + resolve-by-id)", () => {
   });
 });
 
-describe("escapeRegex / suggestUrlPattern", () => {
-  it("escapes regex metacharacters", () => {
-    expect(escapeRegex("a.b+c")).toBe("a\\.b\\+c");
-  });
-  it("suggests hostname + first path segment as the url pattern", () => {
-    expect(suggestUrlPattern("https://watch.example.tv/movie/42?x=1")).toBe(
-      "watch\\.example\\.tv/movie",
-    );
-    expect(suggestUrlPattern("https://watch.example.tv/")).toBe("watch\\.example\\.tv");
+describe("suggestUrlPattern", () => {
+  it("suggests the first path segment, with no host (that lives in hostnames)", () => {
+    expect(suggestUrlPattern("https://watch.example.tv/movie/42?x=1")).toBe("/movie");
+    expect(suggestUrlPattern("https://watch.example.tv/")).toBe(".*");
   });
 
   it("keeps a typed-id prefix so movie/show recipes come out disjoint", () => {
     // Aether-style: type lives in the 2nd segment's prefix, same base path.
     expect(
       suggestUrlPattern("https://aether.bar/media/tmdb-tv-2604-the-boondocks/8382/201035"),
-    ).toBe("aether\\.bar/media/tmdb-tv-");
+    ).toBe("/media/tmdb-tv-");
     expect(suggestUrlPattern("https://aether.bar/media/tmdb-movie-1244492-look-back")).toBe(
-      "aether\\.bar/media/tmdb-movie-",
+      "/media/tmdb-movie-",
     );
   });
 
   it("does NOT over-narrow on a slug or a bare-number 2nd segment", () => {
-    // A dynamic title slug (no digit) → stays hostname/first-segment.
-    expect(suggestUrlPattern("https://ex.tv/tv-shows/breaking-bad/s01e01")).toBe(
-      "ex\\.tv/tv-shows",
-    );
-    // A pure numeric id → stays hostname/first-segment.
-    expect(suggestUrlPattern("https://ex.tv/watch/12345")).toBe("ex\\.tv/watch");
+    // A dynamic title slug (no digit) → stays at the first segment.
+    expect(suggestUrlPattern("https://ex.tv/tv-shows/breaking-bad/s01e01")).toBe("/tv-shows");
+    // A pure numeric id → stays at the first segment.
+    expect(suggestUrlPattern("https://ex.tv/watch/12345")).toBe("/watch");
   });
 });
 

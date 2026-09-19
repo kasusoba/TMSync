@@ -51,6 +51,25 @@ Schema churn is rare and mechanical. What you actually fight is **sites changing
 
 A change to `suggestUrlPattern` (or any picker heuristic) does **not** rot existing recipes — heuristics only run when a recipe is *authored*. Saved recipes keep their stored `match`. (This is why the recent typed-id `urlPattern` improvement broke nothing.)
 
+## 4b. A site changes domain (the most common rot of all)
+
+The pages are unchanged, so the recipe is still correct. Only the hostname is new. That is why the **host lives in exactly one place per artifact**:
+
+| artifact | where the domain lives |
+|---|---|
+| recipe | `match.hostnames`: the host scope AND the origins TMSync asks permission for |
+| quick link | `host`: templates below it are paths (`/movie/{tmdb}`) |
+
+`match.urlPattern` carries the path only. Older recipes anchor the host in the pattern; `packages/shared/src/hosts.ts` reads and rewrites that anchor, so both shapes work and a move normalizes the old one.
+
+Three ways a move gets handled, cheapest first:
+
+1. **The badge offers it.** On the new domain, if a recipe fits the page except for the hostname (its fingerprint is on the page), the badge asks "Did this site move?". One tap adds the host. `findHostAdoption` in `match.ts`.
+2. **Options → Sites, the site's card.** Each site shows its domains as chips next to its recipes. Add the new domain (access to it is requested), then remove the old one (its access is revoked, and a quick link on it moves to a domain the site still has). Every recipe of the site gets the same domain list. A library recipe is forked locally under the same id, so the next library sync cannot undo the edit.
+3. **A contributed recipe.** Add the new hostname to `hostnames` and keep the old one while it still resolves.
+
+A recipe with no `hostnames` matches any host on its pattern and fingerprint alone. That is the clone-resilient escape hatch, not the default: the picker always writes a host scope.
+
 ## 5. Migration playbook — when a break is genuinely needed
 
 Do both halves together:

@@ -263,7 +263,8 @@ export function PickerPanel(p: PickerPanelProps) {
                 )}
               />
               <span class={clsx("mt-1 block text-[10px] leading-snug", t.faint)}>
-                Regex tested against the page URL.
+                Regex tested against the page URL. The domain is kept separately, so this keeps
+                working if the site moves.
               </span>
             </label>
           )}

@@ -20,17 +20,28 @@ export {
   primaryId,
   readField,
 } from "./extract";
-export { matchRecipe, selectRecipe } from "./match";
+export { findHostAdoption, matchRecipe, matchesUrl, selectRecipe } from "./match";
+export {
+  escapeRegex,
+  hostOf,
+  hostText,
+  normalizeHost,
+  patternPath,
+  recipeHosts,
+  withRecipeHosts,
+} from "./hosts";
 export { type RecipeLibrary, parseLibrary, parseLinks, parseRecipes } from "./recipes";
 export {
   ANILIST_PLACEHOLDERS,
   buildAniListSiteLinks,
   buildSiteLinks,
   fillTemplate,
+  linkHost,
   placeholderHint,
   slugify,
   TRAKT_PLACEHOLDERS,
   trackerItemUrl,
+  withLinkHost,
 } from "./links";
 export type { AniListPageMedia, PlaceholderDoc, SiteLinks, TraktPageMedia } from "./links";
 // Letterboxd CSV export lives in the extension's Trakt adapter (packages/extension/

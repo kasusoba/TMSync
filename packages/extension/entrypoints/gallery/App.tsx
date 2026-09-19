@@ -8,6 +8,7 @@ import {
   EpisodePrompt,
   ManualPickPanel,
   ManualPrompt,
+  MovedSitePrompt,
   NowPanel,
   RateNotePanel,
 } from "@/lib/ui/kit/BadgeView";
@@ -144,7 +145,7 @@ export function App() {
             <PopupView
               variant={variant}
               connected={false}
-              redirectUri="https://aplaigellojlejhdjkklgihlmbmdaebk.chromiumapp.org/"
+              redirectUri="https://hkfpacmhbiccimikfleemmhfemdnjfpf.chromiumapp.org/"
               origins={null}
             />
           </Tile>
@@ -228,8 +229,9 @@ export function App() {
               quickLinkInitial={{
                 name: "Cineby",
                 tracker: "trakt",
-                movie: "https://www.cineby.at/movie/{tmdb}",
-                tv: "https://www.cineby.at/tv/{tmdb}/{season}/{episode}",
+                host: "cineby.at",
+                movie: "/movie/{tmdb}",
+                tv: "/tv/{tmdb}/{season}/{episode}",
               }}
               quickLinkDerive={() => ({})}
             />
@@ -313,7 +315,7 @@ export function App() {
               variant={variant}
               mode="setup"
               name="Popcorn Movies"
-              urlPattern="popcorn\.movies/watch/movie-"
+              urlPattern="/watch/movie-"
               patternMatchesPage
               fields={[
                 { key: "title", label: "Title", value: "Spider-Noir", source: "dom" },
@@ -623,6 +625,9 @@ export function App() {
           </Tile>
           <Tile label="Episode chooser · prompt (S/E-less URL)" t={t}>
             <EpisodePrompt variant={variant} />
+          </Tile>
+          <Tile label="Site moved · offer a known recipe here" t={t}>
+            <MovedSitePrompt variant={variant} name="Cineby" />
           </Tile>
           <Tile label="Episode chooser · panel" t={t}>
             <EpisodePickPanel variant={variant} title="Severance" />
