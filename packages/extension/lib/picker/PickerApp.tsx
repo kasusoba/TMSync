@@ -1,4 +1,5 @@
 import "@/lib/ui/theme.css";
+import { actionError } from "@/lib/errors";
 import { newRecipeId, slugifyHost } from "@/lib/recipe-id";
 import { loadRecipes, recipeTarget } from "@/lib/recipes";
 import { customRecipes } from "@/lib/storage";
@@ -336,7 +337,11 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
     // target (same hosts + pattern), so we never leave a stale duplicate behind.
     const target = recipeTarget(built.recipe);
     const list = existing.filter((r) => r.id !== built.recipe.id && recipeTarget(r) !== target);
-    await customRecipes.setValue([...list, built.recipe]);
+    try {
+      await customRecipes.setValue([...list, built.recipe]);
+    } catch (e) {
+      return setStatus(actionError(e));
+    }
     setEditingId(built.recipe.id);
     await sendMessage("registerSite", location.origin);
     setStatus("Saved! Reload the page to start scrobbling.");

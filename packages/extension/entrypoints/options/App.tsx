@@ -1,6 +1,7 @@
 import { RECIPES } from "@/config";
 import type { AniListIdentity } from "@/lib/anilist/types";
 import type { AnimapOverrides } from "@/lib/animap/derive";
+import { actionError } from "@/lib/errors";
 import { defaultRecipeName } from "@/lib/picker/recipe-builder";
 import { applyBackup, buildBackup, parseBackup } from "@/lib/portability/backup";
 import { type Contribution, contribute } from "@/lib/portability/contribute";
@@ -683,6 +684,7 @@ export function App() {
   /** Feedback for a Connect attempt (Options mirrors the popup — a failed/cancelled
    * OAuth used to silently do nothing here). */
   const [accountMsg, setAccountMsg] = useState<string | null>(null);
+  const [actError, setActError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [badge, setBadge] = useState<BadgePrefs>({ mode: "full", position: null });
   const has = (s: string) => s.toLowerCase().includes(q.toLowerCase());
@@ -836,12 +838,19 @@ export function App() {
     return newPendingSites.watch(clear);
   }, []);
 
+  // A throw must not leave `workingRef` set: every later action would do nothing.
   const act = async (fn: () => Promise<unknown>) => {
     if (workingRef.current) return;
     setBusy(true);
-    await fn();
-    await refresh();
-    setBusy(false);
+    setActError(null);
+    try {
+      await fn();
+    } catch (e) {
+      setActError(actionError(e));
+    } finally {
+      await refresh().catch(() => {});
+      setBusy(false);
+    }
   };
 
   // Connect a provider AND surface the outcome. `act()` discards the reply, so a
@@ -1277,6 +1286,9 @@ export function App() {
 
         <main class="min-w-0 flex-1 p-6">
           <div class="mx-auto max-w-xl space-y-3">
+            {actError && (
+              <p class={clsx("rounded-md px-2.5 py-1.5 text-[11px]", t.infoBox)}>{actError}</p>
+            )}
             {active === "account" && (
               <>
                 <PaneHead title="Account" />

@@ -4,6 +4,7 @@ import {
   buildFrameTree,
   flattenFrameTree,
 } from "@/lib/diagnostics/frame-tree";
+import { actionError } from "@/lib/errors";
 import { deriveQuickLink } from "@/lib/picker/recipe-builder";
 import { type SiteGroup, findMovedSite, groupSites, withSiteHosts } from "@/lib/sites";
 import {
@@ -398,7 +399,13 @@ export function App() {
     if (granted) {
       const host = hostText(new URL(topOrigin).hostname);
       const custom = await customRecipes.getValue();
-      await customRecipes.setValue(withSiteHosts(movedSite, [...movedSite.hosts, host], custom));
+      try {
+        await customRecipes.setValue(withSiteHosts(movedSite, [...movedSite.hosts, host], custom));
+      } catch (e) {
+        setNote(actionError(e));
+        setBusy(false);
+        return;
+      }
       const res = await sendMessage("registerSite", topOrigin);
       const broad = await browser.permissions.contains({ origins: ["*://*/*"] });
       const tabId = await activeTabId();
