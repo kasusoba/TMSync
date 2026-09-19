@@ -80,11 +80,24 @@ import {
   type ParsedMedia,
   type Recipe,
   parseLibrary,
+  primaryId,
   recipeHosts,
 } from "@tmsync/shared";
 import { browser } from "wxt/browser";
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/** Same watched item: title, numbering, and strongest id. */
+function sameMedia(a: ParsedMedia, b: ParsedMedia): boolean {
+  return (
+    a.mediaType === b.mediaType &&
+    a.title === b.title &&
+    a.year === b.year &&
+    a.season === b.season &&
+    a.episode === b.episode &&
+    primaryId(a)?.value === primaryId(b)?.value
+  );
+}
 const siteId = (origin: string) => `tmsync-${origin.replace(/[^a-z0-9]/gi, "-")}`;
 
 /** The broad optional grant (`optional_host_permissions`) + the single catch-all
@@ -632,9 +645,10 @@ export default defineBackground(() => {
       videoSelector: data.videoSelector,
       frame: data.frame,
       watchedThreshold: data.watchedThreshold,
-      // Keep progress across a same-session re-publish (recheck), but start fresh
-      // after a finished item — else the next episode inherits ~100% (a stray stop).
-      progress: prev?.ended ? 0 : (prev?.progress ?? 0),
+      // Keep progress across a re-publish of the same item (recheck). Start fresh
+      // for another item or after a finished one, else the next episode inherits the
+      // last one's progress (a stray stop on tab close).
+      progress: prev && !prev.ended && sameMedia(prev.media, data.media) ? prev.progress : 0,
       updatedAt: Date.now(),
     };
     await tabSessions.setValue(all);
@@ -682,7 +696,7 @@ export default defineBackground(() => {
     await tabSessions.setValue(all);
   });
 
-  onMessage("endSession", async ({ sender }) => {
+  onMessage("endSession", async ({ data, sender }) => {
     const tabId = sender.tab?.id;
     if (tabId === undefined) return;
     // Don't drop the record — the item just finished, and the popup/badge should
@@ -691,7 +705,9 @@ export default defineBackground(() => {
     // nav-away (stopTabSession) still clears it.
     const all = await tabSessions.getValue();
     const session = all[tabId];
-    if (!session) return;
+    // On an SPA episode swap the outgoing episode's stop lands after the next one
+    // was published. It must not mark the new session ended.
+    if (!session || !sameMedia(session.media, data)) return;
     all[tabId] = { ...session, ended: true };
     await tabSessions.setValue(all);
   });

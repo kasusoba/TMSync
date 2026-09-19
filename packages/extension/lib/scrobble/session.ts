@@ -913,7 +913,7 @@ export class SessionManager {
             statusFromReply(action, reply, media, reply.primaryTracker ?? tracker),
           );
         });
-        if (action === "stop") void sendMessage("endSession");
+        if (action === "stop") void sendMessage("endSession", media);
         else void sendMessage("updateProgress", progress);
       },
       this.watchedThreshold,

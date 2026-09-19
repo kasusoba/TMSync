@@ -238,8 +238,9 @@ export interface ProtocolMap {
   getWatchedState(q?: { tabId?: number }): WatchedState | null;
   /** Playing frame reports latest progress (reconciliation safety net). */
   updateProgress(progress: number): void;
-  /** Playing frame signals a clean stop so the background won't re-reconcile. */
-  endSession(): void;
+  /** Playing frame signals a clean stop of `media` so the background won't
+   * re-reconcile it. A late stop for another media (the outgoing episode) is ignored. */
+  endSession(media: ParsedMedia): void;
   /** Playing frame reports scrobble state; background relays to the top frame's badge. */
   reportScrobble(status: BadgeStatus): void;
   /** Top frame reports cross-origin iframe origins it has seen (accumulated for the popup). */
