@@ -211,9 +211,10 @@ export function OptionsView({
               )}
             </button>
           ))}
-          <span class={clsx("mt-auto px-2.5 pt-3 text-[10px] tabular-nums", t.sub)}>
-            v{version}
-          </span>
+          <div class="mt-auto flex items-center justify-between pt-3 pl-2.5">
+            <span class={clsx("text-[10px] tabular-nums", t.sub)}>v{version}</span>
+            <IconBtn t={t} name="github" title="TMSync on GitHub" />
+          </div>
         </nav>
 
         {/* active pane */}

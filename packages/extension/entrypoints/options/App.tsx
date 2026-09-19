@@ -5,7 +5,6 @@ import { defaultRecipeName } from "@/lib/picker/recipe-builder";
 import { applyBackup, buildBackup, parseBackup } from "@/lib/portability/backup";
 import {
   type Contribution,
-  blankIssueUrl,
   contributeAll,
   contributeQuickLink,
   contributeRecipe,
@@ -694,6 +693,8 @@ export function App() {
   const [backupBusy, setBackupBusy] = useState(false);
   const [backupNote, setBackupNote] = useState<string | null>(null);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  /** After "Contribute": the paste step for a bundle too large to prefill. */
+  const [contribNote, setContribNote] = useState<string | null>(null);
   /** Feedback for a Connect attempt (Options mirrors the popup — a failed/cancelled
    * OAuth used to silently do nothing here). */
   const [accountMsg, setAccountMsg] = useState<string | null>(null);
@@ -1013,17 +1014,17 @@ export function App() {
 
   // --- contribute site config to the central repo (prefilled GitHub issue) ---
   const openContribution = async (c: Contribution) => {
-    if (c.tooLong) {
-      // Too long to prefill — copy the payload and open a blank issue to paste it.
+    setContribNote(null);
+    if (c.paste) {
+      // Too long to prefill: copy the JSON, and the issue asks the user to paste it.
       try {
         await navigator.clipboard.writeText(c.json);
+        setContribNote("JSON copied. Paste it into the issue.");
       } catch {
-        // clipboard blocked — ignore; the user can still file manually
+        setContribNote("Couldn’t copy the JSON. Use Copy JSON on each recipe.");
       }
-      window.open(blankIssueUrl, "_blank", "noreferrer");
-    } else {
-      window.open(c.url, "_blank", "noreferrer");
     }
+    window.open(c.url, "_blank", "noreferrer");
   };
 
   // --- backup (export / import the user-owned deltas) ---
@@ -1189,6 +1190,7 @@ export function App() {
         <span class={clsx("text-[15px] font-semibold tracking-tight", t.heading)}>TMSync</span>
         <div class="ml-auto flex items-center gap-2.5">
           {syncMsg && <span class={clsx("text-[12px]", t.sub)}>{syncMsg}</span>}
+          {contribNote && <span class={clsx("text-[12px]", t.sub)}>{contribNote}</span>}
           <Btn
             t={t}
             tone="ghost"
@@ -1236,9 +1238,17 @@ export function App() {
           ))}
           {/* Which build is running. An unpacked extension is easy to leave stale,
               and a bug report is worth little without the version. */}
-          <span class={clsx("mt-auto px-2.5 pt-3 text-[10px] tabular-nums", t.sub)}>
-            v{browser.runtime.getManifest().version}
-          </span>
+          <div class="mt-auto flex items-center justify-between pt-3 pl-2.5">
+            <span class={clsx("text-[10px] tabular-nums", t.sub)}>
+              v{browser.runtime.getManifest().version}
+            </span>
+            <IconBtn
+              t={t}
+              name="github"
+              title="TMSync on GitHub"
+              onClick={() => window.open(RECIPES.contributeUrl, "_blank", "noreferrer")}
+            />
+          </div>
         </nav>
 
         <main class="min-w-0 flex-1 p-6">
@@ -1336,21 +1346,7 @@ export function App() {
 
             {active === "sites" && (
               <>
-                <PaneHead
-                  title="Sites"
-                  right={
-                    recipes.length > 0 && (
-                      <Btn
-                        t={t}
-                        tone="ghost"
-                        disabled={busy}
-                        onClick={() => openContribution(contributeAll(recipes, []))}
-                      >
-                        <Icon name="external" class="text-[12px]" /> Contribute all
-                      </Btn>
-                    )
-                  }
-                />
+                <PaneHead title="Sites" />
                 <p class={clsx("text-[12px] leading-relaxed", t.sub)}>
                   Each site, its domains, and the recipes that read it. Yours win over the shared
                   library where they overlap. If a site moves, add its new domain. Add a site with
@@ -1507,16 +1503,6 @@ export function App() {
                   title="Quick links"
                   right={
                     <div class="flex gap-1.5">
-                      {links.length > 0 && (
-                        <Btn
-                          t={t}
-                          tone="ghost"
-                          disabled={busy}
-                          onClick={() => openContribution(contributeAll([], links))}
-                        >
-                          <Icon name="external" class="text-[12px]" /> Contribute all
-                        </Btn>
-                      )}
                       <Btn t={t} tone="ghost" disabled={busy} onClick={addLink}>
                         <Icon name="plus" class="text-[12px]" /> Add blank
                       </Btn>
@@ -1698,9 +1684,9 @@ export function App() {
 
                 <PaneHead title="Contribute" />
                 <p class={clsx("text-[12px] leading-relaxed", t.sub)}>
-                  Share your recipes &amp; quick links with everyone by opening a prefilled GitHub
-                  issue · no watch data is included, only site config. (You can also contribute a
-                  single entry from its row.)
+                  Share your recipes &amp; quick links with everyone. This opens a GitHub issue with
+                  them filled in: site config only, no watch data. A maintainer checks it, then it
+                  goes into the shared library. To share one site, use Contribute on its row.
                 </p>
                 <div class={clsx("flex items-center gap-3 rounded-lg px-3 py-2.5", t.card)}>
                   <span class="min-w-0 flex-1">

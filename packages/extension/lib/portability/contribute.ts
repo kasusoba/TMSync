@@ -29,12 +29,13 @@ export interface ContributionEntry {
 }
 
 export interface Contribution {
+  /** The new-issue URL: title, label, and body are always filled in. */
   url: string;
-  /** The raw payload JSON — used as a copy-to-clipboard fallback when `tooLong`. */
+  /** The raw payload JSON. */
   json: string;
-  /** GitHub caps the prefilled-issue URL length; past that, copy JSON + open a
-   *  blank issue instead. */
-  tooLong: boolean;
+  /** GitHub caps the prefilled-issue URL length. Past that (a large bundle), the
+   *  body asks the user to paste the JSON, so copy `json` to the clipboard first. */
+  paste: boolean;
 }
 
 function recipeEntry(r: Recipe): ContributionEntry {
@@ -59,23 +60,34 @@ function quicklinkEntry(s: QuickLinkSite): ContributionEntry {
 
 const URL_LIMIT = 7000; // GitHub rejects very long prefilled-issue URLs
 
-function build(title: string, entries: ContributionEntry[]): Contribution {
-  const json = JSON.stringify(entries.length === 1 ? entries[0] : entries, null, 2);
+const PASTE_HERE = "Replace this line with the JSON that TMSync copied for you (paste it).";
+
+function issueUrl(title: string, lead: string, block: string): string {
   const body = [
-    "Contribution from TMSync. Submit this issue as it is.",
+    lead,
     "",
-    "**What happens next:** a bot reads the JSON below and opens a pull request with it, in a minute or two. It comments here with the link. After review and merge, the change reaches every TMSync user with the next library sync.",
+    "**What happens next:** a maintainer checks this issue. Then a bot opens a pull request with the JSON below and comments here with the link. After the merge, the change reaches every TMSync user with the next library sync.",
     "",
     "```json",
-    json,
+    block,
     "```",
   ].join("\n");
   const u = new URL(`${RECIPES.contributeUrl}/issues/new`);
   u.searchParams.set("title", title);
   u.searchParams.set("body", body);
+  // Applied only when the author may label (the maintainer). For anyone else the
+  // maintainer adds it after a check, and that starts the bot.
   u.searchParams.set("labels", "contribution");
-  const url = u.toString();
-  return { url, json, tooLong: url.length > URL_LIMIT };
+  return u.toString();
+}
+
+function build(title: string, entries: ContributionEntry[]): Contribution {
+  const json = JSON.stringify(entries.length === 1 ? entries[0] : entries, null, 2);
+  const url = issueUrl(title, "Contribution from TMSync. Submit this issue as it is.", json);
+  if (url.length <= URL_LIMIT) return { url, json, paste: false };
+  // Too long to prefill: the same issue, with a paste step for the JSON.
+  const lead = "Contribution from TMSync. Paste the JSON into the block below, then submit.";
+  return { url: issueUrl(title, lead, PASTE_HERE), json, paste: true };
 }
 
 export function contributeRecipe(r: Recipe): Contribution {
@@ -92,8 +104,6 @@ export function contributeAll(recipes: Recipe[], links: QuickLinkSite[]): Contri
     ...recipes.map(recipeEntry),
     ...links.filter((l) => l.source !== "library").map(quicklinkEntry),
   ];
-  return build(`Contribute ${entries.length} item(s) from TMSync`, entries);
+  const n = entries.length;
+  return build(`Contribute ${n} ${n === 1 ? "item" : "items"} from TMSync`, entries);
 }
-
-/** Blank new-issue URL — the destination when a payload is too long to prefill. */
-export const blankIssueUrl = `${RECIPES.contributeUrl}/issues/new`;
