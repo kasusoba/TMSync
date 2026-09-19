@@ -12,13 +12,19 @@ export function getRedirectUri(): string {
   return browser.identity.getRedirectURL();
 }
 
+class TokenEndpointError extends Error {
+  constructor(readonly status: number) {
+    super(`Trakt token endpoint returned ${status}`);
+  }
+}
+
 async function postToken(body: Record<string, string>): Promise<TraktTokens> {
   const res = await fetch(`${TRAKT.apiBase}/oauth/token`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "User-Agent": TRAKT.userAgent },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`Trakt token endpoint returned ${res.status}`);
+  if (!res.ok) throw new TokenEndpointError(res.status);
   return (await res.json()) as TraktTokens;
 }
 
@@ -50,8 +56,22 @@ export async function connect(): Promise<TraktTokens> {
   return tokens;
 }
 
-/** Rotate the access token using the refresh token. Clears tokens on failure. */
-export async function refreshTokens(): Promise<TraktTokens | null> {
+/** The refresh in flight, shared by concurrent callers: Trakt accepts a refresh
+ * token once, so a second parallel refresh with it would fail. */
+let refreshing: Promise<TraktTokens | null> | null = null;
+
+/**
+ * Rotate the access token using the refresh token. Signs out only when Trakt
+ * refuses the refresh token. A network error keeps the tokens for the next try.
+ */
+export function refreshTokens(): Promise<TraktTokens | null> {
+  refreshing ??= rotate().finally(() => {
+    refreshing = null;
+  });
+  return refreshing;
+}
+
+async function rotate(): Promise<TraktTokens | null> {
   const current = await traktTokens.getValue();
   if (!current) return null;
   try {
@@ -64,8 +84,12 @@ export async function refreshTokens(): Promise<TraktTokens | null> {
     });
     await traktTokens.setValue(next);
     return next;
-  } catch {
-    await traktTokens.setValue(null); // force re-auth
+  } catch (e) {
+    const latest = await traktTokens.getValue();
+    if (latest && latest.refresh_token !== current.refresh_token) return latest;
+    if (e instanceof TokenEndpointError && (e.status === 400 || e.status === 401)) {
+      await traktTokens.setValue(null); // force re-auth
+    }
     return null;
   }
 }
