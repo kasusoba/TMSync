@@ -58,7 +58,9 @@ Goal: a contributed item is **merge-ready** — lands in the right repo file wit
 - everything lands in one file, `recipes/index.json`: `recipe → recipes[]` (routed at runtime by its own `tracker`), `quicklink → links[]`
 - strip local-only fields (`source`, `enabled`) → already library-shaped, nothing to clean
 - **stable unique id** — both for no-collision placement AND so the local copy graduates cleanly later (same requirement)
-- contribute-all with many items exceeds the issue-URL length → fall back to copy-all-JSON + open the contribute page
+- contribute-all with many items exceeds the issue-URL length: copy the JSON, then open the same prefilled issue with a "paste the JSON here" block
+
+**Gate (2026-09):** the bot runs only when a maintainer adds the `contribution` label, or when a maintainer opens the issue. Outsiders cannot add labels, so every outside contribution waits for a maintainer check. The bot comments on the issue with the PR link.
 
 **Repo side: a GitHub Action (issue → PR bot)** parses the wrapper → Zod-validates → biome-formats → routes to the correct file → **add** (new id) vs **update** (existing id, explicit flag; a *foreign-author* update is held for human review, never silent) → opens a lint-clean, correctly-placed PR. This is **repo CI automation, not a hosted backend** (no server/DB, no user data, no watch history) → within constraint #7's spirit, and **optional** (without it, a human converts the issue).
 

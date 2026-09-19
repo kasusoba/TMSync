@@ -3,12 +3,14 @@ name: Apply contribution
 # Turn a "contribution"-labelled issue (filed by the TMSync extension's contribute
 # button) into a ready-to-merge PR: parse the self-describing JSON payload, route
 # each entry into the right recipe list, format with biome, and open a PR closing
-# the issue. A human just reviews + merges. No backend (constraint #7) — this is
-# repo CI, not a hosted server.
+# the issue. A human reviews + merges. No backend (constraint #7): this is repo CI,
+# not a hosted server.
 #
-# NOTE: this hasn't been exercised against a live issue yet — verify permissions
-# (Settings → Actions → "Allow GitHub Actions to create and approve pull requests")
-# and the first run before relying on it.
+# The label is the gate. Only a maintainer can add a label, so an issue from anyone
+# else waits until a maintainer checks it and adds "contribution". A maintainer's
+# own issue carries the label from the extension's link and runs at once.
+#
+# Needs Settings > Actions > "Allow GitHub Actions to create and approve pull requests".
 
 on:
   issues:
@@ -21,11 +23,15 @@ permissions:
 
 jobs:
   apply:
-    # Fire when the "contribution" label is added, OR when an issue is opened
-    # already carrying it (creating-with-label doesn't reliably emit `labeled`).
+    # Fire when a maintainer adds the "contribution" label, OR when a maintainer
+    # opens an issue that already carries it (creating-with-label doesn't reliably
+    # emit `labeled`). The author check keeps the gate even if GitHub ever applies
+    # the link's label for an outside author.
     if: >
       (github.event.action == 'labeled' && github.event.label.name == 'contribution') ||
-      (github.event.action == 'opened' && contains(github.event.issue.labels.*.name, 'contribution'))
+      (github.event.action == 'opened' &&
+        contains(github.event.issue.labels.*.name, 'contribution') &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
