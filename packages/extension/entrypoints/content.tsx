@@ -29,7 +29,16 @@ export default defineContentScript({
     // Reflect picker saves/edits/deletes LIVE — no page reload. The picker writes
     // the recipe stores; when they change, reload + re-evaluate this tab. (New
     // sites still need the content script injected, i.e. one reload, the first time.)
-    const reload = async () => session.updateRecipes(await loadRecipes());
+    // A library refresh that finds no change still rewrites its fetch time, and
+    // updateRecipes restarts the playing session, so compare the lists first.
+    let loaded = JSON.stringify(recipes);
+    const reload = async () => {
+      const next = await loadRecipes();
+      const key = JSON.stringify(next);
+      if (key === loaded) return;
+      loaded = key;
+      session.updateRecipes(next);
+    };
     const unwatchCustom = customRecipes.watch(reload);
     const unwatchRemote = remoteRecipes.watch(reload);
     ctx.onInvalidated(() => {
