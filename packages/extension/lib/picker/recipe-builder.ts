@@ -9,6 +9,7 @@ import {
   SCHEMA_VERSION,
   escapeRegex,
   extract,
+  hostText,
   normalizeHost,
   readField,
   recipeHosts,
@@ -58,7 +59,7 @@ export function deriveQuickLink(url: string, tracker: Tracker, isShow = false): 
   let path: string;
   try {
     const u = new URL(url);
-    host = u.host;
+    host = hostText(u.host);
     path = u.pathname.replace(/\/$/, "");
   } catch {
     return {};
@@ -217,9 +218,10 @@ export function detectTmdbIdField(url: string): Field | undefined {
 }
 
 /**
- * A urlPattern matching the hostname + first path segment (e.g. "cineby\.at/movie"),
- * so a recipe doesn't fire on the home/search pages. Hostname-scoped rather than
- * full-URL so it survives the dynamic id segment.
+ * A urlPattern matching the first path segment (e.g. "/movie"), so a recipe
+ * doesn't fire on the home/search pages. The HOST is not in here: it lives in
+ * `match.hostnames` (see @tmsync/shared lib/hosts.ts), so a site that moves
+ * domain keeps its pattern and gains a hostname.
  *
  * PLUS: if the next segment is a "typed id" — a static prefix before a number, like
  * `tmdb-tv-2604` or `tmdb-movie-1244492` — the prefix is kept. That's what makes a
@@ -229,17 +231,16 @@ export function detectTmdbIdField(url: string): Field | undefined {
  */
 export function suggestUrlPattern(url: string): string {
   try {
-    const u = new URL(url);
-    const segments = u.pathname.split("/").filter(Boolean);
+    const segments = new URL(url).pathname.split("/").filter(Boolean);
     const first = segments[0];
-    if (!first) return escapeRegex(u.hostname);
-    const parts = [u.hostname, first];
+    if (!first) return ".*"; // no path to key on; the host scope is the whole match
+    const parts = [first];
     // A meaningful (≥2-char) non-digit lead before the first digit of the 2nd
     // segment marks a type ("tmdb-tv-"); a pure number ("42") or a slug
-    // ("breaking-bad") has none, so those stay hostname/first-segment as before.
+    // ("breaking-bad") has none, so those stay at the first segment as before.
     const lead = segments[1] ? /^(\D{2,}?)\d/.exec(segments[1])?.[1] : undefined;
     if (lead) parts.push(lead);
-    return escapeRegex(parts.join("/"));
+    return `/${escapeRegex(parts.join("/"))}`;
   } catch {
     return escapeRegex(url);
   }
@@ -255,7 +256,9 @@ export function emptyDraft(url: string): RecipeDraft {
   return {
     match: {
       urlPattern: suggestUrlPattern(url),
-      hostnames: hostname ? [hostname] : undefined,
+      // The recipe's host scope. One entry now; a site that moves domain adds the
+      // new one (options → Sites, or the badge offer on the new host).
+      hostnames: hostname ? [hostText(hostname)] : undefined,
     },
     mediaType: "auto",
     trackers: ["trakt"],
@@ -316,7 +319,7 @@ export function defaultRecipeName(hostname: string): string {
  * wouldn't match the current URL.
  */
 export function recipeMatchesHost(recipe: Recipe, hostname: string): boolean {
-  return recipeHosts(recipe).includes(normalizeHost(hostname));
+  return recipeHosts(recipe).map(normalizeHost).includes(normalizeHost(hostname));
 }
 
 function firstWorking(candidates: Field[], ctx: EngineContext): Field | undefined {

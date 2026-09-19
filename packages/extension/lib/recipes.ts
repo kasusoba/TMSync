@@ -16,7 +16,8 @@ export const bundledLinks: LibraryLink[] = bundledLibrary.links;
 /** What makes two recipes the same target: the same hosts AND the same pattern.
  * The host belongs to `hostnames` now, so the pattern alone is no longer unique
  * (every site has a `/movie` recipe). */
-const targetKey = (r: Recipe) => `${recipeHosts(r).sort().join(",")}|${r.match.urlPattern}`;
+export const recipeTarget = (r: Recipe) =>
+  `${recipeHosts(r).sort().join(",")}|${r.match.urlPattern}`;
 
 /**
  * The recipes the engine should use, merged by precedence: the user's own custom
@@ -34,7 +35,7 @@ export async function loadRecipes(): Promise<Recipe[]> {
   const seenTargets = new Set<string>();
   const merged: Recipe[] = [];
   for (const r of [...custom, ...(remoteEntry?.recipes ?? []), ...bundled]) {
-    const target = targetKey(r);
+    const target = recipeTarget(r);
     if (seenIds.has(r.id) || seenTargets.has(target)) continue;
     seenIds.add(r.id);
     seenTargets.add(target);

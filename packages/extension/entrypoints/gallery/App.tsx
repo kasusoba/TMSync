@@ -313,7 +313,7 @@ export function App() {
               variant={variant}
               mode="setup"
               name="Popcorn Movies"
-              urlPattern="popcorn\.movies/watch/movie-"
+              urlPattern="/watch/movie-"
               patternMatchesPage
               fields={[
                 { key: "title", label: "Title", value: "Spider-Noir", source: "dom" },
