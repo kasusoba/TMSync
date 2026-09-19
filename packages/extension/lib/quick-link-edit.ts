@@ -9,9 +9,13 @@ export interface QuickLinkFields extends LinkTemplates {
 }
 
 /** The quick link on this domain. Look it up by domain, not by id: a link made in
- * Options, or moved from another domain, does not have the id `ql-<host>`. */
+ * Options, or moved from another domain, does not have the id `ql-<host>`. The
+ * user's own link comes first, an enabled one before a disabled one. A disabled
+ * library link is only an offer from the library, so it is not this domain's link. */
 export function linkOnHost(links: QuickLinkSite[], host: string): QuickLinkSite | undefined {
-  return links.find((l) => normalizeHost(linkHost(l)) === normalizeHost(host));
+  const here = links.filter((l) => normalizeHost(linkHost(l)) === normalizeHost(host));
+  const own = here.filter((l) => l.source !== "library");
+  return own.find((l) => l.enabled) ?? own[0] ?? here.find((l) => l.enabled);
 }
 
 /** The links after saving `fields` as this domain's quick link. */
