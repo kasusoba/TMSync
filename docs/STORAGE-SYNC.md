@@ -48,7 +48,7 @@ The `(site, anilistId) → real slug/canonical URL` map captured at resolve/watc
 ## Contribution & graduation (recipes/quicklinks → central DB)
 Goal: a contributed item is **merge-ready** — lands in the right repo file with no collision/overwrite, so acceptance is mechanical (ideally a bot opens the PR; a human only approves). Decided 2026-06-29.
 
-**Only site config is contributable.** `recipe` and `quicklink` only. **Corrections, manual picks, and the crosswalk are NEVER contributed** — they reveal what the user watched (constraint #6). "Contribute all" = all your recipes + quicklinks, nothing watch-revealing.
+**Only site config is contributable.** `recipe` and `quicklink` only. **Corrections, manual picks, and the crosswalk are NEVER contributed** — they reveal what the user watched (constraint #6). Options > Contribute lists your recipes + quicklinks (one row per site); you tick any set, nothing watch-revealing.
 
 **Client emits a self-describing, pre-cleaned payload** into a prefilled GitHub issue (`issues/new?title=…&body=…`), single-click, uses the user's GitHub login — no backend (constraint #7):
 ```json

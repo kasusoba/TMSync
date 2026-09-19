@@ -38,7 +38,18 @@ try {
   console.error("Payload is not valid JSON:", e.message);
   process.exit(1);
 }
-const entries = Array.isArray(payload) ? payload : [payload];
+// A bare recipe or quick link (pasted by hand, no wrapper) still works: its shape
+// says what it is. A recipe has `match` and `extract`; a quick link has URL templates.
+const wrap = (e) => {
+  if (!e || typeof e !== "object" || e.kind || e.data != null) return e;
+  if (e.match && e.extract) return { kind: "recipe", action: "add", id: e.id, data: e };
+  if (["movie", "tv", "anime", "search"].some((k) => typeof e[k] === "string")) {
+    const { enabled: _enabled, source: _source, ...data } = e; // local-only fields
+    return { kind: "quicklink", action: "add", id: e.id, data };
+  }
+  return e;
+};
+const entries = (Array.isArray(payload) ? payload : [payload]).map(wrap);
 
 const load = (p) => JSON.parse(readFileSync(p, "utf8"));
 const save = (p, o) => writeFileSync(p, `${JSON.stringify(o, null, 2)}\n`);

@@ -178,8 +178,6 @@ function QuickLinkRow({
   onDelete,
   onToggle,
   onEdit,
-  onCopy,
-  copied,
   onContribute,
   onDragStart,
   onDragEnter,
@@ -190,8 +188,6 @@ function QuickLinkRow({
   busy: boolean;
   /** Expanded? Owned by the parent so only ONE row is open at a time (accordion). */
   open: boolean;
-  /** Show the "Copied!" tick on the copy button. */
-  copied: boolean;
   /** True while this row is the one being dragged (dimmed). */
   dragging: boolean;
   onSave: (site: QuickLinkSite) => Promise<void>;
@@ -199,8 +195,7 @@ function QuickLinkRow({
   onToggle: (id: string) => void;
   /** Toggle this row's expansion — collapses whichever other row was open. */
   onEdit: () => void;
-  /** Copy this quick link's JSON to the clipboard (mirrors the recipe copy). */
-  onCopy: () => void;
+  /** Open Contribute with this quick link ticked. */
   onContribute: () => void;
   // Drag-to-reorder (HTML5 DnD): handle starts the drag; the row is a drop target.
   onDragStart: () => void;
@@ -303,12 +298,6 @@ function QuickLinkRow({
         {site.source !== "library" && (
           <IconBtn t={t} name="external" title="Contribute to library" onClick={onContribute} />
         )}
-        <IconBtn
-          t={t}
-          name={copied ? "check" : "copy"}
-          title={copied ? "Copied!" : "Copy JSON"}
-          onClick={onCopy}
-        />
         <IconBtn t={t} name="edit" title="Edit" onClick={onEdit} />
         <IconBtn t={t} name="trash" title="Delete" danger onClick={() => onDelete(site.id)} />
       </div>
@@ -386,7 +375,6 @@ function SiteCard({
   isHostEnabled,
   allSites,
   busy,
-  copied,
   adding,
   newHost,
   hostNote,
@@ -397,7 +385,6 @@ function SiteCard({
   onRemoveHost,
   onRename,
   onContribute,
-  onCopy,
   onDelete,
 }: {
   site: SiteGroup;
@@ -405,7 +392,6 @@ function SiteCard({
   /** The broad grant is held: access is on everywhere, so no per-site toggle. */
   allSites: boolean;
   busy: boolean;
-  copied: string | null;
   /** The "add a domain" input is open on this card. */
   adding: boolean;
   newHost: string;
@@ -416,9 +402,8 @@ function SiteCard({
   onAddHost: () => void;
   onRemoveHost: (host: string) => void;
   onRename: (name: string) => void;
-  /** Contribute this site's own recipes (and its quick link) in one issue. */
+  /** Open Contribute with this site ticked. */
   onContribute: () => void;
-  onCopy: (r: Recipe) => void;
   onDelete: (id: string) => void;
 }) {
   const needsAccess = site.hosts.some((h) => !isHostEnabled(h));
@@ -563,12 +548,6 @@ function SiteCard({
                 <div class="flex shrink-0 items-center">
                   <IconBtn
                     t={t}
-                    name={copied === r.id ? "check" : "copy"}
-                    title={copied === r.id ? "Copied!" : "Copy JSON"}
-                    onClick={() => onCopy(r)}
-                  />
-                  <IconBtn
-                    t={t}
                     name="trash"
                     title="Delete"
                     danger
@@ -603,6 +582,7 @@ const SECTIONS: { id: string; label: string; icon: IconName }[] = [
   { id: "sites", label: "Sites", icon: "frame" },
   { id: "links", label: "Quick links", icon: "link" },
   { id: "corrections", label: "Corrections", icon: "check" },
+  { id: "contribute", label: "Contribute", icon: "external" },
   { id: "backup", label: "Backup", icon: "copy" },
   { id: "display", label: "Display", icon: "settings" },
 ];
@@ -900,24 +880,6 @@ export function App() {
         if (!allSites) await browser.permissions.remove({ origins: [`https://${h}/*`] });
       }
     });
-  const copyRecipe = async (r: Recipe) => {
-    try {
-      await navigator.clipboard.writeText(JSON.stringify(r, null, 2));
-      setCopied(r.id);
-      setTimeout(() => setCopied(null), 1500);
-    } catch {
-      // clipboard blocked — ignore
-    }
-  };
-  const copyLink = async (s: QuickLinkSite) => {
-    try {
-      await navigator.clipboard.writeText(JSON.stringify(s, null, 2));
-      setCopied(s.id);
-      setTimeout(() => setCopied(null), 1500);
-    } catch {
-      // clipboard blocked — ignore
-    }
-  };
 
   // --- quick links ---
   const saveLink = async (site: QuickLinkSite) => {
@@ -1026,7 +988,7 @@ export function App() {
         await navigator.clipboard.writeText(c.json);
         setContribNote("JSON copied. Paste it into the issue.");
       } catch {
-        setContribNote("Couldn’t copy the JSON. Use Copy JSON on each recipe.");
+        setContribNote("Couldn’t copy the JSON. Use Copy JSON, then paste it into the issue.");
       }
     }
     window.open(c.url, "_blank", "noreferrer");
@@ -1212,6 +1174,31 @@ export function App() {
       if (!next.delete(key)) next.add(key);
       return next;
     });
+  // A quick link of one of your sites is contributed with that site.
+  const contribKeyOfLink = (l: QuickLinkSite) =>
+    siteRows.find((r) => r.links.some((x) => x.id === l.id))?.key ?? `link:${l.id}`;
+  // From a Sites or Quick links row: open Contribute with only that row ticked.
+  const pickContribution = (key: string) => {
+    setSkipContrib(new Set(contribRows.map((r) => r.key).filter((k) => k !== key)));
+    setContribNote(null);
+    setQ("");
+    setActive("contribute");
+  };
+  const pickedContribution = () =>
+    contribute(
+      picked.flatMap((r) => r.recipes),
+      picked.flatMap((r) => r.links),
+      picked.length === 1 ? picked[0]?.name : undefined,
+    );
+  const copyContribution = async () => {
+    try {
+      await navigator.clipboard.writeText(pickedContribution().json);
+      setCopied("contribution");
+      setTimeout(() => setCopied(null), 1500);
+    } catch {
+      setContribNote("Couldn’t copy. The browser blocked the clipboard.");
+    }
+  };
 
   const counts: Record<string, number> = {
     links: links.length,
@@ -1461,7 +1448,6 @@ export function App() {
                       isHostEnabled={isHostEnabled}
                       allSites={allSites}
                       busy={busy}
-                      copied={copied}
                       adding={addingHostFor === site.key}
                       newHost={newHost}
                       hostNote={hostNote}
@@ -1471,10 +1457,7 @@ export function App() {
                       onAddHost={() => void addHost(site)}
                       onRemoveHost={(h) => void removeHost(site, h)}
                       onRename={(name) => void renameSite(site, name)}
-                      onContribute={() =>
-                        openContribution(contribute(ownRecipes(site), ownLinksFor(site), site.name))
-                      }
-                      onCopy={copyRecipe}
+                      onContribute={() => pickContribution(`site:${site.key}`)}
                       onDelete={deleteRecipe}
                     />
                   ))}
@@ -1572,9 +1555,7 @@ export function App() {
                           onDelete={deleteLink}
                           onToggle={toggleLink}
                           onEdit={() => setOpenLinkId((cur) => (cur === s.id ? null : s.id))}
-                          onCopy={() => copyLink(s)}
-                          copied={copied === s.id}
-                          onContribute={() => openContribution(contribute([], [s]))}
+                          onContribute={() => pickContribution(contribKeyOfLink(s))}
                           onDragStart={() => onLinkDragStart(s.id)}
                           onDragEnter={() => onLinkDragEnter(s.id)}
                           onDragEnd={onLinkDragEnd}
@@ -1667,66 +1648,14 @@ export function App() {
               </>
             )}
 
-            {active === "backup" && (
+            {active === "contribute" && (
               <>
-                <PaneHead title="Backup &amp; restore" />
-                <p class={clsx("text-[12px] leading-relaxed", t.sub)}>
-                  Save your TMSync data · custom recipes, your quick links, corrections and manual
-                  picks · to a file, and import it on another device. Your tracker logins and caches
-                  aren’t included.
-                </p>
-                <div class={clsx("flex items-center gap-3 rounded-lg px-3 py-2.5", t.card)}>
-                  <span class="min-w-0 flex-1">
-                    <span class={clsx("block text-[13px] font-medium", t.heading)}>
-                      Export to file
-                    </span>
-                    <span class={clsx("block text-[11px]", t.sub)}>
-                      Downloads a JSON backup of your data.
-                    </span>
-                  </span>
-                  <Btn t={t} tone="ghost" disabled={backupBusy} onClick={exportBackup}>
-                    <Icon name="external" class="text-[12px]" /> Export
-                  </Btn>
-                </div>
-                <div class={clsx("flex items-center gap-3 rounded-lg px-3 py-2.5", t.card)}>
-                  <span class="min-w-0 flex-1">
-                    <span class={clsx("block text-[13px] font-medium", t.heading)}>
-                      Import from file
-                    </span>
-                    <span class={clsx("block text-[11px]", t.sub)}>
-                      Merges a backup into this device · your items win, nothing is deleted.
-                    </span>
-                  </span>
-                  <Btn
-                    t={t}
-                    tone="ghost"
-                    disabled={backupBusy}
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    <Icon name="copy" class="text-[12px]" /> Import
-                  </Btn>
-                </div>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="application/json,.json"
-                  class="hidden"
-                  onChange={(e) => {
-                    const f = (e.target as HTMLInputElement).files?.[0];
-                    if (f) void importBackup(f);
-                    (e.target as HTMLInputElement).value = "";
-                  }}
-                />
-                {backupNote && (
-                  <p class={clsx("rounded-lg px-3 py-2 text-[12px]", t.infoBox)}>{backupNote}</p>
-                )}
-
                 <PaneHead title="Contribute" />
                 <p class={clsx("text-[12px] leading-relaxed", t.sub)}>
                   Share your recipes &amp; quick links with everyone. This opens a GitHub issue with
                   them filled in: site config only, no watch data. A maintainer checks it, then it
-                  goes into the shared library. Pick what to share below, or use Contribute on a
-                  site in Sites.
+                  goes into the shared library. Tick what to share, then open an issue, or copy the
+                  JSON to paste it yourself.
                 </p>
                 {contribRows.length === 0 ? (
                   <p class={clsx("rounded-lg px-3 py-4 text-center text-[12px]", t.card, t.sub)}>
@@ -1783,25 +1712,86 @@ export function App() {
                       >
                         {picked.length === contribRows.length ? "Select none" : "Select all"}
                       </Btn>
-                      <Btn
-                        t={t}
-                        tone="primary"
-                        disabled={pickedCount === 0}
-                        onClick={() =>
-                          openContribution(
-                            contribute(
-                              picked.flatMap((r) => r.recipes),
-                              picked.flatMap((r) => r.links),
-                              picked.length === 1 ? picked[0]?.name : undefined,
-                            ),
-                          )
-                        }
-                      >
-                        <Icon name="external" class="text-[12px]" /> Contribute {pickedCount}{" "}
-                        {pickedCount === 1 ? "item" : "items"}
-                      </Btn>
+                      <span class="flex items-center gap-2">
+                        <Btn
+                          t={t}
+                          tone="ghost"
+                          disabled={pickedCount === 0}
+                          onClick={() => void copyContribution()}
+                        >
+                          <Icon
+                            name={copied === "contribution" ? "check" : "copy"}
+                            class="text-[12px]"
+                          />
+                          {copied === "contribution" ? "Copied" : "Copy JSON"}
+                        </Btn>
+                        <Btn
+                          t={t}
+                          tone="primary"
+                          disabled={pickedCount === 0}
+                          onClick={() => void openContribution(pickedContribution())}
+                        >
+                          <Icon name="external" class="text-[12px]" /> Open issue · {pickedCount}
+                        </Btn>
+                      </span>
                     </div>
                   </>
+                )}
+              </>
+            )}
+
+            {active === "backup" && (
+              <>
+                <PaneHead title="Backup &amp; restore" />
+                <p class={clsx("text-[12px] leading-relaxed", t.sub)}>
+                  Save your TMSync data · custom recipes, your quick links, corrections and manual
+                  picks · to a file, and import it on another device. Your tracker logins and caches
+                  aren’t included.
+                </p>
+                <div class={clsx("flex items-center gap-3 rounded-lg px-3 py-2.5", t.card)}>
+                  <span class="min-w-0 flex-1">
+                    <span class={clsx("block text-[13px] font-medium", t.heading)}>
+                      Export to file
+                    </span>
+                    <span class={clsx("block text-[11px]", t.sub)}>
+                      Downloads a JSON backup of your data.
+                    </span>
+                  </span>
+                  <Btn t={t} tone="ghost" disabled={backupBusy} onClick={exportBackup}>
+                    <Icon name="external" class="text-[12px]" /> Export
+                  </Btn>
+                </div>
+                <div class={clsx("flex items-center gap-3 rounded-lg px-3 py-2.5", t.card)}>
+                  <span class="min-w-0 flex-1">
+                    <span class={clsx("block text-[13px] font-medium", t.heading)}>
+                      Import from file
+                    </span>
+                    <span class={clsx("block text-[11px]", t.sub)}>
+                      Merges a backup into this device · your items win, nothing is deleted.
+                    </span>
+                  </span>
+                  <Btn
+                    t={t}
+                    tone="ghost"
+                    disabled={backupBusy}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Icon name="copy" class="text-[12px]" /> Import
+                  </Btn>
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="application/json,.json"
+                  class="hidden"
+                  onChange={(e) => {
+                    const f = (e.target as HTMLInputElement).files?.[0];
+                    if (f) void importBackup(f);
+                    (e.target as HTMLInputElement).value = "";
+                  }}
+                />
+                {backupNote && (
+                  <p class={clsx("rounded-lg px-3 py-2 text-[12px]", t.infoBox)}>{backupNote}</p>
                 )}
               </>
             )}

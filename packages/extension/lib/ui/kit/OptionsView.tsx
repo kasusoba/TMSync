@@ -377,8 +377,6 @@ export function OptionsView({
                               </div>
                               {!r.library && (
                                 <div class="flex shrink-0 items-center">
-                                  <IconBtn t={t} name="external" title="Contribute to library" />
-                                  <IconBtn t={t} name="copy" title="Copy JSON" />
                                   <IconBtn t={t} name="trash" title="Delete" danger />
                                 </div>
                               )}
