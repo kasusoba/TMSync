@@ -586,6 +586,20 @@ function SiteCard({
   );
 }
 
+/** `on`, once it has stayed on for `ms`. */
+function useSettled(on: boolean, ms: number): boolean {
+  const [settled, setSettled] = useState(false);
+  useEffect(() => {
+    if (!on) {
+      setSettled(false);
+      return;
+    }
+    const id = setTimeout(() => setSettled(true), ms);
+    return () => clearTimeout(id);
+  }, [on, ms]);
+  return settled;
+}
+
 const SECTIONS: { id: string; label: string; icon: IconName }[] = [
   { id: "account", label: "Account", icon: "play" },
   { id: "sites", label: "Sites", icon: "frame" },
@@ -656,7 +670,16 @@ export function App() {
   /** The CDN anime-map crosswalk cache (multi-track). Shown in the Library pane so
    * "how current is my episode mapping?" is answerable without the devtools. */
   const [mapCache, setMapCache] = useState<AnimeMapCache | null>(null);
-  const [busy, setBusy] = useState(false);
+  // `working` guards against a second action; `busy` is what the buttons show.
+  // Most actions finish in a few milliseconds, and dimming every button for that
+  // long reads as a flash, so the busy look waits until an action is slow.
+  const [working, setWorking] = useState(false);
+  const workingRef = useRef(false);
+  const busy = useSettled(working, 300);
+  const setBusy = (on: boolean) => {
+    workingRef.current = on;
+    setWorking(on);
+  };
   /** The one expanded quick-link row (accordion) — editing another collapses this. */
   const [openLinkId, setOpenLinkId] = useState<string | null>(null);
   /** The single unsaved quick-link draft (from "Add blank"), if any — cleared on save. */
@@ -809,6 +832,7 @@ export function App() {
   }, []);
 
   const act = async (fn: () => Promise<unknown>) => {
+    if (workingRef.current) return;
     setBusy(true);
     await fn();
     await refresh();
