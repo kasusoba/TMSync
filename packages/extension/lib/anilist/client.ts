@@ -213,24 +213,21 @@ query ($mediaId: Int) {
 /**
  * The viewer's current list entry for a Media — the source of truth for the
  * status state machine (CURRENT/COMPLETED/REPEATING, progress, repeat count).
- * Requires auth. Returns null if the user has no entry for it, or isn't connected.
+ * Requires auth. Returns null only when the user has no entry for it. A failed read
+ * throws: a caller that took it for "not on the list" could overwrite a COMPLETED
+ * entry with lower progress.
  */
 export async function getListEntry(mediaId: number): Promise<AniListEntry | null> {
-  try {
-    const data = await gql<{
-      Media: { mediaListEntry: AniListEntry | null } | null;
-    }>(LIST_ENTRY_QUERY, { mediaId }, true);
-    const entry = data.Media?.mediaListEntry;
-    if (!entry) return null;
-    return {
-      status: entry.status ?? null,
-      progress: entry.progress ?? 0,
-      repeat: entry.repeat ?? 0,
-    };
-  } catch (e) {
-    if (e instanceof AniListNotConnectedError) throw e;
-    return null;
-  }
+  const data = await gql<{
+    Media: { mediaListEntry: AniListEntry | null } | null;
+  }>(LIST_ENTRY_QUERY, { mediaId }, true);
+  const entry = data.Media?.mediaListEntry;
+  if (!entry) return null;
+  return {
+    status: entry.status ?? null,
+    progress: entry.progress ?? 0,
+    repeat: entry.repeat ?? 0,
+  };
 }
 
 const SAVE_ENTRY_QUERY = `

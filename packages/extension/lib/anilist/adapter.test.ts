@@ -5,6 +5,15 @@ import type { TrackedItem } from "../tracker/types";
 // Mock the auth seam so we can toggle connection without real tokens/storage.
 const { isConnected } = vi.hoisted(() => ({ isConnected: vi.fn() }));
 vi.mock("./auth", () => ({ isConnected }));
+const { getListEntry, saveEntry } = vi.hoisted(() => ({
+  getListEntry: vi.fn(),
+  saveEntry: vi.fn(),
+}));
+vi.mock("./client", async (orig) => ({
+  ...(await orig<typeof import("./client")>()),
+  getListEntry,
+  saveEntry,
+}));
 
 import { anilistAdapter } from "./adapter";
 
@@ -19,7 +28,10 @@ const item: TrackedItem = {
 const media: ParsedMedia = { mediaType: "show", title: "Frieren", episode: 3 };
 
 describe("anilistAdapter.recordProgress connection gate", () => {
-  beforeEach(() => isConnected.mockReset());
+  beforeEach(() => {
+    isConnected.mockReset();
+    getListEntry.mockReset().mockResolvedValue(null);
+  });
 
   // The bug this guards: AniList has no scrobble API, so start/pause used to return
   // ok unconditionally — the badge showed "watching"/"paused" for a whole episode
@@ -49,5 +61,34 @@ describe("anilistAdapter.recordProgress connection gate", () => {
     expect(await anilistAdapter.recordProgress(item, media, 0.5, "pause", 0.8)).toEqual({
       ok: true,
     });
+  });
+});
+
+describe("anilistAdapter.recordProgress failed entry read", () => {
+  beforeEach(() => {
+    isConnected.mockReset().mockResolvedValue(true);
+    getListEntry.mockReset();
+    saveEntry.mockReset().mockResolvedValue({ ok: true });
+  });
+
+  // A failed read used to count as "not on the list", so a rewatch of a COMPLETED
+  // cour wrote CURRENT with a lower progress.
+  it("fails and writes nothing when the entry can't be read", async () => {
+    getListEntry.mockRejectedValue(new Error("AniList 429"));
+    expect(await anilistAdapter.recordProgress(item, media, 90, "stop", 0.8)).toEqual({
+      ok: false,
+      reason: "http",
+      httpError: "AniList 429",
+    });
+    expect(saveEntry).not.toHaveBeenCalled();
+  });
+
+  it("writes when the user has no entry", async () => {
+    getListEntry.mockResolvedValue(null);
+    expect(await anilistAdapter.recordProgress(item, media, 90, "stop", 0.8)).toMatchObject({
+      ok: true,
+      action: "scrobble",
+    });
+    expect(saveEntry).toHaveBeenCalledWith(1, { progress: 3, status: "CURRENT" });
   });
 });
