@@ -26,12 +26,8 @@ export function saveLinkOnHost(
   now = Date.now(),
 ): QuickLinkSite[] {
   const current = linkOnHost(links, host);
-  // Keep the id of the link already on this domain. Else `ql-<host>`, unless a
-  // link that moved from this domain still has that id.
-  const qid =
-    current?.id ?? (links.some((l) => l.id === `ql-${host}`) ? `ql-${host}-${now}` : `ql-${host}`);
-  const entry: QuickLinkSite = {
-    id: qid,
+  const entry = (id: string): QuickLinkSite => ({
+    id,
     name: fields.name,
     enabled: true,
     source: "user",
@@ -41,12 +37,27 @@ export function saveLinkOnHost(
     tv: fields.tv,
     anime: fields.anime,
     search: fields.search,
-  };
-  return current ? links.map((l) => (l.id === qid ? { ...l, ...entry } : l)) : [...links, entry];
+  });
+  if (current && current.source !== "library") {
+    return links.map((l) => (l.id === current.id ? { ...l, ...entry(l.id) } : l));
+  }
+  // A library link gets its templates from the library on every refresh, so an
+  // edit would not last. Save a new user link and turn the library link off.
+  // The id is `ql-<host>`, unless a link that moved from this domain still has it.
+  const id = links.some((l) => l.id === `ql-${host}`) ? `ql-${host}-${now}` : `ql-${host}`;
+  const rest = current
+    ? links.map((l) => (l.id === current.id ? { ...l, enabled: false } : l))
+    : links;
+  return [...rest, entry(id)];
 }
 
-/** The links after removing this domain's quick link. */
+/** The links after removing this domain's quick link. The library adds its links
+ * back on every refresh, so a library link is turned off, not deleted. */
 export function removeLinkOnHost(links: QuickLinkSite[], host: string): QuickLinkSite[] {
   const current = linkOnHost(links, host);
-  return current ? links.filter((l) => l.id !== current.id) : links;
+  if (!current) return links;
+  if (current.source === "library") {
+    return links.map((l) => (l.id === current.id ? { ...l, enabled: false } : l));
+  }
+  return links.filter((l) => l.id !== current.id);
 }

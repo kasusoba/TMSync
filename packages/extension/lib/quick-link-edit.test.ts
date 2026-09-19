@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { linkOnHost, removeLinkOnHost } from "./quick-link-edit";
+import {
+  type QuickLinkFields,
+  linkOnHost,
+  removeLinkOnHost,
+  saveLinkOnHost,
+} from "./quick-link-edit";
 import type { QuickLinkSite } from "./storage";
 
 const link = (id: string, host: string, extra: Partial<QuickLinkSite> = {}): QuickLinkSite => ({
@@ -50,5 +55,44 @@ describe("linkOnHost", () => {
     expect(
       linkOnHost([link("lib-a", "a.com", { source: "library", enabled: false })], "a.com"),
     ).toBe(undefined);
+  });
+});
+
+const FIELDS: QuickLinkFields = {
+  name: "Site",
+  tracker: "trakt",
+  host: "a.com",
+  movie: "/m/{tmdb}",
+};
+
+describe("saveLinkOnHost", () => {
+  it("updates the user's own link in place", () => {
+    const links = [link("ql-1", "a.com", { name: "Old" })];
+    expect(saveLinkOnHost(links, "a.com", FIELDS)).toEqual([
+      { id: "ql-1", enabled: true, source: "user", ...FIELDS },
+    ]);
+  });
+
+  // An edit merged into a library link made it `source: "user"`, so it stopped
+  // getting library updates.
+  it("saves a new user link and turns the library link off", () => {
+    const lib = link("lib-a", "a.com", { source: "library" });
+    expect(saveLinkOnHost([lib], "a.com", FIELDS)).toEqual([
+      { ...lib, enabled: false },
+      { id: "ql-a.com", enabled: true, source: "user", ...FIELDS },
+    ]);
+  });
+
+  it("does not reuse an id that a moved link still has", () => {
+    const moved = link("ql-a.com", "b.com");
+    const out = saveLinkOnHost([moved], "a.com", FIELDS, 42);
+    expect(out.map((l) => l.id)).toEqual(["ql-a.com", "ql-a.com-42"]);
+  });
+});
+
+describe("removeLinkOnHost on a library link", () => {
+  it("turns it off, because the library would add it back", () => {
+    const lib = link("lib-a", "a.com", { source: "library" });
+    expect(removeLinkOnHost([lib], "a.com")).toEqual([{ ...lib, enabled: false }]);
   });
 });
