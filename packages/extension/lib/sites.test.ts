@@ -1,6 +1,13 @@
 import type { Recipe } from "@tmsync/shared";
 import { describe, expect, it } from "vitest";
-import { findMovedSite, groupSites, uniqueHosts, withSiteHosts, withSiteName } from "./sites";
+import {
+  addedHosts,
+  findMovedSite,
+  groupSites,
+  uniqueHosts,
+  withSiteHosts,
+  withSiteName,
+} from "./sites";
 
 function recipe(id: string, match: Recipe["match"], name = id): Recipe {
   return {
@@ -125,5 +132,28 @@ describe("findMovedSite", () => {
 
   it("offers nothing when no site shares the name", () => {
     expect(findMovedSite(groupSites([other], []), "https://cinejoy.pk/watch")).toBeNull();
+  });
+});
+
+describe("addedHosts", () => {
+  const a = recipe("a", { urlPattern: "/movie", hostnames: ["a.tld"] });
+  const b = recipe("b", { urlPattern: "/tv", hostnames: ["www.b.tld"] });
+  const c = recipe("c", { urlPattern: "/watch", hostnames: ["c.tld"] });
+
+  it("lists only the hosts the new list brings in", () => {
+    expect(addedHosts([a], [a, b])).toEqual(["www.b.tld"]);
+  });
+
+  it("skips a host the other list already covers", () => {
+    expect(addedHosts([a], [a, b, c], [c])).toEqual(["www.b.tld"]);
+  });
+
+  it("treats www and bare hosts as one", () => {
+    const bare = recipe("bare", { urlPattern: "/tv", hostnames: ["b.tld"] });
+    expect(addedHosts([b], [b, bare])).toEqual([]);
+  });
+
+  it("is empty when a recipe goes away", () => {
+    expect(addedHosts([a, b], [a])).toEqual([]);
   });
 });

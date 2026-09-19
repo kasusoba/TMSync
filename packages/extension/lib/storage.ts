@@ -93,13 +93,12 @@ export const enabledOrigins = storage.defineItem<string[]>("local:enabled_origin
 });
 
 /**
- * Recipe origins that needed access and the user already saw (in the popup nudge
- * or in Options > Sites). The popup nudges only about origins NOT in this list, so
- * a site left off on purpose never nags. null = never seeded: the first read
- * treats every current pending origin as seen.
+ * Recipe origins that a sync or an import brought in without access. The popup
+ * shows them as one "new sites need access" line until the user reviews or
+ * dismisses it. Only NEW sites land here, so a site left off on purpose never nags.
  */
-export const seenPendingSites = storage.defineItem<string[] | null>("local:seen_pending_sites", {
-  fallback: null,
+export const newPendingSites = storage.defineItem<string[]>("local:new_pending_sites", {
+  fallback: [],
 });
 
 /**

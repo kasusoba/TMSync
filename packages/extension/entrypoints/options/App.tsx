@@ -10,7 +10,7 @@ import {
   contributeQuickLink,
   contributeRecipe,
 } from "@/lib/portability/contribute";
-import { type SiteGroup, groupSites, withSiteHosts, withSiteName } from "@/lib/sites";
+import { type SiteGroup, addedHosts, groupSites, withSiteHosts, withSiteName } from "@/lib/sites";
 import {
   type AnimeMapCache,
   type BadgePrefs,
@@ -23,10 +23,10 @@ import {
   badgePrefs,
   corrections,
   customRecipes,
+  newPendingSites,
   optionsIntent,
   quickLinks,
   remoteRecipes,
-  seenPendingSites,
 } from "@/lib/storage";
 import { type Tracker, trackerLabel } from "@/lib/tracker/types";
 import type { ResolvedIdentity } from "@/lib/trakt/types";
@@ -694,6 +694,8 @@ export function App() {
   const [backupBusy, setBackupBusy] = useState(false);
   const [backupNote, setBackupNote] = useState<string | null>(null);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  /** New sites the last "Sync library" brought in that need access. */
+  const [syncNew, setSyncNew] = useState(0);
   /** Feedback for a Connect attempt (Options mirrors the popup — a failed/cancelled
    * OAuth used to silently do nothing here). */
   const [accountMsg, setAccountMsg] = useState<string | null>(null);
@@ -742,6 +744,16 @@ export function App() {
       }
       await sendMessage("syncSiteRegistrations", undefined);
     });
+
+  // Show the sites that need access (Sites tab, filter on). The popup's nudge
+  // points here too, so it is done once reviewed.
+  const reviewNewSites = async () => {
+    setActive("sites");
+    setQ("");
+    setNeedsOnly(true);
+    setSyncNew(0);
+    await newPendingSites.setValue([]);
+  };
 
   // --- a site's domains ---
   // Streaming sites move domain and keep their pages, so a site's recipes stay
@@ -812,9 +824,20 @@ export function App() {
   const syncLibrary = async () => {
     setBusy(true);
     setSyncMsg(null);
+    setSyncNew(0);
     const out = await sendMessage("refreshRecipes", undefined);
-    setSyncMsg(out.ok ? `Synced · ${out.count} recipes` : `Couldn’t sync: ${out.error}`);
-    setRemote(await remoteRecipes.getValue());
+    const next = await remoteRecipes.getValue();
+    // Sites this sync brought in that still need access: say so, with a way there.
+    const fresh = addedHosts(remote?.recipes ?? [], next?.recipes ?? [], recipes).filter(
+      (h) => !isHostEnabled(h),
+    ).length;
+    setSyncMsg(
+      out.ok
+        ? `Synced · ${out.count} recipes${fresh ? ` · ${fresh} new site${fresh === 1 ? " needs" : "s need"} access` : ""}`
+        : `Couldn’t sync: ${out.error}`,
+    );
+    setSyncNew(out.ok ? fresh : 0);
+    setRemote(next);
     setMapCache(await animeMap.getValue());
     setBusy(false);
   };
@@ -837,21 +860,6 @@ export function App() {
     void optionsIntent.getValue().then(apply);
     return optionsIntent.watch(apply);
   }, []);
-
-  // The Sites tab lists every site that needs access, so once it is open those
-  // sites count as seen and the popup stops nudging about them.
-  useEffect(() => {
-    if (active !== "sites" || allSites) return;
-    const pending = groupSites(recipes, remote?.recipes ?? [])
-      .flatMap((g) => g.hosts.map((h) => `https://${h}`))
-      .filter((o) => !sites.includes(o));
-    if (pending.length === 0) return;
-    void seenPendingSites.getValue().then((seen) => {
-      const next = new Set([...(seen ?? []), ...pending]);
-      if (seen && next.size === seen.length) return;
-      void seenPendingSites.setValue([...next]);
-    });
-  }, [active, allSites, sites, recipes, remote]);
 
   const act = async (fn: () => Promise<unknown>) => {
     if (workingRef.current) return;
@@ -1170,14 +1178,13 @@ export function App() {
     has(site.name) ||
     site.hosts.some(has) ||
     site.recipes.some(({ recipe }) => has(recipe.name) || has(recipe.match.urlPattern));
-  // The "Needs access" filter only applies while some site needs access, so it
-  // can't leave an empty list after the last site is allowed.
-  const needsFilter = needsOnly && notEnabledCount > 0;
-  const visibleSites = siteGroups.filter(
-    (s) => siteMatches(s) && (!needsFilter || siteNeedsAccess(s)),
-  );
-  const toAllow = visibleSites.filter(siteNeedsAccess);
-  const needsAccessSites = siteGroups.filter(siteNeedsAccess).length;
+  // The "Needs access" count and filter follow the text filter. The filter only
+  // applies while a matching site needs access, so it can't leave an empty list
+  // after the last one is allowed.
+  const matchingSites = siteGroups.filter(siteMatches);
+  const toAllow = matchingSites.filter(siteNeedsAccess);
+  const needsFilter = needsOnly && toAllow.length > 0;
+  const visibleSites = needsFilter ? toAllow : matchingSites;
 
   const counts: Record<string, number> = {
     links: links.length,
@@ -1193,6 +1200,11 @@ export function App() {
         <span class={clsx("text-[15px] font-semibold tracking-tight", t.heading)}>TMSync</span>
         <div class="ml-auto flex items-center gap-2.5">
           {syncMsg && <span class={clsx("text-[12px]", t.sub)}>{syncMsg}</span>}
+          {syncNew > 0 && (
+            <Btn t={t} tone="ghost" onClick={() => void reviewNewSites()}>
+              Review
+            </Btn>
+          )}
           <Btn
             t={t}
             tone="ghost"
@@ -1400,7 +1412,7 @@ export function App() {
                 {/* Bulk allow: filter the list, then allow what is visible in one
                     browser prompt. Less than "Allow all sites": a site that a later
                     sync adds still asks first. */}
-                {!allSites && needsAccessSites > 0 && (
+                {!allSites && toAllow.length > 0 && (
                   <div class="flex items-center justify-between gap-2">
                     <Btn
                       t={t}
@@ -1410,19 +1422,17 @@ export function App() {
                       onClick={() => setNeedsOnly(!needsFilter)}
                     >
                       <span class="size-1.5 rounded-full bg-amber-400" />
-                      Needs access · {needsAccessSites}
+                      Needs access · {toAllow.length}
                     </Btn>
-                    {toAllow.length > 0 && (
-                      <Btn
-                        t={t}
-                        tone="primary"
-                        disabled={busy}
-                        title={toAllow.map((s) => s.name).join(", ")}
-                        onClick={() => void allowSites(toAllow)}
-                      >
-                        Allow {toAllow.length} site{toAllow.length === 1 ? "" : "s"}
-                      </Btn>
-                    )}
+                    <Btn
+                      t={t}
+                      tone="primary"
+                      disabled={busy}
+                      title={toAllow.map((s) => s.name).join(", ")}
+                      onClick={() => void allowSites(toAllow)}
+                    >
+                      Allow {toAllow.length} site{toAllow.length === 1 ? "" : "s"}
+                    </Btn>
                   </div>
                 )}
 

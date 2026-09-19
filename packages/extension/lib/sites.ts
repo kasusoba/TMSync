@@ -117,3 +117,18 @@ export function findMovedSite(sites: SiteGroup[], url: string): SiteGroup | null
     });
   return named.find(fitsPath) ?? named[0] ?? null;
 }
+
+/**
+ * Hosts that a recipe change brings in: in `after` but in neither `before` nor
+ * `others` (the other recipe list, which already covered them). The popup nudges
+ * about these after a sync or an import. Storage form, like `recipeHosts`.
+ */
+export function addedHosts(before: Recipe[], after: Recipe[], others: Recipe[] = []): string[] {
+  const known = new Set([...before, ...others].flatMap(recipeHosts).map(normalizeHost));
+  const added = new Map<string, string>();
+  for (const h of after.flatMap(recipeHosts)) {
+    const key = normalizeHost(h);
+    if (!known.has(key) && !added.has(key)) added.set(key, h);
+  }
+  return [...added.values()];
+}

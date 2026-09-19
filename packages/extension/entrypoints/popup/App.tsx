@@ -11,10 +11,10 @@ import {
   type QuickLinkSite,
   badgePrefs,
   customRecipes,
+  newPendingSites,
   optionsIntent,
   quickLinks,
   remoteRecipes,
-  seenPendingSites,
   tabFrameOrigins,
   tabSessions,
   tabStatus,
@@ -208,7 +208,7 @@ export function App() {
 
   const refresh = async () => {
     const tabId = await activeTabId();
-    const [s, al, url, found, sites, links, badge, custom, remote, pending, seen] =
+    const [s, al, url, found, sites, links, badge, custom, remote, pending, fresh] =
       await Promise.all([
         sendMessage("getTraktStatus", undefined),
         sendMessage("getAniListStatus", undefined),
@@ -220,7 +220,7 @@ export function App() {
         customRecipes.getValue(),
         remoteRecipes.getValue(),
         sendMessage("pendingSites", undefined),
-        seenPendingSites.getValue(),
+        newPendingSites.getValue(),
       ]);
     // Merge the live snapshot with origins the content script accumulated over
     // the session — catches player iframes that loaded after the page settled.
@@ -239,16 +239,10 @@ export function App() {
     setEnabled(
       broad ? [...new Set([...sites, ...allOrigins, ...(origin ? [origin] : [])])] : sites,
     );
-    // Nudge only about sites the user hasn't seen, and not this page's sites ("This
-    // page" asks for those). The first run seeds the list, so an upgrade doesn't
-    // flag every site that was already left off.
-    if (seen === null) {
-      await seenPendingSites.setValue(pending);
-      setNewSites([]);
-    } else {
-      const here = new Set([...allOrigins, ...(origin ? [origin] : [])]);
-      setNewSites(pending.filter((o) => !seen.includes(o) && !here.has(o)));
-    }
+    // Nudge about new sites that still need access, but not this page's sites
+    // ("This page" asks for those).
+    const here = new Set([...allOrigins, ...(origin ? [origin] : [])]);
+    setNewSites(fresh.filter((o) => pending.includes(o) && !here.has(o)));
     setQlHost(hostname);
     setQlUrl(url);
     setQlSite(hostname ? (links.find((l) => l.id === `ql-${hostname}`) ?? null) : null);
@@ -410,11 +404,10 @@ export function App() {
     setBusy(false);
   };
 
-  // Mark the new sites as seen so the nudge goes away. "Review" also opens Options
+  // Clear the new-sites list so the nudge goes away. "Review" also opens Options
   // on the Sites tab with the "Needs access" filter on.
   const clearNewSites = async () => {
-    const seen = (await seenPendingSites.getValue()) ?? [];
-    await seenPendingSites.setValue([...new Set([...seen, ...newSites])]);
+    await newPendingSites.setValue([]);
     setNewSites([]);
   };
   const reviewNewSites = async () => {

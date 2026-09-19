@@ -26,6 +26,7 @@ import type { Animap } from "@/lib/animap/index";
 import { loadAnimap, parseAnimeMap } from "@/lib/animap/load";
 import { bundledLinks } from "@/lib/recipes";
 import { statusDotColor } from "@/lib/scrobble/action-badge";
+import { addedHosts } from "@/lib/sites";
 import {
   type QuickLinkSite,
   anilistCorrections,
@@ -38,6 +39,7 @@ import {
   episodeOverrides,
   manualContexts,
   manualSelections,
+  newPendingSites,
   quickLinks,
   remoteRecipes,
   resolutionCache,
@@ -146,6 +148,17 @@ export default defineBackground(() => {
   // These are event listeners re-established on each SW wake, not held state.
   customRecipes.watch(() => void syncRegistrations());
   remoteRecipes.watch(() => void syncRegistrations());
+  // Note the sites a sync or an import brings in, for the popup's one-line nudge.
+  // The first library fetch (no old list) is setup, not news, so it is skipped.
+  customRecipes.watch(async (next, prev) => {
+    const library = (await remoteRecipes.getValue())?.recipes ?? [];
+    await noteNewSites(addedHosts(prev ?? [], next ?? [], library));
+  });
+  remoteRecipes.watch(async (next, prev) => {
+    if (!prev) return;
+    const custom = await customRecipes.getValue();
+    await noteNewSites(addedHosts(prev.recipes, next?.recipes ?? [], custom));
+  });
 
   // Seed quick links shipped in the bundled library (available offline, before
   // the first fetch), then refresh the CDN list on startup + a periodic alarm
@@ -1296,6 +1309,22 @@ async function pendingSites(): Promise<string[]> {
     pending.push(origin);
   }
   return pending;
+}
+
+/** Add the new hosts that still need access to the popup's "new sites" list. */
+async function noteNewSites(hosts: string[]): Promise<void> {
+  if (hosts.length === 0 || (await hasAllSites())) return;
+  const enabled = new Set(await enabledOrigins.getValue());
+  const fresh: string[] = [];
+  for (const h of hosts) {
+    const origin = `https://${h}`;
+    if (enabled.has(origin)) continue;
+    if (await browser.permissions.contains({ origins: [`${origin}/*`] })) continue;
+    fresh.push(origin);
+  }
+  if (fresh.length === 0) return;
+  const known = await newPendingSites.getValue();
+  await newPendingSites.setValue([...new Set([...known, ...fresh])]);
 }
 
 /** Register the single catch-all content script backed by the broad grant. */
