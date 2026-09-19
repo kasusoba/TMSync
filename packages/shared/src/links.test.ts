@@ -3,8 +3,10 @@ import {
   buildAniListSiteLinks,
   buildSiteLinks,
   fillTemplate,
+  linkHost,
   slugify,
   trackerItemUrl,
+  withLinkHost,
 } from "./links";
 import type { LinkTemplates } from "./schema";
 
@@ -113,6 +115,83 @@ describe("buildSiteLinks", () => {
   it("returns nothing when no template can be filled", () => {
     const tmdbOnly: LinkTemplates = { movie: "https://s/movie/{tmdb}" };
     expect(buildSiteLinks(tmdbOnly, { type: "movie", title: "X" })).toEqual({});
+  });
+});
+
+describe("host-based templates", () => {
+  const site: LinkTemplates = {
+    host: "cineby.at",
+    movie: "/movie/{tmdb}",
+    tv: "/tv/{tmdb}/{season}/{episode}",
+    search: "/search/{title}",
+  };
+
+  it("joins a path template to the site host", () => {
+    expect(buildSiteLinks(site, { type: "movie", tmdb: "603", title: "The Matrix" })).toEqual({
+      direct: "https://cineby.at/movie/603",
+      search: "https://cineby.at/search/The%20Matrix",
+    });
+  });
+
+  it("joins an anime path template too", () => {
+    expect(
+      buildAniListSiteLinks({ host: "miruro.to", anime: "/watch/{anilist}" }, { anilistId: 21 })
+        .direct,
+    ).toBe("https://miruro.to/watch/21");
+  });
+
+  it("skips a path template when the site has no host", () => {
+    expect(buildSiteLinks({ movie: "/movie/{tmdb}" }, { type: "movie", tmdb: "603" })).toEqual({});
+  });
+
+  it("keeps an absolute template as it is", () => {
+    expect(
+      buildSiteLinks(
+        { host: "cineby.at", movie: "https://other.tld/movie/{tmdb}" },
+        { type: "movie", tmdb: "603" },
+      ).direct,
+    ).toBe("https://other.tld/movie/603");
+  });
+});
+
+describe("linkHost / withLinkHost", () => {
+  it("reads the explicit host as stored", () => {
+    expect(linkHost({ host: "WWW.Cineby.At", movie: "/m/{tmdb}" })).toBe("www.cineby.at");
+  });
+
+  it("falls back to the host of the first absolute template", () => {
+    expect(linkHost({ movie: "https://cineby.at/movie/{tmdb}" })).toBe("cineby.at");
+  });
+
+  it("is empty when there is nothing to read", () => {
+    expect(linkHost({})).toBe("");
+  });
+
+  it("moves the site to a new host and relativizes its own templates", () => {
+    const moved = withLinkHost(
+      { movie: "https://cineby.at/movie/{tmdb}", search: "https://cineby.at/search/{title}" },
+      "cineby.app",
+    );
+    expect(moved).toEqual({
+      host: "cineby.app",
+      movie: "/movie/{tmdb}",
+      tv: undefined,
+      anime: undefined,
+      search: "/search/{title}",
+    });
+  });
+
+  it("relativizes a template that differs only by www", () => {
+    const moved = withLinkHost({ movie: "https://www.cineby.at/movie/{tmdb}" }, "cineby.app");
+    expect(moved.movie).toBe("/movie/{tmdb}");
+  });
+
+  it("leaves a template on another host alone", () => {
+    const moved = withLinkHost(
+      { host: "cineby.at", movie: "https://other.tld/movie/{tmdb}" },
+      "cineby.app",
+    );
+    expect(moved.movie).toBe("https://other.tld/movie/{tmdb}");
   });
 });
 

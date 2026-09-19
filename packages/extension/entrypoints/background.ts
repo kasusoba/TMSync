@@ -1171,6 +1171,7 @@ function linkMatchesLibrary(cur: QuickLinkSite, l: LibraryLink): boolean {
   return (
     cur.name === l.name &&
     (cur.tracker ?? "trakt") === l.tracker &&
+    cur.host === l.host &&
     cur.movie === l.movie &&
     cur.tv === l.tv &&
     cur.anime === l.anime &&
@@ -1196,6 +1197,7 @@ async function mergeLibraryLinks(links: LibraryLink[]): Promise<void> {
     const fields = {
       name: l.name,
       tracker: l.tracker,
+      host: l.host,
       movie: l.movie,
       tv: l.tv,
       anime: l.anime,

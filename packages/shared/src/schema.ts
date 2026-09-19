@@ -78,6 +78,10 @@ export type Field = z.infer<typeof Field>;
  * managed per-SITE, independent of recipes — see the extension's quickLinks store.
  */
 export const LinkTemplates = z.object({
+  /** The site's domain. Templates below may then be paths ("/movie/{tmdb}"), so a
+   * site that moves domain is fixed in one field. An absolute template (the older
+   * shape, "https://site/movie/{tmdb}") still works and ignores this. */
+  host: z.string().optional(),
   movie: z.string().optional(),
   tv: z.string().optional(),
   anime: z.string().optional(),

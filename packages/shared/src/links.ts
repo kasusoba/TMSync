@@ -1,3 +1,4 @@
+import { hostText, normalizeHost } from "./hosts";
 import type { LinkTemplates, Tracker } from "./schema";
 
 /**
@@ -94,6 +95,45 @@ export function trackerItemUrl(
     : base;
 }
 
+/** Split an absolute template into host and path. Null for a path template.
+ * Textual, not URL(): a template holds `{placeholder}` braces, and URL() would
+ * percent-encode them into the path. */
+function splitTemplate(template: string): { host: string; path: string } | null {
+  const parts = /^https?:\/\/([^/?#]+)(.*)$/i.exec(template);
+  return parts ? { host: hostText(parts[1] ?? ""), path: parts[2] || "/" } : null;
+}
+
+/** The site a quick link points at: its `host`, else the host of its first absolute template. */
+export function linkHost(links: LinkTemplates): string {
+  if (links.host) return hostText(links.host);
+  for (const tpl of [links.movie, links.tv, links.anime, links.search]) {
+    const split = tpl ? splitTemplate(tpl) : null;
+    if (split) return split.host;
+  }
+  return "";
+}
+
+/**
+ * Point a quick link at `host`: set the field and turn every absolute template
+ * that used the OLD host into a path, so one field now holds the domain. A
+ * template on some other host is left alone (it was pointed there on purpose).
+ */
+export function withLinkHost<T extends LinkTemplates>(links: T, host: string): T {
+  const previous = normalizeHost(linkHost(links));
+  const relative = (tpl?: string) => {
+    const split = tpl ? splitTemplate(tpl) : null;
+    return split && normalizeHost(split.host) === previous ? split.path : tpl;
+  };
+  return {
+    ...links,
+    host: hostText(host),
+    movie: relative(links.movie),
+    tv: relative(links.tv),
+    anime: relative(links.anime),
+    search: relative(links.search),
+  };
+}
+
 /** Lowercase, hyphen-joined slug of a title (e.g. "The Rookie" → "the-rookie"). */
 export function slugify(title: string): string {
   return title
@@ -152,14 +192,30 @@ export function buildSiteLinks(links: LinkTemplates, media: TraktPageMedia): Sit
   const out: SiteLinks = {};
   const directTpl = media.type === "movie" ? links.movie : links.tv;
   if (directTpl) {
-    const url = fillTemplate(directTpl, params);
+    const url = fillSiteTemplate(directTpl, links.host, params);
     if (url) out.direct = url;
   }
   if (links.search) {
-    const url = fillTemplate(links.search, params);
+    const url = fillSiteTemplate(links.search, links.host, params);
     if (url) out.search = url;
   }
   return out;
+}
+
+/**
+ * Make a template absolute against the site's `host`, then fill its placeholders.
+ * A path template with no host to join to yields null, so the link is skipped
+ * rather than rendered broken.
+ */
+function fillSiteTemplate(
+  template: string,
+  host: string | undefined,
+  params: Record<string, string | number | undefined>,
+): string | null {
+  if (splitTemplate(template)) return fillTemplate(template, params);
+  if (!host) return null;
+  const path = template.startsWith("/") ? template : `/${template}`;
+  return fillTemplate(`https://${host}${path}`, params);
 }
 
 /**
@@ -191,11 +247,11 @@ export function buildAniListSiteLinks(
   };
   const out: SiteLinks = {};
   if (links.anime) {
-    const url = fillTemplate(links.anime, params);
+    const url = fillSiteTemplate(links.anime, links.host, params);
     if (url) out.direct = url;
   }
   if (links.search) {
-    const url = fillTemplate(links.search, params);
+    const url = fillSiteTemplate(links.search, links.host, params);
     if (url) out.search = url;
   }
   return out;

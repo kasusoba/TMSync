@@ -228,8 +228,9 @@ export function App() {
               quickLinkInitial={{
                 name: "Cineby",
                 tracker: "trakt",
-                movie: "https://www.cineby.at/movie/{tmdb}",
-                tv: "https://www.cineby.at/tv/{tmdb}/{season}/{episode}",
+                host: "cineby.at",
+                movie: "/movie/{tmdb}",
+                tv: "/tv/{tmdb}/{season}/{episode}",
               }}
               quickLinkDerive={() => ({})}
             />

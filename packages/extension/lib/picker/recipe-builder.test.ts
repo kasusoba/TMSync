@@ -41,25 +41,28 @@ describe("defaultRecipeName", () => {
 describe("deriveQuickLink", () => {
   it("derives a movie template from a numeric id", () => {
     expect(deriveQuickLink("https://cineby.at/movie/693134", "trakt")).toEqual({
-      movie: "https://cineby.at/movie/{tmdb}",
+      host: "cineby.at",
+      movie: "/movie/{tmdb}",
     });
   });
 
   it("derives a tv template from a /{id}/{season}/{episode} path", () => {
     expect(deriveQuickLink("https://cineby.at/tv/273240/1/2", "trakt", true)).toEqual({
-      tv: "https://cineby.at/tv/{tmdb}/{season}/{episode}",
+      host: "cineby.at",
+      tv: "/tv/{tmdb}/{season}/{episode}",
     });
   });
 
   it("derives a tv template from a /{slug}/{s}-{e} path", () => {
     expect(
       deriveQuickLink("https://popcornmovies.org/episode/the-rookie/2-4", "trakt", true),
-    ).toEqual({ tv: "https://popcornmovies.org/episode/{slug}/{season}-{episode}" });
+    ).toEqual({ host: "popcornmovies.org", tv: "/episode/{slug}/{season}-{episode}" });
   });
 
   it("derives an anime template (slug) for AniList", () => {
     expect(deriveQuickLink("https://reanime.to/watch/frieren-eu9jz6", "anilist")).toEqual({
-      anime: "https://reanime.to/watch/{slug}",
+      host: "reanime.to",
+      anime: "/watch/{slug}",
     });
   });
 });

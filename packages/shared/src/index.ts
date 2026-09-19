@@ -36,10 +36,12 @@ export {
   buildAniListSiteLinks,
   buildSiteLinks,
   fillTemplate,
+  linkHost,
   placeholderHint,
   slugify,
   TRAKT_PLACEHOLDERS,
   trackerItemUrl,
+  withLinkHost,
 } from "./links";
 export type { AniListPageMedia, PlaceholderDoc, SiteLinks, TraktPageMedia } from "./links";
 // Letterboxd CSV export lives in the extension's Trakt adapter (packages/extension/

@@ -4,7 +4,9 @@ import {
   ANILIST_PLACEHOLDERS,
   type LinkTemplates,
   TRAKT_PLACEHOLDERS,
+  linkHost,
   placeholderHint,
+  withLinkHost,
 } from "@tmsync/shared";
 import clsx from "clsx";
 import { useState } from "preact/hooks";
@@ -48,6 +50,7 @@ export function QuickLinkEditor({
   // a new recipe — not the raw host.
   const [name, setName] = useState(initial?.name ?? defaultRecipeName(host));
   const [tracker, setTracker] = useState<Tracker>(initial?.tracker ?? "trakt");
+  const [domain, setDomain] = useState(seed.host || linkHost(seed) || host);
   const [movie, setMovie] = useState(seed.movie ?? "");
   const [tv, setTv] = useState(seed.tv ?? "");
   const [anime, setAnime] = useState(seed.anime ?? "");
@@ -71,14 +74,19 @@ export function QuickLinkEditor({
   };
 
   const save = () => {
-    onSave({
-      name: name.trim() || defaultRecipeName(host),
-      tracker,
-      movie: isAniList ? undefined : movie.trim() || undefined,
-      tv: isAniList ? undefined : tv.trim() || undefined,
-      anime: isAniList ? anime.trim() || undefined : undefined,
-      search: search.trim() || undefined,
-    });
+    onSave(
+      withLinkHost(
+        {
+          name: name.trim() || defaultRecipeName(host),
+          tracker,
+          movie: isAniList ? undefined : movie.trim() || undefined,
+          tv: isAniList ? undefined : tv.trim() || undefined,
+          anime: isAniList ? anime.trim() || undefined : undefined,
+          search: search.trim() || undefined,
+        },
+        domain.trim() || host,
+      ),
+    );
     setSaved(true);
     setTimeout(() => setSaved(false), 1500);
   };
@@ -107,16 +115,17 @@ export function QuickLinkEditor({
       </div>
 
       {field("Name", name, setName, defaultRecipeName(host))}
+      {field("Domain", domain, setDomain, host)}
       {isAniList
-        ? field("Anime URL", anime, setAnime, "https://site/anime/{slug}")
+        ? field("Anime path", anime, setAnime, "/anime/{slug}")
         : [
-            field("Movie URL", movie, setMovie, "https://site/movie/{tmdb}"),
-            field("TV URL", tv, setTv, "https://site/tv/{tmdb}/{season}/{episode}"),
+            field("Movie path", movie, setMovie, "/movie/{tmdb}"),
+            field("TV path", tv, setTv, "/tv/{tmdb}/{season}/{episode}"),
           ]}
-      {field("Search URL", search, setSearch, "https://site/search/{title}")}
+      {field("Search path", search, setSearch, "/search/{title}")}
 
       <p class={clsx("text-[10px] leading-snug", t.faint)}>
-        Keep the URL, swap the dynamic part for a{" "}
+        Keep the path, swap the dynamic part for a{" "}
         <span
           class="cursor-help underline decoration-dotted underline-offset-2"
           title={placeholderHint(isAniList ? ANILIST_PLACEHOLDERS : TRAKT_PLACEHOLDERS)}

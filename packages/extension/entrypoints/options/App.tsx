@@ -45,8 +45,10 @@ import {
   type PlaceholderDoc,
   type Recipe,
   TRAKT_PLACEHOLDERS,
+  linkHost,
   patternPath,
   recipeHosts,
+  withLinkHost,
 } from "@tmsync/shared";
 import clsx from "clsx";
 import { useEffect, useRef, useState } from "preact/hooks";
@@ -95,8 +97,8 @@ interface RecipeSuggestion {
 
 /** What we CAN infer for a quick link from existing recipes (name + URL base). */
 function recipeSuggestions(recipes: Recipe[], links: QuickLinkSite[]): RecipeSuggestion[] {
-  const hasLinkFor = (h: string) =>
-    links.some((l) => [l.movie, l.tv, l.search].some((u) => u?.includes(h)));
+  const linked = new Set(links.map(linkHost).filter(Boolean));
+  const hasLinkFor = (h: string) => linked.has(h);
   const byHost = new Map<string, Recipe[]>();
   for (const r of recipes) {
     // Quick-link suggestions are Trakt-only (we can derive a movie/tv URL base
@@ -192,6 +194,7 @@ function QuickLinkRow({
   const rowRef = useRef<HTMLDivElement>(null);
   const [name, setName] = useState(site.name);
   const [tracker, setTracker] = useState<Tracker>(site.tracker ?? "trakt");
+  const [domain, setDomain] = useState(site.host || linkHost(site));
   const [movie, setMovie] = useState(site.movie ?? "");
   const [tv, setTv] = useState(site.tv ?? "");
   const [anime, setAnime] = useState(site.anime ?? "");
@@ -200,29 +203,21 @@ function QuickLinkRow({
   const isAniList = tracker === "anilist";
 
   const save = async () => {
-    // Like a recipe, default the name to the friendly capitalized hostname — but a
-    // quick link added here has no page context, so derive it from the first URL
-    // template the user typed. Only when they haven't set their own name.
-    const typed = name.trim();
-    const fromUrl = [movie, tv, anime, search].reduce<string>((acc, u) => {
-      if (acc || !u) return acc;
-      try {
-        return defaultRecipeName(new URL(u).hostname);
-      } catch {
-        return acc;
-      }
-    }, "");
-    const finalName = typed && typed !== "New site" ? typed : fromUrl || typed || site.name;
-    await onSave({
-      ...site,
-      name: finalName,
-      tracker,
+    const templates = {
       // Keep only the templates that apply to the chosen tracker.
       movie: isAniList ? undefined : movie.trim() || undefined,
       tv: isAniList ? undefined : tv.trim() || undefined,
       anime: isAniList ? anime.trim() || undefined : undefined,
       search: search.trim() || undefined,
-    });
+    };
+    // The domain the user typed, else the one in an absolute template they pasted.
+    const finalHost = domain.trim() || linkHost(templates);
+    // Like a recipe, default the name to the friendly capitalized hostname. Only
+    // when they haven't set their own name.
+    const typed = name.trim();
+    const fromHost = finalHost ? defaultRecipeName(finalHost) : "";
+    const finalName = typed && typed !== "New site" ? typed : fromHost || typed || site.name;
+    await onSave(withLinkHost({ ...site, ...templates, name: finalName, tracker }, finalHost));
     setSaved(true);
     setTimeout(() => setSaved(false), 1500);
   };
@@ -308,17 +303,18 @@ function QuickLinkRow({
             <TrackerTab t={t} value={tracker} onChange={setTracker} />
           </div>
           {field("Name", name, setName, "Site name")}
+          {field("Domain", domain, setDomain, "site.tld")}
           {isAniList ? (
             <>
-              {field("Anime URL", anime, setAnime, "https://site/anime/{slug}")}
-              {field("Search URL", search, setSearch, "https://site/search?q={title}")}
+              {field("Anime path", anime, setAnime, "/anime/{slug}")}
+              {field("Search path", search, setSearch, "/search?q={title}")}
               <PlaceholderHelp list={ANILIST_PLACEHOLDERS} note="shown on anilist.co anime pages" />
             </>
           ) : (
             <>
-              {field("Movie URL", movie, setMovie, "https://site/movie/{tmdb}")}
-              {field("TV URL", tv, setTv, "https://site/tv/{tmdb}/{season}/{episode}")}
-              {field("Search URL", search, setSearch, "https://site/search/{title}")}
+              {field("Movie path", movie, setMovie, "/movie/{tmdb}")}
+              {field("TV path", tv, setTv, "/tv/{tmdb}/{season}/{episode}")}
+              {field("Search path", search, setSearch, "/search/{title}")}
               <PlaceholderHelp list={TRAKT_PLACEHOLDERS} note="shown on trakt.tv movie/TV pages" />
             </>
           )}
@@ -611,7 +607,7 @@ export function App() {
     const id = `ql-${Date.now()}`;
     const next = [
       ...(await quickLinks.getValue()),
-      { id, name: sg.name, enabled: true, movie: sg.movie, tv: sg.tv },
+      withLinkHost({ id, name: sg.name, enabled: true, movie: sg.movie, tv: sg.tv }, sg.host),
     ];
     await quickLinks.setValue(next);
     setLinks(next);

@@ -64,22 +64,21 @@ export function deriveQuickLink(url: string, tracker: Tracker, isShow = false): 
   } catch {
     return {};
   }
-  const base = `https://${host}`;
 
   if (tracker === "anilist") {
-    return { anime: `${base}${path.replace(/\/[^/]+$/, "/{slug}")}` };
+    return { host, anime: path.replace(/\/[^/]+$/, "/{slug}") };
   }
   if (isShow) {
     const numbered = path.match(/^(.*?)\/\d+\/\d+\/\d+$/); // …/{id}/{season}/{episode}
-    if (numbered) return { tv: `${base}${numbered[1]}/{tmdb}/{season}/{episode}` };
+    if (numbered) return { host, tv: `${numbered[1]}/{tmdb}/{season}/{episode}` };
     const hyphenated = path.match(/^(.*?)\/[^/]+\/\d+-\d+$/); // …/{slug}/{s}-{e}
-    if (hyphenated) return { tv: `${base}${hyphenated[1]}/{slug}/{season}-{episode}` };
-    if (/\/\d+$/.test(path)) return { tv: `${base}${path.replace(/\/\d+$/, "/{tmdb}")}` };
-    return { tv: `${base}${path.replace(/\/[^/]+$/, "/{slug}")}` };
+    if (hyphenated) return { host, tv: `${hyphenated[1]}/{slug}/{season}-{episode}` };
+    if (/\/\d+$/.test(path)) return { host, tv: path.replace(/\/\d+$/, "/{tmdb}") };
+    return { host, tv: path.replace(/\/[^/]+$/, "/{slug}") };
   }
   // movie: a numeric id → {tmdb}; otherwise a slug → {slug}.
-  if (/\/\d+$/.test(path)) return { movie: `${base}${path.replace(/\/\d+$/, "/{tmdb}")}` };
-  return { movie: `${base}${path.replace(/\/[^/]+$/, "/{slug}")}` };
+  if (/\/\d+$/.test(path)) return { host, movie: path.replace(/\/\d+$/, "/{tmdb}") };
+  return { host, movie: path.replace(/\/[^/]+$/, "/{slug}") };
 }
 
 /**

@@ -310,6 +310,7 @@ export function App() {
       enabled: true,
       source: "user",
       tracker: v.tracker,
+      host: v.host,
       movie: v.movie,
       tv: v.tv,
       anime: v.anime,
@@ -512,6 +513,7 @@ export function App() {
           ? {
               name: qlSite.name,
               tracker: qlSite.tracker ?? "trakt",
+              host: qlSite.host,
               movie: qlSite.movie,
               tv: qlSite.tv,
               anime: qlSite.anime,

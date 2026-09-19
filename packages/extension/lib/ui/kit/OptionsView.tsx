@@ -352,9 +352,10 @@ export function OptionsView({
                         {open && (
                           <div class={clsx("mt-3 space-y-2.5 border-t pt-3", t.divider)}>
                             {[
-                              ["Movie URL", "https://site/movie/{slug}"],
-                              ["TV URL", "https://site/episode/{slug}/{season}-{episode}"],
-                              ["Search URL", "https://site/search/{title}"],
+                              ["Domain", "site.tld"],
+                              ["Movie path", "/movie/{slug}"],
+                              ["TV path", "/episode/{slug}/{season}-{episode}"],
+                              ["Search path", "/search/{title}"],
                             ].map(([label, val]) => (
                               <label key={label} class="block">
                                 <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>
