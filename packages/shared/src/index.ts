@@ -20,7 +20,16 @@ export {
   primaryId,
   readField,
 } from "./extract";
-export { matchRecipe, selectRecipe } from "./match";
+export { findHostAdoption, matchRecipe, matchesUrl, selectRecipe } from "./match";
+export {
+  escapeRegex,
+  hostOf,
+  hostText,
+  normalizeHost,
+  patternPath,
+  recipeHosts,
+  withRecipeHosts,
+} from "./hosts";
 export { type RecipeLibrary, parseLibrary, parseLinks, parseRecipes } from "./recipes";
 export {
   ANILIST_PLACEHOLDERS,
