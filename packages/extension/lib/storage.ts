@@ -92,6 +92,28 @@ export const enabledOrigins = storage.defineItem<string[]>("local:enabled_origin
   fallback: [],
 });
 
+/**
+ * Recipe origins that a sync or an import brought in without access. The popup
+ * shows them as one "new sites need access" line until the user reviews or
+ * dismisses it, or opens Options (its Sites badge shows them). Only NEW sites
+ * land here, so a site left off on purpose never nags.
+ */
+export const newPendingSites = storage.defineItem<string[]>("local:new_pending_sites", {
+  fallback: [],
+});
+
+/**
+ * A one-shot request from the popup for how Options opens (e.g. the Sites tab with
+ * the "Needs access" filter on). Options applies it, then clears it.
+ */
+export interface OptionsIntent {
+  section: string;
+  needsAccess?: boolean;
+}
+export const optionsIntent = storage.defineItem<OptionsIntent | null>("session:options_intent", {
+  fallback: null,
+});
+
 /** Recipes authored locally via the element picker (merged with the bundled list). */
 export const customRecipes = storage.defineItem<Recipe[]>("sync:custom_recipes", {
   fallback: [],

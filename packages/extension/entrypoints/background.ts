@@ -26,6 +26,7 @@ import type { Animap } from "@/lib/animap/index";
 import { loadAnimap, parseAnimeMap } from "@/lib/animap/load";
 import { bundledLinks } from "@/lib/recipes";
 import { statusDotColor } from "@/lib/scrobble/action-badge";
+import { addedHosts } from "@/lib/sites";
 import {
   type QuickLinkSite,
   anilistCorrections,
@@ -38,6 +39,7 @@ import {
   episodeOverrides,
   manualContexts,
   manualSelections,
+  newPendingSites,
   quickLinks,
   remoteRecipes,
   resolutionCache,
@@ -144,8 +146,19 @@ export default defineBackground(() => {
   // device, imported, or pulled from the CDN auto-activates on any origin the user
   // already granted (or everywhere, under the broad grant) — no manual re-enable.
   // These are event listeners re-established on each SW wake, not held state.
-  customRecipes.watch(() => void syncRegistrations());
-  remoteRecipes.watch(() => void syncRegistrations());
+  // Also note the sites a change brings in, for the popup's one-line nudge. The
+  // first library fetch (no old list) is setup, not news, so it is skipped.
+  customRecipes.watch(async (next, prev) => {
+    void syncRegistrations();
+    const library = (await remoteRecipes.getValue())?.recipes ?? [];
+    await noteNewSites(addedHosts(prev ?? [], next ?? [], library));
+  });
+  remoteRecipes.watch(async (next, prev) => {
+    void syncRegistrations();
+    if (!prev) return;
+    const custom = await customRecipes.getValue();
+    await noteNewSites(addedHosts(prev.recipes, next?.recipes ?? [], custom));
+  });
 
   // Seed quick links shipped in the bundled library (available offline, before
   // the first fetch), then refresh the CDN list on startup + a periodic alarm
@@ -1284,9 +1297,8 @@ async function adoptPermittedRecipeOrigins(): Promise<void> {
   if (changed) await enabledOrigins.setValue([...enabled]);
 }
 
-/** Recipe origins the user has NOT granted (nor holds broadly) — the "needs
- * enabling" list so a synced/imported/CDN recipe can be turned on in one tap.
- * Empty when the broad grant is held (it already covers everything). */
+/** Recipe origins the user has NOT allowed (nor holds broadly). The popup checks
+ * it for sites a sync or import just added. Empty under the broad grant. */
 async function pendingSites(): Promise<string[]> {
   if (await hasAllSites()) return [];
   const enabled = new Set(await enabledOrigins.getValue());
@@ -1297,6 +1309,22 @@ async function pendingSites(): Promise<string[]> {
     pending.push(origin);
   }
   return pending;
+}
+
+/** Add the new hosts that still need access to the popup's "new sites" list. */
+async function noteNewSites(hosts: string[]): Promise<void> {
+  if (hosts.length === 0 || (await hasAllSites())) return;
+  const enabled = new Set(await enabledOrigins.getValue());
+  const fresh: string[] = [];
+  for (const h of hosts) {
+    const origin = `https://${h}`;
+    if (enabled.has(origin)) continue;
+    if (await browser.permissions.contains({ origins: [`${origin}/*`] })) continue;
+    fresh.push(origin);
+  }
+  if (fresh.length === 0) return;
+  const known = await newPendingSites.getValue();
+  await newPendingSites.setValue([...new Set([...known, ...fresh])]);
 }
 
 /** Register the single catch-all content script backed by the broad grant. */

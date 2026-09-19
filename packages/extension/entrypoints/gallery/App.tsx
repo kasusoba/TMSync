@@ -155,29 +155,22 @@ export function App() {
               origins={[{ origin: "https://www.cineby.at", isTop: true, enabled: false }]}
             />
           </Tile>
-          <Tile label="Connected · enabled site" t={t}>
+          <Tile label="Connected · allowed site" t={t}>
             <PopupView
               variant={variant}
               connected
-              note="Enabled — reload the page to start."
+              note="Allowed · reload to start."
               origins={[{ origin: "https://www.cineby.at", isTop: true, enabled: true }]}
             />
           </Tile>
-          <Tile label="Connected · recipes need access" t={t}>
+          <Tile label="Connected · new sites from a sync" t={t}>
             <PopupView
               variant={variant}
               connected
               origins={[{ origin: "https://www.cineby.at", isTop: true, enabled: true }]}
-              pendingSites={[
-                "https://hianime.to",
-                "https://www.tubi.tv",
-                "https://aniwatch.to",
-                "https://www.crunchyroll.com",
-                "https://gogoanime.tv",
-                "https://9animetv.to",
-              ]}
-              onEnablePending={() => {}}
-              onEnableAllPending={() => {}}
+              newSites={3}
+              onReviewNewSites={() => {}}
+              onDismissNewSites={() => {}}
             />
           </Tile>
           <Tile label="Connected · now scrobbling (popup parity)" t={t}>
@@ -517,7 +510,7 @@ export function App() {
               variant={variant}
               state="error"
               title="Frieren S1E4"
-              detail="can’t see the video. Enable the player frame in the TMSync popup"
+              detail="can’t see the video. Allow the player frame in the TMSync popup"
             />
           </Tile>
           <Tile label="Scrobble pill · multi-track (anime → Trakt + AniList)" t={t}>

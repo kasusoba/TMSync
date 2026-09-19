@@ -48,7 +48,7 @@ The `(site, anilistId) → real slug/canonical URL` map captured at resolve/watc
 ## Contribution & graduation (recipes/quicklinks → central DB)
 Goal: a contributed item is **merge-ready** — lands in the right repo file with no collision/overwrite, so acceptance is mechanical (ideally a bot opens the PR; a human only approves). Decided 2026-06-29.
 
-**Only site config is contributable.** `recipe` and `quicklink` only. **Corrections, manual picks, and the crosswalk are NEVER contributed** — they reveal what the user watched (constraint #6). "Contribute all" = all your recipes + quicklinks, nothing watch-revealing.
+**Only site config is contributable.** `recipe` and `quicklink` only. **Corrections, manual picks, and the crosswalk are NEVER contributed** — they reveal what the user watched (constraint #6). Options > Contribute lists your recipes + quicklinks (one row per site); you tick any set, nothing watch-revealing.
 
 **Client emits a self-describing, pre-cleaned payload** into a prefilled GitHub issue (`issues/new?title=…&body=…`), single-click, uses the user's GitHub login — no backend (constraint #7):
 ```json
@@ -58,7 +58,9 @@ Goal: a contributed item is **merge-ready** — lands in the right repo file wit
 - everything lands in one file, `recipes/index.json`: `recipe → recipes[]` (routed at runtime by its own `tracker`), `quicklink → links[]`
 - strip local-only fields (`source`, `enabled`) → already library-shaped, nothing to clean
 - **stable unique id** — both for no-collision placement AND so the local copy graduates cleanly later (same requirement)
-- contribute-all with many items exceeds the issue-URL length → fall back to copy-all-JSON + open the contribute page
+- contribute-all with many items exceeds the issue-URL length: copy the JSON, then open the same prefilled issue with a "paste the JSON here" block
+
+**Gate (2026-09):** the bot runs only when a maintainer adds the `contribution` label, or when a maintainer opens the issue. Outsiders cannot add labels, so every outside contribution waits for a maintainer check. The bot comments on the issue with the PR link.
 
 **Repo side: a GitHub Action (issue → PR bot)** parses the wrapper → Zod-validates → biome-formats → routes to the correct file → **add** (new id) vs **update** (existing id, explicit flag; a *foreign-author* update is held for human review, never silent) → opens a lint-clean, correctly-placed PR. This is **repo CI automation, not a hosted backend** (no server/DB, no user data, no watch history) → within constraint #7's spirit, and **optional** (without it, a human converts the issue).
 

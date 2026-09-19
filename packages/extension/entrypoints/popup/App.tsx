@@ -11,6 +11,8 @@ import {
   type QuickLinkSite,
   badgePrefs,
   customRecipes,
+  newPendingSites,
+  optionsIntent,
   quickLinks,
   remoteRecipes,
   tabFrameOrigins,
@@ -162,8 +164,8 @@ export function App() {
   const [topOrigin, setTopOrigin] = useState<string | null>(null);
   const [origins, setOrigins] = useState<string[]>([]); // top + every iframe origin on the page
   const [enabled, setEnabled] = useState<string[]>([]);
-  // Recipe origins (synced/imported/library) not yet granted host access.
-  const [pending, setPending] = useState<string[]>([]);
+  // Sites a sync or import added that still need access (until reviewed or dismissed).
+  const [newSites, setNewSites] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   // Per-site quick link for the active tab's host.
@@ -206,18 +208,20 @@ export function App() {
 
   const refresh = async () => {
     const tabId = await activeTabId();
-    const [s, al, url, found, sites, links, badge, custom, remote, pend] = await Promise.all([
-      sendMessage("getTraktStatus", undefined),
-      sendMessage("getAniListStatus", undefined),
-      activeTabUrl(),
-      tabId !== null ? collectOrigins(tabId) : Promise.resolve<string[]>([]),
-      sendMessage("listEnabledSites", undefined),
-      quickLinks.getValue(),
-      badgePrefs.getValue(),
-      customRecipes.getValue(),
-      remoteRecipes.getValue(),
-      sendMessage("pendingSites", undefined),
-    ]);
+    const [s, al, url, found, sites, links, badge, custom, remote, pending, fresh] =
+      await Promise.all([
+        sendMessage("getTraktStatus", undefined),
+        sendMessage("getAniListStatus", undefined),
+        activeTabUrl(),
+        tabId !== null ? collectOrigins(tabId) : Promise.resolve<string[]>([]),
+        sendMessage("listEnabledSites", undefined),
+        quickLinks.getValue(),
+        badgePrefs.getValue(),
+        customRecipes.getValue(),
+        remoteRecipes.getValue(),
+        sendMessage("pendingSites", undefined),
+        newPendingSites.getValue(),
+      ]);
     // Merge the live snapshot with origins the content script accumulated over
     // the session — catches player iframes that loaded after the page settled.
     const stored = tabId !== null ? ((await tabFrameOrigins.getValue())[tabId] ?? []) : [];
@@ -235,7 +239,10 @@ export function App() {
     setEnabled(
       broad ? [...new Set([...sites, ...allOrigins, ...(origin ? [origin] : [])])] : sites,
     );
-    setPending(pend);
+    // Nudge about new sites that still need access, but not this page's sites
+    // ("This page" asks for those).
+    const here = new Set([...allOrigins, ...(origin ? [origin] : [])]);
+    setNewSites(fresh.filter((o) => pending.includes(o) && !here.has(o)));
     setQlHost(hostname);
     setQlUrl(url);
     setQlSite(hostname ? (links.find((l) => l.id === `ql-${hostname}`) ?? null) : null);
@@ -355,7 +362,7 @@ export function App() {
         // and it keeps the video where it is. Retries past the post-grant lag.
         const tabId = await activeTabId();
         const injected = tabId !== null && (await injectContentNow(tabId));
-        setNote(injected ? "Enabled · now scrobbling on this page." : "Enabled · reload to start.");
+        setNote(injected ? "Allowed · now scrobbling on this page." : "Allowed · reload to start.");
       } else {
         setNote(res.error ?? "Failed");
       }
@@ -397,67 +404,16 @@ export function App() {
     setBusy(false);
   };
 
-  // Grant a recipe origin from the "needs access" list. Same gesture-context grant
-  // as enableOrigin, but the site usually isn't the active tab — so registration
-  // (which covers the next load there) is enough; only inject now if it IS this page.
-  const enablePending = async (origin: string) => {
-    setBusy(true);
-    setNote(null);
-    const granted = await browser.permissions.request({ origins: [`${origin}/*`] });
-    if (granted) {
-      const res = await sendMessage("registerSite", origin);
-      if (res.ok) {
-        if (origin === topOrigin) {
-          const tabId = await activeTabId();
-          const injected = tabId !== null && (await injectContentNow(tabId));
-          setNote(
-            injected ? "Enabled · now scrobbling on this page." : "Enabled · reload to start.",
-          );
-        } else {
-          setNote(`Enabled ${origin.replace(/^https?:\/\//, "")} · active next visit.`);
-        }
-      } else {
-        setNote(res.error ?? "Failed");
-      }
-    } else {
-      setNote("Permission denied");
-    }
-    await refresh();
-    setBusy(false);
+  // Clear the new-sites list so the nudge goes away. "Review" also opens Options
+  // on the Sites tab with the "Needs access" filter on.
+  const clearNewSites = async () => {
+    await newPendingSites.setValue([]);
+    setNewSites([]);
   };
-
-  // Grant EVERY pending origin in one prompt (permissions.request accepts the whole
-  // list, so the browser shows a single dialog), then register each. The broad
-  // "enable all sites forever" grant is a toggle in Options — this is just the
-  // known pending recipes, granted in bulk.
-  const enableAllPending = async () => {
-    if (pending.length === 0) return;
-    setBusy(true);
-    setNote(null);
-    const granted = await browser.permissions.request({
-      origins: pending.map((o) => `${o}/*`),
-    });
-    if (granted) {
-      for (const origin of pending) await sendMessage("registerSite", origin);
-      // If the current page is among them, inject now so it starts without a reload.
-      if (topOrigin && pending.includes(topOrigin)) {
-        const tabId = await activeTabId();
-        if (tabId !== null) await injectContentNow(tabId);
-      }
-      setNote(`Enabled ${pending.length} site${pending.length === 1 ? "" : "s"}.`);
-    } else {
-      setNote("Permission denied");
-    }
-    await refresh();
-    setBusy(false);
-  };
-
-  const disableOrigin = async (origin: string) => {
-    setBusy(true);
-    await sendMessage("unregisterSite", origin);
-    await browser.permissions.remove({ origins: [`${origin}/*`] });
-    await refresh();
-    setBusy(false);
+  const reviewNewSites = async () => {
+    await clearNewSites();
+    await optionsIntent.setValue({ section: "sites", needsAccess: true });
+    await browser.runtime.openOptionsPage();
   };
 
   // Grant + register the top origin, then inject the element picker.
@@ -535,11 +491,10 @@ export function App() {
       onConnectAniList={connectAniList}
       onDisconnectAniList={disconnectAniList}
       onEnable={enableOrigin}
-      onDisable={disableOrigin}
+      newSites={newSites.length}
+      onReviewNewSites={reviewNewSites}
+      onDismissNewSites={clearNewSites}
       onSetup={setupSite}
-      pendingSites={pending}
-      onEnablePending={enablePending}
-      onEnableAllPending={enableAllPending}
       pageHasRecipe={pageHasRecipe}
       movedSite={movedSite && qlHost ? { name: movedSite.name, host: qlHost } : null}
       onAdoptMovedSite={adoptMovedSite}

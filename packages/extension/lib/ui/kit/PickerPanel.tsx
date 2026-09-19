@@ -324,14 +324,34 @@ export function PickerPanel(p: PickerPanelProps) {
                       (e.target as HTMLSelectElement).value as "auto" | "movie" | "show",
                     )
                   }
+                  // The open list is drawn by the browser in the HOST page's scheme
+                  // (light), so it showed our light text on white. Set the scheme,
+                  // and give the options solid colours for browsers that ignore it.
+                  style={{ colorScheme: p.variant }}
                   class={clsx(
                     "w-full appearance-none rounded-lg py-1.5 pr-8 pl-2.5 text-[13px] outline-none ring-inset focus:ring-2",
                     t.input,
                   )}
                 >
-                  <option value="auto">Auto</option>
-                  <option value="movie">Movie</option>
-                  <option value="show">Show</option>
+                  {(
+                    [
+                      ["auto", "Auto"],
+                      ["movie", "Movie"],
+                      ["show", "Show"],
+                    ] as const
+                  ).map(([value, label]) => (
+                    <option
+                      key={value}
+                      value={value}
+                      class={
+                        p.variant === "dark"
+                          ? "bg-zinc-900 text-zinc-100"
+                          : "bg-white text-zinc-900"
+                      }
+                    >
+                      {label}
+                    </option>
+                  ))}
                 </select>
                 <Icon
                   name="down"

@@ -211,9 +211,10 @@ export function OptionsView({
               )}
             </button>
           ))}
-          <span class={clsx("mt-auto px-2.5 pt-3 text-[10px] tabular-nums", t.sub)}>
-            v{version}
-          </span>
+          <div class="mt-auto flex items-center justify-between pt-3 pl-2.5">
+            <span class={clsx("text-[10px] tabular-nums", t.sub)}>v{version}</span>
+            <IconBtn t={t} name="github" title="TMSync on GitHub" />
+          </div>
         </nav>
 
         {/* active pane */}
@@ -278,6 +279,15 @@ export function OptionsView({
               <>
                 <PaneHead t={t} title="Sites" />
                 <Filter t={t} q={q} setQ={setQ} placeholder="Filter sites…" />
+                <div class="flex items-center justify-between gap-2">
+                  <Btn t={t} tone="ghost">
+                    <span class="size-1.5 rounded-full bg-amber-400" />
+                    Needs access · 1
+                  </Btn>
+                  <Btn t={t} tone="primary">
+                    Allow 1 site
+                  </Btn>
+                </div>
                 <div class="space-y-2">
                   {SITE_CARDS.filter((c) => has(c.name) || c.hosts.some(has)).map((c) => (
                     <div key={c.name} class={clsx("space-y-2.5 rounded-lg px-3 py-2.5", t.card)}>
@@ -288,9 +298,11 @@ export function OptionsView({
                           </span>
                           <IconBtn t={t} name="edit" title="Rename site" />
                         </span>
-                        <Btn t={t} tone={c.needsAccess ? "primary" : "ghost"}>
-                          {c.needsAccess ? "Enable" : "Disable"}
-                        </Btn>
+                        {c.needsAccess && (
+                          <Btn t={t} tone="primary">
+                            Allow
+                          </Btn>
+                        )}
                       </div>
                       <div>
                         <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>
@@ -365,8 +377,6 @@ export function OptionsView({
                               </div>
                               {!r.library && (
                                 <div class="flex shrink-0 items-center">
-                                  <IconBtn t={t} name="external" title="Contribute to library" />
-                                  <IconBtn t={t} name="copy" title="Copy JSON" />
                                   <IconBtn t={t} name="trash" title="Delete" danger />
                                 </div>
                               )}

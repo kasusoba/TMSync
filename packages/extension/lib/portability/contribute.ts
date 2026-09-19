@@ -29,12 +29,13 @@ export interface ContributionEntry {
 }
 
 export interface Contribution {
+  /** The new-issue URL: title, label, and body are always filled in. */
   url: string;
-  /** The raw payload JSON — used as a copy-to-clipboard fallback when `tooLong`. */
+  /** The raw payload JSON. */
   json: string;
-  /** GitHub caps the prefilled-issue URL length; past that, copy JSON + open a
-   *  blank issue instead. */
-  tooLong: boolean;
+  /** GitHub caps the prefilled-issue URL length. Past that (a large bundle), the
+   *  body asks the user to paste the JSON, so copy `json` to the clipboard first. */
+  paste: boolean;
 }
 
 function recipeEntry(r: Recipe): ContributionEntry {
@@ -59,39 +60,82 @@ function quicklinkEntry(s: QuickLinkSite): ContributionEntry {
 
 const URL_LIMIT = 7000; // GitHub rejects very long prefilled-issue URLs
 
-function build(title: string, entries: ContributionEntry[]): Contribution {
-  const json = JSON.stringify(entries.length === 1 ? entries[0] : entries, null, 2);
+const PASTE_HERE = "Replace this line with the JSON that TMSync copied for you.";
+
+/** A readable line per entry, so the author and the reviewer see what is inside. */
+function describe(e: ContributionEntry): string {
+  const d = e.data as { name?: string; mediaType?: string };
+  if (e.kind === "quicklink") return `- Quick link: ${d.name ?? e.id}`;
+  const type = d.mediaType && d.mediaType !== "auto" ? ` (${d.mediaType})` : "";
+  return `- Recipe: ${d.name ?? e.id}${type}`;
+}
+
+function issueUrl(title: string, lines: string[], block: string): string {
   const body = [
-    "Contribution from TMSync. The JSON below is self-describing (`kind`/`tracker`/`action`/`id`) so it can be routed to the right file and merged with minimal cleanup.",
+    ...lines,
+    "",
+    "**What happens next:** a maintainer checks this issue. Then a bot opens a pull request with the JSON below and comments here with the link. After the merge, the change reaches every TMSync user with the next library sync.",
     "",
     "```json",
-    json,
+    block,
     "```",
   ].join("\n");
   const u = new URL(`${RECIPES.contributeUrl}/issues/new`);
   u.searchParams.set("title", title);
   u.searchParams.set("body", body);
+  // Applied only when the author may label (the maintainer). For anyone else the
+  // maintainer adds it after a check, and that starts the bot.
   u.searchParams.set("labels", "contribution");
-  const url = u.toString();
-  return { url, json, tooLong: url.length > URL_LIMIT };
+  return u.toString();
 }
 
-export function contributeRecipe(r: Recipe): Contribution {
-  return build(`Add recipe: ${r.name} (${r.id})`, [recipeEntry(r)]);
+function build(title: string, entries: ContributionEntry[]): Contribution {
+  const json = JSON.stringify(entries.length === 1 ? entries[0] : entries, null, 2);
+  const n = entries.length;
+  const list = entries.map(describe);
+  const url = issueUrl(
+    title,
+    [
+      `Contribution from TMSync: ${n} ${n === 1 ? "item" : "items"}. Submit this issue as it is.`,
+      "",
+      ...list,
+    ],
+    json,
+  );
+  if (url.length <= URL_LIMIT) return { url, json, paste: false };
+  // Too long to prefill: the same issue, with a paste step for the JSON. Keep the
+  // item list short enough that this URL fits too.
+  const shown = list.length > 30 ? [...list.slice(0, 30), `- and ${list.length - 30} more`] : list;
+  const lines = [
+    `Contribution from TMSync: ${n} items. They are too many to fill in here, so TMSync copied them.`,
+    "",
+    ...shown,
+    "",
+    "**Paste step:** paste the copied JSON into the block below, in place of the placeholder line, as it is. It is ONE list that holds every item above, recipes and quick links together. Each entry's `kind` says which one it is, so there is nothing to split.",
+  ];
+  return { url: issueUrl(title, lines, PASTE_HERE), json, paste: true };
 }
 
-export function contributeQuickLink(s: QuickLinkSite): Contribution {
-  return build(`Add quick link: ${s.name} (${s.id})`, [quicklinkEntry(s)]);
-}
-
-/** Contribute every user-owned recipe + quick link at once. */
-export function contributeAll(recipes: Recipe[], links: QuickLinkSite[]): Contribution {
+/**
+ * Contribute a set of user-owned recipes and quick links in ONE issue: one site
+ * (its movie and tv recipes and its quick link), a hand-picked set, or everything.
+ * `site` names the issue when the set is one site.
+ */
+export function contribute(recipes: Recipe[], links: QuickLinkSite[], site?: string): Contribution {
   const entries = [
     ...recipes.map(recipeEntry),
     ...links.filter((l) => l.source !== "library").map(quicklinkEntry),
   ];
-  return build(`Contribute ${entries.length} item(s) from TMSync`, entries);
+  const n = entries.length;
+  const [only] = entries;
+  let title: string;
+  if (n === 1 && only) {
+    const d = only.data as { name?: string };
+    title = `Add ${only.kind === "recipe" ? "recipe" : "quick link"}: ${d.name ?? only.id} (${only.id})`;
+  } else if (site) {
+    title = `Add site: ${site} (${n} items)`;
+  } else {
+    title = `Contribute ${n} items from TMSync`;
+  }
+  return build(title, entries);
 }
-
-/** Blank new-issue URL — the destination when a payload is too long to prefill. */
-export const blankIssueUrl = `${RECIPES.contributeUrl}/issues/new`;

@@ -46,7 +46,7 @@ You'll want a local build to author recipes with the picker or to test a code ch
    `https://hkfpacmhbiccimikfleemmhfemdnjfpf.chromiumapp.org/`. To track anime, register the same
    redirect URI in your AniList app settings.
 3. Open the popup and connect Trakt and/or AniList.
-4. On a media page, **Enable** the site (and any player-frame origin the popup lists), or **Set it
+4. On a media page, **Allow** the site (and any player-frame origin the popup lists), or **Set it
    up with the picker** for a new site. Reload, then press play.
 5. The badge shows live state and the matched title. Wrong match? Click the badge, search, pick.
 
