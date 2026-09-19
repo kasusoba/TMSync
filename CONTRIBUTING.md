@@ -38,10 +38,12 @@ You'll want a local build to author recipes with the picker or to test a code ch
 
 1. `pnpm install`, then `pnpm build`, and load `.output/chrome-mv3` unpacked (chrome://extensions,
    turn on Developer mode, "Load unpacked"). The extension ID is stable
-   (`aplaigellojlejhdjkklgihlmbmdaebk`). After later `pnpm build`s just hit the reload icon on the
-   extension card; no need to remove and re-add, and enabled sites re-register automatically.
+   (`hkfpacmhbiccimikfleemmhfemdnjfpf`). It is the same ID as the Chrome Web Store version, so in a
+   profile that has the store TMSync, turn that one off first. After later `pnpm build`s just hit
+   the reload icon on the extension card; no need to remove and re-add, and enabled sites
+   re-register automatically.
 2. In your Trakt app (trakt.tv/oauth/applications) set the Redirect URI to
-   `https://aplaigellojlejhdjkklgihlmbmdaebk.chromiumapp.org/`. To track anime, register the same
+   `https://hkfpacmhbiccimikfleemmhfemdnjfpf.chromiumapp.org/`. To track anime, register the same
    redirect URI in your AniList app settings.
 3. Open the popup and connect Trakt and/or AniList.
 4. On a media page, **Enable** the site (and any player-frame origin the popup lists), or **Set it

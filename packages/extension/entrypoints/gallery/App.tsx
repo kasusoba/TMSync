@@ -145,7 +145,7 @@ export function App() {
             <PopupView
               variant={variant}
               connected={false}
-              redirectUri="https://aplaigellojlejhdjkklgihlmbmdaebk.chromiumapp.org/"
+              redirectUri="https://hkfpacmhbiccimikfleemmhfemdnjfpf.chromiumapp.org/"
               origins={null}
             />
           </Tile>
