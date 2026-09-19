@@ -73,7 +73,13 @@ import {
   onMessage,
   sendMessage,
 } from "@/messaging";
-import { type LibraryLink, type ParsedMedia, type Recipe, parseLibrary } from "@tmsync/shared";
+import {
+  type LibraryLink,
+  type ParsedMedia,
+  type Recipe,
+  parseLibrary,
+  recipeHosts,
+} from "@tmsync/shared";
 import { browser } from "wxt/browser";
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -1247,16 +1253,15 @@ async function syncRegistrations(): Promise<void> {
   }
 }
 
-/** Distinct origins a recipe could match, from the `hostnames` hint (the only part
- * of `match` that yields a static origin — `urlPattern` is a regex). Custom +
- * remote recipes; `https` is assumed (streaming sites are TLS). */
+/** Distinct origins a recipe could match: EVERY host in its scope, not just the
+ * first, so a site that moved domain is enabled on its old and new hosts alike.
+ * Custom + remote recipes; `https` is assumed (streaming sites are TLS). */
 async function recipeOrigins(): Promise<string[]> {
   const custom = await customRecipes.getValue();
   const remote = (await remoteRecipes.getValue())?.recipes ?? [];
   const hosts = new Set<string>();
   for (const r of [...custom, ...remote]) {
-    const h = r.match.hostnames?.[0];
-    if (h) hosts.add(`https://${h}`);
+    for (const h of recipeHosts(r)) hosts.add(`https://${h}`);
   }
   return [...hosts];
 }

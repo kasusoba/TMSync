@@ -45,6 +45,8 @@ import {
   type PlaceholderDoc,
   type Recipe,
   TRAKT_PLACEHOLDERS,
+  patternPath,
+  recipeHosts,
 } from "@tmsync/shared";
 import clsx from "clsx";
 import { useEffect, useRef, useState } from "preact/hooks";
@@ -53,11 +55,9 @@ import { browser } from "wxt/browser";
 const t = tokens("dark");
 const host = (origin: string) => origin.replace(/^https?:\/\//, "");
 
-/** Hostname a recipe belongs to (for grouping): the hint, else from the urlPattern. */
+/** Hostname a recipe is grouped under: the first host in its scope. */
 function recipeHost(r: Recipe): string {
-  if (r.match.hostnames?.[0]) return r.match.hostnames[0];
-  const unescaped = r.match.urlPattern.replace(/\\(.)/g, "$1");
-  return unescaped.split("/")[0] || r.name;
+  return recipeHosts(r)[0] ?? r.name;
 }
 
 /** Quick-link placeholder reference: each `{token}`, an example, and what it means. */
@@ -80,12 +80,10 @@ function PlaceholderHelp({ list, note }: { list: readonly PlaceholderDoc[]; note
 const isShowRecipe = (r: Recipe) =>
   r.mediaType === "show" || !!r.extract?.season || !!r.extract?.episode;
 
-/** `https://host/segment/` from a recipe's urlPattern — the inferable part of a link. */
+/** `https://host/segment/` from a recipe: the inferable part of a quick link. */
 function recipeBaseUrl(r: Recipe): string {
-  const unescaped = r.match.urlPattern.replace(/\\(.)/g, "$1");
-  const [h, ...rest] = unescaped.split("/");
-  const segments = rest.join("/");
-  return `https://${h}/${segments}${segments ? "/" : ""}`;
+  const segments = patternPath(r.match.urlPattern).replace(/\\(.)/g, "$1").replace(/^\/+/, "");
+  return `https://${recipeHost(r)}/${segments}${segments ? "/" : ""}`;
 }
 
 interface RecipeSuggestion {
@@ -794,10 +792,9 @@ export function App() {
   // `enabledOrigins` (sites) is empty — that's the fix for "works but shows disabled".
   const recipeOrigins = [
     ...new Set(
-      [...recipes, ...(remote?.recipes ?? [])]
-        .map((r) => r.match.hostnames?.[0])
-        .filter((h): h is string => !!h)
-        .map((h) => `https://${h}`),
+      [...recipes, ...(remote?.recipes ?? [])].flatMap((r) =>
+        recipeHosts(r).map((h) => `https://${h}`),
+      ),
     ),
   ];
   const knownOrigins = [...new Set([...sites, ...recipeOrigins])].sort();

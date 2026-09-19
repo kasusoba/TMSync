@@ -12,7 +12,6 @@ import {
   deriveQuickLink,
   detectTmdbIdField,
   emptyDraft,
-  escapeRegex,
   pickSeparator,
   previewDraft,
   queryParamRegex,
@@ -518,10 +517,7 @@ describe("TMDB id (auto-detect + resolve-by-id)", () => {
   });
 });
 
-describe("escapeRegex / suggestUrlPattern", () => {
-  it("escapes regex metacharacters", () => {
-    expect(escapeRegex("a.b+c")).toBe("a\\.b\\+c");
-  });
+describe("suggestUrlPattern", () => {
   it("suggests hostname + first path segment as the url pattern", () => {
     expect(suggestUrlPattern("https://watch.example.tv/movie/42?x=1")).toBe(
       "watch\\.example\\.tv/movie",

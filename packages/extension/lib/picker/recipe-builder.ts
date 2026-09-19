@@ -7,8 +7,11 @@ import {
   type Recipe,
   RecipeSchema,
   SCHEMA_VERSION,
+  escapeRegex,
   extract,
+  normalizeHost,
   readField,
+  recipeHosts,
   recipeTrackers,
 } from "@tmsync/shared";
 
@@ -76,10 +79,6 @@ export function deriveQuickLink(url: string, tracker: Tracker, isShow = false): 
   // movie: a numeric id → {tmdb}; otherwise a slug → {slug}.
   if (/\/\d+$/.test(path)) return { movie: `${base}${path.replace(/\/\d+$/, "/{tmdb}")}` };
   return { movie: `${base}${path.replace(/\/[^/]+$/, "/{slug}")}` };
-}
-
-export function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /**
@@ -314,12 +313,10 @@ export function defaultRecipeName(hostname: string): string {
 /**
  * Whether a saved recipe belongs to this host — used to reload it into the
  * picker for editing, even from a non-media page (homepage) where its urlPattern
- * wouldn't match the current URL. Checks the hostnames hint, then falls back to
- * the escaped hostname appearing in the urlPattern (how the picker builds them).
+ * wouldn't match the current URL.
  */
 export function recipeMatchesHost(recipe: Recipe, hostname: string): boolean {
-  if (recipe.match.hostnames?.includes(hostname)) return true;
-  return recipe.match.urlPattern.includes(escapeRegex(hostname));
+  return recipeHosts(recipe).includes(normalizeHost(hostname));
 }
 
 function firstWorking(candidates: Field[], ctx: EngineContext): Field | undefined {
