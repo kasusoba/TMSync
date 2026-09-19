@@ -142,6 +142,7 @@ export default defineBackground(() => {
   // (not browser restart). Re-establish them (broad catch-all, or per enabled
   // origin) so a plain "reload the extension" is enough and survives updates.
   void syncRegistrations();
+  void customRecipes.migrate();
 
   // Keep registrations in step with the recipe set: a recipe synced from another
   // device, imported, or pulled from the CDN auto-activates on any origin the user
