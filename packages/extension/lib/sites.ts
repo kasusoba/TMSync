@@ -1,4 +1,12 @@
-import { type Recipe, normalizeHost, recipeHosts, withRecipeHosts } from "@tmsync/shared";
+import {
+  type Recipe,
+  hostOf,
+  normalizeHost,
+  patternPath,
+  recipeHosts,
+  siteLabel,
+  withRecipeHosts,
+} from "@tmsync/shared";
 
 /**
  * A SITE as the options page shows it: the recipes that share a domain, and the
@@ -85,4 +93,27 @@ export function withSiteHosts(site: SiteGroup, hosts: string[], custom: Recipe[]
 export function withSiteName(site: SiteGroup, name: string, custom: Recipe[]): Recipe[] {
   const ids = new Set(site.recipes.filter((r) => !r.library).map((r) => r.recipe.id));
   return custom.map((r) => (ids.has(r.id) ? { ...r, name } : r));
+}
+
+/**
+ * The site this page most likely moved from: one with the same name on another
+ * domain (`cinejoy.to` for `cinejoy.pk`). Null when a site already lists this
+ * domain, or none shares its name. When several do, the one with a recipe whose
+ * path fits this URL wins. It is a guess, so the caller asks before acting on it.
+ */
+export function findMovedSite(sites: SiteGroup[], url: string): SiteGroup | null {
+  const host = hostOf(url);
+  const label = siteLabel(host);
+  if (!label) return null;
+  if (sites.some((s) => s.hosts.some((h) => normalizeHost(h) === host))) return null;
+  const named = sites.filter((s) => s.hosts.some((h) => siteLabel(h) === label));
+  const fitsPath = (s: SiteGroup) =>
+    s.recipes.some(({ recipe }) => {
+      try {
+        return new RegExp(patternPath(recipe.match.urlPattern)).test(url);
+      } catch {
+        return false;
+      }
+    });
+  return named.find(fitsPath) ?? named[0] ?? null;
 }

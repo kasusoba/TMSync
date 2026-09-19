@@ -110,3 +110,19 @@ export function withRecipeHosts(recipe: Recipe, hosts: string[]): Recipe {
     },
   };
 }
+
+/** Second-level labels that sit under a country code (`co.uk`, `com.br`). */
+const SECOND_LEVEL = new Set(["co", "com", "net", "org", "ac", "gov", "edu"]);
+
+/**
+ * The name part of a host: `cinejoy` for `cinejoy.to`, `www.cinejoy.pk`, or
+ * `watch.cinejoy.co.uk`. A site that moves domain usually keeps it and changes
+ * only the ending, so two hosts with the same label are likely one site.
+ */
+export function siteLabel(hostname: string): string {
+  const labels = normalizeHost(hostname).split(".").filter(Boolean);
+  if (labels.length < 2) return "";
+  const second = labels[labels.length - 2] ?? "";
+  const nameAt = labels.length >= 3 && SECOND_LEVEL.has(second) ? 3 : 2;
+  return labels[labels.length - nameAt] ?? "";
+}

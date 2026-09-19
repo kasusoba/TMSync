@@ -5,12 +5,14 @@ import {
   flattenFrameTree,
 } from "@/lib/diagnostics/frame-tree";
 import { deriveQuickLink } from "@/lib/picker/recipe-builder";
+import { type SiteGroup, findMovedSite, groupSites, withSiteHosts } from "@/lib/sites";
 import {
   type BadgePrefs,
   type QuickLinkSite,
   badgePrefs,
   customRecipes,
   quickLinks,
+  remoteRecipes,
   tabFrameOrigins,
   tabSessions,
   tabStatus,
@@ -22,7 +24,7 @@ import { tokens } from "@/lib/ui/kit/kit";
 import { NowPlaying } from "@/lib/ui/scrobble-panels";
 import type { BadgeStatus } from "@/messaging";
 import { type AniListStatus, type TraktStatus, sendMessage } from "@/messaging";
-import { type ParsedMedia, matchesUrl } from "@tmsync/shared";
+import { type ParsedMedia, hostText, matchesUrl } from "@tmsync/shared";
 import { useEffect, useState } from "preact/hooks";
 import { browser } from "wxt/browser";
 
@@ -173,6 +175,8 @@ export function App() {
   // Frame map (diagnostics). Auto-populated (cheaply, from iframe src) on open when
   // the page has embedded frames, and shown inline always-expanded.
   const [pageHasRecipe, setPageHasRecipe] = useState(false);
+  /** A site of yours that this page's domain probably moved from (same name). */
+  const [movedSite, setMovedSite] = useState<SiteGroup | null>(null);
   const [frameTree, setFrameTree] = useState<FrameNode[] | null>(null);
   // "Now scrobbling" for the active tab (status + media for the prompts/panels).
   const [now, setNow] = useState<{
@@ -202,7 +206,7 @@ export function App() {
 
   const refresh = async () => {
     const tabId = await activeTabId();
-    const [s, al, url, found, sites, links, badge, custom, pend] = await Promise.all([
+    const [s, al, url, found, sites, links, badge, custom, remote, pend] = await Promise.all([
       sendMessage("getTraktStatus", undefined),
       sendMessage("getAniListStatus", undefined),
       activeTabUrl(),
@@ -211,6 +215,7 @@ export function App() {
       quickLinks.getValue(),
       badgePrefs.getValue(),
       customRecipes.getValue(),
+      remoteRecipes.getValue(),
       sendMessage("pendingSites", undefined),
     ]);
     // Merge the live snapshot with origins the content script accumulated over
@@ -240,6 +245,7 @@ export function App() {
     // Host scope + urlPattern (the popup has no page DOM to check a
     // domFingerprint), which is enough for picker-authored recipes.
     setPageHasRecipe(!!url && custom.some((r) => matchesUrl(r, url)));
+    setMovedSite(url ? findMovedSite(groupSites(custom, remote?.recipes ?? []), url) : null);
     // Map the page's frames (cheap: stitched from iframe `src`, NO permission prompt)
     // so the top site and any embedded player frames show as ONE indented list. Scan
     // any scriptable http page; a single-frame page just yields the one top node.
@@ -358,6 +364,35 @@ export function App() {
     }
     // refresh() re-runs the cheap frame map, so a newly-enabled frame (now
     // reachable) shows its video state and children automatically.
+    await refresh();
+    setBusy(false);
+  };
+
+  // The site moved here: add this domain to all its recipes, then turn it on. The
+  // recipes are written before the content script is injected, so it loads them.
+  // Under the broad grant the script already runs here and reloads its recipes on
+  // the write; injecting it again would scrobble twice.
+  const adoptMovedSite = async () => {
+    if (!movedSite || !topOrigin) return;
+    setBusy(true);
+    setNote(null);
+    const granted = await browser.permissions.request({ origins: [`${topOrigin}/*`] });
+    if (granted) {
+      const host = hostText(new URL(topOrigin).hostname);
+      const custom = await customRecipes.getValue();
+      await customRecipes.setValue(withSiteHosts(movedSite, [...movedSite.hosts, host], custom));
+      const res = await sendMessage("registerSite", topOrigin);
+      const broad = await browser.permissions.contains({ origins: ["*://*/*"] });
+      const tabId = await activeTabId();
+      const injected = res.ok && (broad || (tabId !== null && (await injectContentNow(tabId))));
+      setNote(
+        injected
+          ? `Added to ${movedSite.name} · now scrobbling on this page.`
+          : `Added to ${movedSite.name} · reload to start.`,
+      );
+    } else {
+      setNote("Permission denied");
+    }
     await refresh();
     setBusy(false);
   };
@@ -506,6 +541,8 @@ export function App() {
       onEnablePending={enablePending}
       onEnableAllPending={enableAllPending}
       pageHasRecipe={pageHasRecipe}
+      movedSite={movedSite && qlHost ? { name: movedSite.name, host: qlHost } : null}
+      onAdoptMovedSite={adoptMovedSite}
       onOpenOptions={() => browser.runtime.openOptionsPage()}
       quickLinkHost={qlHost}
       quickLinkInitial={

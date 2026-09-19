@@ -1,4 +1,4 @@
-import { hostOf, normalizeHost, patternPath, recipeHosts } from "./hosts";
+import { hostOf, normalizeHost } from "./hosts";
 import { type Recipe, SCHEMA_VERSION } from "./schema";
 import type { EngineContext } from "./types";
 
@@ -58,35 +58,6 @@ export function selectRecipe(recipes: Recipe[], ctx: EngineContext): Recipe | nu
   for (const recipe of recipes) {
     if (recipe.schemaVersion > SCHEMA_VERSION) continue;
     if (matchRecipe(recipe, ctx)) return recipe;
-  }
-  return null;
-}
-
-/**
- * A recipe this page would match if its host scope included this host: the URL
- * pattern fits, the fingerprint is on the page, only the hostname is new. That is
- * what a site looks like after it moves domain, so the badge can offer the recipe
- * instead of asking the user to author it again.
- *
- * Deliberately narrow. The fingerprint must be present, so a recipe with no
- * fingerprint is never offered, and neither is a host-free one (it already matches).
- * The pattern is tested without its own host anchor, so an older host-bearing
- * recipe is offered too.
- */
-export function findHostAdoption(recipes: Recipe[], ctx: EngineContext): Recipe | null {
-  const host = hostOf(ctx.url);
-  if (!host) return null;
-  for (const recipe of recipes) {
-    if (recipe.schemaVersion > SCHEMA_VERSION) continue;
-    if (!recipe.match.domFingerprint) continue;
-    const hosts = recipeHosts(recipe);
-    if (hosts.length === 0 || hosts.includes(host)) continue;
-    try {
-      if (!new RegExp(patternPath(recipe.match.urlPattern)).test(ctx.url)) continue;
-    } catch {
-      continue;
-    }
-    if (matchesFingerprint(recipe, ctx.document)) return recipe;
   }
   return null;
 }

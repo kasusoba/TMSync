@@ -56,6 +56,9 @@ export interface PopupViewProps {
   onEnableAllPending?: () => void;
   /** A custom recipe already covers this page → the picker opens in edit mode. */
   pageHasRecipe?: boolean;
+  /** A site of yours with the same name on another domain: it probably moved here. */
+  movedSite?: { name: string; host: string } | null;
+  onAdoptMovedSite?: () => void;
   onOpenOptions?: () => void;
   // --- per-site quick link (independent of recipes) ---
   /** Hostname of the active tab's top page; null = no eligible page. */
@@ -281,7 +284,33 @@ export function PopupView(p: PopupViewProps) {
 
             <div class="space-y-1.5">
               <SubLabel t={t}>Recipe</SubLabel>
-              <Btn t={t} tone="primary" class="w-full" disabled={p.busy} onClick={p.onSetup}>
+              {p.movedSite && (
+                <div class={clsx("space-y-2 rounded-xl px-3 py-2.5", t.card)}>
+                  <p class={clsx("text-[12px] font-semibold", t.heading)}>
+                    Did {p.movedSite.name} move here?
+                  </p>
+                  <p class={clsx("text-[11px] leading-snug", t.sub)}>
+                    Add {p.movedSite.host} to {p.movedSite.name}. Its recipes then work on this
+                    domain too.
+                  </p>
+                  <Btn
+                    t={t}
+                    tone="primary"
+                    class="w-full"
+                    disabled={p.busy}
+                    onClick={p.onAdoptMovedSite}
+                  >
+                    <Icon name="plus" class="text-[12px]" /> Add domain
+                  </Btn>
+                </div>
+              )}
+              <Btn
+                t={t}
+                tone={p.movedSite ? "ghost" : "primary"}
+                class="w-full"
+                disabled={p.busy}
+                onClick={p.onSetup}
+              >
                 <Icon name={p.pageHasRecipe ? "edit" : "target"} class="text-[13px]" />
                 {p.pageHasRecipe ? "Edit recipe" : "Set up recipe"}
               </Btn>

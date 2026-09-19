@@ -7,6 +7,7 @@ import {
   patternHosts,
   patternPath,
   recipeHosts,
+  siteLabel,
   withPatternHosts,
   withRecipeHosts,
 } from "./hosts";
@@ -111,5 +112,21 @@ describe("withRecipeHosts", () => {
 describe("escapeRegex", () => {
   it("escapes regex metacharacters", () => {
     expect(escapeRegex("a.b+c")).toBe("a\\.b\\+c");
+  });
+});
+
+describe("siteLabel", () => {
+  it("takes the name part and ignores www, subdomains, and the ending", () => {
+    expect(siteLabel("cinejoy.to")).toBe("cinejoy");
+    expect(siteLabel("www.cinejoy.pk")).toBe("cinejoy");
+    expect(siteLabel("watch.cinejoy.to")).toBe("cinejoy");
+  });
+
+  it("looks past a second-level ending like co.uk", () => {
+    expect(siteLabel("cinejoy.co.uk")).toBe("cinejoy");
+  });
+
+  it("is empty for a bare name", () => {
+    expect(siteLabel("localhost")).toBe("");
   });
 });
