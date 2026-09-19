@@ -218,6 +218,9 @@ export interface ProtocolMap {
    * after toggling the broad "enable all sites" grant or importing a backup, so
    * the change takes effect without a reload. */
   syncSiteRegistrations(): void;
+  /** Recipe origins (from `hostnames`) the user hasn't allowed yet. Empty when the
+   * broad grant is held. */
+  pendingSites(): string[];
   /** Whether the broad "enable all sites" grant is held. Content scripts can't read
    * `permissions.contains`, so they ask the background (e.g. to suppress the
    * "enable the player frame" hint when the catch-all already covers every frame). */

@@ -8,7 +8,6 @@ export interface FrameInspectorProps {
   nodes: FrameNode[] | null;
   busy?: boolean;
   onEnable?: (origin: string) => void;
-  onDisable?: (origin: string) => void;
   /** Author a recipe inside this frame (injects the picker into it). */
   onSetupFrame?: (origin: string, frameId: number) => void;
 }
@@ -119,16 +118,13 @@ export function FrameInspector(p: FrameInspectorProps) {
                       <Icon name="target" class="text-[13px] text-ikura" />
                     </Btn>
                   )}
+                  {/* Access is one way: allow once, keep it. Take it back by
+                      removing the site in Options, or in the browser's settings. */}
                   {n.enabled ? (
-                    <Btn
-                      t={t}
-                      tone="ghost"
-                      disabled={p.busy}
-                      onClick={() => p.onDisable?.(n.origin)}
-                    >
+                    <span class={clsx("flex items-center gap-1 px-2 text-[12px]", t.sub)}>
                       <Icon name="check" class="text-[12px] text-emerald-500" />
-                      Enabled
-                    </Btn>
+                      Allowed
+                    </span>
                   ) : (
                     <Btn
                       t={t}
@@ -136,7 +132,7 @@ export function FrameInspector(p: FrameInspectorProps) {
                       disabled={p.busy}
                       onClick={() => p.onEnable?.(n.origin)}
                     >
-                      Enable
+                      Allow
                     </Btn>
                   )}
                 </span>

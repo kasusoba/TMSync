@@ -828,7 +828,7 @@ export class SessionManager {
     await sendMessage("reportScrobble", {
       state: "error",
       title: this.localMedia ? label(this.localMedia) : undefined,
-      detail: "can’t see the video. Enable the player frame in the TMSync popup",
+      detail: "can’t see the video. Allow the player frame in the TMSync popup",
       needFrame: true,
     });
   }

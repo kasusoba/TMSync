@@ -346,6 +346,7 @@ export default defineBackground(() => {
   // Reconcile after a broad-grant toggle or a backup import (the caller changed
   // permissions/recipes in its own page context, then asks the SW to catch up).
   onMessage("syncSiteRegistrations", () => syncRegistrations());
+  onMessage("pendingSites", () => pendingSites());
   onMessage("hasAllSitesGrant", () => hasAllSites());
 
   // --- manual mode (sites with no readable title) ---
@@ -1281,6 +1282,20 @@ async function adoptPermittedRecipeOrigins(): Promise<void> {
     }
   }
   if (changed) await enabledOrigins.setValue([...enabled]);
+}
+
+/** Recipe origins the user has NOT allowed (nor holds broadly). The popup checks
+ * it for sites a sync or import just added. Empty under the broad grant. */
+async function pendingSites(): Promise<string[]> {
+  if (await hasAllSites()) return [];
+  const enabled = new Set(await enabledOrigins.getValue());
+  const pending: string[] = [];
+  for (const origin of await recipeOrigins()) {
+    if (enabled.has(origin)) continue;
+    if (await browser.permissions.contains({ origins: [`${origin}/*`] })) continue;
+    pending.push(origin);
+  }
+  return pending;
 }
 
 /** Register the single catch-all content script backed by the broad grant. */

@@ -92,6 +92,28 @@ export const enabledOrigins = storage.defineItem<string[]>("local:enabled_origin
   fallback: [],
 });
 
+/**
+ * Recipe origins that needed access and the user already saw (in the popup nudge
+ * or in Options > Sites). The popup nudges only about origins NOT in this list, so
+ * a site left off on purpose never nags. null = never seeded: the first read
+ * treats every current pending origin as seen.
+ */
+export const seenPendingSites = storage.defineItem<string[] | null>("local:seen_pending_sites", {
+  fallback: null,
+});
+
+/**
+ * A one-shot request from the popup for how Options opens (e.g. the Sites tab with
+ * the "Needs access" filter on). Options applies it, then clears it.
+ */
+export interface OptionsIntent {
+  section: string;
+  needsAccess?: boolean;
+}
+export const optionsIntent = storage.defineItem<OptionsIntent | null>("session:options_intent", {
+  fallback: null,
+});
+
 /** Recipes authored locally via the element picker (merged with the bundled list). */
 export const customRecipes = storage.defineItem<Recipe[]>("sync:custom_recipes", {
   fallback: [],

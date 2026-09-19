@@ -38,7 +38,12 @@ export interface PopupViewProps {
   onConnectAniList?: () => void;
   onDisconnectAniList?: () => void;
   onEnable?: (origin: string) => void;
-  onDisable?: (origin: string) => void;
+  /** Recipe sites a sync or import added that need access and the user hasn't
+   * seen yet. Only these nudge: a site left off on purpose never shows here. */
+  newSites?: number;
+  /** Open Options > Sites with the "Needs access" filter on. */
+  onReviewNewSites?: () => void;
+  onDismissNewSites?: () => void;
   onSetup?: () => void;
   /** A custom recipe already covers this page → the picker opens in edit mode. */
   pageHasRecipe?: boolean;
@@ -184,6 +189,20 @@ export function PopupView(p: PopupViewProps) {
       {/* Now scrobbling — status + any pending prompt for the active tab. */}
       {p.nowPlaying}
 
+      {/* New sites from a sync or import. One line: allowing many sites is done in
+          Options, where the list is filterable. */}
+      {(p.newSites ?? 0) > 0 && (
+        <div class={clsx("flex items-center gap-2 rounded-xl py-1.5 pr-1.5 pl-3", t.infoBox)}>
+          <p class="flex-1 text-[12px] leading-snug">
+            {p.newSites === 1 ? "1 new site needs access" : `${p.newSites} new sites need access`}
+          </p>
+          <Btn t={t} tone="ghost" disabled={p.busy} onClick={p.onReviewNewSites}>
+            Review
+          </Btn>
+          <IconBtn t={t} name="x" title="Dismiss" onClick={p.onDismissNewSites} />
+        </div>
+      )}
+
       {/* This page — video DETECTION (access + frames) and the RECIPE (picker),
           kept visibly separate so it's clear the two are different things. */}
       <Section title="This page" t={t}>
@@ -202,7 +221,6 @@ export function PopupView(p: PopupViewProps) {
                 nodes={frameNodes}
                 busy={p.busy}
                 onEnable={p.onEnable}
-                onDisable={p.onDisable}
                 onSetupFrame={p.onSetupFrame}
               />
             </div>

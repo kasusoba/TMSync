@@ -14,6 +14,7 @@ import { type SiteGroup, groupSites, withSiteHosts, withSiteName } from "@/lib/s
 import {
   type AnimeMapCache,
   type BadgePrefs,
+  type OptionsIntent,
   type QuickLinkSite,
   type RemoteRecipes,
   anilistCorrections,
@@ -22,8 +23,10 @@ import {
   badgePrefs,
   corrections,
   customRecipes,
+  optionsIntent,
   quickLinks,
   remoteRecipes,
+  seenPendingSites,
 } from "@/lib/storage";
 import { type Tracker, trackerLabel } from "@/lib/tracker/types";
 import type { ResolvedIdentity } from "@/lib/trakt/types";
@@ -370,7 +373,7 @@ function HostChip({
     >
       <span
         class={clsx("size-1.5 shrink-0 rounded-full", enabled ? "bg-emerald-500" : "bg-amber-400")}
-        title={enabled ? "Enabled" : "Needs access"}
+        title={enabled ? "Allowed" : "Needs access"}
       />
       {host}
       {removable && (
@@ -394,7 +397,6 @@ function SiteCard({
   newHost,
   hostNote,
   onEnable,
-  onDisable,
   onStartAdd,
   onNewHost,
   onAddHost,
@@ -415,7 +417,6 @@ function SiteCard({
   newHost: string;
   hostNote: string | null;
   onEnable: () => void;
-  onDisable: () => void;
   onStartAdd: () => void;
   onNewHost: (v: string) => void;
   onAddHost: () => void;
@@ -474,18 +475,13 @@ function SiteCard({
             )}
           </span>
         )}
-        {!naming &&
-          !allSites &&
-          site.hosts.length > 0 &&
-          (needsAccess ? (
-            <Btn t={t} tone="primary" disabled={busy} onClick={onEnable}>
-              Enable
-            </Btn>
-          ) : (
-            <Btn t={t} tone="ghost" disabled={busy} onClick={onDisable}>
-              Disable
-            </Btn>
-          ))}
+        {/* Access is one way: allow once, keep it. The domain dots show the state.
+            Removing a domain or the site's last recipe takes the access back. */}
+        {!naming && !allSites && needsAccess && (
+          <Btn t={t} tone="primary" disabled={busy} onClick={onEnable}>
+            Allow
+          </Btn>
+        )}
       </div>
 
       <div>
@@ -690,6 +686,8 @@ export function App() {
   const [newHost, setNewHost] = useState("");
   const [hostNote, setHostNote] = useState<string | null>(null);
   const [q, setQ] = useState("");
+  /** Sites tab: show only the sites that still need access. */
+  const [needsOnly, setNeedsOnly] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportNote, setExportNote] = useState<string | null>(null);
@@ -791,22 +789,17 @@ export function App() {
       await customRecipes.setValue(withSiteName(site, name, await customRecipes.getValue()));
     });
 
-  // One prompt for every domain of the site that still needs access.
-  const enableSite = (site: SiteGroup) =>
+  // One prompt for every domain of these sites that still needs access. One site
+  // from its card, or every visible site from the bulk "Allow" button.
+  const allowSites = (groups: SiteGroup[]) =>
     act(async () => {
-      const missing = site.hosts.map((h) => `https://${h}`).filter((o) => !sites.includes(o));
+      const missing = [
+        ...new Set(groups.flatMap((g) => g.hosts.map((h) => `https://${h}`))),
+      ].filter((o) => !sites.includes(o));
       if (missing.length === 0) return;
       const ok = await browser.permissions.request({ origins: missing.map((o) => `${o}/*`) });
       if (!ok) return;
       for (const origin of missing) await sendMessage("registerSite", origin);
-    });
-
-  const disableSiteGroup = (site: SiteGroup) =>
-    act(async () => {
-      for (const h of site.hosts) {
-        await sendMessage("unregisterSite", `https://${h}`);
-        await browser.permissions.remove({ origins: [`https://${h}/*`] });
-      }
     });
 
   const updateBadge = async (patch: Partial<BadgePrefs>) => {
@@ -830,6 +823,35 @@ export function App() {
   useEffect(() => {
     void refresh();
   }, []);
+
+  // The popup's "Review" asks Options to open on a tab (and filter). Apply it on
+  // load, and on a later write if this page is already open. Then clear it.
+  useEffect(() => {
+    const apply = (intent: OptionsIntent | null) => {
+      if (!intent) return;
+      setActive(intent.section);
+      setQ("");
+      setNeedsOnly(!!intent.needsAccess);
+      void optionsIntent.setValue(null);
+    };
+    void optionsIntent.getValue().then(apply);
+    return optionsIntent.watch(apply);
+  }, []);
+
+  // The Sites tab lists every site that needs access, so once it is open those
+  // sites count as seen and the popup stops nudging about them.
+  useEffect(() => {
+    if (active !== "sites" || allSites) return;
+    const pending = groupSites(recipes, remote?.recipes ?? [])
+      .flatMap((g) => g.hosts.map((h) => `https://${h}`))
+      .filter((o) => !sites.includes(o));
+    if (pending.length === 0) return;
+    void seenPendingSites.getValue().then((seen) => {
+      const next = new Set([...(seen ?? []), ...pending]);
+      if (seen && next.size === seen.length) return;
+      void seenPendingSites.setValue([...next]);
+    });
+  }, [active, allSites, sites, recipes, remote]);
 
   const act = async (fn: () => Promise<unknown>) => {
     if (workingRef.current) return;
@@ -857,11 +879,24 @@ export function App() {
       await browser.permissions.remove({ origins: [`${origin}/*`] });
     });
 
-  const deleteRecipe = async (id: string) => {
-    const next = (await customRecipes.getValue()).filter((r) => r.id !== id);
-    await customRecipes.setValue(next);
-    setRecipes(next);
-  };
+  // Delete a recipe. A domain that no recipe covers after this loses its access
+  // too: access is one way, so removing the site is how you take it back.
+  const deleteRecipe = (id: string) =>
+    act(async () => {
+      const all = await customRecipes.getValue();
+      const gone = all.find((r) => r.id === id);
+      const next = all.filter((r) => r.id !== id);
+      await customRecipes.setValue(next);
+      if (!gone) return;
+      const covered = new Set(
+        [...next, ...(remote?.recipes ?? [])].flatMap(recipeHosts).map(normalizeHost),
+      );
+      for (const h of recipeHosts(gone)) {
+        if (covered.has(normalizeHost(h))) continue;
+        await sendMessage("unregisterSite", `https://${h}`);
+        if (!allSites) await browser.permissions.remove({ origins: [`https://${h}/*`] });
+      }
+    });
   const copyRecipe = async (r: Recipe) => {
     try {
       await navigator.clipboard.writeText(JSON.stringify(r, null, 2));
@@ -1135,6 +1170,14 @@ export function App() {
     has(site.name) ||
     site.hosts.some(has) ||
     site.recipes.some(({ recipe }) => has(recipe.name) || has(recipe.match.urlPattern));
+  // The "Needs access" filter only applies while some site needs access, so it
+  // can't leave an empty list after the last site is allowed.
+  const needsFilter = needsOnly && notEnabledCount > 0;
+  const visibleSites = siteGroups.filter(
+    (s) => siteMatches(s) && (!needsFilter || siteNeedsAccess(s)),
+  );
+  const toAllow = visibleSites.filter(siteNeedsAccess);
+  const needsAccessSites = siteGroups.filter(siteNeedsAccess).length;
 
   const counts: Record<string, number> = {
     links: links.length,
@@ -1336,10 +1379,10 @@ export function App() {
                   )}
                 >
                   <div class="min-w-0">
-                    <div class={clsx("text-[13px] font-medium", t.heading)}>Enable all sites</div>
+                    <div class={clsx("text-[13px] font-medium", t.heading)}>Allow all sites</div>
                     <p class={clsx("mt-0.5 text-[12px]", t.sub)}>
-                      Grant access to every site so new and synced recipes work instantly. You can
-                      revoke access anytime, or enable sites one by one below.
+                      New and synced recipes work at once, with no prompt. Turn it off anytime, or
+                      allow sites one by one below.
                     </p>
                   </div>
                   <Switch on={allSites} t={t} onClick={() => void toggleAllSites()} />
@@ -1354,8 +1397,37 @@ export function App() {
                   <Filter q={q} setQ={setQ} placeholder="Filter sites…" />
                 )}
 
+                {/* Bulk allow: filter the list, then allow what is visible in one
+                    browser prompt. Less than "Allow all sites": a site that a later
+                    sync adds still asks first. */}
+                {!allSites && needsAccessSites > 0 && (
+                  <div class="flex items-center justify-between gap-2">
+                    <Btn
+                      t={t}
+                      tone="ghost"
+                      class={clsx(needsFilter && t.chip)}
+                      title={needsFilter ? "Show all sites" : "Show only sites that need access"}
+                      onClick={() => setNeedsOnly(!needsFilter)}
+                    >
+                      <span class="size-1.5 rounded-full bg-amber-400" />
+                      Needs access · {needsAccessSites}
+                    </Btn>
+                    {toAllow.length > 0 && (
+                      <Btn
+                        t={t}
+                        tone="primary"
+                        disabled={busy}
+                        title={toAllow.map((s) => s.name).join(", ")}
+                        onClick={() => void allowSites(toAllow)}
+                      >
+                        Allow {toAllow.length} site{toAllow.length === 1 ? "" : "s"}
+                      </Btn>
+                    )}
+                  </div>
+                )}
+
                 <div class="space-y-2">
-                  {siteGroups.filter(siteMatches).map((site) => (
+                  {visibleSites.map((site) => (
                     <SiteCard
                       key={site.key}
                       site={site}
@@ -1366,8 +1438,7 @@ export function App() {
                       adding={addingHostFor === site.key}
                       newHost={newHost}
                       hostNote={hostNote}
-                      onEnable={() => void enableSite(site)}
-                      onDisable={() => void disableSiteGroup(site)}
+                      onEnable={() => void allowSites([site])}
                       onStartAdd={() => startAddHost(site.key)}
                       onNewHost={setNewHost}
                       onAddHost={() => void addHost(site)}
@@ -1382,7 +1453,7 @@ export function App() {
 
                 {/* Origins enabled with no recipe behind them: the player iframes a
                     site embeds, enabled from the popup so playback can be tracked. */}
-                {playerFrames.filter(has).length > 0 && (
+                {!needsFilter && playerFrames.filter(has).length > 0 && (
                   <>
                     <div class={clsx("flex items-center gap-2 px-1 pt-3 text-[11px]", t.faint)}>
                       <span class="font-medium uppercase tracking-wide">Player frames</span>
@@ -1402,14 +1473,14 @@ export function App() {
                             {host(origin)}
                           </code>
                           {!allSites && (
-                            <Btn
+                            <IconBtn
                               t={t}
-                              tone="ghost"
+                              name="trash"
+                              danger
+                              title="Remove access"
                               disabled={busy}
                               onClick={() => disableSite(origin)}
-                            >
-                              Disable
-                            </Btn>
+                            />
                           )}
                         </div>
                       ))}
