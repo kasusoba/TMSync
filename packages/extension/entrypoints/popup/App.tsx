@@ -26,13 +26,19 @@ import { tokens } from "@/lib/ui/kit/kit";
 import { NowPlaying } from "@/lib/ui/scrobble-panels";
 import type { BadgeStatus } from "@/messaging";
 import { type AniListStatus, type TraktStatus, sendMessage } from "@/messaging";
-import { type ParsedMedia, hostText, matchesUrl } from "@tmsync/shared";
+import { type ParsedMedia, hostText, linkHost, matchesUrl, normalizeHost } from "@tmsync/shared";
 import { useEffect, useState } from "preact/hooks";
 import { browser } from "wxt/browser";
 
 async function activeTabUrl(): Promise<string | null> {
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
   return tab?.url ?? null;
+}
+
+/** The quick link on this domain. Look it up by domain, not by id: a link made in
+ * Options, or moved from another domain, does not have the id `ql-<host>`. */
+function linkOnHost(links: QuickLinkSite[], host: string): QuickLinkSite | undefined {
+  return links.find((l) => normalizeHost(linkHost(l)) === normalizeHost(host));
 }
 
 function httpOrigin(url: string | null): string | null {
@@ -245,7 +251,7 @@ export function App() {
     setNewSites(fresh.filter((o) => pending.includes(o) && !here.has(o)));
     setQlHost(hostname);
     setQlUrl(url);
-    setQlSite(hostname ? (links.find((l) => l.id === `ql-${hostname}`) ?? null) : null);
+    setQlSite(hostname ? (linkOnHost(links, hostname) ?? null) : null);
     setBadgeMode(badge.mode);
     // Does one of the user's OWN recipes already cover this page? Then the picker
     // opens in edit mode — so the button says "Edit recipe", not "Set up recipe".
@@ -316,7 +322,13 @@ export function App() {
   const saveQuickLink = async (v: QuickLinkValue) => {
     if (!qlHost) return;
     setBusy(true);
-    const qid = `ql-${qlHost}`;
+    const links = await quickLinks.getValue();
+    const current = linkOnHost(links, qlHost);
+    // Keep the id of the link already on this domain. Else `ql-<host>`, unless a
+    // link that moved from this domain still has that id.
+    const qid =
+      current?.id ??
+      (links.some((l) => l.id === `ql-${qlHost}`) ? `ql-${qlHost}-${Date.now()}` : `ql-${qlHost}`);
     const entry: QuickLinkSite = {
       id: qid,
       name: v.name,
@@ -329,8 +341,7 @@ export function App() {
       anime: v.anime,
       search: v.search,
     };
-    const links = await quickLinks.getValue();
-    const next = links.some((l) => l.id === qid)
+    const next = current
       ? links.map((l) => (l.id === qid ? { ...l, ...entry } : l))
       : [...links, entry];
     await quickLinks.setValue(next);
