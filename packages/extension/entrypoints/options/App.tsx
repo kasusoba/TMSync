@@ -10,7 +10,7 @@ import {
   contributeQuickLink,
   contributeRecipe,
 } from "@/lib/portability/contribute";
-import { type SiteGroup, addedHosts, groupSites, withSiteHosts, withSiteName } from "@/lib/sites";
+import { type SiteGroup, groupSites, withSiteHosts, withSiteName } from "@/lib/sites";
 import {
   type AnimeMapCache,
   type BadgePrefs,
@@ -694,8 +694,6 @@ export function App() {
   const [backupBusy, setBackupBusy] = useState(false);
   const [backupNote, setBackupNote] = useState<string | null>(null);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
-  /** New sites the last "Sync library" brought in that need access. */
-  const [syncNew, setSyncNew] = useState(0);
   /** Feedback for a Connect attempt (Options mirrors the popup — a failed/cancelled
    * OAuth used to silently do nothing here). */
   const [accountMsg, setAccountMsg] = useState<string | null>(null);
@@ -744,16 +742,6 @@ export function App() {
       }
       await sendMessage("syncSiteRegistrations", undefined);
     });
-
-  // Show the sites that need access (Sites tab, filter on). The popup's nudge
-  // points here too, so it is done once reviewed.
-  const reviewNewSites = async () => {
-    setActive("sites");
-    setQ("");
-    setNeedsOnly(true);
-    setSyncNew(0);
-    await newPendingSites.setValue([]);
-  };
 
   // --- a site's domains ---
   // Streaming sites move domain and keep their pages, so a site's recipes stay
@@ -824,20 +812,9 @@ export function App() {
   const syncLibrary = async () => {
     setBusy(true);
     setSyncMsg(null);
-    setSyncNew(0);
     const out = await sendMessage("refreshRecipes", undefined);
-    const next = await remoteRecipes.getValue();
-    // Sites this sync brought in that still need access: say so, with a way there.
-    const fresh = addedHosts(remote?.recipes ?? [], next?.recipes ?? [], recipes).filter(
-      (h) => !isHostEnabled(h),
-    ).length;
-    setSyncMsg(
-      out.ok
-        ? `Synced · ${out.count} recipes${fresh ? ` · ${fresh} new site${fresh === 1 ? " needs" : "s need"} access` : ""}`
-        : `Couldn’t sync: ${out.error}`,
-    );
-    setSyncNew(out.ok ? fresh : 0);
-    setRemote(next);
+    setSyncMsg(out.ok ? `Synced · ${out.count} recipes` : `Couldn’t sync: ${out.error}`);
+    setRemote(await remoteRecipes.getValue());
     setMapCache(await animeMap.getValue());
     setBusy(false);
   };
@@ -859,6 +836,18 @@ export function App() {
     };
     void optionsIntent.getValue().then(apply);
     return optionsIntent.watch(apply);
+  }, []);
+
+  // With Options open, new sites count as seen: the Sites badge in the sidebar
+  // shows them on every tab. So the popup nudge is only for sites that arrive
+  // while Options is closed (the background library sync, another device, an
+  // import from elsewhere).
+  useEffect(() => {
+    const clear = (list: string[] | null) => {
+      if (list && list.length > 0) void newPendingSites.setValue([]);
+    };
+    void newPendingSites.getValue().then(clear);
+    return newPendingSites.watch(clear);
   }, []);
 
   const act = async (fn: () => Promise<unknown>) => {
@@ -1200,11 +1189,6 @@ export function App() {
         <span class={clsx("text-[15px] font-semibold tracking-tight", t.heading)}>TMSync</span>
         <div class="ml-auto flex items-center gap-2.5">
           {syncMsg && <span class={clsx("text-[12px]", t.sub)}>{syncMsg}</span>}
-          {syncNew > 0 && (
-            <Btn t={t} tone="ghost" onClick={() => void reviewNewSites()}>
-              Review
-            </Btn>
-          )}
           <Btn
             t={t}
             tone="ghost"
