@@ -130,6 +130,9 @@ export interface BadgeStatus {
   /** Dismiss the badge entirely — sent when an SPA navigates away from a
    * scrobblable page so a stale "watching" badge doesn't linger. */
   hide?: boolean;
+  /** No recipe covers this page, but one fits it except for the hostname, which is what a
+   * site looks like after it moves domain. The badge offers that recipe here. */
+  adopt?: { recipeId: string; recipeName: string; host: string };
 }
 
 export interface TabMedia {
@@ -308,6 +311,10 @@ export interface ProtocolMap {
   resetAniListMatch(q: { media: ParsedMedia; tabId?: number }): { ok: boolean };
   /** Background → frames: a correction landed, re-resolve the current session. */
   recheck(): void;
+
+  /** Add this host to a recipe's scope, from the badge's "this site moved" offer.
+   * A library recipe is forked into a local copy, so a library sync can't undo it. */
+  adoptRecipeHost(q: { recipeId: string; host: string }): { ok: boolean; error?: string };
 
   /** Confirm a rewatch of an already-COMPLETED AniList cour (the badge prompt).
    * Switches the entry to REPEATING and records this episode; on the final

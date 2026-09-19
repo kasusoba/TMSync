@@ -8,6 +8,7 @@ import {
   EpisodePrompt,
   ManualPickPanel,
   ManualPrompt,
+  MovedSitePrompt,
   NowPanel,
   RateNotePanel,
 } from "@/lib/ui/kit/BadgeView";
@@ -624,6 +625,9 @@ export function App() {
           </Tile>
           <Tile label="Episode chooser · prompt (S/E-less URL)" t={t}>
             <EpisodePrompt variant={variant} />
+          </Tile>
+          <Tile label="Site moved · offer a known recipe here" t={t}>
+            <MovedSitePrompt variant={variant} name="Cineby" />
           </Tile>
           <Tile label="Episode chooser · panel" t={t}>
             <EpisodePickPanel variant={variant} title="Severance" />
