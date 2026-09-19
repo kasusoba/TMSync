@@ -95,7 +95,8 @@ export const enabledOrigins = storage.defineItem<string[]>("local:enabled_origin
 /**
  * Recipe origins that a sync or an import brought in without access. The popup
  * shows them as one "new sites need access" line until the user reviews or
- * dismisses it. Only NEW sites land here, so a site left off on purpose never nags.
+ * dismisses it, or opens Options (its Sites badge shows them). Only NEW sites
+ * land here, so a site left off on purpose never nags.
  */
 export const newPendingSites = storage.defineItem<string[]>("local:new_pending_sites", {
   fallback: [],

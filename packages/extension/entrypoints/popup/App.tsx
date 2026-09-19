@@ -164,7 +164,7 @@ export function App() {
   const [topOrigin, setTopOrigin] = useState<string | null>(null);
   const [origins, setOrigins] = useState<string[]>([]); // top + every iframe origin on the page
   const [enabled, setEnabled] = useState<string[]>([]);
-  // Recipe sites a sync or import added that need access and the user hasn't seen.
+  // Sites a sync or import added that still need access (until reviewed or dismissed).
   const [newSites, setNewSites] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);

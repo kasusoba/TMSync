@@ -1421,7 +1421,7 @@ export function App() {
                     <Btn
                       t={t}
                       tone="ghost"
-                      class={clsx(needsFilter && t.chip)}
+                      class={needsFilter ? "ring-2 ring-ikura" : "ring-1 ring-transparent"}
                       title={needsFilter ? "Show all sites" : "Show only sites that need access"}
                       onClick={() => setNeedsOnly(!needsFilter)}
                     >

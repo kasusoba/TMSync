@@ -146,15 +146,15 @@ export default defineBackground(() => {
   // device, imported, or pulled from the CDN auto-activates on any origin the user
   // already granted (or everywhere, under the broad grant) — no manual re-enable.
   // These are event listeners re-established on each SW wake, not held state.
-  customRecipes.watch(() => void syncRegistrations());
-  remoteRecipes.watch(() => void syncRegistrations());
-  // Note the sites a sync or an import brings in, for the popup's one-line nudge.
-  // The first library fetch (no old list) is setup, not news, so it is skipped.
+  // Also note the sites a change brings in, for the popup's one-line nudge. The
+  // first library fetch (no old list) is setup, not news, so it is skipped.
   customRecipes.watch(async (next, prev) => {
+    void syncRegistrations();
     const library = (await remoteRecipes.getValue())?.recipes ?? [];
     await noteNewSites(addedHosts(prev ?? [], next ?? [], library));
   });
   remoteRecipes.watch(async (next, prev) => {
+    void syncRegistrations();
     if (!prev) return;
     const custom = await customRecipes.getValue();
     await noteNewSites(addedHosts(prev.recipes, next?.recipes ?? [], custom));

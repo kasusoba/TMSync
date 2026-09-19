@@ -38,8 +38,8 @@ export interface PopupViewProps {
   onConnectAniList?: () => void;
   onDisconnectAniList?: () => void;
   onEnable?: (origin: string) => void;
-  /** Recipe sites a sync or import added that need access and the user hasn't
-   * seen yet. Only these nudge: a site left off on purpose never shows here. */
+  /** Sites a sync or import added that still need access. Only these nudge: a
+   * site left off on purpose never shows here. */
   newSites?: number;
   /** Open Options > Sites with the "Needs access" filter on. */
   onReviewNewSites?: () => void;
