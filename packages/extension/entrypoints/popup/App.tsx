@@ -162,8 +162,6 @@ export function App() {
   const [topOrigin, setTopOrigin] = useState<string | null>(null);
   const [origins, setOrigins] = useState<string[]>([]); // top + every iframe origin on the page
   const [enabled, setEnabled] = useState<string[]>([]);
-  // Recipe origins (synced/imported/library) not yet granted host access.
-  const [pending, setPending] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   // Per-site quick link for the active tab's host.
@@ -206,7 +204,7 @@ export function App() {
 
   const refresh = async () => {
     const tabId = await activeTabId();
-    const [s, al, url, found, sites, links, badge, custom, remote, pend] = await Promise.all([
+    const [s, al, url, found, sites, links, badge, custom, remote] = await Promise.all([
       sendMessage("getTraktStatus", undefined),
       sendMessage("getAniListStatus", undefined),
       activeTabUrl(),
@@ -216,7 +214,6 @@ export function App() {
       badgePrefs.getValue(),
       customRecipes.getValue(),
       remoteRecipes.getValue(),
-      sendMessage("pendingSites", undefined),
     ]);
     // Merge the live snapshot with origins the content script accumulated over
     // the session — catches player iframes that loaded after the page settled.
@@ -235,7 +232,6 @@ export function App() {
     setEnabled(
       broad ? [...new Set([...sites, ...allOrigins, ...(origin ? [origin] : [])])] : sites,
     );
-    setPending(pend);
     setQlHost(hostname);
     setQlUrl(url);
     setQlSite(hostname ? (links.find((l) => l.id === `ql-${hostname}`) ?? null) : null);
@@ -397,61 +393,6 @@ export function App() {
     setBusy(false);
   };
 
-  // Grant a recipe origin from the "needs access" list. Same gesture-context grant
-  // as enableOrigin, but the site usually isn't the active tab — so registration
-  // (which covers the next load there) is enough; only inject now if it IS this page.
-  const enablePending = async (origin: string) => {
-    setBusy(true);
-    setNote(null);
-    const granted = await browser.permissions.request({ origins: [`${origin}/*`] });
-    if (granted) {
-      const res = await sendMessage("registerSite", origin);
-      if (res.ok) {
-        if (origin === topOrigin) {
-          const tabId = await activeTabId();
-          const injected = tabId !== null && (await injectContentNow(tabId));
-          setNote(
-            injected ? "Enabled · now scrobbling on this page." : "Enabled · reload to start.",
-          );
-        } else {
-          setNote(`Enabled ${origin.replace(/^https?:\/\//, "")} · active next visit.`);
-        }
-      } else {
-        setNote(res.error ?? "Failed");
-      }
-    } else {
-      setNote("Permission denied");
-    }
-    await refresh();
-    setBusy(false);
-  };
-
-  // Grant EVERY pending origin in one prompt (permissions.request accepts the whole
-  // list, so the browser shows a single dialog), then register each. The broad
-  // "enable all sites forever" grant is a toggle in Options — this is just the
-  // known pending recipes, granted in bulk.
-  const enableAllPending = async () => {
-    if (pending.length === 0) return;
-    setBusy(true);
-    setNote(null);
-    const granted = await browser.permissions.request({
-      origins: pending.map((o) => `${o}/*`),
-    });
-    if (granted) {
-      for (const origin of pending) await sendMessage("registerSite", origin);
-      // If the current page is among them, inject now so it starts without a reload.
-      if (topOrigin && pending.includes(topOrigin)) {
-        const tabId = await activeTabId();
-        if (tabId !== null) await injectContentNow(tabId);
-      }
-      setNote(`Enabled ${pending.length} site${pending.length === 1 ? "" : "s"}.`);
-    } else {
-      setNote("Permission denied");
-    }
-    await refresh();
-    setBusy(false);
-  };
-
   const disableOrigin = async (origin: string) => {
     setBusy(true);
     await sendMessage("unregisterSite", origin);
@@ -537,9 +478,6 @@ export function App() {
       onEnable={enableOrigin}
       onDisable={disableOrigin}
       onSetup={setupSite}
-      pendingSites={pending}
-      onEnablePending={enablePending}
-      onEnableAllPending={enableAllPending}
       pageHasRecipe={pageHasRecipe}
       movedSite={movedSite && qlHost ? { name: movedSite.name, host: qlHost } : null}
       onAdoptMovedSite={adoptMovedSite}

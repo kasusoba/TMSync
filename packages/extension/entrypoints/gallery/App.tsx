@@ -163,23 +163,6 @@ export function App() {
               origins={[{ origin: "https://www.cineby.at", isTop: true, enabled: true }]}
             />
           </Tile>
-          <Tile label="Connected · recipes need access" t={t}>
-            <PopupView
-              variant={variant}
-              connected
-              origins={[{ origin: "https://www.cineby.at", isTop: true, enabled: true }]}
-              pendingSites={[
-                "https://hianime.to",
-                "https://www.tubi.tv",
-                "https://aniwatch.to",
-                "https://www.crunchyroll.com",
-                "https://gogoanime.tv",
-                "https://9animetv.to",
-              ]}
-              onEnablePending={() => {}}
-              onEnableAllPending={() => {}}
-            />
-          </Tile>
           <Tile label="Connected · now scrobbling (popup parity)" t={t}>
             <PopupView
               variant={variant}
