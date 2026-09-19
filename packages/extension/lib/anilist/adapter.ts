@@ -15,6 +15,7 @@ import {
   resolveById,
   saveEntry,
 } from "./client";
+import type { AniListEntry } from "./types";
 import { type AniListPlan, planAniListWrite } from "./util";
 
 type AniListItem = Extract<TrackedItem, { tracker: "anilist" }>;
@@ -58,6 +59,22 @@ async function applyPlan(item: AniListItem, plan: AniListPlan): Promise<RecordRe
         throw e;
       }
     }
+  }
+}
+
+/** The viewer's entry, or the RecordResult to return when it can't be read. A
+ * failed read must never be planned as "not on the list". */
+async function readEntry(
+  item: AniListItem,
+): Promise<{ entry: AniListEntry | null } | { fail: RecordResult }> {
+  try {
+    return { entry: await getListEntry(item.id) };
+  } catch (e) {
+    if (e instanceof AniListNotConnectedError)
+      return { fail: { ok: false, reason: "not_connected" } };
+    return {
+      fail: { ok: false, reason: "http", httpError: e instanceof Error ? e.message : String(e) },
+    };
   }
 }
 
@@ -110,20 +127,15 @@ export const anilistAdapter: TrackerAdapter = {
     // threshold, but reading at play lets us surface "already watched" (episode ≤
     // recorded progress → won't advance) and the rewatch prompt UP FRONT, instead of
     // a confusing "stopped" once the threshold passes. One cheap read per phase.
-    let entry: Awaited<ReturnType<typeof getListEntry>>;
-    try {
-      entry = await getListEntry(item.id);
-    } catch (e) {
-      if (e instanceof AniListNotConnectedError) return { ok: false, reason: "not_connected" };
-      throw e;
-    }
+    const read = await readEntry(item);
+    if ("fail" in read) return read.fail;
     const plan = planAniListWrite({
       phase,
       progress,
       watchedThreshold,
       episode: media.episode,
       total: item.episodes,
-      entry,
+      entry: read.entry,
       rewatchConfirmed: false,
     });
     return applyPlan(item, plan);
@@ -188,20 +200,15 @@ export async function confirmAniListRewatch(
   item: AniListItem,
   media: ParsedMedia,
 ): Promise<RecordResult> {
-  let entry: Awaited<ReturnType<typeof getListEntry>>;
-  try {
-    entry = await getListEntry(item.id);
-  } catch (e) {
-    if (e instanceof AniListNotConnectedError) return { ok: false, reason: "not_connected" };
-    throw e;
-  }
+  const read = await readEntry(item);
+  if ("fail" in read) return read.fail;
   const plan = planAniListWrite({
     phase: "stop",
     progress: 100,
     watchedThreshold: 0,
     episode: media.episode,
     total: item.episodes,
-    entry,
+    entry: read.entry,
     rewatchConfirmed: true,
   });
   return applyPlan(item, plan);

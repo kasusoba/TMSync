@@ -327,14 +327,17 @@ export function RateNote({
       setHasNote(false);
       return;
     }
-    void sendMessage("getReview", { media, level: trackerLevel(primary), tracker: primary }).then(
-      (r) => {
-        setRating(r.rating);
-        setNote(r.note?.text ?? "");
-        setSpoiler(r.note?.spoiler ?? false);
-        setHasNote(!!r.note);
-      },
-    );
+    void sendMessage("getReview", {
+      media,
+      trackers,
+      level: trackerLevel(primary),
+      tracker: primary,
+    }).then((r) => {
+      setRating(r.rating);
+      setNote(r.note?.text ?? "");
+      setSpoiler(r.note?.spoiler ?? false);
+      setHasNote(!!r.note);
+    });
   }, [media, level, primary]);
 
   const spoilerApplies = targets.includes("trakt");
@@ -365,12 +368,19 @@ export function RateNote({
     for (const tk of targets) {
       const lv = trackerLevel(tk);
       if (rating !== null) {
-        const r = await sendMessage("rateItem", { media, level: lv, rating, tracker: tk });
+        const r = await sendMessage("rateItem", {
+          media,
+          trackers,
+          level: lv,
+          rating,
+          tracker: tk,
+        });
         if (!r.ok) fails.push(`${trackerLabel(tk)}: ${r.error ?? "rating failed"}`);
       }
       if (note.trim()) {
         const n = await sendMessage("saveNote", {
           media,
+          trackers,
           level: lv,
           text: note,
           spoiler: tk === "trakt" ? spoiler : false,
@@ -388,7 +398,7 @@ export function RateNote({
     setBusy(true);
     setMsg(null);
     for (const tk of targets) {
-      await sendMessage("deleteNote", { media, level: trackerLevel(tk), tracker: tk });
+      await sendMessage("deleteNote", { media, trackers, level: trackerLevel(tk), tracker: tk });
     }
     setNote("");
     setHasNote(false);

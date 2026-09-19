@@ -166,6 +166,15 @@ export interface TrackerResolution {
   reason?: string;
 }
 
+/** The item a rating or note is for. `media` is the scraped media; `trackers` is the
+ * recipe's enabled set, so the background picks the same entry the scrobble writes
+ * (the crosswalk's entry for a derived tracker). */
+export interface ReviewTarget {
+  media: ParsedMedia;
+  tracker?: Tracker;
+  trackers?: Tracker[];
+}
+
 /** AniList account status (the second, independent provider — constraint #1). */
 export interface AniListStatus {
   connected: boolean;
@@ -326,33 +335,27 @@ export interface ProtocolMap {
     scoreFormat?: ScoreFormat;
   };
   /** Current rating (1–10) and note for an item at a level, from the local mirror. */
-  getReview(q: { media: ParsedMedia; level: RatingLevel; tracker?: Tracker }): {
+  getReview(q: ReviewTarget & { level: RatingLevel }): {
     rating: number | null;
     note: { text: string; spoiler: boolean } | null;
   };
   /** Set a 1–10 rating (AniList: stored as scoreRaw = rating×10 on the cour entry). */
-  rateItem(q: { media: ParsedMedia; level: RatingLevel; rating: number; tracker?: Tracker }): {
+  rateItem(q: ReviewTarget & { level: RatingLevel; rating: number }): {
     ok: boolean;
     error?: string;
   };
   /** Remove the rating. */
-  unrateItem(q: { media: ParsedMedia; level: RatingLevel; tracker?: Tracker }): {
+  unrateItem(q: ReviewTarget & { level: RatingLevel }): {
     ok: boolean;
     error?: string;
   };
   /** Create or edit the single note (Trakt: ≥5 words, public; AniList: private cour note). */
-  saveNote(q: {
-    media: ParsedMedia;
-    level: RatingLevel;
-    text: string;
-    spoiler: boolean;
-    tracker?: Tracker;
-  }): {
+  saveNote(q: ReviewTarget & { level: RatingLevel; text: string; spoiler: boolean }): {
     ok: boolean;
     error?: string;
   };
   /** Delete the note. */
-  deleteNote(q: { media: ParsedMedia; level: RatingLevel; tracker?: Tracker }): {
+  deleteNote(q: ReviewTarget & { level: RatingLevel }): {
     ok: boolean;
     error?: string;
   };

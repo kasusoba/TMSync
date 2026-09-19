@@ -47,7 +47,7 @@ import {
   tabSessions,
   tabStatus,
 } from "@/lib/storage";
-import { getAdapter, inferNativeTracker, routeTracker } from "@/lib/tracker";
+import { getAdapter, inferNativeTracker, routeTracker, trackerLabel } from "@/lib/tracker";
 import type { RatingLevel, TrackedItem, Tracker } from "@/lib/tracker/types";
 import { connect, disconnect, getRedirectUri, isConnected } from "@/lib/trakt/auth";
 import {
@@ -69,6 +69,7 @@ import { resolutionCacheKey } from "@/lib/trakt/util";
 import {
   type BadgeStatus,
   type DerivedOutcome,
+  type ReviewTarget,
   type ScrobbleReply,
   type ScrobbleRequest,
   type TrackerResolution,
@@ -603,21 +604,26 @@ export default defineBackground(() => {
   // the seam for it. Adding a tracker = one entry (its rating/note semantics differ:
   // Trakt rates per level with a public comment; AniList rates the cour with a
   // private note; each impl uses only the params it needs).
-  onMessage("getReview", ({ data }) =>
-    REVIEW[data.tracker ?? "trakt"].getReview(data.media, data.level),
-  );
-  onMessage("rateItem", ({ data }) =>
-    REVIEW[data.tracker ?? "trakt"].rate(data.media, data.level, data.rating),
-  );
-  onMessage("unrateItem", ({ data }) =>
-    REVIEW[data.tracker ?? "trakt"].unrate(data.media, data.level),
-  );
-  onMessage("saveNote", ({ data }) =>
-    REVIEW[data.tracker ?? "trakt"].saveNote(data.media, data.level, data.text, data.spoiler),
-  );
-  onMessage("deleteNote", ({ data }) =>
-    REVIEW[data.tracker ?? "trakt"].deleteNote(data.media, data.level),
-  );
+  onMessage("getReview", async ({ data }) => {
+    const t = await reviewTarget(data);
+    return "error" in t ? { rating: null, note: null } : t.review.getReview(t.media, data.level);
+  });
+  onMessage("rateItem", async ({ data }) => {
+    const t = await reviewTarget(data);
+    return "error" in t ? t : t.review.rate(t.media, data.level, data.rating);
+  });
+  onMessage("unrateItem", async ({ data }) => {
+    const t = await reviewTarget(data);
+    return "error" in t ? t : t.review.unrate(t.media, data.level);
+  });
+  onMessage("saveNote", async ({ data }) => {
+    const t = await reviewTarget(data);
+    return "error" in t ? t : t.review.saveNote(t.media, data.level, data.text, data.spoiler);
+  });
+  onMessage("deleteNote", async ({ data }) => {
+    const t = await reviewTarget(data);
+    return "error" in t ? t : t.review.deleteNote(t.media, data.level);
+  });
 
   // --- per-tab session coordination ---
   onMessage("publishMedia", async ({ data, sender }) => {
@@ -878,6 +884,46 @@ async function resolveAcross(
     }
   }
   return out;
+}
+
+/**
+ * The rating/note handler and the media it acts on. A derived tracker rates the
+ * crosswalk's entry, the same one the scrobble writes and `resolveAll` shows. A title
+ * search would often pick another cour (e.g. season 1 for a season 2 page).
+ */
+async function reviewTarget(
+  data: ReviewTarget,
+): Promise<{ review: ReviewHandler; media: ParsedMedia } | { ok: false; error: string }> {
+  const tracker = data.tracker ?? "trakt";
+  const review = REVIEW[tracker];
+  const enabled = data.trackers?.length ? data.trackers : [tracker];
+  const native = inferNativeTracker(data.media, enabled);
+  if (tracker === native) return { review, media: data.media };
+  const nativeItem =
+    native === "anilist"
+      ? await getAdapter(native)
+          .resolve(data.media)
+          .catch(() => null)
+      : null;
+  const d = deriveMediaWith(
+    tracker,
+    data.media,
+    nativeItem,
+    await animapOverrides.getValue(),
+    await loadAnimap(),
+  );
+  const name = trackerLabel(tracker);
+  if (d.kind === "ambiguous") return { ok: false, error: `can't tell which ${name} entry this is` };
+  if (d.kind === "miss") {
+    // No enabled native anchor: the tracker stands alone, like the scrobble's solo fallback.
+    if (!enabled.includes(native)) return { review, media: data.media };
+    return { ok: false, error: `not found on ${name}` };
+  }
+  const media =
+    d.anilistId === undefined
+      ? d.media
+      : { ...d.media, ids: { ...d.media.ids, anilist: d.anilistId } };
+  return { review, media };
 }
 
 async function recordDerivedTrackers(
