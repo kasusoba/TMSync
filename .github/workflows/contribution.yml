@@ -17,6 +17,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  issues: write # tell the contributor where their PR is
 
 jobs:
   apply:
@@ -47,17 +48,37 @@ jobs:
         run: pnpm exec biome format --write recipes/ || true
 
       - name: Open pull request
+        id: pr
         uses: peter-evans/create-pull-request@v7
         with:
           # Content-keyed for a single-site contribution (re-contributing the same
           # site updates its PR); falls back to the issue number for a bundle.
           branch: ${{ steps.apply.outputs.branch }}
           delete-branch: true
-          title: "Contribution from #${{ github.event.issue.number }}: ${{ github.event.issue.title }}"
+          # The title becomes a release-notes line: it names the site in plain words.
+          title: ${{ steps.apply.outputs.title }}
+          commit-message: ${{ steps.apply.outputs.commit }}
           body: |
             Closes #${{ github.event.issue.number }}
 
-            Auto-generated from a TMSync contribution issue. Review and merge.
+            Contributed by @${{ github.event.issue.user.login }} from the TMSync extension. A bot made this PR from the issue. Review and merge.
 
             ${{ steps.apply.outputs.summary }}
           labels: contribution
+
+      - name: Tell the contributor
+        if: steps.pr.outputs.pull-request-operation == 'created' || steps.pr.outputs.pull-request-operation == 'updated'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+          PR_URL: ${{ steps.pr.outputs.pull-request-url }}
+          OPERATION: ${{ steps.pr.outputs.pull-request-operation }}
+        run: |
+          if [ "$OPERATION" = "updated" ]; then
+            msg="Thanks. I updated the pull request with this change: $PR_URL"
+          else
+            msg="Thanks. I opened a pull request with your contribution: $PR_URL"
+          fi
+          gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "$msg
+
+          After review and merge, it reaches every TMSync user with the next library sync. This issue closes when the pull request merges."

@@ -62,7 +62,9 @@ const URL_LIMIT = 7000; // GitHub rejects very long prefilled-issue URLs
 function build(title: string, entries: ContributionEntry[]): Contribution {
   const json = JSON.stringify(entries.length === 1 ? entries[0] : entries, null, 2);
   const body = [
-    "Contribution from TMSync. The JSON below is self-describing (`kind`/`tracker`/`action`/`id`) so it can be routed to the right file and merged with minimal cleanup.",
+    "Contribution from TMSync. Submit this issue as it is.",
+    "",
+    "**What happens next:** a bot reads the JSON below and opens a pull request with it, in a minute or two. It comments here with the link. After review and merge, the change reaches every TMSync user with the next library sync.",
     "",
     "```json",
     json,
