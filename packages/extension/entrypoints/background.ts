@@ -254,81 +254,7 @@ export default defineBackground(() => {
     if (tabId !== undefined && !(await claimScrobbleOwner(tabId, frameId, data.action))) {
       return { ok: true, resolved: true }; // another frame owns this tab's scrobble
     }
-    // MULTI-TRACK: the enabled set + which tracker speaks the page's numbering
-    // natively (recorded directly). Every OTHER enabled tracker is derived via the
-    // crosswalk. `trackers` is authoritative; fall back to the legacy single field.
-    const enabled = data.trackers?.length ? data.trackers : [data.tracker ?? "trakt"];
-    // Native must be an ENABLED tracker (a disabled one can't be recorded directly).
-    // So an AniList-only recipe on a TMDB/seasoned site records AniList directly with
-    // the scraped episode instead of forcing it through the crosswalk.
-    const native = inferNativeTracker(data.media, enabled);
-    const nativeEnabled = enabled.includes(native);
-    // Resolve the native item when we'll record it, OR to BRIDGE a reverse (→Trakt)
-    // derive (which needs the AniList id). Forward (→AniList) uses the scraped
-    // tmdbId, so it needs no native item.
-    const needNative = nativeEnabled || (native === "anilist" && enabled.includes("trakt"));
-    let nativeItem: TrackedItem | null = null;
-    let nativeThrew = false;
-    if (needNative) {
-      try {
-        nativeItem = await getAdapter(native).resolve(data.media);
-      } catch {
-        nativeThrew = true;
-      }
-    }
-
-    // Record the native tracker directly — only if the user enabled it.
-    let nativeReply: ScrobbleReply | null = null;
-    if (nativeEnabled) {
-      if (nativeThrew) {
-        nativeReply = { ok: false, resolved: false, reason: "http", primaryTracker: native };
-      } else if (!nativeItem) {
-        nativeReply = { ok: false, resolved: false, reason: "unresolved", primaryTracker: native };
-      } else {
-        const result = await getAdapter(native).recordProgress(
-          nativeItem,
-          data.media,
-          data.progress,
-          data.action,
-          data.watchedThreshold ?? 0.8,
-        );
-        nativeReply = {
-          ok: result.ok,
-          status: result.status,
-          action: result.action,
-          resolved: true,
-          reason: result.ok ? undefined : result.reason,
-          completed: result.completed,
-          info: result.info,
-          atEpisode: result.atEpisode,
-          resolvedTitle: result.reason === "no_episode" ? undefined : nativeItem.title,
-          resolvedYear: result.reason === "no_episode" ? undefined : nativeItem.year,
-          resolvedEpisodes: nativeItem.tracker === "anilist" ? nativeItem.episodes : undefined,
-          httpError: result.httpError,
-          primaryTracker: native,
-        };
-      }
-    }
-
-    // Derive + record every OTHER enabled tracker via the crosswalk (+ overrides).
-    // When the native tracker isn't enabled there's no anchor to bridge from, so
-    // those trackers resolve themselves on a miss (id → title) instead of skipping.
-    const derived = await recordDerivedTrackers(
-      nativeItem,
-      enabled.filter((t) => t !== native),
-      data,
-      await animapOverrides.getValue(),
-      await loadAnimap(),
-      !nativeEnabled,
-    );
-
-    // Native is the badge's primary when enabled; otherwise promote the first
-    // derived tracker so a derive-only recipe (e.g. AniList-only on a TMDB site)
-    // still drives the badge.
-    if (nativeReply) return { ...nativeReply, derived: derived.length ? derived : undefined };
-    const [head, ...rest] = derived;
-    if (!head) return { ok: false, resolved: false, reason: "unresolved" };
-    return { ...derivedToReply(head), derived: rest.length ? rest : undefined };
+    return recordScrobble(data);
   });
 
   // Pre-resolution for the badge: resolve identity (cached) without recording so
@@ -761,19 +687,17 @@ export default defineBackground(() => {
     // Already stopped (ended) or never really started → nothing to reconcile.
     if (session.ended || session.progress <= 0) return;
     try {
-      // Route the reconciling stop to the same adapter the session used. For Trakt
-      // this sends the final /scrobble/stop; for AniList it commits the threshold
-      // write if the last progress crossed it (otherwise a quiet no-op).
-      const adapter = getAdapter(session.tracker);
-      const item = await adapter.resolve(session.media);
-      if (!item) return;
-      await adapter.recordProgress(
-        item,
-        session.media,
-        session.progress,
-        "stop",
-        session.watchedThreshold,
-      );
+      // The same fan-out as a live stop: every enabled tracker, native or derived.
+      // For Trakt this sends the final /scrobble/stop; for AniList it commits the
+      // threshold write if the last progress crossed it (otherwise a quiet no-op).
+      await recordScrobble({
+        action: "stop",
+        media: session.media,
+        progress: session.progress,
+        tracker: session.tracker,
+        trackers: session.trackers,
+        watchedThreshold: session.watchedThreshold,
+      });
     } catch {
       // not connected / network — nothing to reconcile
     }
@@ -786,6 +710,88 @@ export default defineBackground(() => {
     if (changeInfo.status === "loading") void clearTabStatus(tabId);
   });
 });
+
+/**
+ * Record one scrobble phase on every enabled tracker: the native one directly, the
+ * others through the crosswalk. Used by live scrobbles and by the tab-close stop.
+ */
+async function recordScrobble(data: ScrobbleRequest): Promise<ScrobbleReply> {
+  // MULTI-TRACK: the enabled set + which tracker speaks the page's numbering
+  // natively (recorded directly). Every OTHER enabled tracker is derived via the
+  // crosswalk. `trackers` is authoritative; fall back to the legacy single field.
+  const enabled = data.trackers?.length ? data.trackers : [data.tracker ?? "trakt"];
+  // Native must be an ENABLED tracker (a disabled one can't be recorded directly).
+  // So an AniList-only recipe on a TMDB/seasoned site records AniList directly with
+  // the scraped episode instead of forcing it through the crosswalk.
+  const native = inferNativeTracker(data.media, enabled);
+  const nativeEnabled = enabled.includes(native);
+  // Resolve the native item when we'll record it, OR to BRIDGE a reverse (→Trakt)
+  // derive (which needs the AniList id). Forward (→AniList) uses the scraped
+  // tmdbId, so it needs no native item.
+  const needNative = nativeEnabled || (native === "anilist" && enabled.includes("trakt"));
+  let nativeItem: TrackedItem | null = null;
+  let nativeThrew = false;
+  if (needNative) {
+    try {
+      nativeItem = await getAdapter(native).resolve(data.media);
+    } catch {
+      nativeThrew = true;
+    }
+  }
+
+  // Record the native tracker directly — only if the user enabled it.
+  let nativeReply: ScrobbleReply | null = null;
+  if (nativeEnabled) {
+    if (nativeThrew) {
+      nativeReply = { ok: false, resolved: false, reason: "http", primaryTracker: native };
+    } else if (!nativeItem) {
+      nativeReply = { ok: false, resolved: false, reason: "unresolved", primaryTracker: native };
+    } else {
+      const result = await getAdapter(native).recordProgress(
+        nativeItem,
+        data.media,
+        data.progress,
+        data.action,
+        data.watchedThreshold ?? 0.8,
+      );
+      nativeReply = {
+        ok: result.ok,
+        status: result.status,
+        action: result.action,
+        resolved: true,
+        reason: result.ok ? undefined : result.reason,
+        completed: result.completed,
+        info: result.info,
+        atEpisode: result.atEpisode,
+        resolvedTitle: result.reason === "no_episode" ? undefined : nativeItem.title,
+        resolvedYear: result.reason === "no_episode" ? undefined : nativeItem.year,
+        resolvedEpisodes: nativeItem.tracker === "anilist" ? nativeItem.episodes : undefined,
+        httpError: result.httpError,
+        primaryTracker: native,
+      };
+    }
+  }
+
+  // Derive + record every OTHER enabled tracker via the crosswalk (+ overrides).
+  // When the native tracker isn't enabled there's no anchor to bridge from, so
+  // those trackers resolve themselves on a miss (id → title) instead of skipping.
+  const derived = await recordDerivedTrackers(
+    nativeItem,
+    enabled.filter((t) => t !== native),
+    data,
+    await animapOverrides.getValue(),
+    await loadAnimap(),
+    !nativeEnabled,
+  );
+
+  // Native is the badge's primary when enabled; otherwise promote the first
+  // derived tracker so a derive-only recipe (e.g. AniList-only on a TMDB site)
+  // still drives the badge.
+  if (nativeReply) return { ...nativeReply, derived: derived.length ? derived : undefined };
+  const [head, ...rest] = derived;
+  if (!head) return { ok: false, resolved: false, reason: "unresolved" };
+  return { ...derivedToReply(head), derived: rest.length ? rest : undefined };
+}
 
 /**
  * MULTI-TRACK (docs/MULTI-TRACK.md): record the DERIVED tracker(s) for a scrobble,
