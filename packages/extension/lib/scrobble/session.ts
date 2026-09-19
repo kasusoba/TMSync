@@ -913,7 +913,7 @@ export class SessionManager {
             statusFromReply(action, reply, media, reply.primaryTracker ?? tracker),
           );
         });
-        if (action === "stop") void sendMessage("endSession");
+        if (action === "stop") void sendMessage("endSession", media);
         else void sendMessage("updateProgress", progress);
       },
       this.watchedThreshold,
@@ -948,7 +948,8 @@ export class SessionManager {
   /**
    * Swap the recipe list live and re-evaluate — no page reload. Called when the
    * user saves/edits/deletes a recipe in the picker (the content script watches the
-   * recipe store). Only re-runs when the set actually changed.
+   * recipe store). It restarts the playing session, so the caller calls it only
+   * when the list changed.
    */
   updateRecipes(recipes: Recipe[]): void {
     this.recipes = recipes;
