@@ -3,12 +3,7 @@ import type { AniListIdentity } from "@/lib/anilist/types";
 import type { AnimapOverrides } from "@/lib/animap/derive";
 import { defaultRecipeName } from "@/lib/picker/recipe-builder";
 import { applyBackup, buildBackup, parseBackup } from "@/lib/portability/backup";
-import {
-  type Contribution,
-  contributeAll,
-  contributeQuickLink,
-  contributeRecipe,
-} from "@/lib/portability/contribute";
+import { type Contribution, contribute } from "@/lib/portability/contribute";
 import { type SiteGroup, groupSites, withSiteHosts, withSiteName } from "@/lib/sites";
 import {
   type AnimeMapCache,
@@ -421,12 +416,14 @@ function SiteCard({
   onAddHost: () => void;
   onRemoveHost: (host: string) => void;
   onRename: (name: string) => void;
-  onContribute: (r: Recipe) => void;
+  /** Contribute this site's own recipes (and its quick link) in one issue. */
+  onContribute: () => void;
   onCopy: (r: Recipe) => void;
   onDelete: (id: string) => void;
 }) {
   const needsAccess = site.hosts.some((h) => !isHostEnabled(h));
-  const renamable = site.recipes.some((r) => !r.library);
+  // The site has recipes of your own: you can rename it and contribute it.
+  const owned = site.recipes.some((r) => !r.library);
   const [naming, setNaming] = useState(false);
   const [draftName, setDraftName] = useState(site.name);
   const saveName = () => {
@@ -461,7 +458,7 @@ function SiteCard({
         ) : (
           <span class="flex min-w-0 items-center gap-0.5">
             <span class={clsx("truncate text-[13px] font-semibold", t.heading)}>{site.name}</span>
-            {renamable && (
+            {owned && (
               <IconBtn
                 t={t}
                 name="edit"
@@ -474,12 +471,24 @@ function SiteCard({
             )}
           </span>
         )}
-        {/* Access is one way: allow once, keep it. The domain dots show the state.
-            Removing a domain or the site's last recipe takes the access back. */}
-        {!naming && !allSites && needsAccess && (
-          <Btn t={t} tone="primary" disabled={busy} onClick={onEnable}>
-            Allow
-          </Btn>
+        {!naming && (
+          <span class="flex shrink-0 items-center gap-1">
+            {owned && (
+              <IconBtn
+                t={t}
+                name="external"
+                title="Contribute this site to the library"
+                onClick={onContribute}
+              />
+            )}
+            {/* Access is one way: allow once, keep it. The domain dots show the
+                state. Removing a domain or the site's last recipe takes it back. */}
+            {!allSites && needsAccess && (
+              <Btn t={t} tone="primary" disabled={busy} onClick={onEnable}>
+                Allow
+              </Btn>
+            )}
+          </span>
         )}
       </div>
 
@@ -552,12 +561,6 @@ function SiteCard({
               </div>
               {!library && (
                 <div class="flex shrink-0 items-center">
-                  <IconBtn
-                    t={t}
-                    name="external"
-                    title="Contribute to library"
-                    onClick={() => onContribute(r)}
-                  />
                   <IconBtn
                     t={t}
                     name={copied === r.id ? "check" : "copy"}
@@ -693,6 +696,8 @@ export function App() {
   const [backupBusy, setBackupBusy] = useState(false);
   const [backupNote, setBackupNote] = useState<string | null>(null);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  /** Contribute checklist: the rows the user unticked (all are ticked at first). */
+  const [skipContrib, setSkipContrib] = useState<Set<string>>(new Set());
   /** After "Contribute": the paste step for a bundle too large to prefill. */
   const [contribNote, setContribNote] = useState<string | null>(null);
   /** Feedback for a Connect attempt (Options mirrors the popup — a failed/cancelled
@@ -1176,6 +1181,38 @@ export function App() {
   const needsFilter = needsOnly && toAllow.length > 0;
   const visibleSites = needsFilter ? toAllow : matchingSites;
 
+  // --- contribute: a site is its own recipes plus its quick link ---
+  const ownRecipes = (site: SiteGroup) =>
+    site.recipes.filter((r) => !r.library).map((r) => r.recipe);
+  const ownLinksFor = (site: SiteGroup) => {
+    const hosts = new Set(site.hosts.map(normalizeHost));
+    return links.filter((l) => l.source !== "library" && hosts.has(normalizeHost(linkHost(l))));
+  };
+  // Checklist rows: each site of yours, then quick links that belong to none of them.
+  const siteRows = siteGroups
+    .filter((g) => g.recipes.some((r) => !r.library))
+    .map((g) => ({
+      key: `site:${g.key}`,
+      name: g.name,
+      recipes: ownRecipes(g),
+      links: ownLinksFor(g),
+    }));
+  const inSiteRows = new Set(siteRows.flatMap((r) => r.links.map((l) => l.id)));
+  const contribRows = [
+    ...siteRows,
+    ...links
+      .filter((l) => l.source !== "library" && !inSiteRows.has(l.id))
+      .map((l) => ({ key: `link:${l.id}`, name: l.name, recipes: [] as Recipe[], links: [l] })),
+  ];
+  const picked = contribRows.filter((r) => !skipContrib.has(r.key));
+  const pickedCount = picked.reduce((n, r) => n + r.recipes.length + r.links.length, 0);
+  const toggleContrib = (key: string) =>
+    setSkipContrib((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+
   const counts: Record<string, number> = {
     links: links.length,
     corrections: allCorrections.length,
@@ -1434,7 +1471,9 @@ export function App() {
                       onAddHost={() => void addHost(site)}
                       onRemoveHost={(h) => void removeHost(site, h)}
                       onRename={(name) => void renameSite(site, name)}
-                      onContribute={(r) => openContribution(contributeRecipe(r))}
+                      onContribute={() =>
+                        openContribution(contribute(ownRecipes(site), ownLinksFor(site), site.name))
+                      }
                       onCopy={copyRecipe}
                       onDelete={deleteRecipe}
                     />
@@ -1535,7 +1574,7 @@ export function App() {
                           onEdit={() => setOpenLinkId((cur) => (cur === s.id ? null : s.id))}
                           onCopy={() => copyLink(s)}
                           copied={copied === s.id}
-                          onContribute={() => openContribution(contributeQuickLink(s))}
+                          onContribute={() => openContribution(contribute([], [s]))}
                           onDragStart={() => onLinkDragStart(s.id)}
                           onDragEnter={() => onLinkDragEnter(s.id)}
                           onDragEnd={onLinkDragEnd}
@@ -1686,31 +1725,84 @@ export function App() {
                 <p class={clsx("text-[12px] leading-relaxed", t.sub)}>
                   Share your recipes &amp; quick links with everyone. This opens a GitHub issue with
                   them filled in: site config only, no watch data. A maintainer checks it, then it
-                  goes into the shared library. To share one site, use Contribute on its row.
+                  goes into the shared library. Pick what to share below, or use Contribute on a
+                  site in Sites.
                 </p>
-                <div class={clsx("flex items-center gap-3 rounded-lg px-3 py-2.5", t.card)}>
-                  <span class="min-w-0 flex-1">
-                    <span class={clsx("block text-[13px] font-medium", t.heading)}>
-                      Contribute everything
-                    </span>
-                    <span class={clsx("block text-[11px]", t.sub)}>
-                      {recipes.length} recipe{recipes.length === 1 ? "" : "s"} ·{" "}
-                      {links.filter((l) => l.source !== "library").length} quick link
-                      {links.filter((l) => l.source !== "library").length === 1 ? "" : "s"}
-                    </span>
-                  </span>
-                  <Btn
-                    t={t}
-                    tone="ghost"
-                    disabled={
-                      recipes.length === 0 &&
-                      links.filter((l) => l.source !== "library").length === 0
-                    }
-                    onClick={() => openContribution(contributeAll(recipes, links))}
-                  >
-                    <Icon name="external" class="text-[12px]" /> Contribute all
-                  </Btn>
-                </div>
+                {contribRows.length === 0 ? (
+                  <p class={clsx("rounded-lg px-3 py-4 text-center text-[12px]", t.card, t.sub)}>
+                    Nothing to share yet. Recipes and quick links you make show here.
+                  </p>
+                ) : (
+                  <>
+                    {/* One row per site (its recipes and its quick link) or loose
+                        quick link. All ticked at first: untick what to keep back. */}
+                    <div class="space-y-1.5">
+                      {contribRows.map((row) => (
+                        <label
+                          key={row.key}
+                          class={clsx(
+                            "flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2",
+                            t.card,
+                          )}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={!skipContrib.has(row.key)}
+                            onChange={() => toggleContrib(row.key)}
+                            class="size-4 shrink-0 cursor-pointer accent-ikura"
+                          />
+                          <span class="min-w-0 flex-1">
+                            <span class={clsx("block truncate text-[13px]", t.heading)}>
+                              {row.name}
+                            </span>
+                            <span class={clsx("block text-[11px]", t.sub)}>
+                              {[
+                                row.recipes.length > 0 &&
+                                  `${row.recipes.length} recipe${row.recipes.length === 1 ? "" : "s"}`,
+                                row.links.length > 0 &&
+                                  `${row.links.length} quick link${row.links.length === 1 ? "" : "s"}`,
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </span>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                    <div class="flex items-center justify-between gap-2">
+                      <Btn
+                        t={t}
+                        tone="ghost"
+                        onClick={() =>
+                          setSkipContrib(
+                            picked.length === contribRows.length
+                              ? new Set(contribRows.map((r) => r.key))
+                              : new Set(),
+                          )
+                        }
+                      >
+                        {picked.length === contribRows.length ? "Select none" : "Select all"}
+                      </Btn>
+                      <Btn
+                        t={t}
+                        tone="primary"
+                        disabled={pickedCount === 0}
+                        onClick={() =>
+                          openContribution(
+                            contribute(
+                              picked.flatMap((r) => r.recipes),
+                              picked.flatMap((r) => r.links),
+                              picked.length === 1 ? picked[0]?.name : undefined,
+                            ),
+                          )
+                        }
+                      >
+                        <Icon name="external" class="text-[12px]" /> Contribute {pickedCount}{" "}
+                        {pickedCount === 1 ? "item" : "items"}
+                      </Btn>
+                    </div>
+                  </>
+                )}
               </>
             )}
 
