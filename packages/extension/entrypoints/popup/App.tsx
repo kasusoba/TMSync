@@ -5,6 +5,7 @@ import {
   flattenFrameTree,
 } from "@/lib/diagnostics/frame-tree";
 import { deriveQuickLink } from "@/lib/picker/recipe-builder";
+import { linkOnHost, removeLinkOnHost, saveLinkOnHost } from "@/lib/quick-link-edit";
 import { type SiteGroup, findMovedSite, groupSites, withSiteHosts } from "@/lib/sites";
 import {
   type BadgePrefs,
@@ -26,19 +27,13 @@ import { tokens } from "@/lib/ui/kit/kit";
 import { NowPlaying } from "@/lib/ui/scrobble-panels";
 import type { BadgeStatus } from "@/messaging";
 import { type AniListStatus, type TraktStatus, sendMessage } from "@/messaging";
-import { type ParsedMedia, hostText, linkHost, matchesUrl, normalizeHost } from "@tmsync/shared";
+import { type ParsedMedia, hostText, matchesUrl } from "@tmsync/shared";
 import { useEffect, useState } from "preact/hooks";
 import { browser } from "wxt/browser";
 
 async function activeTabUrl(): Promise<string | null> {
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
   return tab?.url ?? null;
-}
-
-/** The quick link on this domain. Look it up by domain, not by id: a link made in
- * Options, or moved from another domain, does not have the id `ql-<host>`. */
-function linkOnHost(links: QuickLinkSite[], host: string): QuickLinkSite | undefined {
-  return links.find((l) => normalizeHost(linkHost(l)) === normalizeHost(host));
 }
 
 function httpOrigin(url: string | null): string | null {
@@ -322,29 +317,7 @@ export function App() {
   const saveQuickLink = async (v: QuickLinkValue) => {
     if (!qlHost) return;
     setBusy(true);
-    const links = await quickLinks.getValue();
-    const current = linkOnHost(links, qlHost);
-    // Keep the id of the link already on this domain. Else `ql-<host>`, unless a
-    // link that moved from this domain still has that id.
-    const qid =
-      current?.id ??
-      (links.some((l) => l.id === `ql-${qlHost}`) ? `ql-${qlHost}-${Date.now()}` : `ql-${qlHost}`);
-    const entry: QuickLinkSite = {
-      id: qid,
-      name: v.name,
-      enabled: true,
-      source: "user",
-      tracker: v.tracker,
-      host: v.host,
-      movie: v.movie,
-      tv: v.tv,
-      anime: v.anime,
-      search: v.search,
-    };
-    const next = current
-      ? links.map((l) => (l.id === qid ? { ...l, ...entry } : l))
-      : [...links, entry];
-    await quickLinks.setValue(next);
+    await quickLinks.setValue(saveLinkOnHost(await quickLinks.getValue(), qlHost, v));
     await refresh();
     setNote(`Quick link saved for ${qlHost}.`);
     setBusy(false);
@@ -353,8 +326,7 @@ export function App() {
   const removeQuickLink = async () => {
     if (!qlHost) return;
     setBusy(true);
-    const links = await quickLinks.getValue();
-    await quickLinks.setValue(links.filter((l) => l.id !== `ql-${qlHost}`));
+    await quickLinks.setValue(removeLinkOnHost(await quickLinks.getValue(), qlHost));
     await refresh();
     setNote(`Quick link removed for ${qlHost}.`);
     setBusy(false);
