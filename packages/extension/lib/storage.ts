@@ -20,8 +20,8 @@ import type { ResolvedIdentity, TraktIds, TraktTokens } from "./trakt/types";
  *  - `session:` ephemeral per-tab session state.
  *
  * Quota note: `browser.storage.sync` caps items at ~8 KB each / ~100 KB total.
- * The synced items are single keys today (a handful of small entries fits easily);
- * if corrections/recipes ever grow large, move to per-item keys (STORAGE-SYNC.md).
+ * Custom recipes use one key per recipe (recipe-store.ts). The other synced items
+ * are single keys; if they grow large, move them to per-item keys too.
  */
 
 export const traktTokens = storage.defineItem<TraktTokens | null>("local:trakt_tokens", {
@@ -114,11 +114,9 @@ export const optionsIntent = storage.defineItem<OptionsIntent | null>("session:o
   fallback: null,
 });
 
-/** Recipes authored locally via the element picker (merged with the bundled list). */
-export const customRecipes = storage.defineItem<Recipe[]>("sync:custom_recipes", {
-  fallback: [],
-  version: 2,
-});
+/** Recipes authored locally via the element picker (merged with the bundled list).
+ * One sync key per recipe; see recipe-store.ts. */
+export { customRecipes } from "./recipe-store";
 
 /**
  * Cached copy of the versioned recipe list fetched from the repo/CDN (Phase 1

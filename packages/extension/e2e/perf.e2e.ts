@@ -35,11 +35,12 @@ test("the content script keeps a churning page responsive (no freeze)", async ()
 
     // Seed a recipe that matches the fixture (so a session is published and the
     // session's video-search hot path actually runs) and enable the origin.
-    // WXT storage keys drop the `local:` prefix.
+    // WXT storage keys drop the `local:` prefix. Custom recipes are one sync key each.
     await sw.evaluate(async (origin) => {
-      await chrome.storage.local.set({
-        custom_recipes: [
-          {
+      await chrome.storage.sync.set({
+        "recipe:e2e-churn": {
+          at: 0,
+          recipe: {
             id: "e2e-churn",
             schemaVersion: 2,
             name: "Churn",
@@ -49,9 +50,9 @@ test("the content script keeps a churning page responsive (no freeze)", async ()
             video: { selector: "video", frame: "auto", watchedThreshold: 0.8 },
             extract: { title: { source: "meta", selector: "og:title", transforms: ["trim"] } },
           },
-        ],
-        enabled_origins: [origin],
+        },
       });
+      await chrome.storage.local.set({ enabled_origins: [origin] });
       // Seed a saved badge position so the badge's positioning code runs — that's
       // where a re-render loop once froze the tab. (sync storage; key un-prefixed.)
       await chrome.storage.sync.set({
