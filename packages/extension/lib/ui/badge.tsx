@@ -1,6 +1,13 @@
 import "@/lib/ui/theme.css";
 import { type BadgePrefs, badgePrefs } from "@/lib/storage";
-import { type CourTracker, type Tracker, isSeasonless, trackerLabel } from "@/lib/tracker/types";
+import {
+  type CourTracker,
+  type Tracker,
+  isCourFix,
+  isSeasonless,
+  trackerFix,
+  trackerLabel,
+} from "@/lib/tracker/types";
 import {
   type BadgeState,
   type BadgeStatus,
@@ -457,8 +464,8 @@ function BadgeRoot() {
             trackers={activeTrackers}
             outcomes={status.trackers}
             onFix={(tk) => {
-              if (tk === "trakt") return setPanel(manualMode ? "manual" : "fix");
-              if (tk === "simkl") return; // Simkl matches server-side: nothing to fix
+              if (trackerFix(tk) === "search") return setPanel(manualMode ? "manual" : "fix");
+              if (!isCourFix(tk)) return; // nothing to fix (Simkl matches server-side)
               setFixTracker(tk);
               setPanel("cour-fix");
             }}

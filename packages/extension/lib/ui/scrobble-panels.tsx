@@ -5,7 +5,9 @@ import {
   type Tracker,
   type WatchedEpisode,
   type WatchedState,
+  isCourFix,
   isSeasonless,
+  trackerFix,
   trackerLabel,
   trackerNote,
   trackerRates,
@@ -166,12 +168,13 @@ export function TrackingRows({
     void sendMessage("resolveAll", { media, trackers }).then(setResolutions);
   }, [media, trackers.join(",")]);
   const resFor = (tk: Tracker) => resolutions?.find((r) => r.tracker === tk);
-  // Trakt is always fixable. A cour tracker (AniList, MAL) is too: with a tmdbId
-  // we pin the crosswalk override, and the title correction covers the rest (a
-  // native match, or MAL following AniList's entry). Simkl matches server-side,
-  // so it has nothing to fix.
+  // A search-fixed tracker (Trakt) is always fixable. A cour tracker (AniList, MAL)
+  // is too: with a tmdbId we pin the crosswalk override, and the title correction
+  // covers the rest (a native match, or MAL following AniList's entry). A `none`
+  // tracker (Simkl matches server-side) has nothing to fix.
   const canFix = (tk: Tracker) =>
-    tk === "trakt" || (isSeasonless(tk) && (media.ids?.tmdb !== undefined || !!media.title));
+    trackerFix(tk) === "search" ||
+    (isCourFix(tk) && (media.ids?.tmdb !== undefined || !!media.title));
 
   return (
     <div>
@@ -321,11 +324,10 @@ export function RateNote({
     return r ? r.resolved : true;
   };
 
-  // A cour tracker (AniList, MAL) rates only the cour (≈ the whole series), so it's a
-  // valid target only on the top "show" level; Trakt rates whatever level is picked.
-  // AND the tracker must actually have resolved the item.
-  // An entry tracker rates only the top level: "show" (a cour tracker's cour, or
-  // Simkl's show), or "movie" for Simkl (cour trackers don't rate movies here).
+  // A `levels` tracker (Trakt) rates whatever level is picked. An entry tracker
+  // rates only the top level: "show" (a cour tracker's cour, or Simkl's show), or
+  // "movie" for Simkl (cour trackers don't rate movies here). The tracker must also
+  // have resolved the item (`resolvedOk`).
   const levelOk = (tk: Tracker): boolean =>
     trackerRates(tk) === "levels" || level === "show" || (!isSeasonless(tk) && level === "movie");
   const applicable: Tracker[] = trackers.filter((tk) => levelOk(tk) && resolvedOk(tk));
@@ -1376,8 +1378,8 @@ export function NowPlaying({
             media={media}
             trackers={trackers}
             onFix={(tk) => {
-              if (tk === "trakt") return setPanel("fix");
-              if (tk === "simkl") return; // Simkl matches server-side: nothing to fix
+              if (trackerFix(tk) === "search") return setPanel("fix");
+              if (!isCourFix(tk)) return; // nothing to fix (Simkl matches server-side)
               setFixTracker(tk);
               setPanel("cour-fix");
             }}

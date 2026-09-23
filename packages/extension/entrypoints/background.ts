@@ -574,24 +574,10 @@ export default defineBackground(() => {
   // happen with a tmdb id too, e.g. Trakt off) or follows AniList (MAL). The title
   // key carries the season, so a pin for one season never applies to another.
   onMessage("setCourMatch", async ({ data, sender }) => {
-    const pins = COUR_PINS[data.tracker];
-    let identity: AniListIdentity | MalIdentity | null = null;
-    if (data.id !== null) {
-      identity = await pins.load(data.id).catch(() => null);
-      if (!identity) {
-        return { ok: false, error: `couldn't load that ${trackerLabel(data.tracker)} entry` };
-      }
+    const out = await COUR_PINS[data.tracker].apply(data.media, data.id);
+    if (!out.ok) {
+      return { ok: false, error: `couldn't load that ${trackerLabel(data.tracker)} entry` };
     }
-    const tmdbId = data.media.ids?.tmdb;
-    if (tmdbId !== undefined) {
-      const ov = await animapOverrides.getValue();
-      const key = forwardKey(Number(tmdbId), data.media.season);
-      await animapOverrides.setValue({
-        ...ov,
-        [pins.override]: { ...ov[pins.override], [key]: data.id },
-      });
-    }
-    await pins.setCorrection(data.media, identity);
     const tabId = data.tabId ?? sender.tab?.id;
     if (tabId !== undefined) void sendMessage("recheck", undefined, tabId);
     return { ok: true };
@@ -600,18 +586,7 @@ export default defineBackground(() => {
   // Undo a pin (or a "Not on <tracker>") → back to the automatic match (the Fribb
   // crosswalk, or the title search). Clears both keys, like the set.
   onMessage("resetCourMatch", async ({ data, sender }) => {
-    const pins = COUR_PINS[data.tracker];
-    const tmdbId = data.media.ids?.tmdb;
-    if (tmdbId !== undefined) {
-      const ov = await animapOverrides.getValue();
-      const key = forwardKey(Number(tmdbId), data.media.season);
-      const pinned = ov[pins.override];
-      if (pinned && key in pinned) {
-        const { [key]: _gone, ...rest } = pinned;
-        await animapOverrides.setValue({ ...ov, [pins.override]: rest });
-      }
-    }
-    await pins.setCorrection(data.media, undefined);
+    await COUR_PINS[data.tracker].apply(data.media, undefined);
     const tabId = data.tabId ?? sender.tab?.id;
     if (tabId !== undefined) void sendMessage("recheck", undefined, tabId);
     return { ok: true };
@@ -926,68 +901,22 @@ async function recordScrobble(
   // natively (recorded directly). Every OTHER enabled tracker is derived via the
   // crosswalk. `trackers` is authoritative; fall back to the legacy single field.
   const enabled = data.trackers?.length ? data.trackers : [data.tracker ?? "trakt"];
-  // Native must be an ENABLED tracker (a disabled one can't be recorded directly).
-  // So an AniList-only recipe on a TMDB/seasoned site records AniList directly with
-  // the scraped episode instead of forcing it through the crosswalk.
+  // The native tracker is always an ENABLED one (inferNativeTracker picks from
+  // `enabled`). So an AniList-only recipe on a TMDB/seasoned site records AniList
+  // directly with the scraped episode instead of forcing it through the crosswalk.
   const native = inferNativeTracker(data.media, enabled);
-  const nativeEnabled = enabled.includes(native);
-  // Resolve the native item when we'll record it, OR to BRIDGE a reverse (cour →
-  // seasoned) derive, which needs the cour entry's id. Forward (seasoned → cour)
-  // uses the scraped tmdbId, so it needs no native item.
-  const needNative = nativeEnabled || needsCourBridge(native, enabled);
   let nativeItem: TrackedItem | null = null;
   let nativeError: string | undefined;
-  if (needNative) {
-    try {
-      nativeItem = await getAdapter(native).resolve(data.media);
-    } catch (e) {
-      nativeError = errorMessage(e);
-    }
+  try {
+    nativeItem = await getAdapter(native).resolve(data.media);
+  } catch (e) {
+    nativeError = errorMessage(e);
   }
-
-  // Record the native tracker directly — only if the user enabled it.
-  let nativeReply: ScrobbleReply | null = null;
-  if (nativeEnabled) {
-    if (nativeError !== undefined) {
-      nativeReply = {
-        ok: false,
-        resolved: false,
-        reason: "http",
-        httpError: nativeError,
-        primaryTracker: native,
-      };
-    } else if (!nativeItem) {
-      nativeReply = { ok: false, resolved: false, reason: "unresolved", primaryTracker: native };
-    } else {
-      const result = await getAdapter(native).recordProgress(
-        nativeItem,
-        data.media,
-        data.progress,
-        data.action,
-        data.watchedThreshold ?? 0.8,
-      );
-      nativeReply = {
-        ok: result.ok,
-        status: result.status,
-        action: result.action,
-        resolved: true,
-        reason: result.ok ? undefined : result.reason,
-        completed: result.completed,
-        info: result.info,
-        atEpisode: result.atEpisode,
-        resolvedTitle: result.reason === "no_episode" ? undefined : nativeItem.title,
-        resolvedYear: result.reason === "no_episode" ? undefined : nativeItem.year,
-        resolvedEpisodes: "episodes" in nativeItem ? nativeItem.episodes : undefined,
-        httpError: result.httpError,
-        primaryTracker: native,
-      };
-    }
-  }
+  const nativeReply = await recordNative(native, nativeItem, nativeError, data);
 
   // Derive + record every OTHER enabled tracker via the crosswalk (+ overrides).
-  // When the native tracker isn't enabled there's no anchor to bridge from, so
-  // those trackers resolve themselves on a miss (id → title) instead of skipping.
-  // Passthrough trackers last: a Simkl stop may wait out its 20 s scrobble lock,
+  // The native item is the anchor: a reverse (cour → seasoned) derive bridges from
+  // its id. Passthrough trackers last: a Simkl stop may wait out its 20 s scrobble lock,
   // and the others are recorded in order, so they must not wait behind it.
   const others = enabled
     .filter((t) => t !== native)
@@ -1001,54 +930,46 @@ async function recordScrobble(
     data,
     overrides,
     animap,
-    !nativeEnabled,
   );
   if (late.length && onLate) {
-    onLate(recordDerivedTrackers(nativeItem, late, data, overrides, animap, !nativeEnabled));
+    onLate(recordDerivedTrackers(nativeItem, late, data, overrides, animap));
     derived.push(...late.map((tracker) => ({ tracker, ok: true, deferred: true })));
   }
-
-  // Native is the badge's primary when enabled; otherwise promote the first
-  // derived tracker so a derive-only recipe (e.g. AniList-only on a TMDB site)
-  // still drives the badge.
-  if (nativeReply) return { ...nativeReply, derived: derived.length ? derived : undefined };
-  const [head, ...rest] = derived;
-  if (!head) return { ok: false, resolved: false, reason: "unresolved" };
-  return { ...derivedToReply(head), derived: rest.length ? rest : undefined };
+  return { ...nativeReply, derived: derived.length ? derived : undefined };
 }
 
-/**
- * MULTI-TRACK (docs/MULTI-TRACK.md): record the DERIVED tracker(s) for a scrobble,
- * alongside the native one. The native item is already resolved+recorded; for each
- * other toggled tracker we derive its numbering via the anime-map crosswalk, then
- * resolve + record it. Independent + advance-only (each adapter owns its own watched
- * decision + never-lower rule). Never guesses: a crosswalk miss is a silent skip
- * (the item isn't anime / isn't mapped), an ambiguous match refuses with a warning.
- */
-/** Promote a derived outcome to the top-level reply shape (used when the native
- * tracker isn't enabled, so a derived tracker drives the badge). */
-function derivedToReply(d: DerivedOutcome): ScrobbleReply {
-  const reason: ScrobbleReply["reason"] | undefined = d.ok
-    ? undefined
-    : d.reason === "no_match" || d.skipped
-      ? "unresolved"
-      : d.reason === "numbering_mismatch" ||
-          d.reason === "not_connected" ||
-          d.reason === "no_episode" ||
-          d.reason === "needs_rewatch"
-        ? d.reason
-        : "http";
+/** Record the native tracker directly and shape the badge's primary reply. */
+async function recordNative(
+  native: Tracker,
+  item: TrackedItem | null,
+  error: string | undefined,
+  data: ScrobbleRequest,
+): Promise<ScrobbleReply> {
+  if (error !== undefined) {
+    return { ok: false, resolved: false, reason: "http", httpError: error, primaryTracker: native };
+  }
+  if (!item) return { ok: false, resolved: false, reason: "unresolved", primaryTracker: native };
+  const result = await getAdapter(native).recordProgress(
+    item,
+    data.media,
+    data.progress,
+    data.action,
+    data.watchedThreshold ?? 0.8,
+  );
   return {
-    ok: d.ok,
-    resolved: !d.skipped && d.reason !== "unresolved",
-    action: d.action,
-    reason,
-    completed: d.completed,
-    resolvedTitle: d.resolvedTitle,
-    resolvedYear: d.resolvedYear,
-    resolvedEpisodes: d.resolvedEpisodes,
-    httpError: d.httpError,
-    primaryTracker: d.tracker,
+    ok: result.ok,
+    status: result.status,
+    action: result.action,
+    resolved: true,
+    reason: result.ok ? undefined : result.reason,
+    completed: result.completed,
+    info: result.info,
+    atEpisode: result.atEpisode,
+    resolvedTitle: result.reason === "no_episode" ? undefined : item.title,
+    resolvedYear: result.reason === "no_episode" ? undefined : item.year,
+    resolvedEpisodes: "episodes" in item ? item.episodes : undefined,
+    httpError: result.httpError,
+    primaryTracker: native,
   };
 }
 
@@ -1063,12 +984,12 @@ async function trackersThatWait(trackers: Tracker[]): Promise<Tracker[]> {
 }
 
 /**
- * Reverse derivation (cour → seasoned) needs the cour-native entry's id, so the
- * native item must be resolved even when its own tracker is off, as long as a
- * seasoned tracker is enabled. Forward derivation needs only the scraped tmdb id.
+ * Whether deriving `target` from `native` is a reverse derivation (cour →
+ * seasoned), which bridges from the cour-native entry's id. Forward derivation
+ * needs only the scraped tmdb id.
  */
-function needsCourBridge(native: Tracker, enabled: Tracker[]): boolean {
-  return trackerFamily(native) === "cour" && enabled.some((tk) => trackerFamily(tk) === "seasoned");
+function needsCourBridge(native: Tracker, target: Tracker): boolean {
+  return trackerFamily(native) === "cour" && trackerFamily(target) === "seasoned";
 }
 
 /**
@@ -1076,18 +997,59 @@ function needsCourBridge(native: Tracker, enabled: Tracker[]): boolean {
  * for a tmdb-keyed pin, and the title correction (with the caches to drop so a pin,
  * or its removal, takes effect now).
  */
-interface CourPins {
+interface CourPins<I> {
   search(query: string): Promise<CourSearchOption[]>;
   /** The entry for a picked id (null when the tracker has no such entry). */
-  load(id: number): Promise<AniListIdentity | MalIdentity | null>;
+  load(id: number): Promise<I | null>;
   /** The `AnimapOverrides` map a tmdb-keyed pin goes in. */
   override: "forward" | "forwardMal";
   /** Set (an identity, or null = "not on the tracker") or clear (undefined) the
    * title correction for this media, and drop its stale auto-resolution. */
-  setCorrection(
-    media: ParsedMedia,
-    identity: AniListIdentity | MalIdentity | null | undefined,
-  ): Promise<void>;
+  setCorrection(media: ParsedMedia, identity: I | null | undefined): Promise<void>;
+}
+
+/** A cour tracker's pins with the identity type bound in (see `bindPins`). */
+interface BoundCourPins {
+  search(query: string): Promise<CourSearchOption[]>;
+  /** Pin an entry (an id), block it (null = "not on the tracker"), or clear the pin
+   * (undefined). `ok: false` when the picked entry can't be loaded. */
+  apply(media: ParsedMedia, id: number | null | undefined): Promise<{ ok: boolean }>;
+}
+
+/** Bind a tracker's pins. `load` and `setCorrection` share one `I`, so an AniList
+ * identity can never land in the MAL corrections. */
+function bindPins<I>(pins: CourPins<I>): BoundCourPins {
+  return { search: pins.search, apply: (media, id) => applyCourPin(pins, media, id) };
+}
+
+/** Set, block, or clear one cour tracker's pin: the tmdb-keyed crosswalk override
+ * and the title correction. */
+async function applyCourPin<I>(
+  pins: CourPins<I>,
+  media: ParsedMedia,
+  id: number | null | undefined,
+): Promise<{ ok: boolean }> {
+  let identity: I | null = null;
+  if (id !== null && id !== undefined) {
+    identity = await pins.load(id).catch(() => null);
+    if (!identity) return { ok: false };
+  }
+  const tmdbId = media.ids?.tmdb;
+  if (tmdbId !== undefined) {
+    const ov = await animapOverrides.getValue();
+    const key = forwardKey(Number(tmdbId), media.season);
+    const pinned = ov[pins.override] ?? {};
+    if (id === undefined) {
+      if (key in pinned) {
+        const { [key]: _gone, ...rest } = pinned;
+        await animapOverrides.setValue({ ...ov, [pins.override]: rest });
+      }
+    } else {
+      await animapOverrides.setValue({ ...ov, [pins.override]: { ...pinned, [key]: id } });
+    }
+  }
+  await pins.setCorrection(media, id === undefined ? undefined : identity);
+  return { ok: true };
 }
 
 /** Set or clear one key of a record in storage. */
@@ -1104,29 +1066,29 @@ async function setKey<T>(
   await item.setValue(all);
 }
 
-const COUR_PINS: Record<CourTracker, CourPins> = {
-  anilist: {
+const COUR_PINS: Record<CourTracker, BoundCourPins> = {
+  anilist: bindPins<AniListIdentity>({
     search: searchAniList,
     // The identity, not the seam item: a title pin keeps `idMal`, so MAL can follow it.
     load: anilistIdentityById,
     override: "forward",
     async setCorrection(media, identity) {
       const key = anilistCacheKey(media);
-      await setKey(anilistCorrections, key, identity as AniListIdentity | null | undefined);
+      await setKey(anilistCorrections, key, identity);
       await setKey(anilistResolutionCache, key, undefined);
     },
-  },
-  mal: {
+  }),
+  mal: bindPins<MalIdentity>({
     search: searchMal,
     load: getMalAnime,
     override: "forwardMal",
     async setCorrection(media, identity) {
       const key = malCacheKey(media);
-      await setKey(malCorrections, key, identity as MalIdentity | null | undefined);
+      await setKey(malCorrections, key, identity);
       await setKey(malResolutionCache, key, undefined);
       await setKey(malMissCache, key, undefined); // a remembered miss
     },
-  },
+  }),
 };
 
 /**
@@ -1167,25 +1129,10 @@ async function resolveAcross(
   overrides: AnimapOverrides,
   animap: Animap,
 ): Promise<TrackerResolution[]> {
-  const native = inferNativeTracker(media, trackers); // native must be an enabled tracker
-  const nativeEnabled = trackers.includes(native);
-  const soloFallback = !nativeEnabled; // no enabled native anchor to bridge from
-  const needNative = nativeEnabled || needsCourBridge(native, trackers);
-  let nativeItem: TrackedItem | null = null;
-  if (needNative) {
-    try {
-      nativeItem = await getAdapter(native).resolve(media);
-    } catch {
-      nativeItem = null;
-    }
-  }
-  // Resolve a tracker directly (its own id → title) — the solo-fallback path.
-  const resolveDirect = async (tk: Tracker): Promise<TrackerResolution> => {
-    const item = await getAdapter(tk)
-      .resolve(media)
-      .catch(() => null);
-    return item ? resolvedRow(item) : { tracker: tk, resolved: false, reason: "no_match" };
-  };
+  const native = inferNativeTracker(media, trackers); // always one of `trackers`
+  const nativeItem = await getAdapter(native)
+    .resolve(media)
+    .catch(() => null);
   const out: TrackerResolution[] = [];
   for (const tk of trackers) {
     if (tk === native) {
@@ -1198,13 +1145,13 @@ async function resolveAcross(
     }
     const d = deriveMediaWith(tk, media, nativeItem, overrides, animap);
     if (d.kind === "miss") {
-      out.push(
-        soloFallback
-          ? await resolveDirect(tk)
-          : // An empty crosswalk means the CDN copy hasn't landed yet, not that the
-            // item is unmapped, so say that instead of "not on this tracker".
-            { tracker: tk, resolved: false, reason: animap.size > 0 ? "no_match" : "map_loading" },
-      );
+      // An empty crosswalk means the CDN copy hasn't landed yet, not that the
+      // item is unmapped, so say that instead of "not on this tracker".
+      out.push({
+        tracker: tk,
+        resolved: false,
+        reason: animap.size > 0 ? "no_match" : "map_loading",
+      });
       continue;
     }
     if (d.kind === "ambiguous") {
@@ -1239,7 +1186,7 @@ async function reviewTarget(
   // The native item bridges a reverse derive, a same-family sibling (AniList ⇄
   // MAL) takes its ids straight from it, and a passthrough tracker (Simkl) adds them.
   const bridges =
-    needsCourBridge(native, [tracker]) ||
+    needsCourBridge(native, tracker) ||
     trackerFamily(native) === trackerFamily(tracker) ||
     trackerFamily(tracker) === "any";
   const nativeItem = bridges
@@ -1256,31 +1203,30 @@ async function reviewTarget(
   );
   const name = trackerLabel(tracker);
   if (d.kind === "ambiguous") return { ok: false, error: `can't tell which ${name} entry this is` };
-  if (d.kind === "miss") {
-    // No enabled native anchor: the tracker stands alone, like the scrobble's solo fallback.
-    if (!enabled.includes(native)) return { review, media: data.media };
-    return { ok: false, error: `not found on ${name}` };
-  }
+  if (d.kind === "miss") return { ok: false, error: `not found on ${name}` };
   const media = d.ids ? { ...d.media, ids: { ...d.media.ids, ...d.ids } } : d.media;
   return { review, media, ids: d.ids };
 }
 
+/**
+ * MULTI-TRACK (docs/MULTI-TRACK.md): record the DERIVED tracker(s) for a scrobble,
+ * alongside the native one. The native item is already resolved+recorded; for each
+ * other toggled tracker we derive its numbering via the anime-map crosswalk, then
+ * resolve + record it. Independent + advance-only (each adapter owns its own watched
+ * decision + never-lower rule). Never guesses: a crosswalk miss is a silent skip
+ * (the item isn't anime / isn't mapped), an ambiguous match refuses with a warning.
+ */
 async function recordDerivedTrackers(
   nativeItem: TrackedItem | null,
   targets: Tracker[],
   data: ScrobbleRequest,
   overrides: AnimapOverrides,
   animap: Animap,
-  // True when NO enabled tracker speaks the page's numbering natively — i.e. the
-  // crosswalk has no native partner to bridge FROM. Then a miss isn't "skip"; the
-  // target resolves itself (its own id, else title) with the scraped episode.
-  // Genuine multi-track (an enabled native anchor) keeps skip-on-miss.
-  soloFallback: boolean,
 ): Promise<DerivedOutcome[]> {
   const out: DerivedOutcome[] = [];
 
   // Record a resolved item and shape its reply (year/episodes included so the badge
-  // shows them). Shared by the crosswalk path and the solo title fallback.
+  // shows them).
   const record = async (
     target: Tracker,
     item: TrackedItem,
@@ -1310,18 +1256,7 @@ async function recordDerivedTrackers(
   for (const target of targets) {
     const d = deriveMediaWith(target, data.media, nativeItem, overrides, animap);
     if (d.kind === "miss") {
-      // No crosswalk row. Standing alone (no enabled native anchor) ⇒ resolve this
-      // tracker directly rather than give up — a mislabeled/unmapped id degrades to
-      // a title match instead of "not found". The adapter's own guardrails apply.
-      if (soloFallback) {
-        const item = await getAdapter(target)
-          .resolve(data.media)
-          .catch(() => null);
-        if (item) {
-          out.push(await record(target, item, data.media));
-          continue;
-        }
-      }
+      // No crosswalk row: skip this tracker (the item is not mapped there).
       out.push({
         tracker: target,
         ok: false,
