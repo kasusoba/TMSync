@@ -5,9 +5,9 @@ A plain-English tour of how the code actually works, subsystem by subsystem. It 
 (the *what and why*). This file is the *how* — read it when you need to answer "where does X
 happen?" or "what talks to what?".
 
-> Scope note: TMSync tracks **movies & non-anime TV → Trakt** and **anime series → AniList**, and
-> can **multi-track anime to both at once**. The tracker layer is a pluggable registry; the
-> long-term vision is more trackers (Simkl, MyAnimeList) behind the same seam. Everything below
+> Scope note: TMSync tracks **movies & non-anime TV → Trakt** and **anime series → AniList and/or
+> MyAnimeList**, and can **multi-track anime to all of them at once**. The tracker layer is a
+> pluggable registry; Simkl is next behind the same seam (`docs/TRACKERS-PLAN.md`). Everything below
 > reflects the code as it stands today.
 
 ---
@@ -44,7 +44,8 @@ from AniList.
 │   routeTracker → TrackerAdapter(s)                                                 │
 │     Trakt adapter  → Trakt REST  (real-time scrobble start/pause/stop)            │
 │     AniList adapter → AniList GraphQL (one SaveMediaListEntry at threshold)        │
-│     animap crosswalk → multi-track fan-out (anime → both)                          │
+│     MAL adapter    → MAL REST (one my_list_status PATCH at threshold)             │
+│     animap crosswalk → multi-track fan-out (anime → several trackers)              │
 │   reads/writes WXT storage for everything (tokens, caches, sessions)              │
 └────────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -59,7 +60,7 @@ pnpm workspace, two packages plus a recipe library:
 |---|---|
 | `packages/shared/` | **Pure engine + schema.** No DOM, no browser globals. Zod recipe schema, `extract()`, matching, transforms, quick-link templates. The testable core. |
 | `packages/extension/` | **The WXT app.** All entrypoints, the tracker adapters, the session/scrobble machine, storage, UI kit, element picker. Preact for injected UI. |
-| `recipes/index.json` | One **tracker-agnostic** recipe + quick-link library (crowdsourced via PR). Trakt and AniList recipes coexist; each carries its own `tracker` field and the engine routes per-recipe. |
+| `recipes/index.json` | One **tracker-agnostic** recipe + quick-link library (crowdsourced via PR). Trakt, AniList, and MAL recipes coexist; each carries its own tracker set and the engine routes per-recipe. |
 
 Root `package.json` scripts just delegate into the extension package via `pnpm -F @tmsync/extension`.
 
@@ -88,19 +89,20 @@ watched". Follow the numbers:
    sites), the *matching* frame publishes the media for the tab and the *video-owning* frame pulls
    it — they coordinate over messaging.
 5. **Route.** The background decides which adapter(s) get this item via `routeTracker()` /
-   `recipeTrackers()`. Movies always route to Trakt; an anime recipe can route to **both** Trakt and
-   AniList (multi-track fan-out).
+   `recipeTrackers()`. Movies always route to Trakt; an anime recipe can route to Trakt, AniList, and
+   MAL at once (multi-track fan-out).
 6. **Resolve (once, cached).** The adapter turns the `ParsedMedia` into a `TrackedItem`: Trakt via
-   `/search` (returns trakt/imdb/tmdb ids), AniList via a GraphQL `Media` search. Results are
+   `/search` (returns trakt/imdb/tmdb ids), AniList via a GraphQL `Media` search, MAL by id (or AniList's `idMal`) else
+   MAL search. Results are
    cached in storage so this only happens once per title.
 7. **Record progress.** `ScrobbleController` (`lib/scrobble/controller.ts`) is the play/pause/stop
    state machine on the video element. It debounces bursts (seeking, ad breaks), fires exactly one
    `start` per session, and commits a `stop` the moment progress crosses `watchedThreshold`.
    - **Trakt** path: real-time `POST /scrobble/start|pause|stop`. Trakt owns the "watched" decision
      (≥80% on stop → history).
-   - **AniList** path: no scrobble API exists, so start/pause are no-ops and a single
-     `SaveMediaListEntry` write happens once the threshold is crossed. *We* own the watched decision
-     here.
+   - **AniList / MAL** path: no scrobble API exists, so start/pause only read the list entry, and a
+     single list write (`SaveMediaListEntry` / `PATCH my_list_status`) happens once the threshold
+     is crossed. *We* own the watched decision here.
 8. **Survive a crash.** Progress is throttle-persisted to session storage (`tabSessions`) every ~5s.
    If the tab dies before a clean stop, the background's `tabs.onRemoved` handler re-resolves and
    replays a reconciling `stop` from the last persisted progress. This is *why* session state lives
@@ -133,36 +135,42 @@ The heart of the "recipes are data, not code" guarantee. Everything here is pure
 
 ---
 
-## 5. Tracker adapters — the seam that keeps Trakt and AniList apart
+## 5. Tracker adapters: the seam that keeps the trackers apart
 
 `lib/tracker/adapter.ts` defines the contract; `lib/tracker/index.ts` is the routing single source
-of truth (`getAdapter`, `routeTracker`, `inferNativeTracker`). Two implementations behind it:
+of truth (`getAdapter`, `routeTracker`, `inferNativeTracker`). Three implementations behind it,
+grouped by numbering **family** (`TRACKER_INFO.family`): Trakt is *seasoned*, AniList and MAL are
+*cour*.
 
-| | **Trakt** (`lib/trakt/`) | **AniList** (`lib/anilist/`) |
-|---|---|---|
-| Progress | real-time scrobble `start`/`pause`/`stop` | none — one `SaveMediaListEntry` per episode at threshold |
-| Watched decision | Trakt owns it (≥80% on stop) | *we* own it (crossing `watchedThreshold`) |
-| Auth | OAuth authorization-code, refresh-token rotation | OAuth authorization-code, ~1-year token, no refresh |
-| Identity | `/search` → trakt/imdb/tmdb ids | GraphQL `Media` search → AniList id |
-| Resolvable ids | tmdb, imdb, tvdb | anilist, mal |
+| | **Trakt** (`lib/trakt/`) | **AniList** (`lib/anilist/`) | **MyAnimeList** (`lib/mal/`) |
+|---|---|---|---|
+| Progress | real-time scrobble `start`/`pause`/`stop` | none — one `SaveMediaListEntry` per episode at threshold | none, one `PATCH my_list_status` per episode at threshold |
+| Watched decision | Trakt owns it (≥80% on stop) | *we* own it (crossing `watchedThreshold`) | *we* own it (same planner) |
+| Auth | OAuth authorization-code, refresh-token rotation | OAuth authorization-code, ~1-year token, no refresh | authorization code + PKCE, no secret, refresh on 401 / near expiry |
+| Identity | `/search` → trakt/imdb/tmdb ids | GraphQL `Media` search → AniList id | MAL id, AniList `idMal`, else MAL search |
+| Resolvable ids | tmdb, imdb, tvdb | anilist, mal | mal |
+| Host access | install manifest | install manifest | optional, asked on Connect |
 
 **Why they're deliberately different code paths:** AniList has no concept of "currently watching",
 so faking a scrobble loop for it would be wrong. It reads the viewer's existing list entry *before
 every write* (the entry is the source of truth), never lowers `progress`, and treats a `COMPLETED`
 season as sacred — re-watching prompts a "Rewatching?" confirmation in the badge before it touches
-anything. That decision logic is pure and tested in `lib/anilist/util.ts` (`planAniListWrite`).
+anything. That decision logic is pure, tested, and shared by AniList and MAL in
+`lib/tracker/cour-plan.ts` (`planCourWrite`); each adapter maps the plan to its own fields.
 
 **The anime crosswalk (`lib/animap/`).** When an anime is multi-tracked, one tracker is *native*
-(the page already speaks its numbering) and the other is *derived* via the Fribb TMDB↔AniList
-crosswalk (`anime-map.seed.json`). `forward()`/`reverse()` return `resolved | ambiguous | miss` and
+(the page already speaks its numbering) and the others are *derived*. Inside a family only the id
+changes (AniList ⇄ MAL are 1:1 via `idMal`). Across families the Fribb TMDB↔AniList crosswalk
+bridges (it also carries MAL ids). `forward()`/`reverse()` return `resolved | ambiguous | miss` and
 **never guess** — ambiguous or missing means skip that tracker, not mis-write it. The fan-out itself
 (`recordDerivedTrackers`, `resolveAcross`) lives in `background.ts`. **Hard rule:** the crosswalk is
 background-side only and must never be imported by the shared engine.
 
 **Rating, notes & exports** are co-located with each tracker, not inlined in the background: Trakt
-rating/notes in `lib/trakt/review.ts`, AniList in `lib/anilist/review.ts`, and Trakt's Letterboxd
+rating/notes in `lib/trakt/review.ts`, AniList in `lib/anilist/review.ts`, MAL in
+`lib/mal/review.ts`, and Trakt's Letterboxd
 CSV export in `lib/trakt/letterboxd.ts`. The background's `rateItem`/`saveNote`/etc. handlers are
-thin dispatchers that call the right tracker's module. (The `TrackerAdapter` interface itself covers
+thin dispatchers over the `REVIEW` registry. (The `TrackerAdapter` interface itself covers
 resolve/record/ratingLevels/watchedState; folding rate/note *writes* into the interface is a future
 step best done when a third tracker exists to shape it.)
 
@@ -202,7 +210,8 @@ Every persisted value is a `storage.defineItem`, split by prefix:
 - **`sync:`** — small, cross-device, user-owned: `custom_recipes`, `quick_links`, `corrections`,
   `manual_selections`, `badge_prefs`.
 - **`local:`** — per-device secrets/caches/regenerable: `trakt_tokens`, `anilist_tokens`,
-  resolution caches, ratings/notes caches, `remote_recipes`, `enabled_origins`, `animap_overrides`.
+  `mal_tokens`, resolution caches, ratings/notes caches, `remote_recipes`, `enabled_origins`,
+  `animap_overrides` (incl. MAL pins), `anilist_corrections`, `mal_corrections`.
 - **`session:`** — ephemeral per-tab: `tab_sessions` (the crash-reconcile source of truth),
   `tab_frame_origins`, `tab_status`, `manual_contexts`, `episode_overrides`.
 
@@ -214,7 +223,7 @@ The background reads these fresh on each wake — there is no in-memory backgrou
 ## 9. UI — `packages/extension/lib/ui/`
 
 - **`kit/kit.tsx`** — the shared design system: `tokens(variant)` (light/dark token maps), and
-  primitives `Btn`, `IconBtn`, `Switch`, `Stars`, `Icon`, `TraktMark`, `AniListMark`. Dark is the
+  primitives `Btn`, `IconBtn`, `Switch`, `Stars`, `Icon`, `TraktMark`, `AniListMark`, `MalMark` (via `TrackerMark`). Dark is the
   shipped direction.
 - **`kit/*View.tsx`** — presentational views (`PopupView`, `OptionsView`, `PickerPanel`,
   `BadgeView`, `QuickLinksView`, …). They take mock-able props and hold no browser APIs, which is
@@ -242,7 +251,8 @@ regex/number/title chip builders, `buildRecipe` (assembles + Zod-validates), and
 
 - **WXT** (`packages/extension/wxt.config.ts`): Preact + Tailwind v4. Minimal install permissions
   (`storage, alarms, scripting, identity, activeTab`) + specific host perms (Trakt, AniList, the
-  recipe CDN); broad access is `optional_host_permissions` requested per-origin on a gesture. A
+  recipe CDN); broad access is `optional_host_permissions` requested per-origin on a gesture. MAL's
+  hosts are optional too, requested on Connect. A
   `build:manifestGenerated` hook strips WXT's derived broad host perms and re-expresses them as
   optional. A committed extension `key`/`gecko.id` keeps the extension id — and thus the OAuth
   redirect URI — stable.
@@ -292,8 +302,8 @@ Not blockers — just the things a careful reader might notice, so you're never 
 | Touch iframe/SPA/late-metadata handling | `lib/scrobble/session.ts` |
 | Add or change a tracker | `lib/tracker/adapter.ts` + a new `lib/<tracker>/` folder |
 | Debug Trakt resolution/scrobble | `lib/trakt/client.ts`, `lib/trakt/auth.ts` |
-| Debug AniList writes | `lib/anilist/client.ts`, `lib/anilist/util.ts` |
-| Change rating / notes behaviour | `lib/trakt/review.ts`, `lib/anilist/review.ts` |
+| Debug AniList / MAL writes | `lib/anilist/client.ts`, `lib/mal/client.ts`, `lib/tracker/cour-plan.ts` |
+| Change rating / notes behaviour | `lib/trakt/review.ts`, `lib/anilist/review.ts`, `lib/mal/review.ts` |
 | Debug anime double-tracking | `lib/animap/` + `recordDerivedTrackers` in `background.ts` |
 | Change the badge / picker / popup UI | `lib/ui/kit/` (+ `entrypoints/gallery/` to preview) |
 | Change stored data or add a cache | `lib/storage.ts` |

@@ -66,6 +66,12 @@ strongest first:
 |---|---|
 | Trakt | `["tmdb", "imdb", "tvdb"]` |
 | AniList | `["anilist", "mal"]` |
+| MyAnimeList | `["mal"]` |
+
+AniList and MAL both speak `mal`. With both enabled, the first match in tracker order
+(AniList) is native, and MAL derives inside the cour family by id (no crosswalk). With
+AniList off, MAL is native for a `mal` id and reaches an `anilist` id through AniList's
+`idMal` (`resolveById`).
 
 Adding a tracker = a new adapter + its `resolvableNamespaces` (+ maybe an animap entry).
 The shared engine never learns a new namespace by hand.
@@ -127,3 +133,5 @@ The alias is not re-emitted — anything re-serialized comes out in the `ids` sh
   recipe today; the picker can grow to detect them without any schema change.
 - The AniList adapter resolves a native `anilist` id (`Media(id:)`) or a `mal` id
   (`Media(idMal:)`); a `tmdb` page id reaches AniList only through the crosswalk (derived).
+- The MAL adapter resolves a native `mal` id (`GET /anime/{id}`) or an `anilist` id via
+  `idMal`; a `tmdb` page id reaches MAL only through the crosswalk's `m` column (derived).
