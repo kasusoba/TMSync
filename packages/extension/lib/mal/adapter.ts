@@ -1,7 +1,12 @@
 import type { ParsedMedia } from "@tmsync/shared";
 import { errorMessage } from "../errors";
 import type { TrackerAdapter } from "../tracker/adapter";
-import { type CourEntry, type CourPlan, planCourWrite } from "../tracker/cour-plan";
+import {
+  type CourEntry,
+  type CourPlan,
+  planCourWrite,
+  planRewatchConfirm,
+} from "../tracker/cour-plan";
 import type {
   RatingLevel,
   RecordPhase,
@@ -177,18 +182,19 @@ export const malAdapter: TrackerAdapter = {
     return applyPlan(item, plan);
   },
 
-  async confirmRewatch(item: TrackedItem, media: ParsedMedia): Promise<RecordResult> {
+  async confirmRewatch(
+    item: TrackedItem,
+    media: ParsedMedia,
+    watched: boolean,
+  ): Promise<RecordResult> {
     if (item.tracker !== "mal") return { ok: false, reason: "unresolved" };
     const read = await readEntry(item);
     if ("fail" in read) return read.fail;
-    const plan = planCourWrite({
-      phase: "stop",
-      progress: 100,
-      watchedThreshold: 0,
+    const plan = planRewatchConfirm({
       episode: media.episode,
       total: item.episodes,
       entry: read.entry,
-      rewatchConfirmed: true,
+      watched,
     });
     return applyPlan(item, plan);
   },

@@ -140,6 +140,20 @@ import {
 } from "@tmsync/shared";
 import { browser } from "wxt/browser";
 
+/**
+ * Whether the tab's episode already played past its watched threshold, read from
+ * the persisted session. Only the progress counts: a session also ends on an
+ * early leave (tab close, navigation, video removed), so `ended` alone does not
+ * mean watched. No session for this media (the prompt before play) means not
+ * watched.
+ */
+async function episodeWatched(tabId: number | undefined, media: ParsedMedia): Promise<boolean> {
+  if (tabId === undefined) return false;
+  const session = (await tabSessions.getValue())[tabId];
+  if (!session || !sameMedia(session.media, media)) return false;
+  return session.progress >= session.watchedThreshold * 100;
+}
+
 /** Same watched item: title, numbering, and strongest id. */
 function sameMedia(a: ParsedMedia, b: ParsedMedia): boolean {
   return (
@@ -601,6 +615,8 @@ export default defineBackground(() => {
   onMessage("confirmRewatch", async ({ data, sender }) => {
     const asked = data.trackers;
     const enabled = data.enabled.length ? data.enabled : asked;
+    const tabId = data.tabId ?? sender.tab?.id;
+    const watched = await episodeWatched(tabId, data.media);
     const done: { name: string; title: string; completed: boolean }[] = [];
     const errors: string[] = [];
     for (const tracker of asked) {
@@ -617,7 +633,7 @@ export default defineBackground(() => {
           errors.push(`not found on ${name}`);
           continue;
         }
-        const result = await adapter.confirmRewatch(item, target.media);
+        const result = await adapter.confirmRewatch(item, target.media, watched);
         if (!result.ok) {
           errors.push(
             result.reason === "not_connected"
@@ -635,14 +651,14 @@ export default defineBackground(() => {
     if (!first) return { ok: false, error: errors.join(" · ") || "rewatch failed" };
     // Reflect it on the badge (and gate the rating prompt on completion).
     const completed = done.every((d) => d.completed);
-    const tabId = data.tabId ?? sender.tab?.id;
     if (tabId !== undefined) {
       const ep = data.media.episode;
       const names = done.map((d) => d.name).join(" and ");
       void sendMessage(
         "scrobbleStatus",
         {
-          state: "scrobbled",
+          // Not watched yet: the rewatch started, and this episode counts at its stop.
+          state: watched ? "scrobbled" : "idle",
           title: `${first.title}${ep !== undefined ? ` E${ep}` : ""}`,
           detail: completed ? `rewatch complete on ${names}` : `rewatching on ${names}`,
           completed,
@@ -795,7 +811,9 @@ export default defineBackground(() => {
     const all = await tabSessions.getValue();
     const session = all[tabId];
     if (!session) return;
-    all[tabId] = { ...session, progress: data, updatedAt: Date.now() };
+    // After the stop, a seek back must not lower the progress the stop recorded.
+    const progress = session.ended ? Math.max(session.progress, data) : data;
+    all[tabId] = { ...session, progress, updatedAt: Date.now() };
     await tabSessions.setValue(all);
   });
 
@@ -810,8 +828,10 @@ export default defineBackground(() => {
     const session = all[tabId];
     // On an SPA episode swap the outgoing episode's stop lands after the next one
     // was published. It must not mark the new session ended.
-    if (!session || !sameMedia(session.media, data)) return;
-    all[tabId] = { ...session, ended: true };
+    if (!session || !sameMedia(session.media, data.media)) return;
+    // Keep the stop's progress: the throttled updates can lag behind it, and the
+    // "Rewatching?" confirm reads it (episodeWatched).
+    all[tabId] = { ...session, progress: data.progress, ended: true, updatedAt: Date.now() };
     await tabSessions.setValue(all);
   });
 

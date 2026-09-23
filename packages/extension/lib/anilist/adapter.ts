@@ -1,6 +1,6 @@
 import type { ParsedMedia } from "@tmsync/shared";
 import type { TrackerAdapter } from "../tracker/adapter";
-import { type CourPlan, planCourWrite } from "../tracker/cour-plan";
+import { type CourPlan, planCourWrite, planRewatchConfirm } from "../tracker/cour-plan";
 import type {
   RatingLevel,
   RecordPhase,
@@ -143,9 +143,9 @@ export const anilistAdapter: TrackerAdapter = {
     return applyPlan(item, plan);
   },
 
-  confirmRewatch(item: TrackedItem, media: ParsedMedia): Promise<RecordResult> {
+  confirmRewatch(item: TrackedItem, media: ParsedMedia, watched: boolean): Promise<RecordResult> {
     if (item.tracker !== "anilist") return Promise.resolve({ ok: false, reason: "unresolved" });
-    return confirmAniListRewatch(item, media);
+    return confirmAniListRewatch(item, media, watched);
   },
 
   ratingLevels(_media: ParsedMedia): RatingLevel[] {
@@ -207,24 +207,22 @@ function toItem(identity: AniListIdentity): AniListItem {
 
 /**
  * Explicit rewatch confirmation for a COMPLETED cour (the user said yes to the
- * badge prompt). Reads the entry, plans with `rewatchConfirmed: true`, and writes
- * REPEATING (or re-COMPLETED + repeat++ on the final episode). Forces the
- * threshold check to pass since this is a deliberate action.
+ * badge prompt). Reads the entry and writes REPEATING (or re-COMPLETED + repeat++
+ * on a watched final episode). An episode not yet `watched` is left for its stop
+ * (see `planRewatchConfirm`).
  */
 export async function confirmAniListRewatch(
   item: AniListItem,
   media: ParsedMedia,
+  watched: boolean,
 ): Promise<RecordResult> {
   const read = await readEntry(item);
   if ("fail" in read) return read.fail;
-  const plan = planCourWrite({
-    phase: "stop",
-    progress: 100,
-    watchedThreshold: 0,
+  const plan = planRewatchConfirm({
     episode: media.episode,
     total: item.episodes,
     entry: read.entry,
-    rewatchConfirmed: true,
+    watched,
   });
   return applyPlan(item, plan);
 }
