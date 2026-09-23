@@ -56,6 +56,13 @@ describe("pickBest", () => {
     expect(pickBest(hits, "frieren: beyond journey's end")?.id).toBe(3);
   });
 
+  it("skips music videos, promos, and commercials with the exact title", () => {
+    const extras = ["music", "pv", "cm"].map((media_type, i) =>
+      node({ id: 10 + i, title: "Sousou no Frieren", media_type, start_date: "2023-09-29" }),
+    );
+    expect(pickBest([...extras, ...hits], "Sousou no Frieren", 2023)?.id).toBe(3);
+  });
+
   it("uses the scraped year to choose between series", () => {
     expect(pickBest(hits, "Sousou no Frieren", 2026)?.id).toBe(2);
   });

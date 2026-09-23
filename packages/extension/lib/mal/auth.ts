@@ -70,12 +70,13 @@ export async function connect(): Promise<MalTokens> {
 
   const redirect = await launchAuthFlow(`${MAL.authBase}?${authParams}`, "MyAnimeList");
 
+  // State first (CSRF), like Simkl: nothing from a foreign response is read.
   const params = new URL(redirect).searchParams;
+  if (params.get("state") !== state) throw new Error("MyAnimeList sign-in failed (state mismatch)");
   const code = params.get("code");
   if (!code) {
     throw new Error(params.get("error_description") ?? params.get("error") ?? "No code returned");
   }
-  if (params.get("state") !== state) throw new Error("MyAnimeList sign-in failed (state mismatch)");
 
   const tokens = await tokenRequest({
     grant_type: "authorization_code",
