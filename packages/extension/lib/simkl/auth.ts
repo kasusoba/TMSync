@@ -75,8 +75,8 @@ async function tokenRequest(
   };
 }
 
-/** Whether a granted scope string allows writes. A typo or a missing scope gives a
- * read-only token with no error, so the grant must be checked. Pure. */
+/** Whether a granted scope string allows writes. A typo or a missing scope in the
+ * request gives a read-only token with no error, so the grant must be checked. Pure. */
 export function canWrite(scope: string | undefined): boolean {
   return (scope ?? "").split(/\s+/).includes("media:write");
 }
@@ -112,7 +112,8 @@ export async function connect(): Promise<void> {
     code_verifier: verifier,
   });
   if (!out.refresh) throw new Error("Simkl returned no refresh token");
-  if (!canWrite(out.scope)) {
+  // No scope in the reply means the requested scope was granted (RFC 6749 §5.1).
+  if (!canWrite(out.scope ?? SIMKL.scope)) {
     await revoke(out.refresh);
     throw new Error("Simkl gave read-only access, so TMSync can't record your watches");
   }

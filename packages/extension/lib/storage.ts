@@ -147,15 +147,15 @@ export const simklScrobbleAt = storage.defineItem<number>("local:simkl_scrobble_
 });
 
 /**
- * A Simkl stop that is waiting out the 20 s lock (its request body). The worker
- * normally sends it after the wait. If the browser stops the worker during the
- * wait, an alarm sends it instead, so the watch is not lost (constraint #4: no
- * timer kept in memory is the only record of it).
+ * The Simkl stops that are waiting out the 20 s lock (request body and when the
+ * wait ends), keyed by a per-stop id. Several can wait at once (two tabs stop
+ * inside one lock). The worker normally sends each after its wait. If the browser
+ * stops the worker during the wait, an alarm sends them instead, so no watch is
+ * lost (constraint #4: no timer kept in memory is the only record of it).
  */
-export const simklHeldStop = storage.defineItem<{
-  at: number;
-  body: Record<string, unknown>;
-} | null>("local:simkl_held_stop", { fallback: null });
+export const simklHeldStops = storage.defineItem<
+  Record<string, { due: number; body: Record<string, unknown> }>
+>("local:simkl_held_stops", { fallback: {} });
 
 /** Resolution cache keyed by resolutionCacheKey(media). */
 export const resolutionCache = storage.defineItem<Record<string, ResolvedIdentity>>(

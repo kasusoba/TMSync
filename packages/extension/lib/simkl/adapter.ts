@@ -1,4 +1,5 @@
 import type { ParsedMedia } from "@tmsync/shared";
+import { errorMessage } from "../errors";
 import type { TrackerAdapter } from "../tracker/adapter";
 import type {
   RatingLevel,
@@ -69,7 +70,7 @@ export const simklAdapter: TrackerAdapter = {
       out = await scrobble(phase, body);
     } catch (e) {
       if (e instanceof SimklNotConnectedError) return { ok: false, reason: "not_connected" };
-      return { ok: false, reason: "http", httpError: e instanceof Error ? e.message : String(e) };
+      return { ok: false, reason: "http", httpError: errorMessage(e) };
     }
     switch (out.kind) {
       case "skipped":

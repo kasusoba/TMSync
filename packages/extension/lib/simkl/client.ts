@@ -1,6 +1,6 @@
 import type { ParsedMedia } from "@tmsync/shared";
 import { browser } from "wxt/browser";
-import { simklHeldStop, simklMatches, simklScrobbleAt } from "../storage";
+import { simklHeldStops, simklMatches, simklScrobbleAt } from "../storage";
 import { forgetGrant, getValidAccessToken, refreshAfterReject } from "./auth";
 import { SCROBBLE_LOCK_MS, SIMKL } from "./config";
 import type { SimklMatch, SimklMediaObject, SimklScrobbleResponse, SimklSection } from "./types";
@@ -226,42 +226,64 @@ export const HELD_STOP_ALARM = "tmsync-simkl-held-stop";
  * comes this long after the wait would have ended. */
 const HELD_STOP_GRACE_MS = 30_000;
 
+/** Serializes updates to the held stops, so two stops held at once both stay. */
+let heldQueue: Promise<unknown> = Promise.resolve();
+
+/** Change the held stops, then set the alarm for the last wait to end (or clear it
+ * when none is left). */
+function updateHeld(
+  change: (held: Record<string, { due: number; body: Record<string, unknown> }>) => void,
+): Promise<void> {
+  const run = heldQueue.then(async () => {
+    const held = { ...(await simklHeldStops.getValue()) };
+    change(held);
+    await simklHeldStops.setValue(held);
+    const due = Math.max(0, ...Object.values(held).map((h) => h.due));
+    try {
+      if (due) await browser.alarms.create(HELD_STOP_ALARM, { when: due + HELD_STOP_GRACE_MS });
+      else await browser.alarms.clear(HELD_STOP_ALARM);
+    } catch {
+      // no alarms (tests): the wait still sends it
+    }
+  });
+  heldQueue = run.catch(() => {});
+  return run;
+}
+
 /**
  * Keep a stop in storage, with an alarm to send it, before waiting out the lock.
- * If the worker lives through the wait, `releaseStop` clears both and the stop
- * goes out as usual. If not, the alarm sends it (`flushHeldStop`).
+ * If the worker lives through the wait, `releaseStop` drops it and the stop goes
+ * out as usual. If not, the alarm sends it (`flushHeldStops`). Returns its key.
  */
-async function holdStop(body: Record<string, unknown>, waitMs: number): Promise<void> {
-  await simklHeldStop.setValue({ at: Date.now(), body });
-  try {
-    await browser.alarms.create(HELD_STOP_ALARM, {
-      when: Date.now() + waitMs + HELD_STOP_GRACE_MS,
-    });
-  } catch {
-    // no alarms (tests): the wait below still sends it
-  }
+async function holdStop(body: Record<string, unknown>, waitMs: number): Promise<string> {
+  const key = crypto.randomUUID();
+  await updateHeld((held) => {
+    held[key] = { due: Date.now() + waitMs, body };
+  });
+  return key;
 }
 
-/** The wait ended with the worker alive: the stop goes out now, not by alarm. */
-async function releaseStop(): Promise<void> {
-  await simklHeldStop.setValue(null);
-  try {
-    await browser.alarms.clear(HELD_STOP_ALARM);
-  } catch {
-    // no alarms (tests)
-  }
+/** The wait ended with the worker alive: this stop goes out now, not by alarm.
+ * Other held stops keep their place and the alarm. */
+async function releaseStop(key: string): Promise<void> {
+  await updateHeld((held) => {
+    delete held[key];
+  });
 }
 
 /**
- * Send a stop that the worker held but never sent (it was stopped during the
+ * Send the stops that the worker held but never sent (it was stopped during the
  * wait). Run by `HELD_STOP_ALARM`. The watch is recorded; the match Simkl names is
- * learned again on the next write.
+ * learned again on the next write. Each goes through `scrobble`, so they respect
+ * the lock one after another.
  */
-export async function flushHeldStop(): Promise<void> {
-  const held = await simklHeldStop.getValue();
-  if (!held) return;
-  await simklHeldStop.setValue(null);
-  await scrobble("stop", held.body).catch(() => {});
+export async function flushHeldStops(): Promise<void> {
+  const held = Object.entries(await simklHeldStops.getValue());
+  if (!held.length) return;
+  await updateHeld((h) => {
+    for (const [k] of held) delete h[k];
+  });
+  for (const [, h] of held) await scrobble("stop", h.body).catch(() => {});
 }
 
 export type ScrobblePhase = "start" | "pause" | "stop";
@@ -311,16 +333,16 @@ export async function scrobble(
   const wait = lockWait(await simklScrobbleAt.getValue(), Date.now());
   if (wait > 0) {
     if (phase !== "stop") return { kind: "skipped" };
-    await holdStop(body, wait);
+    const key = await holdStop(body, wait);
     await waitAwake(wait);
-    await releaseStop();
+    await releaseStop(key);
   }
   let res = await lockedPost(phase, body);
   if (res.status === 400 && res.error === "RATE_LIMIT") {
     if (phase !== "stop") return { kind: "skipped" };
-    await holdStop(body, SCROBBLE_LOCK_MS);
+    const key = await holdStop(body, SCROBBLE_LOCK_MS);
     await waitAwake(SCROBBLE_LOCK_MS);
-    await releaseStop();
+    await releaseStop(key);
     res = await lockedPost(phase, body);
   }
   // Re-stopping a finished item within an hour: the watch is already recorded.

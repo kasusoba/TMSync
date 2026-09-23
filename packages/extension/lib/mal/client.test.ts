@@ -1,5 +1,14 @@
-import { describe, expect, it } from "vitest";
-import { liveMisses, malCacheKey, nodeToIdentity, pickBest, toCourEntry } from "./client";
+import { malCorrections } from "@/lib/storage";
+import { beforeEach, describe, expect, it } from "vitest";
+import { fakeBrowser } from "wxt/testing";
+import {
+  correctionFor,
+  liveMisses,
+  malCacheKey,
+  nodeToIdentity,
+  pickBest,
+  toCourEntry,
+} from "./client";
 import type { MalAnimeNode } from "./types";
 
 const node = (n: Partial<MalAnimeNode> & { id: number; title: string }): MalAnimeNode => ({
@@ -91,5 +100,32 @@ describe("liveMisses", () => {
     expect(liveMisses({ old: now - 2 * 60 * 60 * 1000, recent: now - 60_000 }, now)).toEqual({
       recent: now - 60_000,
     });
+  });
+});
+
+describe("correctionFor", () => {
+  beforeEach(() => fakeBrowser.reset());
+  const pinned = { id: 7, title: "Pinned", year: 2020, episodes: 12 };
+
+  it("finds a title pin when the review path added derived ids to the media", async () => {
+    await malCorrections.setValue({ "show:2020:s2": pinned });
+    const media = { mediaType: "show" as const, title: "Show", year: 2020, season: 2 };
+    expect(await correctionFor(media)).toEqual({ identity: pinned });
+    expect(await correctionFor({ ...media, ids: { anilist: 1, mal: 99 } })).toEqual({
+      identity: pinned,
+    });
+  });
+
+  it("skips the title key when the media has a tmdb id", async () => {
+    await malCorrections.setValue({ "show:2020": pinned });
+    const media = { mediaType: "show" as const, title: "Show", year: 2020 };
+    expect(await correctionFor({ ...media, ids: { tmdb: 5, mal: 99 } })).toBeUndefined();
+  });
+
+  it("prefers the id pin over the title pin", async () => {
+    const other = { ...pinned, id: 8 };
+    await malCorrections.setValue({ "id:99": other, "show:2020": pinned });
+    const media = { mediaType: "show" as const, title: "Show", year: 2020, ids: { mal: 99 } };
+    expect(await correctionFor(media)).toEqual({ identity: other });
   });
 });

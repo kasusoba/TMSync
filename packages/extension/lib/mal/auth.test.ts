@@ -58,10 +58,18 @@ describe("MAL token refresh", () => {
   it("shares one refresh between concurrent callers", async () => {
     const fetch = vi.fn(async () => new Response(JSON.stringify(FRESH_BODY), { status: 200 }));
     vi.stubGlobal("fetch", fetch);
-    const [a, b] = await Promise.all([getValidAccessToken(), refreshAfterReject()]);
+    const [a, b] = await Promise.all([getValidAccessToken(), refreshAfterReject("old-access")]);
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(a).toBe("new-access");
     expect(b).toBe("new-access");
+  });
+
+  it("does not refresh again when another call already replaced the rejected token", async () => {
+    await malTokens.setValue({ ...EXPIRED, access_token: "newer", obtained_at: now() });
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    expect(await refreshAfterReject("old-access")).toBe("newer");
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("keeps the tokens on a network or server error", async () => {
