@@ -1,5 +1,5 @@
 import {
-  simklHeldStop,
+  simklHeldStops,
   simklMatches,
   simklRatings,
   simklScrobbleAt,
@@ -8,7 +8,7 @@ import {
 import type { ParsedMedia } from "@tmsync/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeBrowser } from "wxt/testing";
-import { flushHeldStop, scrobble, scrobbleLockWait, simklKey } from "./client";
+import { flushHeldStops, scrobble, scrobbleLockWait, simklKey } from "./client";
 import { simklGetReview, simklRate } from "./review";
 
 const TOKENS = {
@@ -65,21 +65,53 @@ describe("a stop inside the lock", () => {
     vi.stubGlobal("fetch", fetch);
     const sent = scrobble("stop", { progress: 90 });
     await vi.advanceTimersByTimeAsync(1_000);
-    expect(await simklHeldStop.getValue()).toMatchObject({ body: { progress: 90 } });
+    expect(Object.values(await simklHeldStops.getValue())).toMatchObject([
+      { body: { progress: 90 } },
+    ]);
     expect(fetch).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(20_000);
     expect((await sent).kind).toBe("ok");
     expect(fetch).toHaveBeenCalledTimes(1);
-    expect(await simklHeldStop.getValue()).toBeNull();
+    expect(await simklHeldStops.getValue()).toEqual({});
+  });
+
+  it("keeps a second held stop when the first one is released", async () => {
+    vi.useFakeTimers();
+    await simklScrobbleAt.setValue(Date.now());
+    // B's first try meets the lock A just took, so B waits a second time.
+    let calls = 0;
+    const fetch = vi.fn(async () =>
+      ++calls === 2
+        ? new Response(JSON.stringify({ error: "RATE_LIMIT" }), { status: 400 })
+        : new Response("{}", { status: 201 }),
+    );
+    vi.stubGlobal("fetch", fetch);
+    const a = scrobble("stop", { progress: 90 });
+    await vi.advanceTimersByTimeAsync(1_000);
+    const b = scrobble("stop", { progress: 95 });
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(Object.keys(await simklHeldStops.getValue())).toHaveLength(2);
+    // A's wait ends first: only A leaves the store, B still waits in it.
+    await vi.advanceTimersByTimeAsync(18_500);
+    await a;
+    await vi.advanceTimersByTimeAsync(100);
+    expect(Object.values(await simklHeldStops.getValue())).toMatchObject([
+      { body: { progress: 95 } },
+    ]);
+    await vi.advanceTimersByTimeAsync(60_000);
+    await b;
+    expect(await simklHeldStops.getValue()).toEqual({});
   });
 
   it("goes out from the alarm when the worker was stopped during the wait", async () => {
-    await simklHeldStop.setValue({ at: Date.now() - 60_000, body: { progress: 90 } });
+    await simklHeldStops.setValue({
+      one: { due: Date.now() - 60_000, body: { progress: 90 } },
+    });
     const fetch = vi.fn(async () => new Response("{}", { status: 201 }));
     vi.stubGlobal("fetch", fetch);
-    await flushHeldStop();
+    await flushHeldStops();
     expect(fetch).toHaveBeenCalledTimes(1);
-    expect(await simklHeldStop.getValue()).toBeNull();
+    expect(await simklHeldStops.getValue()).toEqual({});
   });
 });
 

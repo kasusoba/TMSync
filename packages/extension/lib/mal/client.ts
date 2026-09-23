@@ -1,5 +1,6 @@
 import type { ParsedMedia } from "@tmsync/shared";
 import { resolveById as anilistResolveById } from "../anilist/client";
+import { errorMessage } from "../errors";
 import { errorDetail } from "../oauth";
 import { malCorrections, malEntryCache, malMissCache, malResolutionCache } from "../storage";
 import type { CourEntry, CourStatus } from "../tracker/cour-plan";
@@ -62,7 +63,7 @@ async function malFetch<T>(
 
   let res = await send(token);
   if (res.status === 401 && token) {
-    token = await refreshAfterReject();
+    token = await refreshAfterReject(token);
     if (!token) {
       if (opts.auth) throw new MalNotConnectedError();
       res = await send(null); // a public read can still go through logged out
@@ -107,6 +108,11 @@ export function liveMisses(
 export function malCacheKey(media: ParsedMedia): string {
   if (media.ids?.mal !== undefined) return `id:${media.ids.mal}`;
   if (media.ids?.anilist !== undefined) return `al:${media.ids.anilist}`;
+  return titleKey(media);
+}
+
+/** The title part of {@link malCacheKey}: title, year, and season. Pure. */
+function titleKey(media: ParsedMedia): string {
   const season = media.season !== undefined ? `:s${media.season}` : "";
   return `${media.title.trim().toLowerCase()}:${media.year ?? ""}${season}`;
 }
@@ -192,10 +198,10 @@ export async function searchMal(query: string): Promise<CourSearchOption[]> {
  * correction (malCorrections) wins over all of it.
  */
 export async function resolve(media: ParsedMedia): Promise<MalIdentity | null> {
-  const key = malCacheKey(media);
   // A user title-match correction is authoritative. `null` = "not on MyAnimeList".
   const pin = await correctionFor(media);
   if (pin) return pin.identity;
+  const key = malCacheKey(media);
 
   const cache = await malResolutionCache.getValue();
   const cached = cache[key];
@@ -240,8 +246,16 @@ export async function correctionFor(
   media: ParsedMedia,
 ): Promise<{ identity: MalIdentity | null } | undefined> {
   const corr = await malCorrections.getValue();
-  const key = malCacheKey(media);
-  return key in corr ? { identity: corr[key] ?? null } : undefined;
+  // The review path adds the derived ids to the page media, so a pin made on a page
+  // without ids (keyed by title) must still be found under its title key. Not with a
+  // tmdb id: that pin lives in the crosswalk override, and the derived media has no
+  // season, so its title key would match a pin for another season.
+  const keys = [malCacheKey(media)];
+  if (media.ids?.tmdb === undefined) keys.push(titleKey(media));
+  for (const key of keys) {
+    if (key in corr) return { identity: corr[key] ?? null };
+  }
+  return undefined;
 }
 
 /** The MAL entry for a known AniList id, via AniList's `idMal`. */
@@ -319,7 +333,13 @@ export async function updateListStatus(
   const form: Record<string, FormValue> = {};
   for (const [k, v] of Object.entries(fields)) if (v !== undefined) form[k] = v;
   try {
-    await malFetch(`/anime/${id}/my_list_status`, { method: "PATCH", form, auth: true });
+    const saved = await malFetch(`/anime/${id}/my_list_status`, {
+      method: "PATCH",
+      form,
+      auth: true,
+    });
+    // 404: the anime id is gone from MAL, so nothing was written.
+    if (saved === null) return { ok: false, error: `MyAnimeList has no anime ${id}` };
     // The entry changed: the next read must come from MAL.
     const cache = await malEntryCache.getValue();
     if (id in cache) {
@@ -329,6 +349,6 @@ export async function updateListStatus(
     return { ok: true };
   } catch (e) {
     if (e instanceof MalNotConnectedError) throw e;
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    return { ok: false, error: errorMessage(e) };
   }
 }

@@ -167,7 +167,8 @@ function toSeasoned(
 /**
  * Like {@link deriveMedia} but consults the user's local overrides FIRST (local
  * correction › Fribb › miss). A forward override pins/blocks the AniList entry (a
- * MAL pin wins for MAL, else MAL follows the AniList pin through `idMal`); a
+ * MAL pin wins for MAL, else MAL follows an AniList pin through `idMal`, but not
+ * an AniList block); a
  * reverse override pins the TMDB target. Overrides assume offset 0 (a season = a
  * cour), the common correction case; otherwise it falls through to Fribb.
  */
@@ -202,8 +203,9 @@ export function deriveMediaWith(
       }
       if (key in overrides.forward) {
         const anilistId = overrides.forward[key];
-        if (anilistId == null) return { kind: "miss" }; // explicitly "not on AniList"
-        return pinned({ anilist: anilistId });
+        // "Not on AniList" blocks AniList only. MAL still tries the crosswalk.
+        if (anilistId != null) return pinned({ anilist: anilistId });
+        if (target === "anilist") return { kind: "miss" };
       }
     }
     return deriveMedia(target, media, nativeItem, animap);

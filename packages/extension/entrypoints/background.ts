@@ -50,7 +50,7 @@ import {
   isConnected as simklIsConnected,
   getRedirectUri as simklRedirectUri,
 } from "@/lib/simkl/auth";
-import { HELD_STOP_ALARM, flushHeldStop } from "@/lib/simkl/client";
+import { HELD_STOP_ALARM, flushHeldStops } from "@/lib/simkl/client";
 import { SIMKL } from "@/lib/simkl/config";
 import {
   simklDeleteNote,
@@ -258,7 +258,7 @@ export default defineBackground(() => {
   browser.alarms.onAlarm.addListener((alarm) => {
     if (alarm.name === "tmsync-recipes") void fetchRemoteRecipes(true);
     if (alarm.name === "tmsync-anime-map") void fetchAnimeMap(true);
-    if (alarm.name === HELD_STOP_ALARM) void flushHeldStop();
+    if (alarm.name === HELD_STOP_ALARM) void flushHeldStops();
   });
 
   onMessage("refreshRecipes", async () => {
@@ -946,6 +946,10 @@ async function recordNative(
   data: ScrobbleRequest,
 ): Promise<ScrobbleReply> {
   if (error !== undefined) {
+    // A tracker that can't even read while disconnected (MAL) says "connect", not "failed".
+    if (!(await getAdapter(native).isConnected())) {
+      return { ok: false, resolved: false, reason: "not_connected", primaryTracker: native };
+    }
     return { ok: false, resolved: false, reason: "http", httpError: error, primaryTracker: native };
   }
   if (!item) return { ok: false, resolved: false, reason: "unresolved", primaryTracker: native };
@@ -1273,7 +1277,11 @@ async function recordDerivedTrackers(
     try {
       item = await resolveDerived(target, d);
     } catch (e) {
-      out.push({ tracker: target, ok: false, reason: "http", httpError: errorMessage(e) });
+      out.push(
+        (await getAdapter(target).isConnected())
+          ? { tracker: target, ok: false, reason: "http", httpError: errorMessage(e) }
+          : { tracker: target, ok: false, reason: "not_connected" },
+      );
       continue;
     }
     if (!item) {

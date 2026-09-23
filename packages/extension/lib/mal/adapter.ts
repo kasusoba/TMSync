@@ -1,4 +1,5 @@
 import type { ParsedMedia } from "@tmsync/shared";
+import { errorMessage } from "../errors";
 import type { TrackerAdapter } from "../tracker/adapter";
 import { type CourEntry, type CourPlan, planCourWrite } from "../tracker/cour-plan";
 import type {
@@ -39,7 +40,7 @@ function toItem(identity: MalIdentity): MalItem {
 /** A failed call as a RecordResult (never thrown into the background). */
 function failure(e: unknown): RecordResult {
   if (e instanceof MalNotConnectedError) return { ok: false, reason: "not_connected" };
-  return { ok: false, reason: "http", httpError: e instanceof Error ? e.message : String(e) };
+  return { ok: false, reason: "http", httpError: errorMessage(e) };
 }
 
 /**
@@ -128,7 +129,10 @@ export const malAdapter: TrackerAdapter = {
 
   async resolveById(ids, media) {
     // A title pin made on the MAL row wins, also when MAL follows AniList's entry.
-    const pin = await correctionFor(media);
+    // A page with a tmdb id pins MAL through the tmdb + season crosswalk override
+    // instead (deriveMediaWith). Its derived media has no season, so a title key
+    // would match a pin for every season of the show.
+    const pin = media.ids?.tmdb === undefined ? await correctionFor(media) : undefined;
     if (pin) return pin.identity ? toItem(pin.identity) : null;
     try {
       if (ids.mal !== undefined) {
@@ -140,7 +144,8 @@ export const malAdapter: TrackerAdapter = {
         return identity ? toItem(identity) : null;
       }
     } catch (e) {
-      if (e instanceof MalRateLimitError) throw e;
+      // Rate limits and a missing connection surface; other failures read as a miss.
+      if (e instanceof MalRateLimitError || e instanceof MalNotConnectedError) throw e;
       return null;
     }
     return null;

@@ -131,6 +131,20 @@ describe("deriveMediaWith — local overrides sit above Fribb", () => {
     expect(deriveMediaWith("anilist", media, traktItem, overrides, map)).toEqual({ kind: "miss" });
   });
 
+  it("'not on AniList' does not block MAL: MAL falls through to the crosswalk", () => {
+    const overrides: AnimapOverrides = { forward: { "2604:1": null }, reverse: {} };
+    const media: ParsedMedia = {
+      mediaType: "show",
+      title: "Boondocks",
+      ids: { tmdb: 2604 },
+      season: 1,
+      episode: 5,
+    };
+    expect(deriveMediaWith("mal", media, traktItem, overrides, map)).toEqual(
+      deriveMedia("mal", media, traktItem, map),
+    );
+  });
+
   describe("MAL forward pins", () => {
     const media: ParsedMedia = {
       mediaType: "show",

@@ -373,6 +373,9 @@ export class SessionManager {
   private lastStop: { reply: ScrobbleReply; media: ParsedMedia; tracker: Tracker } | null = null;
   /** A follow-up that arrived before its stop's reply. */
   private earlyFollowUp: { media: ParsedMedia; outcomes: DerivedOutcome[] } | null = null;
+  /** The last phase this frame sent. A start or pause after a stop means playback
+   * went on (the same episode replayed), so a late follow-up must not replace it. */
+  private lastAction: "start" | "pause" | "stop" | null = null;
   private currentVideo: HTMLVideoElement | null = null;
   private controller: ScrobbleController | null = null;
   private abort: AbortController | null = null;
@@ -448,8 +451,10 @@ export class SessionManager {
         return;
       }
       this.lastStop = { ...last, reply: mergeFollowUp(last.reply, data.outcomes) };
-      // The next episode already plays: its status must not be overwritten.
+      // The next episode already plays, or this one plays again: its status must
+      // not be overwritten.
       if (this.currentKey !== null && this.currentKey !== mediaKey(data.media)) return;
+      if (this.lastAction !== "stop") return;
       this.reportStop(this.lastStop);
     });
     this.ctx.onInvalidated(() => offFollowUp());
@@ -991,6 +996,7 @@ export class SessionManager {
     const controller = new ScrobbleController(
       video,
       (action, progress) => {
+        this.lastAction = action;
         void sendMessage("scrobble", {
           action,
           media,

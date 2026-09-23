@@ -117,10 +117,13 @@ export async function getValidAccessToken(): Promise<string | null> {
   return (await refresh(tokens))?.access_token ?? null;
 }
 
-/** Refresh after the API rejected the access token (401) before its local expiry. */
-export async function refreshAfterReject(): Promise<string | null> {
+/** Refresh after the API rejected the access token (401) before its local expiry.
+ * When another call already replaced `rejected`, use that token: a second refresh
+ * would spend the rotating refresh token again. */
+export async function refreshAfterReject(rejected: string): Promise<string | null> {
   const tokens = await malTokens.getValue();
   if (!tokens) return null;
+  if (tokens.access_token !== rejected) return tokens.access_token;
   return (await refresh(tokens))?.access_token ?? null;
 }
 
