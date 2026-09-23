@@ -1,5 +1,7 @@
 /** AniList API types — only the fields TMSync uses. */
 
+import type { CourEntry, CourStatus } from "../tracker/cour-plan";
+
 /**
  * Authorization-code token set (AniList dropped implicit grant). The access token
  * has a ~1-year lifetime. `obtained_at` is our local issue timestamp (Unix
@@ -23,25 +25,11 @@ export interface AniListTokens {
  */
 export type ScoreFormat = "POINT_100" | "POINT_10_DECIMAL" | "POINT_10" | "POINT_5" | "POINT_3";
 
-/**
- * AniList list-entry status. We READ all of them (to decide transitions) but only
- * ever WRITE `CURRENT` / `COMPLETED` / `REPEATING` (never PLANNING/PAUSED/DROPPED —
- * we don't set those ourselves).
- */
-export type MediaListStatus =
-  | "CURRENT"
-  | "PLANNING"
-  | "COMPLETED"
-  | "DROPPED"
-  | "PAUSED"
-  | "REPEATING";
+/** AniList list-entry status: the cour-family status, in AniList's own words. */
+export type MediaListStatus = CourStatus;
 
 /** The viewer's existing list entry for a Media (null when not on their list). */
-export interface AniListEntry {
-  status: MediaListStatus | null;
-  progress: number;
-  repeat: number;
-}
+export type AniListEntry = CourEntry;
 
 /**
  * A resolved AniList identity, cached per scraped (title,year). `episodes` is the
