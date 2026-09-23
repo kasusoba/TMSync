@@ -1,3 +1,4 @@
+import { actionError } from "@/lib/errors";
 import {
   type CourSearchOption,
   type CourTracker,
@@ -734,12 +735,17 @@ export function Correction({
   const pick = async (o: TraktSearchOption) => {
     if (!media) return;
     setBusy(true);
-    await sendMessage("saveCorrection", {
-      media,
-      identity: { mediaType: o.type, traktId: o.traktId, title: o.title, year: o.year },
-      tabId,
-    });
-    setSaved(optionLabel(o));
+    setErr(null);
+    try {
+      await sendMessage("saveCorrection", {
+        media,
+        identity: { mediaType: o.type, traktId: o.traktId, title: o.title, year: o.year },
+        tabId,
+      });
+      setSaved(optionLabel(o));
+    } catch (e) {
+      setErr(actionError(e));
+    }
     setBusy(false);
   };
 
@@ -796,6 +802,7 @@ export function Correction({
               ))
             )}
           </div>
+          {err && <p class={clsx("mt-2 rounded-lg px-2.5 py-1.5 text-[11px]", t.badBox)}>{err}</p>}
         </>
       )}
     </div>
