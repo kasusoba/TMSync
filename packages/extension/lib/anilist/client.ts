@@ -11,11 +11,14 @@ export class AniListNotConnectedError extends Error {
   }
 }
 
-/** Cache key for an AniList resolution: a native id when present, else title (+year). */
+/** Cache key for an AniList resolution: a native id when present, else title (+year,
+ * + season when the page has one: each season is its own cour, so a title pin for
+ * one season must not apply to another). */
 export function anilistCacheKey(media: ParsedMedia): string {
   if (media.ids?.anilist !== undefined) return `id:${media.ids.anilist}`;
   if (media.ids?.mal !== undefined) return `mal:${media.ids.mal}`;
-  return `${media.title.trim().toLowerCase()}:${media.year ?? ""}`;
+  const season = media.season !== undefined ? `:s${media.season}` : "";
+  return `${media.title.trim().toLowerCase()}:${media.year ?? ""}${season}`;
 }
 
 interface MediaNode {
