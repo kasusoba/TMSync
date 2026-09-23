@@ -21,6 +21,7 @@ import {
   newPendingSites,
   optionsIntent,
   quickLinks,
+  quickLinksEnabled,
   remoteRecipes,
 } from "@/lib/storage";
 import { type Tracker, trackerLabel } from "@/lib/tracker/types";
@@ -639,6 +640,8 @@ export function App() {
   const [allSites, setAllSites] = useState(false);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [links, setLinks] = useState<QuickLinkSite[]>([]);
+  /** Master switch: off hides every quick link, whatever the per-site toggles say. */
+  const [linksOn, setLinksOn] = useState(true);
   const [corr, setCorr] = useState<Record<string, ResolvedIdentity>>({});
   // AniList fix-match corrections: the title-keyed pins + the tmdb-keyed crosswalk
   // overrides. Surfaced alongside the Trakt corrections so the pane is the complete
@@ -690,12 +693,13 @@ export function App() {
   const has = (s: string) => s.toLowerCase().includes(q.toLowerCase());
 
   const refresh = async () => {
-    const [s, al, sit, rec, ql, c, ac, am, rem, amap, bp, broad] = await Promise.all([
+    const [s, al, sit, rec, ql, qlOn, c, ac, am, rem, amap, bp, broad] = await Promise.all([
       sendMessage("getTraktStatus", undefined),
       sendMessage("getAniListStatus", undefined),
       sendMessage("listEnabledSites", undefined),
       customRecipes.getValue(),
       quickLinks.getValue(),
+      quickLinksEnabled.getValue(),
       corrections.getValue(),
       anilistCorrections.getValue(),
       animapOverrides.getValue(),
@@ -709,6 +713,7 @@ export function App() {
     setSites(sit);
     setRecipes(rec);
     setLinks(ql);
+    setLinksOn(qlOn);
     setCorr(c);
     setAnilistCorr(ac);
     setAnimap(am);
@@ -789,6 +794,12 @@ export function App() {
       if (!ok) return;
       for (const origin of missing) await sendMessage("registerSite", origin);
     });
+
+  const toggleLinksOn = async () => {
+    const next = !linksOn;
+    setLinksOn(next);
+    await quickLinksEnabled.setValue(next);
+  };
 
   const updateBadge = async (patch: Partial<BadgePrefs>) => {
     const next = { ...badge, ...patch };
@@ -1536,7 +1547,11 @@ export function App() {
                 <PaneHead
                   title="Quick links"
                   right={
-                    <div class="flex gap-1.5">
+                    <div class="flex items-center gap-3">
+                      <span class={clsx("flex items-center gap-2 text-[12px]", t.sub)}>
+                        {linksOn ? "On" : "Off"}
+                        <Switch on={linksOn} t={t} onClick={() => void toggleLinksOn()} />
+                      </span>
                       <Btn t={t} tone="ghost" disabled={busy} onClick={addLink}>
                         <Icon name="plus" class="text-[12px]" /> Add blank
                       </Btn>
@@ -1547,6 +1562,8 @@ export function App() {
                   “Watch on …” buttons added to your trackers’ title pages (Trakt, AniList, and more
                   as trackers are added). Toggle a site on to show it; drag the handle to set
                   display order.
+                  {!linksOn &&
+                    " Quick links are off, so none of these show until you turn them on."}
                 </p>
                 {links.length > 3 && <Filter q={q} setQ={setQ} placeholder="Filter quick links…" />}
                 {links.length === 0 ? (
@@ -1554,7 +1571,7 @@ export function App() {
                     No quick-link sites yet. Add one and give it the site’s URL patterns.
                   </p>
                 ) : (
-                  <div class="space-y-1.5">
+                  <div class={clsx("space-y-1.5", !linksOn && "opacity-50")}>
                     {links.map((s) =>
                       has(s.name) ? (
                         <QuickLinkRow

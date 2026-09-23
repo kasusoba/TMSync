@@ -6,6 +6,7 @@ import {
   customRecipes,
   manualSelections,
   quickLinks,
+  quickLinksEnabled,
 } from "@/lib/storage";
 import type { ResolvedIdentity } from "@/lib/trakt/types";
 import type { ParsedMedia, Recipe } from "@tmsync/shared";
@@ -75,6 +76,7 @@ const BackupSchema = z.object({
     corrections: z.record(z.string(), ResolvedIdentitySchema).default({}),
     manualSelections: z.record(z.string(), ParsedMediaSchema).default({}),
     badgePrefs: BadgePrefsSchema.optional(),
+    quickLinksEnabled: z.boolean().optional(),
   }),
 });
 
@@ -92,12 +94,13 @@ export interface ImportSummary {
 
 /** Gather the user-owned deltas into a versioned, downloadable bundle. */
 export async function buildBackup(): Promise<Backup> {
-  const [recipes, links, corr, manual, badge] = await Promise.all([
+  const [recipes, links, corr, manual, badge, linksOn] = await Promise.all([
     customRecipes.getValue(),
     quickLinks.getValue(),
     corrections.getValue(),
     manualSelections.getValue(),
     badgePrefs.getValue(),
+    quickLinksEnabled.getValue(),
   ]);
   // Library quick links come from the repo on every device — carry only their
   // on/off toggle, not the templates.
@@ -115,6 +118,7 @@ export async function buildBackup(): Promise<Backup> {
       corrections: corr,
       manualSelections: manual,
       badgePrefs: badge,
+      quickLinksEnabled: linksOn,
     },
   };
 }
@@ -163,6 +167,7 @@ export async function applyBackup(backup: Backup): Promise<ImportSummary> {
   });
 
   if (d.badgePrefs) await badgePrefs.setValue(d.badgePrefs);
+  if (d.quickLinksEnabled !== undefined) await quickLinksEnabled.setValue(d.quickLinksEnabled);
 
   return {
     recipes: validRecipes.length,

@@ -1,5 +1,5 @@
 import { stampBuild } from "@/lib/diagnostics/build-stamp";
-import { quickLinkSlugs, quickLinks } from "@/lib/storage";
+import { quickLinkSlugs, quickLinks, quickLinksEnabled } from "@/lib/storage";
 import { type QuickLinkItem, mountQuickLinks } from "@/lib/ui/quicklinks";
 import { type AniListPageMedia, buildAniListSiteLinks } from "@tmsync/shared";
 
@@ -34,6 +34,7 @@ export default defineContentScript({
   cssInjectionMode: "ui",
   async main(ctx) {
     stampBuild();
+    if (!(await quickLinksEnabled.getValue())) return; // quick links turned off in Options
 
     const sites = (await quickLinks.getValue()).filter((s) => s.enabled && s.tracker === "anilist");
     if (sites.length === 0) return; // nothing to show
