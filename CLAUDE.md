@@ -7,7 +7,7 @@ TMSync is a cross-browser (Chrome + Firefox) WebExtension that passively scrobbl
 
 > **Direction note (2026-06):** the owner deliberately reversed the original "Trakt only / no anime" scope to add AniList for anime. This is intentional, not drift. AniList lives behind the tracker-adapter seam (see **Tracker adapters**). Where this doc and the old constraints disagree, this doc wins.
 
-> **Direction note (2026-09):** the owner relaxed "non-anime stays Trakt-only" so movies and TV can be multi-tracked to seasoned-family trackers (Trakt + Simkl). MyAnimeList and Simkl are planned in `docs/TRACKERS-PLAN.md` (MAL first). The crosswalk stays anime-only and out of `extract()`.
+> **Direction note (2026-09):** the owner relaxed "non-anime stays Trakt-only" so movies and TV can be multi-tracked to Trakt and Simkl. MyAnimeList (a cour-family tracker, like AniList) and Simkl (the `any` family: it takes the page's own numbering) are built; the plan and handover live in `docs/TRACKERS-PLAN.md`. The crosswalk stays anime-only and out of `extract()`.
 
 > **Direction note (2026-07), superseding the 2026-06 "routed, never synced" model:** the owner reversed constraint #1's *never-synced* half to allow **multi-tracking anime to BOTH Trakt and AniList** (Mihon/Aniyomi-style), backed by the Fribb TMDB↔AniList crosswalk, validated against real coverage data, not theory. This also lifts constraint #2's general-site / offset-mapping / is-anime-classifier non-goal. Still **exactly two trackers** (since lifted: see constraint #1 and the 2026-09 note); **non-anime stays Trakt-only**; the crosswalk stays **out of `extract()`**. Design + phased build order now live in **`docs/MULTI-TRACK.md`** (which supersedes `docs/ANIME-PLAN.md`).
 

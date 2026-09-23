@@ -17,6 +17,8 @@ It detects what you are watching from the page, resolves it against Trakt, and m
 - Stay store-compliant and privacy-respecting despite broad reach.
 
 ## 4. Non-goals (explicitly out of scope)
+> **Superseded (2026-06 to 2026-09):** the "Anime" and "Multiple trackers" non-goals below no longer hold. TMSync now tracks anime and writes to Trakt, AniList, MyAnimeList, and Simkl, with a crosswalk for anime (see `CLAUDE.md`, `docs/MULTI-TRACK.md`, `docs/TRACKERS-PLAN.md`). They are kept as the original v1 scope.
+
 - **Anime.** Handled by MAL-Sync. Do not build anime support or anime ID/episode mapping.
 - **Multiple trackers / cross-tracker ID mapping.** Trakt only. (Keep a thin adapter seam for a *possible* future Simkl adapter; do not build it.)
 - **A backend service in v1.** Site definitions ship as a versioned list in the repo (see §8).

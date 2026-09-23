@@ -367,9 +367,9 @@ export default defineBackground(() => {
   });
 
   // A frame reports a video event; route to the recipe's tracker adapter, resolve
-  // identity (cached) and record progress. The Trakt and AniList paradigms differ
-  // entirely (real-time scrobble vs one threshold write) — that lives behind the
-  // adapter; this handler is tracker-agnostic.
+  // identity (cached) and record progress. The scrobble trackers (Trakt, Simkl) and
+  // the list trackers (AniList, MAL, one threshold write) differ entirely. That
+  // lives behind the adapter; this handler is tracker-agnostic.
   onMessage("scrobble", async ({ data, sender }) => {
     // Only one frame records per tab (page + player iframe would otherwise both
     // fire start/pause/stop for the same item → Trakt rejects out-of-order).
@@ -396,8 +396,9 @@ export default defineBackground(() => {
   });
 
   // Pre-resolution for the badge: resolve identity (cached) without recording so
-  // the user sees the matched tracker title before play. Reads work
-  // unauthenticated for both trackers, so transparency holds even pre-connect.
+  // the user sees the matched tracker title before play. Trakt and AniList read
+  // without a login, so this works even before Connect. MAL needs its site access,
+  // and Simkl never searches, so they may show no match until connected or written.
   onMessage("resolveMedia", async ({ data }) => {
     try {
       const adapter = getAdapter(routeTracker(data.tracker ?? "trakt", data.media.mediaType));
