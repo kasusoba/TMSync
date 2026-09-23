@@ -3,7 +3,7 @@
 Operating guide for Claude Code on this repo. Read before generating or editing code. These decisions are **settled**; do not relitigate or "improve" them without being asked.
 
 ## Project in one paragraph
-TMSync is a cross-browser (Chrome + Firefox) WebExtension that passively scrobbles what the user watches on arbitrary streaming sites (including gray-market ones with no API) to the right tracker: **movies and non-anime TV → Trakt**, **anime series → AniList**. It detects the media from the page using **declarative recipes** (data, not code), resolves it against the tracker(s) it routes to, and records progress. **Anime may be multi-tracked to both Trakt and AniList** via a bundled TMDB↔AniList crosswalk (`docs/MULTI-TRACK.md`); everything else stays Trakt-only. Site definitions can be added on the fly via an in-page element picker. See `docs/TMSync-PRD.md` for the "what/why".
+TMSync is a cross-browser (Chrome + Firefox) WebExtension that passively scrobbles what the user watches on arbitrary streaming sites (including gray-market ones with no API) to the right tracker: **movies and non-anime TV → Trakt**, **anime series → AniList and/or MyAnimeList (MAL)**. It detects the media from the page using **declarative recipes** (data, not code), resolves it against the tracker(s) it routes to, and records progress. **Anime may be multi-tracked to Trakt, AniList, and MAL at once** via a bundled TMDB↔AniList crosswalk (with MAL ids) (`docs/MULTI-TRACK.md`, `docs/TRACKERS-PLAN.md`); non-anime goes only to seasoned-family trackers (today Trakt). Site definitions can be added on the fly via an in-page element picker. See `docs/TMSync-PRD.md` for the "what/why".
 
 > **Direction note (2026-06):** the owner deliberately reversed the original "Trakt only / no anime" scope to add AniList for anime. This is intentional, not drift. AniList lives behind the tracker-adapter seam (see **Tracker adapters**). Where this doc and the old constraints disagree, this doc wins.
 
@@ -12,12 +12,12 @@ TMSync is a cross-browser (Chrome + Firefox) WebExtension that passively scrobbl
 > **Direction note (2026-07) — supersedes the 2026-06 "routed, never synced" model:** the owner reversed constraint #1's *never-synced* half to allow **multi-tracking anime to BOTH Trakt and AniList** (Mihon/Aniyomi-style), backed by the Fribb TMDB↔AniList crosswalk — validated against real coverage data, not theory. This also lifts constraint #2's general-site / offset-mapping / is-anime-classifier non-goal. Still **exactly two trackers**; **non-anime stays Trakt-only**; the crosswalk stays **out of `extract()`**. Design + phased build order now live in **`docs/MULTI-TRACK.md`** (which supersedes `docs/ANIME-PLAN.md`).
 
 ## Hard constraints (never violate)
-1. **Pluggable tracker registry, multi-tracked.** Trackers are a **list you can grow** — currently **Trakt + AniList**, but adding more later is expected (2026-07: the old "exactly two, no third" hardline is **retired**). Each tracker is one implementation behind the adapter seam (see **Tracker adapters**); adding one = a new adapter + a picker toggle + (if it uses a different numbering) an anime-map entry — **without touching the other trackers or the shared `extract()` engine**. An item may be written to **every enabled tracker at once** (multi-track — `docs/MULTI-TRACK.md`); the picker exposes an **independent on/off toggle per tracker** (no "primary tab"). Which enabled tracker is **native** (its numbering matches the page → written directly) vs **derived** (mapped via the crosswalk) is **inferred at scrobble time**, not user-picked. Feasibility is per-item: a tracker that can't resolve an item (e.g. AniList on non-anime) is simply skipped. The old "one item → one tracker, never synced" rule is **retired**.
+1. **Pluggable tracker registry, multi-tracked.** Trackers are a **list you can grow**, currently **Trakt + AniList + MyAnimeList** (Simkl planned, `docs/TRACKERS-PLAN.md`), and adding more later is expected (2026-07: the old "exactly two, no third" hardline is **retired**). Each tracker is one implementation behind the adapter seam (see **Tracker adapters**); adding one = a new adapter + a picker toggle + (if it uses a different numbering) an anime-map entry — **without touching the other trackers or the shared `extract()` engine**. An item may be written to **every enabled tracker at once** (multi-track — `docs/MULTI-TRACK.md`); the picker exposes an **independent on/off toggle per tracker** (no "primary tab"). Which enabled tracker is **native** (its numbering matches the page → written directly) vs **derived** (mapped via the crosswalk) is **inferred at scrobble time**, not user-picked. Feasibility is per-item: a tracker that can't resolve an item (e.g. AniList on non-anime) is simply skipped. The old "one item → one tracker, never synced" rule is **retired**.
 2. **Multi-track via the anime-map crosswalk — quarantined outside `extract()`.** The Fribb TMDB↔AniList crosswalk resolves an item's identity + episode across the two numbering systems (one **native** tracker written directly, the **other derived** via the crosswalk — best-effort, refuse-on-ambiguous, skip-on-miss). This lifts the old "general-site anime / offset-mapping / is-anime-classifier" non-goal (reversed 2026-07, with coverage data). Hard rule that survives the reversal: **the crosswalk lives in `lib/animap/` + the adapters and NEVER leaks into the shared `extract()` engine.** Anime-map derivation is per-tracker and advance-only; it never lowers remote progress and never silently mis-writes a wrong cour (guardrails: `docs/MULTI-TRACK.md` §9, §12).
 3. **No remote code execution.** Never `eval`, `new Function`, inject remote `<script>`, or fetch-and-run JS. Recipes are **data** interpreted by the bundled engine. This is an MV3 + store-policy requirement, not a style choice. The recipe schema must stay expressive enough that no site ever needs a code escape hatch.
 4. **Background is a stateless, ephemeral MV3 service worker.** Never keep watch-session state, timers, or accumulated buffers in background memory. The content script owns session state. The background reads everything it needs from `storage` on each wake. Use `alarms` if scheduling is ever required.
 5. **No broad host permissions at install.** Use `optional_host_permissions: ["*://*/*"]` and request per-origin on a user gesture, then `chrome.scripting.registerContentScripts`. Never put `<all_urls>` in `host_permissions`. `activeTab` is insufficient (per-click, non-persistent).
-6. **Privacy split.** Resolution + scrobbling are client-side. Watch data goes only to the user's own tracker accounts (Trakt and/or AniList) — and each item to just the one it's routed to. Any current/future backend receives only anonymous recipe data — never watch history.
+6. **Privacy split.** Resolution + scrobbling are client-side. Watch data goes only to the user's own tracker accounts (Trakt, AniList, MAL), and each item only to the trackers it's routed to. Any current/future backend receives only anonymous recipe data — never watch history.
 7. **No backend in v1.** Recipes are a versioned JSON list fetched from the repo/CDN, contributed by PR. Do not scaffold a server unless explicitly asked (that is Phase 2).
 8. **Validate untrusted input.** Every recipe is parsed through the Zod schema before use. A recipe failing validation is discarded, never partially applied.
 
@@ -31,6 +31,7 @@ TMSync is a cross-browser (Chrome + Firefox) WebExtension that passively scrobbl
 - **Validation:** Zod (recipe schema + any external payloads).
 - **Trakt:** OAuth via `browser.identity.launchWebAuthFlow` (or device-code flow). A thin typed `fetch` client — no heavy SDK. Cache search/resolve results.
 - **AniList:** OAuth via `browser.identity.launchWebAuthFlow`. **Originally planned as implicit grant, but AniList removed it** (its authorize endpoint returns `unsupported_grant_type` for `response_type=token`, verified 2026-06), so TMSync uses the **Authorization Code grant** — get a `code` on the redirect, exchange it at `/oauth/token` with the bundled client secret. This still needs **no backend** (constraint #7 holds — the secret is bundled exactly like Trakt's); the only change from the old plan is a bundled secret instead of none. ~1-year token validity. A thin typed GraphQL `fetch` client (one POST endpoint) — no SDK. Reads use `Media` (`id`, `idMal`, `title`, `synonyms`, `episodes`, `relations`); writes use `SaveMediaListEntry(mediaId, progress, status)`. Read the user's `mediaListOptions { scoreFormat }` to render scores. Cache resolutions. AniList has **no real-time scrobble endpoint** — see **Tracker adapters**.
+- **MyAnimeList:** OAuth authorization code + PKCE via `launchWebAuthFlow`. App type "other": no client secret, no backend (constraint #7). PKCE is `plain` only. Access tokens expire, so `lib/mal/auth.ts` refreshes on 401 or near expiry and clears the connection when refresh fails. A thin typed REST `fetch` client (`lib/mal/client.ts`), no SDK. MAL sends no CORS headers, so `myanimelist.net` + `api.myanimelist.net` are **optional** host permissions, requested on Connect (never in the install manifest). Resolution: a MAL id directly, an AniList id through AniList's `idMal` (1:1), else MAL title search (`pickBest`).
 - **Monorepo:** pnpm workspaces.
 
 ## Repo layout
@@ -41,7 +42,7 @@ TMSync is a cross-browser (Chrome + Firefox) WebExtension that passively scrobbl
 │  ├─ shared/         # recipe schema (Zod) + types + pure helpers (no DOM, no browser APIs)
 │  └─ server/         # Phase 2 only — do not create until asked
 ├─ recipes/index.json # ONE tracker-agnostic recipe + quick-link list (Phase 1 source of truth,
-│                     #   PR-contributed). Trakt and AniList recipes coexist; each carries its own
+│                     #   PR-contributed). Trakt, AniList, and MAL recipes coexist; each carries its own
 │                     #   `tracker` field and the engine routes per-recipe — no per-tracker files.
 ├─ docs/              # design notes: TMSync-PRD, ARCHITECTURE, MULTI-TRACK, STORAGE-SYNC
 ├─ CONTRIBUTING.md
@@ -82,7 +83,7 @@ const Recipe = z.object({
                                                //   matches any host.
   }),
   mediaType: z.enum(["auto", "movie", "show"]).default("auto"),
-  tracker: z.enum(["trakt", "anilist"]).default("trakt"), // which adapter records this site. anilist ⇒ anime
+  tracker: z.enum(["trakt", "anilist", "mal"]).default("trakt"), // which adapter records this site. (Legacy single field; new recipes use `trackers: TrackerId[]`, read via recipeTrackers().) anilist ⇒ anime
                                                           // series only; the engine routes by this field.
   video: z.object({
     selector: z.string().default("video"),
@@ -107,7 +108,7 @@ Engine contract: a single pure-ish `extract(recipe, { document, url }): ParsedMe
 1. Content script matches enabled recipes by `domFingerprint` + `urlPattern`.
 2. On match, find the `<video>` (respect `video.frame`; remember the player may be in a cross-origin iframe while metadata is in the top frame — coordinate via messaging).
 3. Run `extract()` → `ParsedMedia`. Show the badge.
-4. **Route by `recipeTrackers(recipe)`** → pick the adapter(s); for anime this may be **both** Trakt and AniList (multi-track — the session fans out; `docs/MULTI-TRACK.md`). The engine and `extract()` are tracker-agnostic; everything tracker-specific (including the anime-map crosswalk) lives behind the adapter (see **Tracker adapters**).
+4. **Route by `recipeTrackers(recipe)`** → pick the adapter(s); for anime this may be **several** of Trakt, AniList, and MAL (multi-track: the session fans out; `docs/MULTI-TRACK.md`). The engine and `extract()` are tracker-agnostic; everything tracker-specific (including the anime-map crosswalk) lives behind the adapter (see **Tracker adapters**).
    - **Trakt:** resolve identity once via background → Trakt search (returns trakt/imdb/tmdb IDs; cache it). For shows pass season+episode **as scraped** (Western TV is already seasoned; do **not** build absolute-numbering translation).
    - **AniList:** resolve title → AniList `Media` id once via background GraphQL (cache it). v1 targets dedicated anime sites where the scraped episode number already matches the AniList entry, so **pass episode as scraped** — no offset mapping yet.
 5. **Record progress via the adapter.** Trakt uses the **real-time scrobble** state machine below. AniList has no scrobble API — it instead writes `SaveMediaListEntry` once `watchedThreshold` is crossed (see **Tracker adapters**). The rest of this section is the **Trakt** path:
@@ -125,7 +126,7 @@ Engine contract: a single pure-ish `extract(recipe, { document, url }): ParsedMe
 - Idempotent per session: a re-fired event or resumed playback must never create a duplicate scrobble.
 
 ## Tracker adapters
-One seam, two implementations, selected per recipe by `recipeTrackers()` — which, for anime, may return **both** (multi-track; a watch session fans out to each resolved adapter — `docs/MULTI-TRACK.md`). The shared engine (`extract()`, video detection, session/state, badge) is **tracker-agnostic** and must stay that way. Everything tracker-specific — auth, identity resolution, progress recording, and the episode mapping (the `lib/animap/` crosswalk, native-vs-derived) — lives behind the adapter interface. Adding/enabling a tracker must not touch the other's path.
+One seam, one implementation per tracker (Trakt, AniList, MAL), selected per recipe by `recipeTrackers()`, which, for anime, may return **several** (multi-track; a watch session fans out to each resolved adapter — `docs/MULTI-TRACK.md`). The shared engine (`extract()`, video detection, session/state, badge) is **tracker-agnostic** and must stay that way. Everything tracker-specific — auth, identity resolution, progress recording, and the episode mapping (the `lib/animap/` crosswalk, native-vs-derived) — lives behind the adapter interface. Adding/enabling a tracker must not touch the other's path.
 
 Sketch (final shape lives in code, not here):
 ```ts
@@ -140,15 +141,19 @@ interface TrackerAdapter {
 }
 ```
 
-**The two paradigms are genuinely different — do not force them into one code path:**
+**The two paradigms are genuinely different, so do not force them into one code path.** Trakt is the seasoned/scrobble paradigm; AniList and MAL are the cour/list paradigm and share one pure planner (`lib/tracker/cour-plan.ts`):
 
-| | **Trakt** | **AniList** |
-|---|---|---|
-| Progress API | real-time scrobble `start`/`pause`/`stop` | none — just `SaveMediaListEntry(mediaId, progress, status)` |
-| Watched decision | **Trakt owns it** (≥80% on stop) | **we own it** — crossing `watchedThreshold` ⇒ write `progress=N`, `status: CURRENT`→`COMPLETED` |
-| Auth | OAuth (web auth / device code) | **auth code grant** — bundled secret, no backend (implicit grant was removed by AniList) |
-| Identity | Trakt search → trakt/imdb/tmdb ids | GraphQL `Media` search → AniList id (`idMal` bridges to MAL-keyed data later) |
-| Episode numbering | pass season/episode as scraped | v1: pass as scraped (dedicated sites only) |
+| | **Trakt** | **AniList** | **MyAnimeList** |
+|---|---|---|---|
+| Progress API | real-time scrobble `start`/`pause`/`stop` | none — just `SaveMediaListEntry(mediaId, progress, status)` | none, just `PATCH /anime/{id}/my_list_status` (form-encoded) |
+| Watched decision | **Trakt owns it** (≥80% on stop) | **we own it** — crossing `watchedThreshold` ⇒ write `progress=N`, `status: CURRENT`→`COMPLETED` | **we own it**, same cour planner; `watching`→`completed` |
+| Auth | OAuth (web auth / device code) | **auth code grant** — bundled secret, no backend (implicit grant was removed by AniList) | auth code + PKCE (`plain` only), no client secret; tokens expire, so **refresh-token handling** |
+| Identity | Trakt search → trakt/imdb/tmdb ids | GraphQL `Media` search → AniList id (`idMal` bridges to MAL) | MAL id; from AniList via `idMal` (1:1), else MAL search |
+| Episode numbering | pass season/episode as scraped | v1: pass as scraped (dedicated sites only) | as AniList (same cour family) |
+| Rewatch | n/a | `REPEATING`, `repeat` += 1 on the final ep | `completed` + `is_rewatching`, `num_times_rewatched` += 1 |
+| Host access | install manifest | install manifest | **optional**, requested on Connect (no CORS headers) |
+
+**MAL recording follows the AniList rules below** (read-before-write, never lower progress, "Rewatching?" confirm, `ep > num_episodes` guardrail). MAL answers 403 for request bursts ("DoS detected"); surface it and never retry in a loop.
 
 **AniList recording rules (the analogue of the Trakt scrobble rules):**
 - No `start`/`pause` chatter — AniList has nothing to receive it. Only **one write per episode**, when `watchedThreshold` is crossed. Debounce so seeking/replaying never double-writes.
@@ -161,12 +166,12 @@ interface TrackerAdapter {
 
 **Rating & reviews are adapter-driven — the levels differ, so the UI must not assume a fixed set.** TMSync already has the Trakt rating/comment feature; it moves behind the seam, and AniList implements its own shape:
 
-| | **Trakt** | **AniList** |
-|---|---|---|
-| Rate at | show / season / **episode** (multiple levels) | **entry = cour only** (no per-episode, no franchise-wide score) |
-| Score scale | 1–10 | per user's `scoreFormat` (`POINT_100`/`POINT_10[_DECIMAL]`/`POINT_5`/`POINT_3`) |
-| Private text | VIP note | `MediaList.notes` (per cour, via `SaveMediaListEntry`) |
-| Public text | comment (≥5 words) | `Review` — separate `SaveReview` entity, public, ~2200-char min |
+| | **Trakt** | **AniList** | **MyAnimeList** |
+|---|---|---|---|
+| Rate at | show / season / **episode** (multiple levels) | **entry = cour only** (no per-episode, no franchise-wide score) | entry = cour only |
+| Score scale | 1–10 | per user's `scoreFormat` (`POINT_100`/`POINT_10[_DECIMAL]`/`POINT_5`/`POINT_3`) | 1 to 10 integer (0 clears) |
+| Private text | VIP note | `MediaList.notes` (per cour, via `SaveMediaListEntry`) | `my_list_status.comments` |
+| Public text | comment (≥5 words) | `Review` — separate `SaveReview` entity, public, ~2200-char min | none |
 
 - AniList score + private `notes` both write through `SaveMediaListEntry`, both attach to the **cour entry** — there is no episode-level user score and no object above the entries to rate.
 - `ratingLevels(item)` lets the shared UI render only the affordances a tracker supports: Trakt shows show/season/episode stars; an AniList anime entry shows a single "rate this cour."
@@ -227,7 +232,7 @@ owner reads everything else in.
 ## UI & visual design (settled — `packages/extension/lib/ui`)
 The look and these rules are **settled**; don't relitigate spacing/colour/structure or invent new patterns without being asked. The user cares a lot about **consistency** — uniformity across surfaces is the bar. When adding UI, reuse the kit and match the rules below.
 
-- **Stack:** Tailwind v4 (tokens + base in `lib/ui/theme.css`, wired via `@tailwindcss/vite`). Brand accent is **Trakt red** (`bg-trakt` / `text-trakt`). A shared kit in `lib/ui/kit/` holds the tokens + primitives (`tokens()`, `Btn`, `IconBtn`, `Switch`, `Stars`, `Icon`, `TraktMark`, `AniListMark`) and the presentational views (`PopupView`, `PickerPanel`, `BadgeView`, `QuickLinksView`, `OptionsView`). Real entrypoints stay thin and feed these props.
+- **Stack:** Tailwind v4 (tokens + base in `lib/ui/theme.css`, wired via `@tailwindcss/vite`). Brand accent is **Trakt red** (`bg-trakt` / `text-trakt`). A shared kit in `lib/ui/kit/` holds the tokens + primitives (`tokens()`, `Btn`, `IconBtn`, `Switch`, `Stars`, `Icon`, `TraktMark`, `AniListMark`, `MalMark`, and `TrackerMark`, the one tracker → mark lookup) and the presentational views (`PopupView`, `PickerPanel`, `BadgeView`, `QuickLinksView`, `OptionsView`). Real entrypoints stay thin and feed these props.
 - **Theme: dark is the chosen direction** (`tokens("dark")`). A light token set still exists and must keep working, but dark is what ships.
 - **Gallery harness:** `entrypoints/gallery/` renders every surface + state with mock data and a light/dark switch — the prototyping/review tool. Keep it updated when you add UI states. View via `pnpm dev` → `chrome-extension://<id>/gallery.html`.
 - **Consistency rules (keep uniform across popup / picker / badge / quicklinks / options):**
@@ -237,7 +242,7 @@ The look and these rules are **settled**; don't relitigate spacing/colour/struct
   - **Red underline is for genuine inline text links only** (e.g. "contribute here"). Never style a button as red underlined text.
   - All interactive controls get `cursor: pointer` (restored in the theme base layer; Tailwind v4 preflight defaults buttons to `default`).
   - In any header show **either the logo mark or the wordmark — not both**.
-- **Account section is a provider list** — now **two rows**: Trakt (`TraktMark` + "Trakt" + status + Connect/Disconnect) and AniList (its mark + "AniList" + status + Connect/Disconnect). Each row NAMES the provider so "Connect" is never "connect to what?". The two are independent connections, not a sync pair — an item is routed to one tracker, never mirrored to both (constraint #1). Reuse the existing provider-row component for both; don't invent a second pattern. Section is labelled "Account".
+- **Account section is a provider list**, **one row per tracker** (today three: Trakt, AniList, MyAnimeList). Each row is mark + name + status + Connect/Disconnect, and NAMES the provider so "Connect" is never "connect to what?". The rows are independent connections; which trackers an item goes to is the per-recipe toggle set (constraint #1), not the account list. Reuse the existing provider-row component for both; don't invent a second pattern. Section is labelled "Account".
 - **Injected UI + Tailwind (Shadow DOM):** badge / picker / quicklinks render inside a Shadow DOM. Tailwind v4 emits its theme custom properties on `:root`, which do **not** reach a shadow root — so `var(--color-*)` (i.e. every colour utility) is unresolved there. Wiring Tailwind into the injected surfaces requires making the theme vars available inside the shadow scope (mirror them onto `:host`) — solve and document this when wiring those three. (Popup + options are normal pages and need none of this.)
 
 ## Testing
@@ -257,5 +262,5 @@ The look and these rules are **settled**; don't relitigate spacing/colour/struct
 - Do not store session state, timers, or buffers in the background service worker.
 - Do not request `<all_urls>` or put host permissions in the install manifest.
 - Do not let recipes carry or run JavaScript; no `eval`/`new Function`/remote scripts.
-- Do not send watch history anywhere except the user's own tracker accounts (Trakt / AniList).
+- Do not send watch history anywhere except the user's own tracker accounts (Trakt / AniList / MAL).
 - Keep the **injected** content UI (badge / picker / quicklinks) lean and Shadow-DOM-friendly — it ships on every granted page, so mind bundle weight and style isolation (Tailwind + headless primitives are fine; avoid a heavy CSS-in-JS runtime in the content script). The **options page** has no weight budget — use whatever UI kit/design system you like there.

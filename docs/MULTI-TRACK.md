@@ -1,6 +1,13 @@
 # MULTI-TRACK.md — dual-tracking anime to Trakt **and** AniList
 
-**Status:** proposed (2026-07). Design + phased plan for review. Nothing here is built yet.
+**Status:** shipped. Proposed 2026-07; built and on `main`. Read it as the design record.
+
+> **Update (2026-09):** the "exactly two trackers" count below no longer holds. MyAnimeList
+> is a third tracker. It joins AniList in the **cour** numbering family, so it adds no new
+> crosswalk: inside the family only the id changes (AniList and MAL are 1:1 through
+> `Media.idMal`), and the Fribb crosswalk now carries an `m` (MAL id) column. A MAL fix-match
+> pin sits beside the AniList pin (`AnimapOverrides.forwardMal`) and wins for MAL only.
+> Families, derivation, and the Simkl plan: `docs/TRACKERS-PLAN.md`.
 **Supersedes:** the "route, never sync" half of CLAUDE.md constraint #1, the whole of constraint #2's non-goals, and the "Non-goal" section of `docs/ANIME-PLAN.md`. See **§14 Constraint migration** for the exact doc edits — those are staged, not yet applied.
 
 > This is an intentional reversal of a previously-settled decision, made by the owner with data (§3). A future session must NOT "fix" multi-tracking back to routing as drift. When this doc and the old constraints disagree, **this doc wins**, exactly as the 2026-06 anime direction note overrode the original "Trakt-only" scope.
