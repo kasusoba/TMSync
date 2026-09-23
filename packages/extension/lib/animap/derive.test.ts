@@ -131,6 +131,54 @@ describe("deriveMediaWith — local overrides sit above Fribb", () => {
     expect(deriveMediaWith("anilist", media, traktItem, overrides, map)).toEqual({ kind: "miss" });
   });
 
+  describe("MAL forward pins", () => {
+    const media: ParsedMedia = {
+      mediaType: "show",
+      title: "New",
+      ids: { tmdb: 5555 },
+      season: 1,
+      episode: 7,
+    };
+    const flat = { ...media, mediaType: "show" as const, season: undefined, episode: 7 };
+
+    it("a MAL pin names the MAL entry for MAL only", () => {
+      const overrides: AnimapOverrides = {
+        forward: { "5555:1": 42 },
+        forwardMal: { "5555:1": 777 },
+        reverse: {},
+      };
+      expect(deriveMediaWith("mal", media, traktItem, overrides, map)).toEqual({
+        kind: "resolved",
+        ids: { mal: 777 },
+        media: flat,
+      });
+      // AniList keeps its own pin.
+      expect(deriveMediaWith("anilist", media, traktItem, overrides, map)).toEqual({
+        kind: "resolved",
+        ids: { anilist: 42 },
+        media: flat,
+      });
+    });
+
+    it("a null MAL pin means 'not on MyAnimeList' → miss", () => {
+      const overrides: AnimapOverrides = {
+        forward: {},
+        forwardMal: { "5555:1": null },
+        reverse: {},
+      };
+      expect(deriveMediaWith("mal", media, traktItem, overrides, map)).toEqual({ kind: "miss" });
+    });
+
+    it("without a MAL pin, MAL follows the AniList pin", () => {
+      const overrides: AnimapOverrides = { forward: { "5555:1": 42 }, reverse: {} };
+      expect(deriveMediaWith("mal", media, traktItem, overrides, map)).toEqual({
+        kind: "resolved",
+        ids: { anilist: 42 },
+        media: flat,
+      });
+    });
+  });
+
   it("reverse override pins the TMDB target for an AniList entry", () => {
     const overrides: AnimapOverrides = {
       forward: {},

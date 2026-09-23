@@ -79,5 +79,8 @@ describe("malCacheKey", () => {
     expect(malCacheKey({ mediaType: "show", title: "X", ids: { mal: 5 } })).toBe("id:5");
     expect(malCacheKey({ mediaType: "show", title: "X", ids: { anilist: 7 } })).toBe("al:7");
     expect(malCacheKey({ mediaType: "show", title: " Frieren ", year: 2023 })).toBe("frieren:2023");
+    expect(malCacheKey({ mediaType: "show", title: "Frieren", year: 2023, season: 2 })).toBe(
+      "frieren:2023:s2",
+    );
   });
 });

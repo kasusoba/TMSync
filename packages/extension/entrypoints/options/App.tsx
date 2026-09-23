@@ -3,6 +3,7 @@ import type { AniListIdentity } from "@/lib/anilist/types";
 import type { AnimapOverrides } from "@/lib/animap/derive";
 import { actionError } from "@/lib/errors";
 import { requestMalAccess } from "@/lib/mal/access";
+import type { MalIdentity } from "@/lib/mal/types";
 import { defaultRecipeName } from "@/lib/picker/recipe-builder";
 import { applyBackup, buildBackup, parseBackup } from "@/lib/portability/backup";
 import { type Contribution, contribute } from "@/lib/portability/contribute";
@@ -20,6 +21,7 @@ import {
   corrections,
   customRecipes,
   malConnectIntent,
+  malCorrections,
   newPendingSites,
   optionsIntent,
   quickLinks,
@@ -656,6 +658,7 @@ export function App() {
   // overrides. Surfaced alongside the Trakt corrections so the pane is the complete
   // fix-match ledger (constraint: every fix the badge can make is visible/clearable).
   const [anilistCorr, setAnilistCorr] = useState<Record<string, AniListIdentity | null>>({});
+  const [malCorr, setMalCorr] = useState<Record<string, MalIdentity | null>>({});
   const [animap, setAnimap] = useState<AnimapOverrides>({ forward: {}, reverse: {} });
   const [remote, setRemote] = useState<RemoteRecipes | null>(null);
   /** The CDN anime-map crosswalk cache (multi-track). Shown in the Library pane so
@@ -702,7 +705,7 @@ export function App() {
   const has = (s: string) => s.toLowerCase().includes(q.toLowerCase());
 
   const refresh = async () => {
-    const [s, al, ml, sit, rec, ql, qlOn, c, ac, am, rem, amap, bp, broad] = await Promise.all([
+    const [s, al, ml, sit, rec, ql, qlOn, c, ac, mc, am, rem, amap, bp, broad] = await Promise.all([
       sendMessage("getTraktStatus", undefined),
       sendMessage("getAniListStatus", undefined),
       sendMessage("getMalStatus", undefined),
@@ -712,6 +715,7 @@ export function App() {
       quickLinksEnabled.getValue(),
       corrections.getValue(),
       anilistCorrections.getValue(),
+      malCorrections.getValue(),
       animapOverrides.getValue(),
       remoteRecipes.getValue(),
       animeMap.getValue(),
@@ -727,6 +731,7 @@ export function App() {
     setLinksOn(qlOn);
     setCorr(c);
     setAnilistCorr(ac);
+    setMalCorr(mc);
     setAnimap(am);
     setRemote(rem);
     setMapCache(amap);
@@ -1099,11 +1104,23 @@ export function App() {
       await anilistCorrections.setValue(next);
       setAnilistCorr(next);
     });
-  const deleteAnimap = (dir: "forward" | "reverse", key: string) =>
+  const deleteMalTitle = (key: string) =>
+    act(async () => {
+      const next = { ...(await malCorrections.getValue()) };
+      delete next[key];
+      await malCorrections.setValue(next);
+      setMalCorr(next);
+    });
+  const deleteAnimap = (dir: "forward" | "forwardMal" | "reverse", key: string) =>
     act(async () => {
       const ov = await animapOverrides.getValue();
-      const next: AnimapOverrides = { forward: { ...ov.forward }, reverse: { ...ov.reverse } };
+      const next: AnimapOverrides = {
+        forward: { ...ov.forward },
+        forwardMal: { ...ov.forwardMal },
+        reverse: { ...ov.reverse },
+      };
       if (dir === "forward") delete next.forward[key];
+      else if (dir === "forwardMal") delete next.forwardMal?.[key];
       else delete next.reverse[Number(key)];
       await animapOverrides.setValue(next);
       setAnimap(next);
@@ -1113,15 +1130,17 @@ export function App() {
       await Promise.all([
         corrections.setValue({}),
         anilistCorrections.setValue({}),
+        malCorrections.setValue({}),
         animapOverrides.setValue({ forward: {}, reverse: {} }),
       ]);
       setCorr({});
       setAnilistCorr({});
+      setMalCorr({});
       setAnimap({ forward: {}, reverse: {} });
     });
 
   const connected = status?.connected ?? false;
-  // The complete fix-match ledger: Trakt corrections + AniList title pins + the
+  // The complete fix-match ledger: Trakt corrections + AniList and MAL title pins + the
   // tmdb-keyed crosswalk overrides. Each row names its tracker so the pane shows
   // every correction the badge can make, regardless of tracker.
   const yr = (y?: number) => (y ? ` (${y})` : "");
@@ -1152,6 +1171,20 @@ export function App() {
       primary: `tmdb ${key}`,
       target: v == null ? "not on AniList" : `→ AniList #${v}`,
       onDelete: () => deleteAnimap("forward", key),
+    })),
+    ...Object.entries(malCorr).map(([key, v]) => ({
+      key: `m:${key}`,
+      tracker: "mal" as Tracker,
+      primary: key,
+      target: v ? `→ ${v.title}${yr(v.year)}` : "not on MyAnimeList",
+      onDelete: () => deleteMalTitle(key),
+    })),
+    ...Object.entries(animap.forwardMal ?? {}).map(([key, v]) => ({
+      key: `mf:${key}`,
+      tracker: "mal" as Tracker,
+      primary: `tmdb ${key}`,
+      target: v == null ? "not on MyAnimeList" : `→ MyAnimeList #${v}`,
+      onDelete: () => deleteAnimap("forwardMal", key),
     })),
     ...Object.entries(animap.reverse).map(([key, v]) => ({
       key: `ar:${key}`,

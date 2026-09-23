@@ -32,6 +32,10 @@ export interface AnimapOverrides {
    * pins the AniList entry (local episode = tmdb episode, offset 0); `null` means
    * "explicitly NOT on AniList" (skip — e.g. a non-anime show enabled for AniList). */
   forward: Record<string, number | null>;
+  /** Forward (TMDB-native → MAL), same key as `forward`. Pins (or blocks, `null`) the
+   * MAL entry on its own, above the AniList pin that MAL otherwise follows. Optional:
+   * values stored before MAL existed lack it. */
+  forwardMal?: Record<string, number | null>;
   /** Reverse (AniList-native → Trakt): AniList id → TMDB target. */
   reverse: Record<number, { tmdbId: number; season: number | null }>;
 }
@@ -138,7 +142,8 @@ function toSeasoned(
 
 /**
  * Like {@link deriveMedia} but consults the user's local overrides FIRST (local
- * correction › Fribb › miss). A forward override pins/blocks the AniList entry; a
+ * correction › Fribb › miss). A forward override pins/blocks the AniList entry (a
+ * MAL pin wins for MAL, else MAL follows the AniList pin through `idMal`); a
  * reverse override pins the TMDB target. Overrides assume offset 0 (a season = a
  * cour), the common correction case; otherwise it falls through to Fribb.
  */
@@ -153,16 +158,26 @@ export function deriveMediaWith(
     const tmdbId = media.ids?.tmdb;
     if (tmdbId !== undefined) {
       const key = forwardKey(Number(tmdbId), media.season);
+      // A pinned movie writes progress 1 (single-episode cour); a series keeps its ep.
+      const pinned = (ids: TargetIds): DeriveOutcome => ({
+        kind: "resolved",
+        ids,
+        media: {
+          ...media,
+          mediaType: "show",
+          season: undefined,
+          episode: media.mediaType === "movie" ? 1 : media.episode,
+        },
+      });
+      const malPins = overrides.forwardMal ?? {};
+      if (target === "mal" && key in malPins) {
+        const malId = malPins[key];
+        return malId == null ? { kind: "miss" } : pinned({ mal: malId });
+      }
       if (key in overrides.forward) {
         const anilistId = overrides.forward[key];
         if (anilistId == null) return { kind: "miss" }; // explicitly "not on AniList"
-        // A pinned movie writes progress 1 (single-episode cour); a series keeps its ep.
-        const episode = media.mediaType === "movie" ? 1 : media.episode;
-        return {
-          kind: "resolved",
-          ids: { anilist: anilistId },
-          media: { ...media, mediaType: "show", season: undefined, episode },
-        };
+        return pinned({ anilist: anilistId });
       }
     }
     return deriveMedia(target, media, nativeItem, animap);

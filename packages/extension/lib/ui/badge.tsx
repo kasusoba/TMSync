@@ -17,8 +17,9 @@ import { createShadowRootUi } from "wxt/utils/content-script-ui/shadow-root";
 import { useKeyShield } from "./key-shield";
 import { Btn, Icon, IconBtn, TrackerMark, tokens } from "./kit/kit";
 import {
-  AniListCorrection,
   Correction,
+  CourCorrection,
+  type CourFixTracker,
   EpisodePick,
   ManualPick,
   RateNote,
@@ -169,8 +170,9 @@ function BadgeRoot() {
   const [status, setStatus] = useState<BadgeStatus | null>(null);
   const [minimized, setMinimized] = useState(false);
   const [panel, setPanel] = useState<
-    null | "now" | "review" | "fix" | "anilist-fix" | "manual" | "episode"
+    null | "now" | "review" | "fix" | "cour-fix" | "manual" | "episode"
   >(null);
+  const [fixTracker, setFixTracker] = useState<CourFixTracker>("anilist");
   const [media, setMedia] = useState<ParsedMedia | null>(null);
   const [tracker, setTracker] = useState<Tracker>("trakt");
   /** The item's enabled trackers (multi-track) — the rate/note composer fans out
@@ -459,9 +461,11 @@ function BadgeRoot() {
             media={media}
             trackers={activeTrackers}
             outcomes={status.trackers}
-            onFix={(tk) =>
-              setPanel(tk === "anilist" ? "anilist-fix" : manualMode ? "manual" : "fix")
-            }
+            onFix={(tk) => {
+              if (tk === "trakt") return setPanel(manualMode ? "manual" : "fix");
+              setFixTracker(tk);
+              setPanel("cour-fix");
+            }}
           />
           <Btn t={t} tone="primary" class="mt-3 w-full" onClick={() => setPanel("review")}>
             <Icon name="edit" class="text-[12px]" />
@@ -495,8 +499,13 @@ function BadgeRoot() {
       {panel === "fix" && (
         <Correction t={t} onClose={() => setPanel(null)} onBack={() => setPanel("now")} />
       )}
-      {panel === "anilist-fix" && (
-        <AniListCorrection t={t} onClose={() => setPanel(null)} onBack={() => setPanel("now")} />
+      {panel === "cour-fix" && (
+        <CourCorrection
+          tracker={fixTracker}
+          t={t}
+          onClose={() => setPanel(null)}
+          onBack={() => setPanel("now")}
+        />
       )}
       {panel === "manual" && (
         <ManualPick t={t} onClose={() => setPanel(null)} onDone={() => setPanel(null)} />

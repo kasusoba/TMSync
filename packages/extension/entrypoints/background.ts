@@ -36,8 +36,10 @@ import {
   isConnected as malIsConnected,
   getRedirectUri as malRedirectUri,
 } from "@/lib/mal/auth";
+import { getAnime as getMalAnime, malCacheKey, searchMal } from "@/lib/mal/client";
 import { MAL } from "@/lib/mal/config";
 import { malDeleteNote, malGetReview, malRate, malSaveNote, malUnrate } from "@/lib/mal/review";
+import type { MalIdentity } from "@/lib/mal/types";
 import { bundledLinks } from "@/lib/recipes";
 import { statusDotColor } from "@/lib/scrobble/action-badge";
 import { addedHosts } from "@/lib/sites";
@@ -52,6 +54,9 @@ import {
   enabledOrigins,
   episodeOverrides,
   malConnectIntent,
+  malCorrections,
+  malMissCache,
+  malResolutionCache,
   manualContexts,
   manualSelections,
   newPendingSites,
@@ -563,6 +568,66 @@ export default defineBackground(() => {
     return { ok: true };
   });
 
+  onMessage("searchMal", async ({ data }) => {
+    try {
+      return await searchMal(data.query);
+    } catch {
+      return [];
+    }
+  });
+
+  // Pin/block the MAL entry. The MAL twin of setAniListMatch, but it writes both
+  // keys: a tmdb id keys a crosswalk pin (MAL derived), and the title key pins the
+  // match when MAL resolves the page itself (MAL native, which can happen with a
+  // tmdb id too, e.g. Trakt off). The title key carries the season, so a pin for
+  // one season never applies to another.
+  onMessage("setMalMatch", async ({ data, sender }) => {
+    let identity: MalIdentity | null = null;
+    if (data.malId !== null) {
+      identity = await getMalAnime(data.malId).catch(() => null);
+      if (!identity) return { ok: false, error: "couldn't load that MyAnimeList entry" };
+    }
+    const tmdbId = data.media.ids?.tmdb;
+    if (tmdbId !== undefined) {
+      const ov = await animapOverrides.getValue();
+      const key = forwardKey(Number(tmdbId), data.media.season);
+      await animapOverrides.setValue({
+        ...ov,
+        forwardMal: { ...ov.forwardMal, [key]: data.malId },
+      });
+    }
+    const key = malCacheKey(data.media);
+    await malCorrections.setValue({ ...(await malCorrections.getValue()), [key]: identity });
+    await dropMalCache(key);
+    const tabId = data.tabId ?? sender.tab?.id;
+    if (tabId !== undefined) void sendMessage("recheck", undefined, tabId);
+    return { ok: true };
+  });
+
+  // Undo a MAL pin (or "Not on MyAnimeList") → back to the automatic match.
+  onMessage("resetMalMatch", async ({ data, sender }) => {
+    const tmdbId = data.media.ids?.tmdb;
+    if (tmdbId !== undefined) {
+      const ov = await animapOverrides.getValue();
+      const key = forwardKey(Number(tmdbId), data.media.season);
+      if (ov.forwardMal && key in ov.forwardMal) {
+        const forwardMal = { ...ov.forwardMal };
+        delete forwardMal[key];
+        await animapOverrides.setValue({ ...ov, forwardMal });
+      }
+    }
+    const key = malCacheKey(data.media);
+    const corr = await malCorrections.getValue();
+    if (key in corr) {
+      delete corr[key];
+      await malCorrections.setValue(corr);
+    }
+    await dropMalCache(key);
+    const tabId = data.tabId ?? sender.tab?.id;
+    if (tabId !== undefined) void sendMessage("recheck", undefined, tabId);
+    return { ok: true };
+  });
+
   // The user confirmed a rewatch of a completed cour entry → write the rewatch
   // (or re-complete + bump the rewatch count on the final episode) on every tracker
   // that asked, then update the badge. A derived tracker confirms the crosswalk's
@@ -988,6 +1053,21 @@ function needsCourBridge(native: Tracker, enabled: Tracker[]): boolean {
   return trackerFamily(native) === "cour" && enabled.some((tk) => trackerFamily(tk) === "seasoned");
 }
 
+/** Drop a stale MAL auto-resolution (or a remembered miss) so a pin, or its
+ * removal, takes effect now. */
+async function dropMalCache(key: string): Promise<void> {
+  const cache = await malResolutionCache.getValue();
+  if (key in cache) {
+    delete cache[key];
+    await malResolutionCache.setValue(cache);
+  }
+  const misses = await malMissCache.getValue();
+  if (key in misses) {
+    delete misses[key];
+    await malMissCache.setValue(misses);
+  }
+}
+
 /**
  * Resolve a derived tracker's entry: by the exact ids the derivation named (the
  * adapter picks the namespace it can use), else from the derived media.
@@ -1024,16 +1104,22 @@ async function resolveAcross(
       .resolve(media)
       .catch(() => null);
     return item
-      ? { tracker: tk, resolved: true, title: item.title, id: item.id }
-      : { tracker: tk, resolved: false, reason: "no_match" };
+      ? { tracker: tk, resolved: true, title: item.title, id: item.id, native: true }
+      : { tracker: tk, resolved: false, reason: "no_match", native: true };
   };
   const out: TrackerResolution[] = [];
   for (const tk of trackers) {
     if (tk === native) {
       out.push(
         nativeItem
-          ? { tracker: tk, resolved: true, title: nativeItem.title, id: nativeItem.id }
-          : { tracker: tk, resolved: false, reason: "unresolved" },
+          ? {
+              tracker: tk,
+              resolved: true,
+              title: nativeItem.title,
+              id: nativeItem.id,
+              native: true,
+            }
+          : { tracker: tk, resolved: false, reason: "unresolved", native: true },
       );
       continue;
     }

@@ -4,7 +4,7 @@ import { storage } from "wxt/utils/storage";
 import type { AniListIdentity, AniListTokens } from "./anilist/types";
 import type { AnimapOverrides } from "./animap/derive";
 import type { AnimapRow } from "./animap/index";
-import type { MalIdentity, MalTokens } from "./mal/types";
+import type { MalIdentity, MalListStatus, MalTokens } from "./mal/types";
 import type { QuickLinkTracker, Tracker } from "./tracker/types";
 import type { ResolvedIdentity, TraktIds, TraktTokens } from "./trakt/types";
 
@@ -75,6 +75,29 @@ export const malConnectIntent = storage.defineItem<number>("session:mal_connect_
 /** MAL resolution cache keyed by malCacheKey(media). */
 export const malResolutionCache = storage.defineItem<Record<string, MalIdentity>>(
   "local:mal_resolution_cache",
+  { fallback: {} },
+);
+
+/** When a MAL title search last found nothing (ms), keyed by malCacheKey(media).
+ * A miss is not searched again for a while: MAL answers bursts with 403. */
+export const malMissCache = storage.defineItem<Record<string, number>>("local:mal_miss_cache", {
+  fallback: {},
+});
+
+/** The viewer's MAL list status as last read (ms + status), keyed by MAL anime id.
+ * Start, pause, and the pre-play check reuse a recent read; a write reads fresh. */
+export const malEntryCache = storage.defineItem<
+  Record<number, { at: number; status: MalListStatus | null }>
+>("local:mal_entry_cache", { fallback: {} });
+
+/**
+ * User MAL TITLE-match corrections: malCacheKey(media) → the MAL entry the user
+ * picked (or `null` = "not on MyAnimeList", skip). The MAL twin of
+ * `anilistCorrections`: it fixes a MAL-native recipe that resolves by title. A
+ * tmdb-keyed MAL pin lives in `animapOverrides.forwardMal` instead.
+ */
+export const malCorrections = storage.defineItem<Record<string, MalIdentity | null>>(
+  "local:mal_corrections",
   { fallback: {} },
 );
 

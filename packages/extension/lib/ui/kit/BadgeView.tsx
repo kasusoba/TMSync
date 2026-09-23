@@ -477,23 +477,28 @@ export function ManualPickPanel({
   );
 }
 
-/** Fix-match (correction) panel. */
+/** Fix-match (correction) panel. `cour` names a cour tracker (AniList, MAL): its
+ * fixer adds the "Not on" and "Use automatic match" links. */
 export function CorrectionPanel({
   variant,
   query,
   results,
   saved,
+  cour,
 }: {
   variant: Variant;
   query: string;
   results: string[];
   saved?: string | null;
+  cour?: string;
 }) {
   const t = tokens(variant);
   return (
     <div class={clsx("w-[300px] rounded-2xl p-3.5 shadow-2xl shadow-black/40", t.panel)}>
       <header class="mb-3 flex items-center justify-between">
-        <strong class={clsx("text-[13px]", t.heading)}>Fix match</strong>
+        <strong class={clsx("text-[13px]", t.heading)}>
+          {cour ? `Fix ${cour} match` : "Fix match"}
+        </strong>
         <IconBtn t={t} name="x" title="Close" />
       </header>
       {saved ? (
@@ -507,7 +512,7 @@ export function CorrectionPanel({
               <Icon name="search" class={clsx("text-[14px]", t.faint)} />
               <input
                 value={query}
-                placeholder="Search Trakt…"
+                placeholder={`Search ${cour ?? "Trakt"}…`}
                 class="w-full bg-transparent py-1.5 text-[13px] outline-none"
               />
             </div>
@@ -535,6 +540,16 @@ export function CorrectionPanel({
               ))
             )}
           </div>
+          {cour && (
+            <div class={clsx("mt-3 flex items-center gap-4 border-t pt-2.5", t.divider)}>
+              <button type="button" class={clsx("text-[11px] underline underline-offset-2", t.sub)}>
+                Not on {cour}
+              </button>
+              <button type="button" class={clsx("text-[11px] underline underline-offset-2", t.sub)}>
+                Use automatic match
+              </button>
+            </div>
+          )}
         </>
       )}
     </div>

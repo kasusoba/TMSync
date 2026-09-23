@@ -152,9 +152,13 @@ export function TrackingRows({
   // Trakt is always fixable. AniList is too: with a tmdbId we pin the crosswalk
   // override; without one (a native, resolve-by-title recipe) we pin the title
   // correction — so the fix affordance is no longer gated on having a tmdbId.
-  // MAL has no correction picker yet; a derived MAL entry follows the AniList pin.
+  // MAL pins by tmdb id (derived) or by title when MAL resolves the page itself. A
+  // MAL entry derived from AniList (same family, no tmdb id) follows the AniList
+  // match, so the fix belongs on the AniList row there.
   const canFix = (tk: Tracker) =>
-    tk === "trakt" || (tk === "anilist" && (media.ids?.tmdb !== undefined || !!media.title));
+    tk === "trakt" ||
+    (tk === "anilist" && (media.ids?.tmdb !== undefined || !!media.title)) ||
+    (tk === "mal" && (media.ids?.tmdb !== undefined || !!resFor(tk)?.native));
 
   return (
     <div>
@@ -663,23 +667,52 @@ export function Correction({
   );
 }
 
+/** A cour tracker with a fix-match panel. */
+export type CourFixTracker = "anilist" | "mal";
+
+/** Per-tracker messages behind {@link CourCorrection}: search, pin/block, reset. */
+const COUR_FIX: Record<
+  CourFixTracker,
+  {
+    search: (query: string) => Promise<AniListSearchOption[]>;
+    set: (media: ParsedMedia, id: number | null, tabId?: number) => Promise<{ ok: boolean }>;
+    reset: (media: ParsedMedia, tabId?: number) => Promise<{ ok: boolean }>;
+  }
+> = {
+  anilist: {
+    search: (query) => sendMessage("searchAniList", { query }),
+    set: (media, anilistId, tabId) => sendMessage("setAniListMatch", { media, anilistId, tabId }),
+    reset: (media, tabId) => sendMessage("resetAniListMatch", { media, tabId }),
+  },
+  mal: {
+    search: (query) => sendMessage("searchMal", { query }),
+    set: (media, malId, tabId) => sendMessage("setMalMatch", { media, malId, tabId }),
+    reset: (media, tabId) => sendMessage("resetMalMatch", { media, tabId }),
+  },
+};
+
 /**
- * The AniList "fix match" panel (multi-track) — the derived-tracker analogue of
- * {@link Correction}: search AniList and PIN the right entry, mark it "Not on
- * AniList", or clear back to the automatic (Fribb) match. All local overrides above
- * the crosswalk. Same panel shape as the Trakt fixer for consistency.
+ * The cour-tracker "fix match" panel (AniList, MAL): the analogue of
+ * {@link Correction}. Search the tracker and PIN the right entry, mark it "Not on
+ * <tracker>", or clear back to the automatic match. All local overrides above the
+ * crosswalk (or the title search, for a native match). Same panel shape as the
+ * Trakt fixer for consistency.
  */
-export function AniListCorrection({
+export function CourCorrection({
+  tracker,
   t,
   tabId,
   onClose,
   onBack,
 }: {
+  tracker: CourFixTracker;
   t: Tokens;
   tabId?: number;
   onClose: () => void;
   onBack?: () => void;
 }) {
+  const fix = COUR_FIX[tracker];
+  const name = trackerLabel(tracker);
   const [media, setMedia] = useState<ParsedMedia | null>(null);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<AniListSearchOption[]>([]);
@@ -698,7 +731,7 @@ export function AniListCorrection({
 
   const runSearch = async () => {
     setBusy(true);
-    setResults(await sendMessage("searchAniList", { query }));
+    setResults(await fix.search(query));
     setBusy(false);
   };
   const apply = async (label: string, send: Promise<{ ok: boolean }>) => {
@@ -709,14 +742,11 @@ export function AniListCorrection({
     setBusy(false);
   };
   const pick = (o: AniListSearchOption) =>
-    apply(
-      `${o.title}${o.year ? ` (${o.year})` : ""}`,
-      sendMessage("setAniListMatch", { media: media as ParsedMedia, anilistId: o.id, tabId }),
-    );
+    apply(`${o.title}${o.year ? ` (${o.year})` : ""}`, fix.set(media as ParsedMedia, o.id, tabId));
 
   return (
     <div class={panelClass(t)}>
-      <PanelHeader t={t} title="Fix AniList match" onBack={onBack} onClose={onClose} />
+      <PanelHeader t={t} title={`Fix ${name} match`} onBack={onBack} onClose={onClose} />
       {saved ? (
         <p class={clsx("rounded-lg px-2.5 py-2 text-[12px]", t.okBox)}>
           Set → {saved}. It’ll re-resolve now.
@@ -734,7 +764,7 @@ export function AniListCorrection({
                   if (e.key === "Enter") runSearch();
                 }}
                 onKeyUp={(e) => e.stopPropagation()}
-                placeholder="Search AniList…"
+                placeholder={`Search ${name}…`}
                 class="w-full bg-transparent py-1.5 text-[13px] outline-none"
               />
             </div>
@@ -772,29 +802,15 @@ export function AniListCorrection({
             <button
               type="button"
               disabled={busy}
-              onClick={() =>
-                apply(
-                  "Not on AniList",
-                  sendMessage("setAniListMatch", {
-                    media: media as ParsedMedia,
-                    anilistId: null,
-                    tabId,
-                  }),
-                )
-              }
+              onClick={() => apply(`Not on ${name}`, fix.set(media as ParsedMedia, null, tabId))}
               class={clsx("text-[11px] underline underline-offset-2", t.sub)}
             >
-              Not on AniList
+              Not on {name}
             </button>
             <button
               type="button"
               disabled={busy}
-              onClick={() =>
-                apply(
-                  "automatic match",
-                  sendMessage("resetAniListMatch", { media: media as ParsedMedia, tabId }),
-                )
-              }
+              onClick={() => apply("automatic match", fix.reset(media as ParsedMedia, tabId))}
               class={clsx("text-[11px] underline underline-offset-2", t.sub)}
             >
               Use automatic match
@@ -1103,9 +1119,10 @@ export function NowPlaying({
   t: Tokens;
   onRefresh?: () => void;
 }) {
-  const [panel, setPanel] = useState<
-    null | "review" | "fix" | "anilist-fix" | "manual" | "episode"
-  >(null);
+  const [panel, setPanel] = useState<null | "review" | "fix" | "cour-fix" | "manual" | "episode">(
+    null,
+  );
+  const [fixTracker, setFixTracker] = useState<CourFixTracker>("anilist");
   const [rewatchBusy, setRewatchBusy] = useState(false);
   const [watched, setWatched] = useState<WatchedState | null>(null);
   const done = () => {
@@ -1145,9 +1162,10 @@ export function NowPlaying({
         onBack={() => setPanel(null)}
       />
     );
-  if (panel === "anilist-fix")
+  if (panel === "cour-fix")
     return (
-      <AniListCorrection
+      <CourCorrection
+        tracker={fixTracker}
         t={t}
         tabId={tabId}
         onClose={() => setPanel(null)}
@@ -1227,7 +1245,11 @@ export function NowPlaying({
             t={t}
             media={media}
             trackers={trackers}
-            onFix={(tk) => setPanel(tk === "anilist" ? "anilist-fix" : "fix")}
+            onFix={(tk) => {
+              if (tk === "trakt") return setPanel("fix");
+              setFixTracker(tk);
+              setPanel("cour-fix");
+            }}
           />
           <Btn t={t} tone="ghost" class="w-full" onClick={() => setPanel("review")}>
             <Icon name="edit" class="text-[12px]" />
