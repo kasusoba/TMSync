@@ -258,12 +258,32 @@ export function AniListMark({
   );
 }
 
+/**
+ * The MyAnimeList provider mark: a "MAL" monogram in MAL's brand blue. No logo
+ * artwork is bundled yet, so this is the same tile the other marks fall back to.
+ */
+export function MalMark({ class: cls = "size-8" }: { class?: string }) {
+  return (
+    <span
+      class={clsx(
+        "grid shrink-0 place-items-center rounded-lg bg-[#2E51A2] text-[9px] font-bold tracking-tight text-white",
+        cls,
+      )}
+      role="img"
+      aria-label="MyAnimeList"
+    >
+      MAL
+    </span>
+  );
+}
+
 /** Per-tracker logo component — the ONE place tracker → mark is decided. Every
  * `tk === "anilist" ? <AniListMark/> : <TraktMark/>` becomes `<TrackerMark tracker={tk}/>`,
  * so adding a tracker = one entry here, not a hunt through the UI. */
 const TRACKER_MARK: Record<Tracker, (p: { class?: string }) => preact.JSX.Element> = {
   trakt: TraktMark,
   anilist: AniListMark,
+  mal: MalMark,
 };
 
 export function TrackerMark({ tracker, class: cls }: { tracker: Tracker; class?: string }) {

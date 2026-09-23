@@ -1,11 +1,11 @@
 import { type LinkTemplates, linkHost, normalizeHost } from "@tmsync/shared";
 import type { QuickLinkSite } from "./storage";
-import type { Tracker } from "./tracker/types";
+import type { QuickLinkTracker } from "./tracker/types";
 
 /** What the popup's quick-link editor saves. */
 export interface QuickLinkFields extends LinkTemplates {
   name: string;
-  tracker: Tracker;
+  tracker: QuickLinkTracker;
 }
 
 /** The quick link on this domain. Look it up by domain, not by id: a link made in

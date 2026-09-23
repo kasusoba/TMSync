@@ -1,4 +1,4 @@
-import { ALL_TRACKERS, type Tracker, trackerLabel } from "@/lib/tracker/types";
+import { QUICK_LINK_TRACKERS, type QuickLinkTracker, trackerLabel } from "@/lib/tracker/types";
 import clsx from "clsx";
 import { type Tokens, TrackerMark } from "./kit";
 
@@ -6,8 +6,8 @@ import { type Tokens, TrackerMark } from "./kit";
  * Single-select tracker tab — logo + name, matching the picker's tracker chips
  * (ring = selected). A quick link shows on ONE tracker's pages, so this is a
  * radio, not the picker's multi-toggle. Shared by the popup + Options quick-link
- * editors so the two stay identical. Iterates ALL_TRACKERS, so a new tracker shows
- * up here automatically.
+ * editors so the two stay identical. Lists only the trackers whose pages can host
+ * quick links (QUICK_LINK_TRACKERS), not every tracker.
  */
 export function TrackerTab({
   t,
@@ -15,12 +15,12 @@ export function TrackerTab({
   onChange,
 }: {
   t: Tokens;
-  value: Tracker;
-  onChange?: (tracker: Tracker) => void;
+  value: QuickLinkTracker;
+  onChange?: (tracker: QuickLinkTracker) => void;
 }) {
   return (
     <div class="flex gap-1.5">
-      {ALL_TRACKERS.map((key) => (
+      {QUICK_LINK_TRACKERS.map((key) => (
         <button
           type="button"
           key={key}

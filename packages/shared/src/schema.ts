@@ -41,6 +41,14 @@ export type Transform = z.infer<typeof Transform>;
  * anything else is reached via the anime-map crosswalk (derived) or a title search.
  * `imdb` ids are strings ("tt1375666"); the rest are numeric.
  */
+/**
+ * Every tracker this build can write to: the growing list behind the adapter seam
+ * (CLAUDE.md constraint #1). Recipes name theirs in `trackers`. The legacy single
+ * `tracker` field and quick-link hosts keep their original two values: new
+ * trackers only ever appear in `trackers`.
+ */
+export const TrackerId = z.enum(["trakt", "anilist", "mal"]);
+
 export const IdNamespace = z.enum(["tmdb", "imdb", "tvdb", "anilist", "mal"]);
 export type IdNamespace = z.infer<typeof IdNamespace>;
 
@@ -135,7 +143,7 @@ export const Recipe = z.object({
   // from the scraped media — not chosen here. Additive: omitted ⇒ `[tracker]`, so
   // older recipes/engines degrade to single-tracker (no schemaVersion bump). Read
   // via `recipeTrackers()`, never `recipe.trackers` directly.
-  trackers: z.array(z.enum(["trakt", "anilist"])).optional(),
+  trackers: z.array(TrackerId).optional(),
   video: z
     .object({
       selector: z.string().default("video"),
@@ -192,7 +200,7 @@ export type Recipe = z.infer<typeof Recipe>;
 export const RecipeSchema = Recipe;
 
 /** A tracker this build knows about. */
-export type Tracker = Recipe["tracker"];
+export type Tracker = z.infer<typeof TrackerId>;
 
 /**
  * The set of trackers a recipe writes to (multi-track — docs/MULTI-TRACK.md).

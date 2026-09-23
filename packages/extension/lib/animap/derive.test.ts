@@ -190,3 +190,62 @@ describe("deriveMedia — anime movies (via the crosswalk)", () => {
     });
   });
 });
+
+describe("deriveMedia: same numbering family (AniList ⇄ MAL)", () => {
+  const media: ParsedMedia = { mediaType: "show", title: "AoT", episode: 3 };
+
+  it("passes the AniList item's ids to MAL with the episode unchanged", () => {
+    const withMal: TrackedItem = { ...anilistItem, ids: { mal: 38524 } } as TrackedItem;
+    expect(deriveMedia("mal", media, withMal, map)).toEqual({
+      kind: "resolved",
+      media,
+      ids: { anilist: 104578, mal: 38524 },
+    });
+  });
+
+  it("passes a MAL item's own id to AniList", () => {
+    const malItem: TrackedItem = {
+      tracker: "mal",
+      mediaType: "show",
+      id: 38524,
+      title: "AoT S3 P2",
+      episodes: 10,
+    };
+    expect(deriveMedia("anilist", media, malItem, map)).toEqual({
+      kind: "resolved",
+      media,
+      ids: { mal: 38524 },
+    });
+  });
+
+  it("forward from a TMDB-native item names both cour ids when the row has a MAL id", () => {
+    const withM = new Animap([{ a: 104578, m: 38524, t: 1429, k: "tv", s: 3, o: 12 }]);
+    const tmdb: ParsedMedia = {
+      mediaType: "show",
+      title: "AoT",
+      ids: { tmdb: 1429 },
+      season: 3,
+      episode: 15,
+    };
+    expect(deriveMedia("mal", tmdb, traktItem, withM)).toEqual({
+      kind: "resolved",
+      ids: { anilist: 104578, mal: 38524 },
+      media: { ...tmdb, mediaType: "show", season: undefined, episode: 3 },
+    });
+  });
+
+  it("reverse to Trakt works from a MAL-native item", () => {
+    const withM = new Animap([{ a: 104578, m: 38524, t: 1429, k: "tv", s: 3, o: 12 }]);
+    const malItem: TrackedItem = {
+      tracker: "mal",
+      mediaType: "show",
+      id: 38524,
+      title: "AoT S3 P2",
+      episodes: 10,
+    };
+    expect(deriveMedia("trakt", media, malItem, withM)).toEqual({
+      kind: "resolved",
+      media: { ...media, mediaType: "show", ids: { tmdb: 1429 }, season: 3, episode: 15 },
+    });
+  });
+});

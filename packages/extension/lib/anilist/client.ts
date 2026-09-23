@@ -178,6 +178,23 @@ export async function resolveById(anilistId: number): Promise<AniListIdentity | 
   return identity;
 }
 
+/**
+ * Resolve a KNOWN MAL id → the matching AniList identity (cached). AniList and MAL
+ * entries are 1:1, so a MAL-native item bridges to AniList without the crosswalk.
+ */
+export async function resolveByMalId(idMal: number): Promise<AniListIdentity | null> {
+  const key = `mal:${idMal}`;
+  const cache = await anilistResolutionCache.getValue();
+  const cached = cache[key];
+  if (cached) return cached;
+
+  const data = await gql<{ Media: MediaNode | null }>(BY_MAL_QUERY, { idMal });
+  if (!data.Media) return null;
+  const identity = mediaToIdentity(data.Media);
+  await anilistResolutionCache.setValue({ ...cache, [key]: identity });
+  return identity;
+}
+
 const SEARCH_LIST_QUERY = `
 query ($search: String) {
   Page(perPage: 8) {
