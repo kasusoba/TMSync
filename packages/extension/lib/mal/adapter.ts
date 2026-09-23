@@ -10,6 +10,7 @@ import type {
 } from "../tracker/types";
 import { isConnected } from "./auth";
 import {
+  ENTRY_FRESH_MS,
   type MalListFields,
   MalNotConnectedError,
   MalRateLimitError,
@@ -95,9 +96,10 @@ async function applyPlan(item: MalItem, plan: CourPlan): Promise<RecordResult> {
  * failed read must never be planned as "not on the list". */
 async function readEntry(
   item: MalItem,
+  maxAgeMs = 0,
 ): Promise<{ entry: CourEntry | null } | { fail: RecordResult }> {
   try {
-    return { entry: await getListEntry(item.id) };
+    return { entry: await getListEntry(item.id, maxAgeMs) };
   } catch (e) {
     return { fail: failure(e) };
   }
@@ -151,7 +153,8 @@ export const malAdapter: TrackerAdapter = {
     // Say "connect MyAnimeList" from play onward, not only at the threshold.
     if (!(await isConnected())) return { ok: false, reason: "not_connected" };
     // Read on every phase so "already watched" and the rewatch prompt show early.
-    const read = await readEntry(item);
+    // Start and pause may reuse a recent read; a stop (the write moment) reads MAL.
+    const read = await readEntry(item, phase === "stop" ? 0 : ENTRY_FRESH_MS);
     if ("fail" in read) return read.fail;
     const plan = planCourWrite({
       phase,
@@ -190,7 +193,7 @@ export const malAdapter: TrackerAdapter = {
     if (item.tracker !== "mal") return null;
     let entry: CourEntry | null;
     try {
-      entry = await getListEntry(item.id);
+      entry = await getListEntry(item.id, ENTRY_FRESH_MS);
     } catch (e) {
       if (e instanceof MalNotConnectedError) return null;
       throw e;

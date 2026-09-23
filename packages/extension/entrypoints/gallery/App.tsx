@@ -658,6 +658,17 @@ export function App() {
               saved="Spider-Noir (2026) · show"
             />
           </Tile>
+          <Tile label="Fix match · MyAnimeList" t={t}>
+            <CorrectionPanel
+              variant={variant}
+              cour="MyAnimeList"
+              query="frieren"
+              results={[
+                "Frieren: Beyond Journey's End (2023) · tv",
+                "Frieren: Beyond Journey's End Season 2 (2026) · tv",
+              ]}
+            />
+          </Tile>
           <Tile label="Manual mode · pick prompt" t={t}>
             <ManualPrompt variant={variant} />
           </Tile>

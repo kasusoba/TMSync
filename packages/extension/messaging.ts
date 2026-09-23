@@ -179,6 +179,9 @@ export interface TrackerResolution {
    * "map_loading" (the CDN crosswalk hasn't landed yet) | "unresolved" (searched,
    * nothing) | "http". */
   reason?: string;
+  /** This tracker is the item's native tracker (resolved directly, not derived). A
+   * native title match is what a title correction fixes. */
+  native?: boolean;
 }
 
 /** The item a rating or note is for. `media` is the scraped media; `trackers` is the
@@ -341,6 +344,17 @@ export interface ProtocolMap {
   /** Clear the AniList override for this TMDB item — fall back to the Fribb crosswalk
    * (undo a pin or a "Not on AniList"). Then re-resolve the tab. */
   resetAniListMatch(q: { media: ParsedMedia; tabId?: number }): { ok: boolean };
+  /** Free-text MAL search for the MAL fix-match panel (public read). */
+  searchMal(q: { query: string }): AniListSearchOption[];
+  /** Pin (or block, via `malId: null`) the MAL entry for this item: a tmdb-keyed
+   * crosswalk pin when the page has a tmdb id, else a title correction. Then
+   * re-resolve. */
+  setMalMatch(q: { media: ParsedMedia; malId: number | null; tabId?: number }): {
+    ok: boolean;
+    error?: string;
+  };
+  /** Clear the MAL pin for this item (back to the automatic match). */
+  resetMalMatch(q: { media: ParsedMedia; tabId?: number }): { ok: boolean };
   /** Background → frames: a correction landed, re-resolve the current session. */
   recheck(): void;
 
