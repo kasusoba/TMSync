@@ -116,10 +116,20 @@ export async function connect(): Promise<void> {
     await revoke(out.refresh);
     throw new Error("Simkl gave read-only access, so TMSync can't record your watches");
   }
-  // A re-connect makes a new grant; revoke the one we held so it doesn't linger.
   const old = await simklTokens.getValue();
   await simklTokens.setValue({ ...out.tokens, refresh_token: out.refresh });
-  if (old) await revoke(old.refresh_token);
+  const stale = staleRefresh(old, out.refresh);
+  if (stale) await revoke(stale);
+}
+
+/**
+ * The refresh token to revoke after a re-connect, or null. A new grant replaces
+ * the old one, so the old one should not linger. But Simkl's refresh token does not
+ * rotate, so it may hand the same grant back, and revoking that would cut off the
+ * sign-in that just finished. Pure.
+ */
+export function staleRefresh(old: SimklTokens | null, fresh: string): string | null {
+  return old && old.refresh_token !== fresh ? old.refresh_token : null;
 }
 
 /**
@@ -165,6 +175,12 @@ export async function refreshAfterReject(rejected: string): Promise<string | nul
   if (!tokens) return null;
   if (tokens.access_token !== rejected) return tokens.access_token;
   return (await refresh(tokens))?.access_token ?? null;
+}
+
+/** Forget a grant that Simkl rejects even right after a refresh, so the UI asks
+ * to connect again instead of showing a connection that can't work. */
+export async function forgetGrant(): Promise<void> {
+  await simklTokens.setValue(null);
 }
 
 /** Connected = a stored grant. A cheap read with no network. */

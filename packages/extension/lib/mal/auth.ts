@@ -7,6 +7,7 @@ import {
   singleFlight,
 } from "../oauth";
 import { malTokens } from "../storage";
+import { hasMalAccess } from "./access";
 import { MAL } from "./config";
 import type { MalTokens } from "./types";
 
@@ -123,10 +124,16 @@ export async function refreshAfterReject(): Promise<string | null> {
   return (await refresh(tokens))?.access_token ?? null;
 }
 
-/** Connected = a stored grant. A cheap read with no network: an expired access
- * token still counts, since the next call refreshes it. */
+/** Connected = a stored grant AND host access (MAL sends no CORS headers, so a
+ * grant without access can't make one call). No network: an expired access token
+ * still counts, since the next call refreshes it. */
 export async function isConnected(): Promise<boolean> {
-  return (await malTokens.getValue()) !== null;
+  return (await malTokens.getValue()) !== null && (await hasMalAccess());
+}
+
+/** Forget a grant that MAL rejects even right after a refresh. */
+export async function forgetGrant(): Promise<void> {
+  await malTokens.setValue(null);
 }
 
 /** Clear the local tokens (MAL has no revoke endpoint). */

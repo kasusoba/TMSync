@@ -1,7 +1,7 @@
 import { malTokens } from "@/lib/storage";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeBrowser } from "wxt/testing";
-import { codeVerifier, getValidAccessToken, refreshAfterReject } from "./auth";
+import { codeVerifier, getValidAccessToken, isConnected, refreshAfterReject } from "./auth";
 import type { MalTokens } from "./types";
 
 const now = () => Math.floor(Date.now() / 1000);
@@ -80,5 +80,23 @@ describe("MAL token refresh", () => {
     );
     expect(await getValidAccessToken()).toBeNull();
     expect(await malTokens.getValue()).toBeNull();
+  });
+});
+
+describe("isConnected", () => {
+  beforeEach(async () => {
+    fakeBrowser.reset();
+    await malTokens.setValue(EXPIRED);
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it("needs both a stored grant and host access", async () => {
+    vi.spyOn(fakeBrowser.permissions, "contains").mockResolvedValue(true);
+    expect(await isConnected()).toBe(true);
+  });
+
+  it("is false when the user removed MyAnimeList site access", async () => {
+    vi.spyOn(fakeBrowser.permissions, "contains").mockResolvedValue(false);
+    expect(await isConnected()).toBe(false);
   });
 });
