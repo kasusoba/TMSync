@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LibraryLink, RecipeSchema } from "./schema";
+import { LibraryLink, RecipeSchema, minSchemaVersion } from "./schema";
 
 const validRecipe = {
   id: "example-show",
@@ -146,5 +146,17 @@ describe("RecipeSchema", () => {
     const parsed = RecipeSchema.safeParse(manual);
     expect(parsed.success).toBe(true);
     if (parsed.success) expect(parsed.data.extract).toBeUndefined();
+  });
+});
+
+describe("minSchemaVersion", () => {
+  it("is 3 for Trakt and AniList, which older builds can parse", () => {
+    expect(minSchemaVersion(["trakt"])).toBe(3);
+    expect(minSchemaVersion(["trakt", "anilist"])).toBe(3);
+  });
+
+  it("is 4 once a recipe names MAL or Simkl", () => {
+    expect(minSchemaVersion(["anilist", "mal"])).toBe(4);
+    expect(minSchemaVersion(["simkl"])).toBe(4);
   });
 });
