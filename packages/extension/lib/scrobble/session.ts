@@ -670,7 +670,10 @@ export class SessionManager {
       await sendMessage("reportScrobble", {
         state: "error",
         title: label(media, seasonless),
-        detail: `not found on ${trackerName} · click to fix`,
+        detail:
+          resolved.reason === "not_connected"
+            ? `connect ${trackerName}`
+            : `not found on ${trackerName} · click to fix`,
       });
     } else {
       // A cour tracker never lowers progress. Say UP FRONT what playing will do:
