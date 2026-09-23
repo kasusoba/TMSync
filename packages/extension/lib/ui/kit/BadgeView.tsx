@@ -198,6 +198,7 @@ export function RateNotePanel({
   hasNote,
   spoiler,
   trackers = ["trakt"],
+  ratingState,
 }: {
   variant: Variant;
   isShow: boolean;
@@ -208,6 +209,9 @@ export function RateNotePanel({
   spoiler: boolean;
   /** Enabled trackers (multi-track): the composer fans out; cour trackers only on "show". */
   trackers?: Tracker[];
+  /** "remove": a saved rating cleared, waiting for Save. "differs": the selected
+   * trackers hold different ratings and notes. */
+  ratingState?: "remove" | "differs";
 }) {
   const t = tokens(variant);
   const courApplies = level === "show";
@@ -268,8 +272,29 @@ export function RateNotePanel({
 
       <div class="mb-3">
         <span class={clsx("mb-1 block text-[11px]", t.faint)}>Your rating</span>
-        <Stars value={value} />
+        <Stars
+          value={value}
+          label={
+            ratingState === "remove"
+              ? "Rating will be removed"
+              : ratingState === "differs"
+                ? "differs"
+                : undefined
+          }
+        />
+        {ratingState === "differs" && (
+          <p class={clsx("mt-1 text-[10px]", t.faint)}>
+            Trakt 8 · AniList 6. Pick a rating to set it on all.
+          </p>
+        )}
       </div>
+
+      {ratingState === "differs" && (
+        <p class={clsx("mb-1 text-[10px]", t.faint)}>
+          Trakt and AniList have different notes. Leave this empty to keep them, or type to replace
+          them.
+        </p>
+      )}
 
       <textarea
         rows={4}

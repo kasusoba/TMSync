@@ -639,6 +639,32 @@ export function App() {
               spoiler={false}
             />
           </Tile>
+          <Tile label="Rate & note · clearing a saved rating" t={t}>
+            <RateNotePanel
+              variant={variant}
+              isShow
+              level="show"
+              trackers={["trakt", "anilist"]}
+              value={null}
+              note=""
+              hasNote={false}
+              spoiler={false}
+              ratingState="remove"
+            />
+          </Tile>
+          <Tile label="Rate & note · trackers differ" t={t}>
+            <RateNotePanel
+              variant={variant}
+              isShow
+              level="show"
+              trackers={["trakt", "anilist"]}
+              value={null}
+              note=""
+              hasNote
+              spoiler={false}
+              ratingState="differs"
+            />
+          </Tile>
           <Tile label="Fix match · search" t={t}>
             <CorrectionPanel
               variant={variant}
