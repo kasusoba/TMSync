@@ -1,4 +1,4 @@
-import type { Tracker } from "@/lib/tracker/types";
+import { type Tracker, trackerLabel } from "@/lib/tracker/types";
 import clsx from "clsx";
 import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
@@ -444,4 +444,17 @@ export function Stars({ value, label }: { value: number | null; label?: string }
       <span class="ml-1.5 text-[11px] opacity-70">{label ?? (value ? `${value}/10` : "·")}</span>
     </span>
   );
+}
+
+/**
+ * A tracker mark's tooltip: the tracker, its short note (else `fallback`), and the
+ * tracker's own error text when it gave one (e.g. Simkl's daily limit).
+ */
+export function outcomeTip(
+  o: { tracker: Tracker; note?: string; detail?: string },
+  fallback?: string,
+): string {
+  const note = o.note ?? fallback;
+  const detail = o.detail ? `: ${o.detail.slice(0, 120)}` : "";
+  return `${trackerLabel(o.tracker)}${note ? ` · ${note}` : ""}${detail}`;
 }

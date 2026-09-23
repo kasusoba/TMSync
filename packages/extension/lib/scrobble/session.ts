@@ -142,6 +142,7 @@ function trackerOutcomes(reply: ScrobbleReply, tracker: Tracker): TrackerOutcome
         : reply.info === "already_watched"
           ? "already watched"
           : okNote(primary, reply.action, reply.completed),
+      detail: reply.ok ? undefined : reply.httpError,
     },
   ];
   for (const d of reply.derived ?? []) {
@@ -156,6 +157,7 @@ function trackerOutcomes(reply: ScrobbleReply, tracker: Tracker): TrackerOutcome
           : d.info === "already_watched"
             ? "already watched"
             : okNote(d.tracker, d.action, d.completed),
+      detail: d.ok ? undefined : d.httpError,
     });
   }
   return out;

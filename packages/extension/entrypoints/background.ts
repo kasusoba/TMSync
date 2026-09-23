@@ -1039,6 +1039,7 @@ function derivedToReply(d: DerivedOutcome): ScrobbleReply {
     resolvedTitle: d.resolvedTitle,
     resolvedYear: d.resolvedYear,
     resolvedEpisodes: d.resolvedEpisodes,
+    httpError: d.httpError,
     primaryTracker: d.tracker,
   };
 }
@@ -1291,6 +1292,7 @@ async function recordDerivedTrackers(
       reason: r.ok ? undefined : r.reason,
       completed: r.completed,
       info: r.info,
+      httpError: r.httpError,
       resolvedTitle: item.title,
       resolvedYear: item.year,
       resolvedEpisodes: "episodes" in item ? (item.episodes ?? undefined) : undefined,
