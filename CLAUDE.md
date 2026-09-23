@@ -191,12 +191,17 @@ The whole sequence, from a finished change to a published release:
 1. **Branch.** `git checkout -b <type>/<slug>` off an up-to-date `main`. Type is the same
    word the commit uses: `feat`, `fix`, `docs`, `chore`, `refactor`.
 2. **Commit.** The existing message conventions apply (Simplified Technical English, WHY in
-   the body). Run `pnpm lint`, `tsc --noEmit`, `pnpm test`, and `pnpm build` first.
+   the body). Run `pnpm lint`, `tsc --noEmit`, `pnpm test`, and `pnpm build` first. While
+   working, commit freely on the branch and use `git commit --fixup <sha>` for corrections.
+   **Before pushing, fold the fixups in** (`GIT_SEQUENCE_EDITOR=: git rebase -i --autosquash
+   main`) so the pushed history is clean, meaningful commits. Those commits land on `main`
+   as they are, so each one must build and read well on its own.
 3. **PR.** `git push -u origin <branch>` then `gh pr create`. **The PR title becomes a line
    in the release notes**, so write it for a user: what changed for them, in plain words, no
    type prefix and no scope. The body carries the detail.
-4. **Merge** when the owner asks: `gh pr merge --squash --delete-branch`, then
-   `git checkout main && git pull`.
+4. **Merge** when the owner asks: `gh pr merge --rebase --delete-branch`, then
+   `git checkout main && git pull`. **Never squash-merge** (the owner does not want it). The
+   branch's commits are already clean, so a rebase merge keeps them.
 5. **Bump.** `pnpm release <patch|minor|major>` bumps `packages/extension/package.json`,
    commits, and tags. A bug fix is a patch. A new capability is a minor.
 6. **Push the tag.** `git push --follow-tags`. The tag starts
