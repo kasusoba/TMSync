@@ -3,6 +3,7 @@ import { actionError } from "@/lib/errors";
 import { newRecipeId, slugifyHost } from "@/lib/recipe-id";
 import { loadRecipes, recipeTarget } from "@/lib/recipes";
 import { customRecipes } from "@/lib/storage";
+import { isSeasonless } from "@/lib/tracker/types";
 import { useKeyShield } from "@/lib/ui/key-shield";
 import { PickerPanel } from "@/lib/ui/kit/PickerPanel";
 import { sendMessage } from "@/messaging";
@@ -412,11 +413,11 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
           }
           fields={(Object.keys(FIELD_LABELS) as DraftFieldKey[])
             .filter((key) => {
-              // AniList-ONLY (dedicated anime site): resolves by title → cour and
-              // passes episode as-is, so season/year/tmdbId aren't needed — ask for
-              // just title + episode. With Trakt also on, show everything (Trakt +
-              // the forward crosswalk need tmdbId/season).
-              if (draft.trackers.length === 1 && draft.trackers[0] === "anilist")
+              // Cour-ONLY (AniList/MAL on a dedicated anime site): resolves by title
+              // → cour and passes episode as-is, so season/year/tmdbId aren't needed:
+              // ask for just title + episode. With a seasoned tracker also on, show
+              // everything (it and the forward crosswalk need tmdbId/season).
+              if (draft.trackers.length > 0 && draft.trackers.every(isSeasonless))
                 return key === "title" || key === "episode";
               // A movie has no season/episode — offering those rows invites picking
               // a stray number (e.g. the id) that flips resolution to the tv namespace.
@@ -483,9 +484,9 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
               const trackers = on
                 ? d.trackers.filter((x) => x !== tracker)
                 : [...d.trackers, tracker];
-              // Enabling AniList implies an anime series with a real title — it's
-              // never a manual (no-title) recipe.
-              return { ...d, trackers, manual: tracker === "anilist" && !on ? false : d.manual };
+              // Enabling a cour tracker (AniList, MAL) implies an anime series with a
+              // real title: it's never a manual (no-title) recipe.
+              return { ...d, trackers, manual: isSeasonless(tracker) && !on ? false : d.manual };
             })
           }
           onIframeChange={(v) =>

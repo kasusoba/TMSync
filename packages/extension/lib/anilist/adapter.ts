@@ -175,6 +175,8 @@ export const anilistAdapter: TrackerAdapter = {
       lastWatched: progress > 0 ? { number: progress } : null,
       next: caughtUp ? null : { number: progress + 1 },
       hasGaps: false,
+      completed: entry?.status === "COMPLETED",
+      entry,
     };
   },
 };

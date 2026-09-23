@@ -10,6 +10,7 @@ import {
   Btn,
   Icon,
   IconBtn,
+  MalMark,
   Section,
   type Tokens,
   TraktMark,
@@ -29,6 +30,8 @@ export interface PopupViewProps {
   redirectUri?: string;
   /** AniList account (the second provider — independent of Trakt). */
   anilistConnected?: boolean;
+  /** MyAnimeList account (another independent provider). */
+  malConnected?: boolean;
   /** null = no eligible page in the active tab. */
   origins: OriginRow[] | null;
   busy?: boolean;
@@ -37,6 +40,7 @@ export interface PopupViewProps {
   onDisconnect?: () => void;
   onConnectAniList?: () => void;
   onDisconnectAniList?: () => void;
+  onConnectMal?: () => void;
   onEnable?: (origin: string) => void;
   /** Sites a sync or import added that still need access. Only these nudge: a
    * site left off on purpose never shows here. */
@@ -159,7 +163,7 @@ export function PopupView(p: PopupViewProps) {
             },
           ]
         : [];
-  const noAccount = !p.connected && !(p.anilistConnected ?? false);
+  const noAccount = !p.connected && !p.anilistConnected && !p.malConnected;
   const [watchOpen, setWatchOpen] = useState(false);
 
   return (
@@ -181,6 +185,9 @@ export function PopupView(p: PopupViewProps) {
             </Btn>
             <Btn t={t} tone="ghost" class="flex-1" disabled={p.busy} onClick={p.onConnectAniList}>
               <AniListMark class="size-4" /> AniList
+            </Btn>
+            <Btn t={t} tone="ghost" class="flex-1" disabled={p.busy} onClick={p.onConnectMal}>
+              <MalMark class="size-4" /> MAL
             </Btn>
           </div>
         </div>

@@ -2,7 +2,7 @@ import type { Tracker } from "@/lib/tracker/types";
 import clsx from "clsx";
 import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
-import { ANILIST_LOGO, TRAKT_LOGO } from "./marks.data";
+import { ANILIST_LOGO, MAL_LOGO, TRAKT_LOGO } from "./marks.data";
 
 /**
  * The shared design kit — presentational only (no browser APIs, no effects), so
@@ -259,21 +259,34 @@ export function AniListMark({
 }
 
 /**
- * The MyAnimeList provider mark: a "MAL" monogram in MAL's brand blue. No logo
- * artwork is bundled yet, so this is the same tile the other marks fall back to.
+ * The MyAnimeList provider mark: the bundled logo (MAL's favicon, from Wikimedia
+ * Commons, `MyAnimeList_favicon.svg`), with a text monogram fallback if the asset
+ * can't load. Mirrors {@link AniListMark}.
  */
-export function MalMark({ class: cls = "size-8" }: { class?: string }) {
+export function MalMark({
+  class: cls = "size-8",
+  src = MAL_LOGO,
+}: { class?: string; src?: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <span
+        class={clsx(
+          "grid shrink-0 place-items-center rounded-lg bg-[#2E51A2] text-[9px] font-bold tracking-tight text-white",
+          cls,
+        )}
+      >
+        MAL
+      </span>
+    );
+  }
   return (
-    <span
-      class={clsx(
-        "grid shrink-0 place-items-center rounded-lg bg-[#2E51A2] text-[9px] font-bold tracking-tight text-white",
-        cls,
-      )}
-      role="img"
-      aria-label="MyAnimeList"
-    >
-      MAL
-    </span>
+    <img
+      src={src}
+      alt="MyAnimeList"
+      class={clsx("shrink-0 object-contain", cls)}
+      onError={() => setFailed(true)}
+    />
   );
 }
 

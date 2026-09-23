@@ -2,6 +2,7 @@ import { RECIPES } from "@/config";
 import type { AniListIdentity } from "@/lib/anilist/types";
 import type { AnimapOverrides } from "@/lib/animap/derive";
 import { actionError } from "@/lib/errors";
+import { requestMalAccess } from "@/lib/mal/access";
 import { defaultRecipeName } from "@/lib/picker/recipe-builder";
 import { applyBackup, buildBackup, parseBackup } from "@/lib/portability/backup";
 import { type Contribution, contribute } from "@/lib/portability/contribute";
@@ -18,6 +19,7 @@ import {
   badgePrefs,
   corrections,
   customRecipes,
+  malConnectIntent,
   newPendingSites,
   optionsIntent,
   quickLinks,
@@ -34,12 +36,18 @@ import {
   Icon,
   IconBtn,
   type IconName,
+  MalMark,
   Switch,
   TrackerMark,
   TraktMark,
   tokens,
 } from "@/lib/ui/kit/kit";
-import { type AniListStatus, type TraktStatus, sendMessage } from "@/messaging";
+import {
+  type AniListStatus,
+  type ProviderStatus,
+  type TraktStatus,
+  sendMessage,
+} from "@/messaging";
 import {
   ANILIST_PLACEHOLDERS,
   type PlaceholderDoc,
@@ -635,6 +643,7 @@ function ProviderRow({
 export function App() {
   const [status, setStatus] = useState<TraktStatus | null>(null);
   const [anilist, setAnilist] = useState<AniListStatus | null>(null);
+  const [mal, setMal] = useState<ProviderStatus | null>(null);
   const [sites, setSites] = useState<string[]>([]);
   /** Broad "enable all sites" grant held (then every recipe site is enabled). */
   const [allSites, setAllSites] = useState(false);
@@ -693,9 +702,10 @@ export function App() {
   const has = (s: string) => s.toLowerCase().includes(q.toLowerCase());
 
   const refresh = async () => {
-    const [s, al, sit, rec, ql, qlOn, c, ac, am, rem, amap, bp, broad] = await Promise.all([
+    const [s, al, ml, sit, rec, ql, qlOn, c, ac, am, rem, amap, bp, broad] = await Promise.all([
       sendMessage("getTraktStatus", undefined),
       sendMessage("getAniListStatus", undefined),
+      sendMessage("getMalStatus", undefined),
       sendMessage("listEnabledSites", undefined),
       customRecipes.getValue(),
       quickLinks.getValue(),
@@ -710,6 +720,7 @@ export function App() {
     ]);
     setStatus(s);
     setAnilist(al);
+    setMal(ml);
     setSites(sit);
     setRecipes(rec);
     setLinks(ql);
@@ -867,10 +878,20 @@ export function App() {
   // Connect a provider AND surface the outcome. `act()` discards the reply, so a
   // failed or cancelled OAuth (e.g. the auth window closed, or Trakt rejected the
   // sign-in) showed no feedback in Options — the popup already reports it, so match.
-  const connectProvider = async (which: "trakt" | "anilist") => {
+  const connectProvider = async (which: Tracker) => {
+    // MAL needs host access first, asked while the click still counts as a gesture.
+    // Clear a stale popup intent first, so this grant never starts a second sign-in.
+    if (which === "mal") void malConnectIntent.setValue(0);
+    if (which === "mal" && !(await requestMalAccess().catch(() => false))) {
+      setAccountMsg("MyAnimeList needs access to myanimelist.net to connect.");
+      return;
+    }
     setBusy(true);
     setAccountMsg(null);
-    const res = await sendMessage(which === "trakt" ? "connectTrakt" : "connectAniList", undefined);
+    const message = (
+      { trakt: "connectTrakt", anilist: "connectAniList", mal: "connectMal" } as const
+    )[which];
+    const res = await sendMessage(message, undefined);
     if (!res.ok) setAccountMsg(res.error ?? "Connection failed. The sign-in didn’t complete.");
     await refresh();
     setBusy(false);
@@ -1388,6 +1409,34 @@ export function App() {
                       </code>
                     </p>
                   )}
+                <ProviderRow
+                  mark={<MalMark />}
+                  name="MyAnimeList"
+                  connected={mal?.connected ?? false}
+                  busy={busy}
+                  onConnect={() => connectProvider("mal")}
+                  onDisconnect={() => act(() => sendMessage("disconnectMal", undefined))}
+                />
+                {mal && !mal.configured && (
+                  <p class={clsx("rounded-md px-2.5 py-1.5 text-[11px]", t.infoBox)}>
+                    MyAnimeList isn’t configured in this build · set{" "}
+                    <code class="font-mono">WXT_MAL_CLIENT_ID</code> to enable it.
+                  </p>
+                )}
+                {/* Dev-only, same as the redirect hints above. */}
+                {import.meta.env.DEV && mal?.configured && !mal.connected && mal.redirectUri && (
+                  <p class={clsx("text-[11px] leading-relaxed", t.sub)}>
+                    Set this redirect URI in your MyAnimeList app:
+                    <code
+                      class={clsx(
+                        "mt-1 block break-all rounded-md px-2 py-1 font-mono text-[10px]",
+                        t.chip,
+                      )}
+                    >
+                      {mal.redirectUri}
+                    </code>
+                  </p>
+                )}
               </>
             )}
 

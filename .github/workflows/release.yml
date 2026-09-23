@@ -51,8 +51,9 @@ jobs:
           TRAKT: ${{ secrets.WXT_TRAKT_CLIENT_ID }}
           ANILIST: ${{ secrets.WXT_ANILIST_CLIENT_ID }}
           ANILIST_FIREFOX: ${{ secrets.WXT_ANILIST_CLIENT_ID_FIREFOX }}
+          MAL: ${{ secrets.WXT_MAL_CLIENT_ID }}
         run: |
-          for name in TRAKT ANILIST ANILIST_FIREFOX; do
+          for name in TRAKT ANILIST ANILIST_FIREFOX MAL; do
             if [ -z "${!name}" ]; then
               echo "missing repository secret for $name; the build would ship an extension that cannot sign in" >&2
               exit 1
@@ -74,6 +75,7 @@ jobs:
           WXT_ANILIST_CLIENT_SECRET: ${{ secrets.WXT_ANILIST_CLIENT_SECRET }}
           WXT_ANILIST_CLIENT_ID_FIREFOX: ${{ secrets.WXT_ANILIST_CLIENT_ID_FIREFOX }}
           WXT_ANILIST_CLIENT_SECRET_FIREFOX: ${{ secrets.WXT_ANILIST_CLIENT_SECRET_FIREFOX }}
+          WXT_MAL_CLIENT_ID: ${{ secrets.WXT_MAL_CLIENT_ID }}
         run: |
           pnpm zip
           pnpm zip:firefox

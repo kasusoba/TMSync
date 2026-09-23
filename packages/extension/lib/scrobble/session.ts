@@ -115,15 +115,15 @@ function outcomeState(
   return action === "scrobble" ? "ok" : "pending";
 }
 
-/** A tracker's note when it recorded: Trakt "added to history"; AniList "saved" /
- * "completed". Undefined while pending (nothing written yet). */
+/** A tracker's note when it recorded: Trakt "added to history"; a cour tracker
+ * (AniList, MAL) "saved" / "completed". Undefined while pending (nothing written yet). */
 function okNote(
   tracker: Tracker,
   action: DerivedOutcome["action"],
   completed: boolean | undefined,
 ): string | undefined {
   if (action !== "scrobble") return undefined;
-  if (tracker === "anilist") return completed ? "completed" : "saved";
+  if (isSeasonless(tracker)) return completed ? "completed" : "saved";
   return "added to history";
 }
 
@@ -149,7 +149,11 @@ function trackerOutcomes(reply: ScrobbleReply, tracker: Tracker): TrackerOutcome
     out.push({
       tracker: d.tracker,
       state: outcomeState(d.ok, d.action),
-      note: d.ok ? okNote(d.tracker, d.action, d.completed) : reasonNote(d.reason),
+      note: !d.ok
+        ? reasonNote(d.reason)
+        : d.info === "already_watched"
+          ? "already watched"
+          : okNote(d.tracker, d.action, d.completed),
     });
   }
   return out;
@@ -173,10 +177,45 @@ export function statusFromReply(
   m: ParsedMedia,
   tracker: Tracker,
 ): BadgeStatus {
-  const base = primaryStatus(action, reply, m, tracker);
+  // Every tracker that asked to confirm a rewatch (native or derived), so the one
+  // prompt confirms them all. A derived-only rewatch raises the prompt too.
+  const rewatchTrackers = [
+    ...(reply.reason === "needs_rewatch" ? [reply.primaryTracker ?? tracker] : []),
+    ...(reply.derived ?? []).filter((d) => d.reason === "needs_rewatch").map((d) => d.tracker),
+  ];
+  const withRewatch = (st: BadgeStatus): BadgeStatus =>
+    rewatchTrackers.length ? { ...st, rewatch: true, rewatchTrackers } : st;
+
   const outcomes = trackerOutcomes(reply, tracker);
-  if (outcomes.length <= 1) return base; // single tracker — keep the specific detail
-  return { ...base, detail: neutralDetail(base.state, outcomes), trackers: outcomes };
+  const primary = primaryStatus(action, reply, m, tracker);
+  if (outcomes.length <= 1) return withRewatch(primary); // single tracker: specific detail
+
+  // "Already watched" (or a rewatch awaiting confirmation) is the WHOLE item's
+  // state only when no tracker will record it. If another tracker still records
+  // (MAL behind AniList, or Trakt), show the normal watching/paused/recorded state
+  // and let each tracker's mark carry its own note.
+  const derived = (reply.derived ?? []).filter((d) => !d.skipped);
+  const blocked = (info?: string, reason?: string) =>
+    info === "already_watched" || reason === "needs_rewatch";
+  const primaryBlocked = blocked(reply.info, reply.reason);
+  if (primaryBlocked && derived.every((d) => blocked(d.info, d.reason))) {
+    return withRewatch({ ...primary, detail: "already watched", trackers: outcomes });
+  }
+  const base = primaryBlocked
+    ? primaryStatus(
+        action,
+        {
+          ...reply,
+          ok: true,
+          reason: undefined,
+          info: undefined,
+          action: derived.some((d) => d.action === "scrobble") ? "scrobble" : reply.action,
+        },
+        m,
+        tracker,
+      )
+    : primary;
+  return withRewatch({ ...base, detail: neutralDetail(base.state, outcomes), trackers: outcomes });
 }
 
 function primaryStatus(
@@ -212,21 +251,24 @@ function primaryStatus(
     if (action === "start") return { state: "watching", title };
     if (action === "pause") return { state: "paused", title };
     if (reply.action !== "scrobble") return { state: "stopped", title };
-    if (tracker === "anilist") {
-      // The title already carries the episode (E{n}); keep the detail short.
+    if (seasonless) {
+      // A cour tracker writes the list entry. The title already carries the episode
+      // (E{n}); keep the detail short.
       return {
         state: "scrobbled",
         title,
-        detail: reply.completed ? "completed on AniList" : "saved to AniList",
+        detail: reply.completed ? `completed on ${name}` : `saved to ${name}`,
         completed: reply.completed,
       };
     }
     return { state: "scrobbled", title, detail: "added to history" };
   }
-  // A completed AniList cour, re-watched: not an error — prompt to confirm the
-  // rewatch. Nothing was written; the badge offers "Rewatching?".
+  // A completed cour, re-watched: not an error. Prompt to confirm the rewatch.
+  // Nothing was written; the badge offers "Rewatching?".
+  // The main badge keeps saying "already watched"; the "Rewatching?" card above it
+  // (from `rewatch`, added by statusFromReply) asks to confirm.
   if (reply.reason === "needs_rewatch") {
-    return { state: "idle", title, rewatch: true, detail: "rewatching? confirm to track" };
+    return { state: "stopped", title, detail: `already watched · completed on ${name}` };
   }
   const detail =
     reply.reason === "not_connected"
@@ -236,8 +278,8 @@ function primaryStatus(
         : reply.reason === "no_episode"
           ? "missing episode #"
           : reply.reason === "numbering_mismatch"
-            ? // The AniList guardrail: site numbering ≠ AniList entry (step 6).
-              (reply.httpError ?? "site numbering doesn't match AniList")
+            ? // The cour guardrail: site numbering ≠ the tracker's entry (step 6).
+              (reply.httpError ?? `site numbering doesn't match ${name}`)
             : `scrobble failed${reply.status ? ` (${reply.status})` : ""}${
                 reply.httpError ? `: ${reply.httpError.slice(0, 80)}` : ""
               }`;
@@ -550,13 +592,13 @@ export class SessionManager {
     // one(s) via the crosswalk. Single-tracker recipes yield [tracker] (unchanged).
     this.trackers = recipeTrackers(recipe);
 
-    // AniList resolves by TITLE only — a scraped tmdbId can't stand in for it. On
+    // A cour tracker resolves by TITLE here: a scraped tmdbId can't stand in for it. On
     // an SPA the URL's tmdbId is present immediately but the title (`.title span`)
     // renders later, so an early extract yields an empty title + a tmdbId. Without
-    // this guard we'd publish a useless "TMDB <id>" entry that AniList can't resolve
+    // this guard we'd publish a useless "TMDB <id>" entry that it can't resolve
     // (and the dedup key would lock the badge there). Wait for the title instead —
     // a later reconcile (head/title mutation) re-runs this with the real title.
-    if (this.tracker === "anilist" && !media.title) {
+    if (isSeasonless(this.tracker) && !media.title) {
       this.localMedia = null;
       return;
     }
@@ -592,20 +634,30 @@ export class SessionManager {
         detail: `not found on ${trackerName} · click to fix`,
       });
     } else {
-      // AniList never lowers progress: if this episode is already counted, say so UP
-      // FRONT instead of "press play to scrobble" — playing wouldn't record anything.
-      // (One cheap entry read; the resolve it does is already cached from above.)
-      let detail = "press play to scrobble";
-      if (this.tracker === "anilist" && media.episode !== undefined) {
-        const w = await sendMessage("getWatchedState", {});
-        if (w?.tracker === "anilist" && media.episode <= w.watchedCount) {
-          detail = `already watched · AniList at ep ${w.watchedCount}`;
-        }
-      }
+      // A cour tracker never lowers progress. Say UP FRONT what playing will do:
+      // "already watched" only when EVERY enabled tracker already counts this
+      // episode (else another tracker still records it), and raise "Rewatching?"
+      // for any completed entry before play, not only once playback starts.
+      const standing =
+        media.episode !== undefined && this.trackers.some(isSeasonless)
+          ? await sendMessage("getWatchStanding", {})
+          : [];
+      const rewatchTrackers = standing.filter((w) => w.completed).map((w) => w.tracker);
+      const allAlready =
+        standing.length === this.trackers.length && standing.every((w) => w.already);
+      const only = standing.length === 1 ? standing[0] : undefined;
+      const detail = !allAlready
+        ? "press play to scrobble"
+        : only
+          ? only.completed
+            ? `already watched · completed on ${trackerLabel(only.tracker)}`
+            : `already watched · ${trackerLabel(only.tracker)} at ep ${only.atEpisode}`
+          : "already watched";
       await sendMessage("reportScrobble", {
         state: "idle",
         title: resolvedLabel(resolved.title, resolved.year, media, false, seasonless),
         detail,
+        ...(rewatchTrackers.length ? { rewatch: true, rewatchTrackers } : {}),
       });
     }
 

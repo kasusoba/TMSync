@@ -29,6 +29,14 @@ import {
 } from "@/lib/animap/derive";
 import type { Animap } from "@/lib/animap/index";
 import { loadAnimap, parseAnimeMap } from "@/lib/animap/load";
+import { hasMalAccess, isMalGrant } from "@/lib/mal/access";
+import {
+  connect as malConnect,
+  disconnect as malDisconnect,
+  isConnected as malIsConnected,
+  getRedirectUri as malRedirectUri,
+} from "@/lib/mal/auth";
+import { MAL } from "@/lib/mal/config";
 import { malDeleteNote, malGetReview, malRate, malSaveNote, malUnrate } from "@/lib/mal/review";
 import { bundledLinks } from "@/lib/recipes";
 import { statusDotColor } from "@/lib/scrobble/action-badge";
@@ -43,6 +51,7 @@ import {
   customRecipes,
   enabledOrigins,
   episodeOverrides,
+  malConnectIntent,
   manualContexts,
   manualSelections,
   newPendingSites,
@@ -56,10 +65,12 @@ import {
 import {
   getAdapter,
   inferNativeTracker,
+  isSeasonless,
   routeTracker,
   trackerFamily,
   trackerLabel,
 } from "@/lib/tracker";
+import { planCourWrite } from "@/lib/tracker/cour-plan";
 import type { RatingLevel, TrackedItem, Tracker } from "@/lib/tracker/types";
 import { connect, disconnect, getRedirectUri, isConnected } from "@/lib/trakt/auth";
 import {
@@ -85,6 +96,7 @@ import {
   type ScrobbleReply,
   type ScrobbleRequest,
   type TrackerResolution,
+  type WatchStanding,
   onMessage,
   sendMessage,
 } from "@/messaging";
@@ -163,6 +175,9 @@ const REVIEW: Record<Tracker, ReviewHandler> = {
     deleteNote: (m) => malDeleteNote(m),
   },
 };
+
+/** How long a popup's MAL connect intent stays good (the user answers the prompt). */
+const MAL_INTENT_MS = 2 * 60 * 1000;
 
 /**
  * MV3 service worker. STATELESS (constraint #4): every handler reads from
@@ -251,6 +266,39 @@ export default defineBackground(() => {
   });
 
   onMessage("disconnectAniList", () => anilistDisconnect());
+
+  onMessage("getMalStatus", async () => ({
+    connected: await malIsConnected(),
+    redirectUri: malRedirectUri(),
+    configured: !!MAL.clientId,
+  }));
+
+  // A first MAL grant from the popup: Firefox closes the popup at the permission
+  // prompt, so the popup can't ask for the sign-in. It left an intent; sign in here.
+  // A listener re-established on each wake, not held state (constraint #4).
+  browser.permissions.onAdded.addListener(async (granted) => {
+    if (!isMalGrant(granted.origins)) return;
+    const at = await malConnectIntent.getValue();
+    if (!at || Date.now() - at > MAL_INTENT_MS) return;
+    await malConnectIntent.setValue(0);
+    await malConnect().catch((e) => console.warn("[TMSync] MyAnimeList sign-in failed", e));
+  });
+
+  onMessage("connectMal", async () => {
+    // MAL sends no CORS headers, so every call needs the host grant. The UI asks for
+    // it on the Connect click (a gesture the background doesn't have).
+    if (!(await hasMalAccess())) {
+      return { ok: false, error: "Allow access to MyAnimeList to connect" };
+    }
+    try {
+      await malConnect();
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: errMsg(e) };
+    }
+  });
+
+  onMessage("disconnectMal", () => malDisconnect());
 
   onMessage("exportLetterboxd", async () => {
     try {
@@ -516,40 +564,64 @@ export default defineBackground(() => {
   });
 
   // The user confirmed a rewatch of a completed cour entry → write the rewatch
-  // (or re-complete + bump the rewatch count on the final episode), update the badge.
+  // (or re-complete + bump the rewatch count on the final episode) on every tracker
+  // that asked, then update the badge. A derived tracker confirms the crosswalk's
+  // entry (via reviewTarget), the same one the scrobble wrote to.
   onMessage("confirmRewatch", async ({ data, sender }) => {
-    const tracker = data.tracker ?? "anilist";
-    const name = trackerLabel(tracker);
-    try {
-      const adapter = getAdapter(tracker);
-      const item = await adapter.resolve(data.media);
-      if (!item || !adapter.confirmRewatch) return { ok: false, error: `not found on ${name}` };
-      const result = await adapter.confirmRewatch(item, data.media);
-      if (!result.ok) {
-        return {
-          ok: false,
-          error: result.reason === "not_connected" ? `Not connected to ${name}` : result.httpError,
-        };
+    const asked = data.trackers?.length ? data.trackers : (["anilist"] as Tracker[]);
+    const enabled = data.enabled?.length ? data.enabled : asked;
+    const done: { name: string; title: string; completed: boolean }[] = [];
+    const errors: string[] = [];
+    for (const tracker of asked) {
+      const name = trackerLabel(tracker);
+      try {
+        const adapter = getAdapter(tracker);
+        const target = await reviewTarget({ media: data.media, tracker, trackers: enabled });
+        if ("error" in target) {
+          errors.push(target.error);
+          continue;
+        }
+        const item = await adapter.resolve(target.media);
+        if (!item || !adapter.confirmRewatch) {
+          errors.push(`not found on ${name}`);
+          continue;
+        }
+        const result = await adapter.confirmRewatch(item, target.media);
+        if (!result.ok) {
+          errors.push(
+            result.reason === "not_connected"
+              ? `Not connected to ${name}`
+              : (result.httpError ?? `${name} failed`),
+          );
+          continue;
+        }
+        done.push({ name, title: item.title, completed: result.completed === true });
+      } catch (e) {
+        errors.push(errMsg(e));
       }
-      // Reflect it on the badge (and gate the rating prompt on completion).
-      const tabId = data.tabId ?? sender.tab?.id;
-      if (tabId !== undefined) {
-        const ep = data.media.episode;
-        void sendMessage(
-          "scrobbleStatus",
-          {
-            state: "scrobbled",
-            title: `${item.title}${ep !== undefined ? ` E${ep}` : ""}`,
-            detail: result.completed ? `rewatch complete on ${name}` : `rewatching on ${name}`,
-            completed: result.completed,
-          },
-          { tabId, frameId: 0 },
-        ).catch(() => {});
-      }
-      return { ok: true, completed: result.completed };
-    } catch (e) {
-      return { ok: false, error: errMsg(e) };
     }
+    const first = done[0];
+    if (!first) return { ok: false, error: errors.join(" · ") || "rewatch failed" };
+    // Reflect it on the badge (and gate the rating prompt on completion).
+    const completed = done.every((d) => d.completed);
+    const tabId = data.tabId ?? sender.tab?.id;
+    if (tabId !== undefined) {
+      const ep = data.media.episode;
+      const names = done.map((d) => d.name).join(" and ");
+      void sendMessage(
+        "scrobbleStatus",
+        {
+          state: "scrobbled",
+          title: `${first.title}${ep !== undefined ? ` E${ep}` : ""}`,
+          detail: completed ? `rewatch complete on ${names}` : `rewatching on ${names}`,
+          completed,
+        },
+        { tabId, frameId: 0 },
+      ).catch(() => {});
+    }
+    return errors.length
+      ? { ok: false, error: errors.join(" · "), completed }
+      : { ok: true, completed };
   });
 
   // --- ratings & notes (routed: Trakt comment-per-level / AniList cour entry) ---
@@ -640,6 +712,50 @@ export default defineBackground(() => {
     } catch {
       return null; // reads degrade quietly — the popup just omits the line
     }
+  });
+
+  // Pre-play standing per enabled tracker. Only cour trackers can be "already
+  // watched" (Trakt records another play), so only they are checked. A derived one
+  // is read on the crosswalk's entry, with its own episode number.
+  onMessage("getWatchStanding", async ({ data, sender }) => {
+    const tabId = data?.tabId ?? sender.tab?.id;
+    if (tabId === undefined) return [];
+    const session = (await tabSessions.getValue())[tabId];
+    if (!session) return [];
+    const enabled = session.trackers?.length ? session.trackers : [session.tracker];
+    const out: WatchStanding[] = [];
+    for (const tracker of enabled.filter(isSeasonless)) {
+      try {
+        const target = await reviewTarget({ media: session.media, tracker, trackers: enabled });
+        if ("error" in target) continue;
+        const episode = target.media.episode;
+        const adapter = getAdapter(tracker);
+        const item = await adapter.resolve(target.media);
+        const w = item ? await adapter.watchedState(item) : null;
+        if (!w || episode === undefined) continue;
+        // The planner the write uses: "already" exactly when playing writes nothing
+        // (counted, or a completed entry that asks first). An on-hold entry at a
+        // later episode still writes (it goes back to watching), so it is not "already".
+        const plan = planCourWrite({
+          phase: "stop",
+          progress: 100,
+          watchedThreshold: 0,
+          episode,
+          total: w.total,
+          entry: w.entry ?? null,
+          rewatchConfirmed: false,
+        });
+        out.push({
+          tracker,
+          already: plan.kind === "already_watched" || plan.kind === "needs_rewatch",
+          atEpisode: w.watchedCount,
+          completed: w.completed === true,
+        });
+      } catch {
+        // a read that fails just leaves this tracker out (the badge stays neutral)
+      }
+    }
+    return out;
   });
 
   onMessage("updateProgress", async ({ data, sender }) => {
@@ -1024,6 +1140,7 @@ async function recordDerivedTrackers(
       action: r.action,
       reason: r.ok ? undefined : r.reason,
       completed: r.completed,
+      info: r.info,
       resolvedTitle: item.title,
       resolvedYear: item.year,
       resolvedEpisodes: "episodes" in item ? (item.episodes ?? undefined) : undefined,

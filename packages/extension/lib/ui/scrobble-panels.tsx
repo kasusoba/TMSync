@@ -4,6 +4,7 @@ import {
   type Tracker,
   type WatchedEpisode,
   type WatchedState,
+  isSeasonless,
   trackerLabel,
 } from "@/lib/tracker/types";
 import type { ResolvedIdentity, ReviewLevel, TraktSearchOption } from "@/lib/trakt/types";
@@ -151,6 +152,7 @@ export function TrackingRows({
   // Trakt is always fixable. AniList is too: with a tmdbId we pin the crosswalk
   // override; without one (a native, resolve-by-title recipe) we pin the title
   // correction — so the fix affordance is no longer gated on having a tmdbId.
+  // MAL has no correction picker yet; a derived MAL entry follows the AniList pin.
   const canFix = (tk: Tracker) =>
     tk === "trakt" || (tk === "anilist" && (media.ids?.tmdb !== undefined || !!media.title));
 
@@ -298,14 +300,14 @@ export function RateNote({
     return r ? r.resolved : true;
   };
 
-  // AniList rates only the cour (≈ the whole series), so it's a valid target only
-  // on the top "show" level; Trakt rates whatever level is picked. AND the tracker
-  // must actually have resolved the item.
-  const levelOk = (tk: Tracker): boolean => tk === "trakt" || level === "show";
+  // A cour tracker (AniList, MAL) rates only the cour (≈ the whole series), so it's a
+  // valid target only on the top "show" level; Trakt rates whatever level is picked.
+  // AND the tracker must actually have resolved the item.
+  const levelOk = (tk: Tracker): boolean => !isSeasonless(tk) || level === "show";
   const applicable: Tracker[] = trackers.filter((tk) => levelOk(tk) && resolvedOk(tk));
   const [selected, setSelected] = useState<Set<Tracker>>(new Set(trackers));
   const targets = applicable.filter((tk) => selected.has(tk));
-  const trackerLevel = (tk: Tracker): RatingLevel => (tk === "anilist" ? "cour" : level);
+  const trackerLevel = (tk: Tracker): RatingLevel => (isSeasonless(tk) ? "cour" : level);
 
   const [rating, setRating] = useState<number | null>(null);
   const [note, setNote] = useState("");
@@ -411,11 +413,13 @@ export function RateNote({
   // "AniList" just because Trakt is deselected: on a Trakt-only item that left the
   // box reading "Private note on AniList…" when no tracker was even AniList.
   const noteTrackers = targets.length > 0 ? targets : applicable;
+  // Cour trackers keep a private note; Trakt posts a public comment.
+  const privateOn = noteTrackers.filter(isSeasonless).map(trackerLabel).join(" and ");
   const notePlaceholder =
-    noteTrackers.includes("trakt") && noteTrackers.includes("anilist")
-      ? "Public comment on Trakt · private note on AniList…"
-      : noteTrackers.includes("anilist")
-        ? "Private note on AniList…"
+    noteTrackers.includes("trakt") && privateOn
+      ? `Public comment on Trakt · private note on ${privateOn}…`
+      : privateOn
+        ? `Private note on ${privateOn}…`
         : "Your note · public on Trakt, at least 5 words…";
 
   return (
@@ -1063,12 +1067,12 @@ function epLabel(e: WatchedEpisode): string {
 }
 
 /**
- * One-line "where am I in this show" summary for the popup. The two trackers'
- * shapes differ (AniList = linear count; Trakt = a set that can have gaps), so the
- * phrasing differs too — see WatchedState. Returns null when there's nothing useful.
+ * One-line "where am I in this show" summary for the popup. The shapes differ (a
+ * cour tracker = linear count; Trakt = a set that can have gaps), so the phrasing
+ * differs too (see WatchedState). Returns null when there's nothing useful.
  */
 function watchedSummary(w: WatchedState): string | null {
-  if (w.tracker === "anilist") {
+  if (isSeasonless(w.tracker)) {
     if (w.watchedCount === 0) return w.next ? `Not started · next ${epLabel(w.next)}` : null;
     return `Watched ${w.watchedCount}${w.total !== null ? ` / ${w.total}` : ""}`;
   }
@@ -1168,7 +1172,12 @@ export function NowPlaying({
   const confirmRewatch = async () => {
     if (!media) return;
     setRewatchBusy(true);
-    await sendMessage("confirmRewatch", { media, tabId });
+    await sendMessage("confirmRewatch", {
+      media,
+      trackers: status.rewatchTrackers,
+      enabled: trackers,
+      tabId,
+    });
     setRewatchBusy(false);
     onRefresh?.();
   };

@@ -1,12 +1,13 @@
 import type { NumberPart } from "@/lib/picker/recipe-builder";
 import type { Chip, PickSource } from "@/lib/picker/sources";
-import type { Tracker } from "@/lib/tracker/types";
+import { type Tracker, isSeasonless, trackerLabel } from "@/lib/tracker/types";
 import clsx from "clsx";
 import {
   AniListMark,
   Btn,
   Icon,
   IconBtn,
+  MalMark,
   Switch,
   type Tokens,
   TraktMark,
@@ -103,6 +104,13 @@ const TRACKER_TOGGLES: {
     key: "anilist",
     label: "AniList",
     mark: <AniListMark class="size-4" />,
+    need: (v) => !!v("title"),
+    needHint: "Needs a title.",
+  },
+  {
+    key: "mal",
+    label: "MyAnimeList",
+    mark: <MalMark class="size-4" />,
     need: (v) => !!v("title"),
     needHint: "Needs a title.",
   },
@@ -303,17 +311,18 @@ export function PickerPanel(p: PickerPanelProps) {
             {p.trackers.length === 0 && (
               <p class={clsx("mt-1 text-[10px]", t.faint)}>Enable at least one tracker.</p>
             )}
-            {p.trackers.includes("anilist") && (
+            {p.trackers.some(isSeasonless) && (
               <p class={clsx("mt-1 text-[10px] leading-snug", t.faint)}>
-                AniList tracks anime only · on a general site it’s mapped via the crosswalk
-                (non-anime skipped, ambiguous numbering refused).
+                {p.trackers.filter(isSeasonless).map(trackerLabel).join(" and ")} track anime only ·
+                on a general site it’s mapped via the crosswalk (non-anime skipped, ambiguous
+                numbering refused).
               </p>
             )}
           </div>
 
           {/* type — right under the trackers. Hidden in manual mode (nothing scraped)
-            and when AniList is the only tracker (always an anime series). */}
-          {!p.manual && !(p.trackers.length === 1 && p.trackers[0] === "anilist") && (
+            and when only cour trackers are on (always an anime series). */}
+          {!p.manual && !(p.trackers.length > 0 && p.trackers.every(isSeasonless)) && (
             <label class="mb-3 block">
               <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>Type</span>
               <div class="relative">
@@ -364,9 +373,9 @@ export function PickerPanel(p: PickerPanelProps) {
             </label>
           )}
 
-          {/* manual mode — a no-title concept; irrelevant once AniList is on (anime
-            always has a title). Shown only when AniList isn't enabled. */}
-          {!p.trackers.includes("anilist") && (
+          {/* manual mode: a no-title concept; irrelevant once a cour tracker is on
+            (anime always has a title). Shown only when none is enabled. */}
+          {!p.trackers.some(isSeasonless) && (
             <ToggleRow
               t={t}
               on={!!p.manual}

@@ -43,9 +43,9 @@ export type Transform = z.infer<typeof Transform>;
  */
 /**
  * Every tracker this build can write to: the growing list behind the adapter seam
- * (CLAUDE.md constraint #1). Recipes name theirs in `trackers`. The legacy single
- * `tracker` field and quick-link hosts keep their original two values: new
- * trackers only ever appear in `trackers`.
+ * (CLAUDE.md constraint #1). Recipes name theirs in `trackers` (and a
+ * single-tracker recipe in the legacy `tracker`). Quick-link hosts are a separate,
+ * smaller list: a tracker hosts links only once it has a quick-link content script.
  */
 export const TrackerId = z.enum(["trakt", "anilist", "mal"]);
 
@@ -134,7 +134,7 @@ export const Recipe = z.object({
   // Legacy single-tracker field (v1/older-v2 recipes). New recipes use `trackers`
   // below; `tracker` is kept for back-compat + as a default. Its "trakt" default is
   // why `recipeTrackers()` treats `trackers` as authoritative, not a union.
-  tracker: z.enum(["trakt", "anilist"]).default("trakt"),
+  tracker: TrackerId.default("trakt"),
   // MULTI-TRACK (docs/MULTI-TRACK.md): the set of trackers this recipe records to —
   // the user's toggled set (a pluggable list; more trackers may be added later).
   // AUTHORITATIVE when present. Which one is "native" (its numbering matches the

@@ -1,4 +1,4 @@
-import { type Tracker, trackerLabel } from "@/lib/tracker/types";
+import { type Tracker, isSeasonless, trackerLabel } from "@/lib/tracker/types";
 import type { TrackerOutcome } from "@/messaging";
 import clsx from "clsx";
 import { Btn, Icon, IconBtn, Stars, TrackerMark, type Variant, tokens } from "./kit";
@@ -206,11 +206,11 @@ export function RateNotePanel({
   note: string;
   hasNote: boolean;
   spoiler: boolean;
-  /** Enabled trackers (multi-track): the composer fans out; AniList only on "show". */
+  /** Enabled trackers (multi-track): the composer fans out; cour trackers only on "show". */
   trackers?: Tracker[];
 }) {
   const t = tokens(variant);
-  const anilistApplies = level === "show";
+  const courApplies = level === "show";
   return (
     <div class={clsx("w-[300px] rounded-2xl p-3.5 shadow-2xl shadow-black/40", t.panel)}>
       <header class="mb-3 flex items-center justify-between">
@@ -243,11 +243,13 @@ export function RateNotePanel({
           <span class={clsx("mb-1 block text-[11px]", t.faint)}>Send to</span>
           <div class="flex flex-wrap gap-1.5">
             {trackers.map((tk) => {
-              const canSend = tk === "trakt" || anilistApplies;
+              const canSend = !isSeasonless(tk) || courApplies;
               return (
                 <span
                   key={tk}
-                  title={canSend ? undefined : "AniList rates the whole entry · pick “show”"}
+                  title={
+                    canSend ? undefined : `${trackerLabel(tk)} rates the whole entry · pick “show”`
+                  }
                   class={clsx(
                     "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 ring-inset",
                     t.card,

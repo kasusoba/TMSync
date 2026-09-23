@@ -638,6 +638,40 @@ describe("buildRecipe + previewDraft", () => {
   });
 });
 
+describe("cour trackers (AniList, MAL)", () => {
+  const title: Field = { source: "dom", selector: "h1" };
+  const episode: Field = { source: "url", regex: "ep-(\\d+)", transforms: ["toInt"] };
+  const season: Field = { source: "url", regex: "s(\\d+)", transforms: ["toInt"] };
+
+  it("saves a MAL-only recipe with tracker mal and drops the TMDB id and season", () => {
+    const draft: RecipeDraft = {
+      ...emptyDraft("https://anime.example/frieren/ep-3"),
+      trackers: ["mal"],
+      fields: { title, episode, season, tmdbId: { source: "url", regex: "/(\\d+)" } },
+    };
+    const built = buildRecipe(draft, { id: "anime-example", name: "Anime" });
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    expect(built.recipe.tracker).toBe("mal");
+    expect(built.recipe.trackers).toBeUndefined();
+    expect(built.recipe.extract?.season).toBeUndefined();
+    expect(built.recipe.extract?.ids).toBeUndefined();
+  });
+
+  it("hints a cour tracker as native for AniList + MAL on a bare episode", () => {
+    const draft: RecipeDraft = {
+      ...emptyDraft("https://anime.example/frieren/ep-3"),
+      trackers: ["mal", "anilist"],
+      fields: { title, episode },
+    };
+    const built = buildRecipe(draft, { id: "anime-example", name: "Anime" });
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    expect(built.recipe.tracker).toBe("mal");
+    expect(built.recipe.trackers).toEqual(["mal", "anilist"]);
+  });
+});
+
 describe("manual recipes", () => {
   it("builds a manual recipe with no extract (title not required)", () => {
     const draft: RecipeDraft = { ...emptyDraft("https://twoseven.xyz/room/abc"), manual: true };

@@ -4,7 +4,7 @@
  * lists, so the workflow can open a ready-to-merge PR. The payload is the
  * self-describing wrapper the extension emits (see lib/portability/contribute.ts):
  *
- *   { kind: "recipe"|"quicklink", tracker: "trakt"|"anilist",
+ *   { kind: "recipe"|"quicklink", tracker: "trakt"|"anilist"|"mal",
  *     action: "add", id, schemaVersion?, data }
  *
  * Routing: everything lands in the single, tracker-agnostic recipes/index.json —

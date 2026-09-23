@@ -1,6 +1,6 @@
 import "@/lib/ui/theme.css";
 import { type BadgePrefs, badgePrefs } from "@/lib/storage";
-import { type Tracker, trackerLabel } from "@/lib/tracker/types";
+import { type Tracker, isSeasonless, trackerLabel } from "@/lib/tracker/types";
 import {
   type BadgeState,
   type BadgeStatus,
@@ -177,6 +177,8 @@ function BadgeRoot() {
    * across these; `tracker` stays the primary for the quick prompt. */
   const [trackers, setTrackers] = useState<Tracker[]>(["trakt"]);
   const [rewatchHidden, setRewatchHidden] = useState(false);
+  /** The title the rewatch dismissal applies to (see the status listener). */
+  const rewatchTitle = useRef<string | undefined>(undefined);
   const [manualMode, setManualMode] = useState(false);
   // Hide the badge while the page is in native fullscreen (player gone immersive) —
   // an overlay over fullscreen video is intrusive. Tracked separately from prefs so
@@ -296,7 +298,12 @@ function BadgeRoot() {
         return;
       }
       setStatus(data);
-      setRewatchHidden(false); // a fresh status may carry a new rewatch prompt
+      // A dismissed rewatch prompt stays dismissed for this episode; a new title
+      // (the next episode) may carry a new one.
+      if (data.title !== rewatchTitle.current) {
+        rewatchTitle.current = data.title;
+        setRewatchHidden(false);
+      }
     });
     return () => off();
   }, []);
@@ -340,12 +347,12 @@ function BadgeRoot() {
   const panelRef = useRef(panel);
   panelRef.current = panel;
 
-  // A watch just landed and it's ratable (Trakt on any scrobble; AniList only once
-  // the cour completed).
+  // A watch just landed and it's ratable (Trakt on any scrobble; a cour tracker only
+  // once the cour completed).
   const ratable =
     status?.state === "scrobbled" &&
     media !== null &&
-    (tracker !== "anilist" || status.completed === true);
+    (!isSeasonless(tracker) || status.completed === true);
 
   // After a watch lands, auto-open the "now" panel (per-tracker match + Rate/note)
   // so rating and fix-match are right there — the panel itself advertises what the
@@ -415,7 +422,11 @@ function BadgeRoot() {
   const confirmRewatch = () => {
     if (!media) return;
     setRewatchHidden(true); // background pushes the resulting status back
-    void sendMessage("confirmRewatch", { media });
+    void sendMessage("confirmRewatch", {
+      media,
+      trackers: status.rewatchTrackers,
+      enabled: activeTrackers,
+    });
   };
 
   return (
@@ -538,15 +549,21 @@ function BadgeRoot() {
             t.panel,
           )}
         >
-          <span class="min-w-0">
-            <span class={clsx("block whitespace-nowrap text-[12px] font-semibold", t.heading)}>
+          {/* The main badge below already names the show + episode; the marks say
+              where it was completed (green dot, tooltip "completed"). */}
+          <span class="inline-flex min-w-0 items-center gap-2">
+            <span class={clsx("whitespace-nowrap text-[12px] font-semibold", t.heading)}>
               Rewatching?
             </span>
-            {status.title && (
-              <span class={clsx("block max-w-[200px] truncate text-[11px]", t.sub)}>
-                {status.title} · completed before
-              </span>
-            )}
+            {status.rewatchTrackers?.length ? (
+              <TrackerMarks
+                outcomes={status.rewatchTrackers.map((tracker) => ({
+                  tracker,
+                  state: "ok",
+                  note: "completed",
+                }))}
+              />
+            ) : null}
           </span>
           <Btn t={t} tone="primary" class="ml-auto" onClick={confirmRewatch}>
             Start rewatch

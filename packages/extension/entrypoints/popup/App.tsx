@@ -5,6 +5,7 @@ import {
   flattenFrameTree,
 } from "@/lib/diagnostics/frame-tree";
 import { actionError } from "@/lib/errors";
+import { hasMalAccess, requestMalAccess } from "@/lib/mal/access";
 import { deriveQuickLink } from "@/lib/picker/recipe-builder";
 import { linkOnHost, removeLinkOnHost, saveLinkOnHost } from "@/lib/quick-link-edit";
 import { type SiteGroup, findMovedSite, groupSites, withSiteHosts } from "@/lib/sites";
@@ -13,6 +14,8 @@ import {
   type QuickLinkSite,
   badgePrefs,
   customRecipes,
+  malConnectIntent,
+  malTokens,
   newPendingSites,
   optionsIntent,
   quickLinks,
@@ -27,7 +30,12 @@ import type { QuickLinkValue } from "@/lib/ui/kit/QuickLinkEditor";
 import { tokens } from "@/lib/ui/kit/kit";
 import { NowPlaying } from "@/lib/ui/scrobble-panels";
 import type { BadgeStatus } from "@/messaging";
-import { type AniListStatus, type TraktStatus, sendMessage } from "@/messaging";
+import {
+  type AniListStatus,
+  type ProviderStatus,
+  type TraktStatus,
+  sendMessage,
+} from "@/messaging";
 import { type ParsedMedia, hostText, matchesUrl } from "@tmsync/shared";
 import { useEffect, useState } from "preact/hooks";
 import { browser } from "wxt/browser";
@@ -163,6 +171,7 @@ async function collectFrames(tabId: number): Promise<RawFrame[]> {
 export function App() {
   const [status, setStatus] = useState<TraktStatus | null>(null);
   const [anilist, setAnilist] = useState<AniListStatus | null>(null);
+  const [mal, setMal] = useState<ProviderStatus | null>(null);
   const [topOrigin, setTopOrigin] = useState<string | null>(null);
   const [origins, setOrigins] = useState<string[]>([]); // top + every iframe origin on the page
   const [enabled, setEnabled] = useState<string[]>([]);
@@ -210,10 +219,11 @@ export function App() {
 
   const refresh = async () => {
     const tabId = await activeTabId();
-    const [s, al, url, found, sites, links, badge, custom, remote, pending, fresh] =
+    const [s, al, ml, url, found, sites, links, badge, custom, remote, pending, fresh] =
       await Promise.all([
         sendMessage("getTraktStatus", undefined),
         sendMessage("getAniListStatus", undefined),
+        sendMessage("getMalStatus", undefined),
         activeTabUrl(),
         tabId !== null ? collectOrigins(tabId) : Promise.resolve<string[]>([]),
         sendMessage("listEnabledSites", undefined),
@@ -236,6 +246,7 @@ export function App() {
     const broad = await browser.permissions.contains({ origins: ["*://*/*"] });
     setStatus(s);
     setAnilist(al);
+    setMal(ml);
     setTopOrigin(origin);
     setOrigins(allOrigins);
     setEnabled(
@@ -283,6 +294,10 @@ export function App() {
     void refresh();
   }, []);
 
+  // The background may finish a MAL sign-in on its own (see connectMal).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: subscribe once
+  useEffect(() => malTokens.watch(() => void refresh()), []);
+
   const connect = async () => {
     setBusy(true);
     setNote(null);
@@ -311,6 +326,32 @@ export function App() {
   const disconnectAniList = async () => {
     setBusy(true);
     await sendMessage("disconnectAniList", undefined);
+    await refresh();
+    setBusy(false);
+  };
+
+  const connectMal = async () => {
+    // Everything here starts while the click still counts as a gesture. On Firefox
+    // the permission prompt closes the popup, so after a FIRST grant the background
+    // signs in (it watches for the grant and reads the intent). With access already
+    // granted, no prompt shows and the popup connects as usual.
+    void malConnectIntent.setValue(Date.now());
+    const had = hasMalAccess().catch(() => false);
+    const granted = await requestMalAccess().catch(() => false);
+    setNote(null);
+    if (!granted) {
+      void malConnectIntent.setValue(0);
+      setNote("MyAnimeList needs access to myanimelist.net to connect.");
+      return;
+    }
+    if (!(await had)) {
+      setNote("Finish signing in to MyAnimeList in the window that opened.");
+      return;
+    }
+    void malConnectIntent.setValue(0);
+    setBusy(true);
+    const res = await sendMessage("connectMal", undefined);
+    if (!res.ok) setNote(res.error ?? "MyAnimeList connection failed");
     await refresh();
     setBusy(false);
   };
@@ -469,6 +510,7 @@ export function App() {
       connected={status?.connected ?? false}
       redirectUri={status?.redirectUri}
       anilistConnected={anilist?.connected ?? false}
+      malConnected={mal?.connected ?? false}
       busy={busy}
       note={note}
       origins={origins.map((origin) => ({
@@ -479,6 +521,7 @@ export function App() {
       onConnect={connect}
       onDisconnect={disconnect}
       onConnectAniList={connectAniList}
+      onConnectMal={connectMal}
       onDisconnectAniList={disconnectAniList}
       onEnable={enableOrigin}
       newSites={newSites.length}
