@@ -7,6 +7,8 @@ TMSync is a cross-browser (Chrome + Firefox) WebExtension that passively scrobbl
 
 > **Direction note (2026-06):** the owner deliberately reversed the original "Trakt only / no anime" scope to add AniList for anime. This is intentional, not drift. AniList lives behind the tracker-adapter seam (see **Tracker adapters**). Where this doc and the old constraints disagree, this doc wins.
 
+> **Direction note (2026-09):** the owner relaxed "non-anime stays Trakt-only" so movies and TV can be multi-tracked to seasoned-family trackers (Trakt + Simkl). MyAnimeList and Simkl are planned in `docs/TRACKERS-PLAN.md` (MAL first). The crosswalk stays anime-only and out of `extract()`.
+
 > **Direction note (2026-07) — supersedes the 2026-06 "routed, never synced" model:** the owner reversed constraint #1's *never-synced* half to allow **multi-tracking anime to BOTH Trakt and AniList** (Mihon/Aniyomi-style), backed by the Fribb TMDB↔AniList crosswalk — validated against real coverage data, not theory. This also lifts constraint #2's general-site / offset-mapping / is-anime-classifier non-goal. Still **exactly two trackers**; **non-anime stays Trakt-only**; the crosswalk stays **out of `extract()`**. Design + phased build order now live in **`docs/MULTI-TRACK.md`** (which supersedes `docs/ANIME-PLAN.md`).
 
 ## Hard constraints (never violate)
@@ -242,7 +244,7 @@ The look and these rules are **settled**; don't relitigate spacing/colour/struct
 - Adding a tracker IS allowed (the registry is pluggable — 2026-07). But it must go **behind the adapter seam** (a `TrackerAdapter`) + a picker toggle; never special-cased in the shared engine. (Letterboxd stays a CSV *export target*, not a tracker.)
 - Do not put the anime-map crosswalk (or any episode-mapping / is-anime logic) into the shared `extract()` engine. It lives in `lib/animap/` + the adapters. This is the ONE rule that survives the 2026-07 multi-track reversal.
 - Do not resurrect a "primary tracker" tab/selector in the picker — trackers are **independent toggles**; native-vs-derived is inferred at runtime.
-- Do not multi-track **non-anime** — movies/Western TV are Trakt-only (they don't exist on AniList). Multi-track is anime-only.
+- Non-anime (movies, Western TV) may be multi-tracked only to **seasoned-family** trackers (Trakt, Simkl), which share numbering and ids, so no crosswalk is involved. Never send non-anime through the anime-map crosswalk or to a cour-family tracker (AniList, MAL). Relaxed 2026-09 by the owner (`docs/TRACKERS-PLAN.md`).
 - Do not silently mis-write a derived tracker: **refuse-on-ambiguous** + per-tracker `progress > episodes` guardrail; each tracker is advance-only and never lowers remote progress (`docs/MULTI-TRACK.md` §9, §12).
 - Keep the recipe library as ONE tracker-agnostic file (`recipes/index.json`): every recipe carries its own `tracker` field and the engine routes per-recipe. Do NOT reintroduce per-tracker recipe files/directories (the old `recipes/trakt/` + `recipes/anime/` split was retired 2026-07 — it baked tracker into the layout and doesn't scale as trackers are added).
 - Do not give AniList a fake scrobble loop — it has no scrobble API; one `SaveMediaListEntry` write per episode at threshold.

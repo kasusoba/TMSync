@@ -19,6 +19,8 @@ Non-anime movies and Western TV **don't exist on AniList**, so their "multi-trac
 
 > **anime (movies + series) dual-writes to AniList + Trakt; everything else stays Trakt-only.**
 
+> **Update 2026-09:** "everything else stays Trakt-only" is relaxed. Non-anime may also go to other seasoned-family trackers (Simkl), with no crosswalk. See `TRACKERS-PLAN.md`.
+
 Degradation is first-class, not an error: if the "other" tracker can't be resolved for an item (no crosswalk hit, ambiguous mapping, not connected), we write the one we can and **log the skip** — never block the tracker that *did* resolve. A partial multi-track is the expected common case (see coverage in §3).
 
 ## 3. Evidence (why this is now viable, not theory)
