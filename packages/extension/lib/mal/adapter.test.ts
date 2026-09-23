@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vitest";
-import { planToFields } from "./adapter";
+import { malCorrections } from "@/lib/storage";
+import type { ParsedMedia } from "@tmsync/shared";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fakeBrowser } from "wxt/testing";
+import { malAdapter, planToFields } from "./adapter";
+import { malCacheKey } from "./client";
 
 describe("planToFields", () => {
   it("writes a first watch as watching", () => {
@@ -35,5 +39,28 @@ describe("planToFields", () => {
       num_watched_episodes: 12,
       num_times_rewatched: 1,
     });
+  });
+});
+
+describe("malAdapter.resolveById", () => {
+  beforeEach(() => fakeBrowser.reset());
+  afterEach(() => vi.unstubAllGlobals());
+
+  const page: ParsedMedia = { mediaType: "show", title: "Frieren", episode: 3 };
+
+  it("lets a MAL title pin win over the id AniList bridges to", async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    await malCorrections.setValue({
+      [malCacheKey(page)]: { id: 52991, title: "Frieren", episodes: 28 },
+    });
+    const item = await malAdapter.resolveById?.({ mal: 1 }, page);
+    expect(item?.id).toBe(52991);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("skips MAL when the pin says it's not on MyAnimeList", async () => {
+    await malCorrections.setValue({ [malCacheKey(page)]: null });
+    expect(await malAdapter.resolveById?.({ mal: 1 }, page)).toBeNull();
   });
 });

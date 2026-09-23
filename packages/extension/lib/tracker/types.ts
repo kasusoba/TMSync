@@ -75,6 +75,9 @@ export const TRACKER_INFO: Record<Tracker, TrackerInfo> = {
   simkl: { label: "Simkl", family: "any", rates: "entry", note: "none" },
 };
 
+/** The cour-family trackers (AniList, MAL): the ones with a fix-match panel. */
+export type CourTracker = "anilist" | "mal";
+
 /** Trackers whose pages can host quick links (each has a quick-link content
  * script). A subset of `Tracker`: a new tracker gets links only with its own script. */
 export type QuickLinkTracker = "trakt" | "anilist";
@@ -109,9 +112,10 @@ export const trackerRates = (tracker: Tracker): RatingScope => TRACKER_INFO[trac
 export type ExternalIds = Partial<Record<IdNamespace, number>>;
 
 /**
- * A resolved item on a specific tracker — the seam-level identity. A discriminated
- * union: the Trakt arm carries the trakt id; the AniList arm carries the Media id
- * plus the entry's total `episodes` (the numbering-guardrail input, step 6).
+ * A resolved item on a specific tracker: the seam-level identity. A discriminated
+ * union, one arm per tracker, each with that tracker's own id. The cour arms
+ * (AniList, MAL) also carry the entry's total `episodes` (the numbering-guardrail
+ * input, step 6); the Simkl arm carries its page once a write has named it.
  */
 export type TrackedItem =
   | {
@@ -160,6 +164,16 @@ export type TrackedItem =
       url?: string;
     };
 
+/** A search result in a cour tracker's fix-match picker (AniList, MAL). Mirrors
+ * TraktSearchOption. */
+export interface CourSearchOption {
+  id: number;
+  title: string;
+  year?: number;
+  episodes: number | null;
+  format?: string;
+}
+
 /** A progress phase from the content-side scrobble state machine. */
 export type RecordPhase = "start" | "pause" | "stop";
 
@@ -172,12 +186,12 @@ export interface RecordResult {
   ok: boolean;
   /** Underlying HTTP status, when a call was made. */
   status?: number;
-  /** Echoed/normalized action; "scrobble" = committed (Trakt history / AniList write). */
+  /** Echoed/normalized action; "scrobble" = committed (a history add, or a list write). */
   action?: "start" | "pause" | "scrobble";
   /**
-   * Why it failed, or why nothing was written. `needs_rewatch` = a COMPLETED
-   * AniList cour was re-watched; we wrote nothing and the badge must ask the user
-   * to confirm a rewatch first (never silently mutate a completed entry).
+   * Why it failed, or why nothing was written. `needs_rewatch` = a completed cour
+   * entry (AniList, MAL) was re-watched; we wrote nothing and the badge must ask
+   * the user to confirm a rewatch first (never silently mutate a completed entry).
    */
   reason?:
     | "unresolved"
@@ -186,7 +200,7 @@ export interface RecordResult {
     | "needs_rewatch"
     | "not_connected"
     | "http";
-  /** AniList only: this write finished the cour (drives the cour-rating prompt). */
+  /** Cour trackers only: this write finished the cour (drives the cour-rating prompt). */
   completed?: boolean;
   /** Tracker error body / detail for the badge. */
   httpError?: string;
@@ -200,12 +214,13 @@ export interface RecordResult {
 
 /**
  * Which rating affordances a tracker offers for an item — drives the badge so it
- * renders only supported levels (Trakt: show/season/episode; AniList: the cour
- * entry). "cour" is the single AniList anime-entry level (no per-episode score).
+ * renders only supported levels (Trakt: show/season/episode; AniList, MAL: the cour
+ * entry; Simkl: the movie or show). "cour" is the single entry level of a cour
+ * tracker (no per-episode score).
  */
 export type RatingLevel = "movie" | "show" | "season" | "episode" | "cour";
 
-/** A single episode reference. `season` is omitted for AniList (linear cour). */
+/** A single episode reference. `season` is omitted for a cour tracker (linear cour). */
 export interface WatchedEpisode {
   season?: number;
   number: number;
@@ -213,23 +228,25 @@ export interface WatchedEpisode {
 
 /**
  * The viewer's watched progress for a resolved show — drives the popup
- * "last watched / next up" line. Normalized across the two trackers' very
- * different storage models: Trakt keeps a true per-episode SET (gaps possible —
- * watched 1,3 not 2), AniList keeps only a high-water-mark COUNT (no gaps). Both
- * reduce to this shape; `hasGaps` flags the Trakt-only case where `next` points
- * *behind* `lastWatched`.
+ * "last watched / next up" line. Normalized across very different storage models:
+ * Trakt keeps a true per-episode SET (gaps possible: watched 1,3 not 2), the cour
+ * trackers (AniList, MAL) keep only a high-water-mark COUNT (no gaps). Both reduce
+ * to this shape; `hasGaps` flags the Trakt-only case where `next` points *behind*
+ * `lastWatched`. Simkl reports none (reading it back costs its daily quota).
  */
 export interface WatchedState {
   tracker: Tracker;
-  /** Episodes that exist to watch (aired count for Trakt; cour total for AniList); null if unknown/ongoing. */
+  /** Episodes that exist to watch (aired count for Trakt; the cour total for a cour
+   * tracker); null if unknown/ongoing. */
   total: number | null;
   /** How many episodes are watched. */
   watchedCount: number;
-  /** Most recent watch (by time on Trakt; = progress on AniList); null if none. */
+  /** Most recent watch (by time on Trakt; = progress on a cour tracker); null if none. */
   lastWatched: WatchedEpisode | null;
   /** First unwatched episode in order; null when fully caught up / completed. */
   next: WatchedEpisode | null;
-  /** Trakt only: `next` sits before `lastWatched` (an earlier episode is unwatched). Always false for AniList. */
+  /** Trakt only: `next` sits before `lastWatched` (an earlier episode is unwatched).
+   * Always false for a cour tracker. */
   hasGaps: boolean;
   /** Cour trackers: the entry is COMPLETED (not mid-rewatch), so watching any episode
    * again first asks "Rewatching?". */

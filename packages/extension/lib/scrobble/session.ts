@@ -151,12 +151,24 @@ function trackerOutcomes(reply: ScrobbleReply, tracker: Tracker): TrackerOutcome
       state: outcomeState(d.ok, d.action),
       note: !d.ok
         ? reasonNote(d.reason)
-        : d.info === "already_watched"
-          ? "already watched"
-          : okNote(d.tracker, d.action, d.completed),
+        : d.deferred
+          ? "recording"
+          : d.info === "already_watched"
+            ? "already watched"
+            : okNote(d.tracker, d.action, d.completed),
     });
   }
   return out;
+}
+
+/** A stop reply with its deferred trackers' real outcomes (`scrobbleFollowUp`)
+ * swapped in. Pure. */
+export function mergeFollowUp(reply: ScrobbleReply, outcomes: DerivedOutcome[]): ScrobbleReply {
+  const byTracker = new Map(outcomes.map((o) => [o.tracker, o]));
+  return {
+    ...reply,
+    derived: reply.derived?.map((d) => (d.deferred ? (byTracker.get(d.tracker) ?? d) : d)),
+  };
 }
 
 /** The neutral bar verb for a multi-track status — the per-tracker specifics live in
@@ -355,6 +367,10 @@ export class SessionManager {
   private framesObserver: MutationObserver | null = null;
   private readonly seenFrameOrigins = new Set<string>();
   private currentKey: string | null = null;
+  /** The last stop's reply, kept so a `scrobbleFollowUp` can update its status. */
+  private lastStop: { reply: ScrobbleReply; media: ParsedMedia; tracker: Tracker } | null = null;
+  /** A follow-up that arrived before its stop's reply. */
+  private earlyFollowUp: { media: ParsedMedia; outcomes: DerivedOutcome[] } | null = null;
   private currentVideo: HTMLVideoElement | null = null;
   private controller: ScrobbleController | null = null;
   private abort: AbortController | null = null;
@@ -419,6 +435,22 @@ export class SessionManager {
       metaObserver.observe(document.body, { childList: true, subtree: true, characterData: true });
       this.ctx.onInvalidated(() => metaObserver.disconnect());
     }
+
+    // A stop's deferred trackers (Simkl waiting out its lock) finished: show their
+    // outcome on the stop's status. It can beat the stop's own reply here, so keep
+    // it until that reply lands.
+    const offFollowUp = onMessage("scrobbleFollowUp", ({ data }) => {
+      const last = this.lastStop;
+      if (!last || mediaKey(last.media) !== mediaKey(data.media)) {
+        this.earlyFollowUp = data;
+        return;
+      }
+      this.lastStop = { ...last, reply: mergeFollowUp(last.reply, data.outcomes) };
+      // The next episode already plays: its status must not be overwritten.
+      if (this.currentKey !== null && this.currentKey !== mediaKey(data.media)) return;
+      this.reportStop(this.lastStop);
+    });
+    this.ctx.onInvalidated(() => offFollowUp());
 
     // A correction was saved → drop the current (wrong) session and re-resolve.
     const offRecheck = onMessage("recheck", () => {
@@ -927,6 +959,22 @@ export class SessionManager {
     });
   }
 
+  /** Show a stop's status (its reply, or the reply with a follow-up merged in). */
+  private reportStop(stop: { reply: ScrobbleReply; media: ParsedMedia; tracker: Tracker }): void {
+    // We still tell the tracker to stop the outgoing episode, but the scrobble call
+    // is async, so by the time it replies we may have shown the episode prompt
+    // (tearing down S1E2 to ask which episode a "?play=true" URL is on) or, in the
+    // top frame, navigated away entirely (badge cleared). In either case this late
+    // reply must not re-show the old status. (isTop-gated: an iframe player never
+    // sets badgeActive, so it must keep reporting its own normal stops.)
+    if (this.episodeAwaiting || (this.isTop && !this.badgeActive)) return;
+    const { reply, media, tracker } = stop;
+    void sendMessage(
+      "reportScrobble",
+      statusFromReply("stop", reply, media, reply.primaryTracker ?? tracker),
+    );
+  }
+
   private startSession(video: HTMLVideoElement, media: ParsedMedia): void {
     this.teardownSession();
 
@@ -949,15 +997,17 @@ export class SessionManager {
           trackers,
           watchedThreshold,
         }).then((reply) => {
-          // We still tell the tracker to stop the outgoing episode — but the
-          // scrobble call is async, so by the time it replies we may have shown
-          // the episode prompt (tearing down S1E2 to ask which episode a
-          // "?play=true" URL is on) or, in the top frame, navigated away entirely
-          // (badge cleared). In either case this late reply must not re-show the
-          // old status. (isTop-gated: an iframe player never sets badgeActive, so
-          // it must keep reporting its own normal stops.)
-          if (action === "stop" && (this.episodeAwaiting || (this.isTop && !this.badgeActive)))
+          if (action === "stop") {
+            const early = this.earlyFollowUp;
+            this.earlyFollowUp = null;
+            const merged =
+              early && mediaKey(early.media) === mediaKey(media)
+                ? mergeFollowUp(reply, early.outcomes)
+                : reply;
+            this.lastStop = { reply: merged, media, tracker };
+            this.reportStop(this.lastStop);
             return;
+          }
           // MULTI-TRACK: the badge names whichever tracker the reply's top-level
           // fields describe (the native one, or the first enabled if native is off).
           void sendMessage(

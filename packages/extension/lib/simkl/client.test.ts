@@ -71,6 +71,11 @@ describe("simklKey", () => {
     expect(simklKey({ mediaType: "movie", title: " Dune ", year: 2021 })).toBe("movie:t:dune:2021");
   });
 
+  it("drops the season for a whole-show key (Simkl rates a western show whole)", () => {
+    expect(simklKey(show, false)).toBe("show:tmdb:1429");
+    expect(simklKey({ ...show, season: 1 }, false)).toBe(simklKey(show, false));
+  });
+
   it("keys an anime item on its cour id before a TMDB show id", () => {
     const cour = {
       mediaType: "show" as const,

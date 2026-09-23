@@ -7,3 +7,7 @@ export function actionError(e: unknown): string {
   }
   return `That didn’t work: ${msg}`;
 }
+
+/** An error's message (a thrown non-Error as a string). The not-connected errors
+ * already say which tracker ("Not connected to Simkl"). */
+export const errorMessage = (e: unknown): string => (e instanceof Error ? e.message : String(e));

@@ -1,5 +1,4 @@
 import { ANIME_MAP, RECIPES } from "@/config";
-import { resolveAniListById } from "@/lib/anilist/adapter";
 import {
   connect as anilistConnect,
   disconnect as anilistDisconnect,
@@ -9,6 +8,7 @@ import {
 import {
   AniListNotConnectedError,
   anilistCacheKey,
+  resolveById as anilistIdentityById,
   resolve as anilistResolve,
   searchAniList,
   viewerScoreFormat,
@@ -30,6 +30,7 @@ import {
 } from "@/lib/animap/derive";
 import type { Animap } from "@/lib/animap/index";
 import { loadAnimap, parseAnimeMap } from "@/lib/animap/load";
+import { errorMessage } from "@/lib/errors";
 import { hasMalAccess, isMalGrant } from "@/lib/mal/access";
 import {
   connect as malConnect,
@@ -92,7 +93,13 @@ import {
   trackerLabel,
 } from "@/lib/tracker";
 import { planCourWrite } from "@/lib/tracker/cour-plan";
-import type { RatingLevel, TrackedItem, Tracker } from "@/lib/tracker/types";
+import type {
+  CourSearchOption,
+  CourTracker,
+  RatingLevel,
+  TrackedItem,
+  Tracker,
+} from "@/lib/tracker/types";
 import { connect, disconnect, getRedirectUri, isConnected } from "@/lib/trakt/auth";
 import {
   TraktNotConnectedError,
@@ -130,8 +137,6 @@ import {
   recipeHosts,
 } from "@tmsync/shared";
 import { browser } from "wxt/browser";
-
-const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /** Same watched item: title, numbering, and strongest id. */
 function sameMedia(a: ParsedMedia, b: ParsedMedia): boolean {
@@ -273,7 +278,7 @@ export default defineBackground(() => {
       await connect();
       return { ok: true };
     } catch (e) {
-      return { ok: false, error: errMsg(e) };
+      return { ok: false, error: errorMessage(e) };
     }
   });
 
@@ -290,7 +295,7 @@ export default defineBackground(() => {
       await anilistConnect();
       return { ok: true };
     } catch (e) {
-      return { ok: false, error: errMsg(e) };
+      return { ok: false, error: errorMessage(e) };
     }
   });
 
@@ -323,7 +328,7 @@ export default defineBackground(() => {
       await malConnect();
       return { ok: true };
     } catch (e) {
-      return { ok: false, error: errMsg(e) };
+      return { ok: false, error: errorMessage(e) };
     }
   });
 
@@ -340,7 +345,7 @@ export default defineBackground(() => {
       await simklConnect();
       return { ok: true };
     } catch (e) {
-      return { ok: false, error: errMsg(e) };
+      return { ok: false, error: errorMessage(e) };
     }
   });
 
@@ -353,7 +358,7 @@ export default defineBackground(() => {
     } catch (e) {
       return {
         ok: false,
-        error: e instanceof TraktNotConnectedError ? "Not connected to Trakt" : errMsg(e),
+        error: e instanceof TraktNotConnectedError ? "Not connected to Trakt" : errorMessage(e),
       };
     }
   });
@@ -370,7 +375,21 @@ export default defineBackground(() => {
     if (tabId !== undefined && !(await claimScrobbleOwner(tabId, frameId, data.action))) {
       return { ok: true, resolved: true }; // another frame owns this tab's scrobble
     }
-    return recordScrobble(data);
+    // A tracker that must wait before a stop (Simkl's lock) is recorded after this
+    // reply, so the badge shows the others now; its outcome follows to this frame.
+    return recordScrobble(data, (late) => {
+      void late.then(
+        (outcomes) => {
+          if (tabId === undefined) return;
+          void sendMessage(
+            "scrobbleFollowUp",
+            { media: data.media, outcomes },
+            { tabId, frameId },
+          ).catch(() => {}); // the tab closed: the watch is recorded anyway
+        },
+        () => {},
+      ); // each tracker folds its own errors into its outcome
+    });
   });
 
   // Pre-resolution for the badge: resolve identity (cached) without recording so
@@ -539,84 +558,27 @@ export default defineBackground(() => {
     if (tabId !== undefined) void sendMessage("recheck", undefined, tabId);
   });
 
-  onMessage("searchAniList", async ({ data }) => {
+  onMessage("searchCour", async ({ data }) => {
     try {
-      return await searchAniList(data.query);
+      return await COUR_PINS[data.tracker].search(data.query);
     } catch {
       return [];
     }
   });
 
-  // Pin/block the AniList entry, a local override above Fribb. It writes both keys:
-  // a tmdb id keys a crosswalk pin (AniList derived), and the title key pins the
-  // match when AniList resolves the page itself (AniList native, which can happen
-  // with a tmdb id too, e.g. Trakt off). The title key carries the season, so a pin
-  // for one season never applies to another.
-  onMessage("setAniListMatch", async ({ data, sender }) => {
-    let identity: AniListIdentity | null = null;
-    if (data.anilistId !== null) {
-      identity = await resolveAniListById(data.anilistId);
-      if (!identity) return { ok: false, error: "couldn't load that AniList entry" };
-    }
-    const tmdbId = data.media.ids?.tmdb;
-    if (tmdbId !== undefined) {
-      const ov = await animapOverrides.getValue();
-      ov.forward[forwardKey(Number(tmdbId), data.media.season)] = data.anilistId;
-      await animapOverrides.setValue(ov);
-    }
-    const key = anilistCacheKey(data.media);
-    await anilistCorrections.setValue({
-      ...(await anilistCorrections.getValue()),
-      [key]: identity,
-    });
-    await dropAniListCache(key);
-    const tabId = data.tabId ?? sender.tab?.id;
-    if (tabId !== undefined) void sendMessage("recheck", undefined, tabId);
-    return { ok: true };
-  });
-
-  // Undo an AniList override (pin or "Not on AniList") → back to auto-resolution
-  // (the Fribb crosswalk, or the title search). Clears both keys, like the set.
-  onMessage("resetAniListMatch", async ({ data, sender }) => {
-    const tmdbId = data.media.ids?.tmdb;
-    if (tmdbId !== undefined) {
-      const ov = await animapOverrides.getValue();
-      const key = forwardKey(Number(tmdbId), data.media.season);
-      if (key in ov.forward) {
-        delete ov.forward[key];
-        await animapOverrides.setValue(ov);
+  // Pin/block a cour tracker's entry, a local override above Fribb. It writes both
+  // keys: a tmdb id keys a crosswalk pin (the tracker derived), and the title key
+  // pins the match when the tracker resolves the page itself (native, which can
+  // happen with a tmdb id too, e.g. Trakt off) or follows AniList (MAL). The title
+  // key carries the season, so a pin for one season never applies to another.
+  onMessage("setCourMatch", async ({ data, sender }) => {
+    const pins = COUR_PINS[data.tracker];
+    let identity: AniListIdentity | MalIdentity | null = null;
+    if (data.id !== null) {
+      identity = await pins.load(data.id).catch(() => null);
+      if (!identity) {
+        return { ok: false, error: `couldn't load that ${trackerLabel(data.tracker)} entry` };
       }
-    }
-    const key = anilistCacheKey(data.media);
-    const corr = await anilistCorrections.getValue();
-    if (key in corr) {
-      delete corr[key];
-      await anilistCorrections.setValue(corr);
-    }
-    await dropAniListCache(key);
-    const tabId = data.tabId ?? sender.tab?.id;
-    if (tabId !== undefined) void sendMessage("recheck", undefined, tabId);
-    return { ok: true };
-  });
-
-  onMessage("searchMal", async ({ data }) => {
-    try {
-      return await searchMal(data.query);
-    } catch {
-      return [];
-    }
-  });
-
-  // Pin/block the MAL entry. The MAL twin of setAniListMatch, but it writes both
-  // keys: a tmdb id keys a crosswalk pin (MAL derived), and the title key pins the
-  // match when MAL resolves the page itself (MAL native, which can happen with a
-  // tmdb id too, e.g. Trakt off). The title key carries the season, so a pin for
-  // one season never applies to another.
-  onMessage("setMalMatch", async ({ data, sender }) => {
-    let identity: MalIdentity | null = null;
-    if (data.malId !== null) {
-      identity = await getMalAnime(data.malId).catch(() => null);
-      if (!identity) return { ok: false, error: "couldn't load that MyAnimeList entry" };
     }
     const tmdbId = data.media.ids?.tmdb;
     if (tmdbId !== undefined) {
@@ -624,36 +586,30 @@ export default defineBackground(() => {
       const key = forwardKey(Number(tmdbId), data.media.season);
       await animapOverrides.setValue({
         ...ov,
-        forwardMal: { ...ov.forwardMal, [key]: data.malId },
+        [pins.override]: { ...ov[pins.override], [key]: data.id },
       });
     }
-    const key = malCacheKey(data.media);
-    await malCorrections.setValue({ ...(await malCorrections.getValue()), [key]: identity });
-    await dropMalCache(key);
+    await pins.setCorrection(data.media, identity);
     const tabId = data.tabId ?? sender.tab?.id;
     if (tabId !== undefined) void sendMessage("recheck", undefined, tabId);
     return { ok: true };
   });
 
-  // Undo a MAL pin (or "Not on MyAnimeList") → back to the automatic match.
-  onMessage("resetMalMatch", async ({ data, sender }) => {
+  // Undo a pin (or a "Not on <tracker>") → back to the automatic match (the Fribb
+  // crosswalk, or the title search). Clears both keys, like the set.
+  onMessage("resetCourMatch", async ({ data, sender }) => {
+    const pins = COUR_PINS[data.tracker];
     const tmdbId = data.media.ids?.tmdb;
     if (tmdbId !== undefined) {
       const ov = await animapOverrides.getValue();
       const key = forwardKey(Number(tmdbId), data.media.season);
-      if (ov.forwardMal && key in ov.forwardMal) {
-        const forwardMal = { ...ov.forwardMal };
-        delete forwardMal[key];
-        await animapOverrides.setValue({ ...ov, forwardMal });
+      const pinned = ov[pins.override];
+      if (pinned && key in pinned) {
+        const { [key]: _gone, ...rest } = pinned;
+        await animapOverrides.setValue({ ...ov, [pins.override]: rest });
       }
     }
-    const key = malCacheKey(data.media);
-    const corr = await malCorrections.getValue();
-    if (key in corr) {
-      delete corr[key];
-      await malCorrections.setValue(corr);
-    }
-    await dropMalCache(key);
+    await pins.setCorrection(data.media, undefined);
     const tabId = data.tabId ?? sender.tab?.id;
     if (tabId !== undefined) void sendMessage("recheck", undefined, tabId);
     return { ok: true };
@@ -664,8 +620,8 @@ export default defineBackground(() => {
   // that asked, then update the badge. A derived tracker confirms the crosswalk's
   // entry (via reviewTarget), the same one the scrobble wrote to.
   onMessage("confirmRewatch", async ({ data, sender }) => {
-    const asked = data.trackers?.length ? data.trackers : (["anilist"] as Tracker[]);
-    const enabled = data.enabled?.length ? data.enabled : asked;
+    const asked = data.trackers;
+    const enabled = data.enabled.length ? data.enabled : asked;
     const done: { name: string; title: string; completed: boolean }[] = [];
     const errors: string[] = [];
     for (const tracker of asked) {
@@ -693,7 +649,7 @@ export default defineBackground(() => {
         }
         done.push({ name, title: item.title, completed: result.completed === true });
       } catch (e) {
-        errors.push(errMsg(e));
+        errors.push(errorMessage(e));
       }
     }
     const first = done[0];
@@ -957,7 +913,13 @@ export default defineBackground(() => {
  * Record one scrobble phase on every enabled tracker: the native one directly, the
  * others through the crosswalk. Used by live scrobbles and by the tab-close stop.
  */
-async function recordScrobble(data: ScrobbleRequest): Promise<ScrobbleReply> {
+async function recordScrobble(
+  data: ScrobbleRequest,
+  /** Given, a stop records trackers that would wait (`stopDelayMs`) after the
+   * reply and hands their outcomes here. Without it (the tab-close stop) every
+   * tracker is recorded before returning. */
+  onLate?: (late: Promise<DerivedOutcome[]>) => void,
+): Promise<ScrobbleReply> {
   // MULTI-TRACK: the enabled set + which tracker speaks the page's numbering
   // natively (recorded directly). Every OTHER enabled tracker is derived via the
   // crosswalk. `trackers` is authoritative; fall back to the legacy single field.
@@ -1017,18 +979,26 @@ async function recordScrobble(data: ScrobbleRequest): Promise<ScrobbleReply> {
   // Derive + record every OTHER enabled tracker via the crosswalk (+ overrides).
   // When the native tracker isn't enabled there's no anchor to bridge from, so
   // those trackers resolve themselves on a miss (id → title) instead of skipping.
+  // Passthrough trackers last: a Simkl stop may wait out its 20 s scrobble lock,
+  // and the others are recorded in order, so they must not wait behind it.
+  const others = enabled
+    .filter((t) => t !== native)
+    .sort((a, b) => Number(isPassthrough(a)) - Number(isPassthrough(b)));
+  const late = onLate && data.action === "stop" ? await trackersThatWait(others) : [];
+  const overrides = await animapOverrides.getValue();
+  const animap = await loadAnimap();
   const derived = await recordDerivedTrackers(
     nativeItem,
-    // Passthrough trackers last: a Simkl stop may wait out its 20 s scrobble lock,
-    // and the others are recorded in order, so they must not wait behind it.
-    enabled
-      .filter((t) => t !== native)
-      .sort((a, b) => Number(isPassthrough(a)) - Number(isPassthrough(b))),
+    others.filter((t) => !late.includes(t)),
     data,
-    await animapOverrides.getValue(),
-    await loadAnimap(),
+    overrides,
+    animap,
     !nativeEnabled,
   );
+  if (late.length && onLate) {
+    onLate(recordDerivedTrackers(nativeItem, late, data, overrides, animap, !nativeEnabled));
+    derived.push(...late.map((tracker) => ({ tracker, ok: true, deferred: true })));
+  }
 
   // Native is the badge's primary when enabled; otherwise promote the first
   // derived tracker so a derive-only recipe (e.g. AniList-only on a TMDB site)
@@ -1073,6 +1043,16 @@ function derivedToReply(d: DerivedOutcome): ScrobbleReply {
   };
 }
 
+/** The trackers that could not take a stop right now (Simkl inside its lock). */
+async function trackersThatWait(trackers: Tracker[]): Promise<Tracker[]> {
+  const out: Tracker[] = [];
+  for (const tk of trackers) {
+    const wait = await getAdapter(tk).stopDelayMs?.();
+    if (wait) out.push(tk);
+  }
+  return out;
+}
+
 /**
  * Reverse derivation (cour → seasoned) needs the cour-native entry's id, so the
  * native item must be resolved even when its own tracker is off, as long as a
@@ -1082,29 +1062,63 @@ function needsCourBridge(native: Tracker, enabled: Tracker[]): boolean {
   return trackerFamily(native) === "cour" && enabled.some((tk) => trackerFamily(tk) === "seasoned");
 }
 
-/** Drop a stale AniList auto-resolution so a pin (or its removal) takes effect now. */
-async function dropAniListCache(key: string): Promise<void> {
-  const cache = await anilistResolutionCache.getValue();
-  if (key in cache) {
-    delete cache[key];
-    await anilistResolutionCache.setValue(cache);
-  }
+/**
+ * Where each cour tracker keeps its fix-match pins: the crosswalk override map
+ * for a tmdb-keyed pin, and the title correction (with the caches to drop so a pin,
+ * or its removal, takes effect now).
+ */
+interface CourPins {
+  search(query: string): Promise<CourSearchOption[]>;
+  /** The entry for a picked id (null when the tracker has no such entry). */
+  load(id: number): Promise<AniListIdentity | MalIdentity | null>;
+  /** The `AnimapOverrides` map a tmdb-keyed pin goes in. */
+  override: "forward" | "forwardMal";
+  /** Set (an identity, or null = "not on the tracker") or clear (undefined) the
+   * title correction for this media, and drop its stale auto-resolution. */
+  setCorrection(
+    media: ParsedMedia,
+    identity: AniListIdentity | MalIdentity | null | undefined,
+  ): Promise<void>;
 }
 
-/** Drop a stale MAL auto-resolution (or a remembered miss) so a pin, or its
- * removal, takes effect now. */
-async function dropMalCache(key: string): Promise<void> {
-  const cache = await malResolutionCache.getValue();
-  if (key in cache) {
-    delete cache[key];
-    await malResolutionCache.setValue(cache);
-  }
-  const misses = await malMissCache.getValue();
-  if (key in misses) {
-    delete misses[key];
-    await malMissCache.setValue(misses);
-  }
+/** Set or clear one key of a record in storage. */
+async function setKey<T>(
+  item: { getValue(): Promise<Record<string, T>>; setValue(v: Record<string, T>): Promise<void> },
+  key: string,
+  value: T | undefined,
+): Promise<void> {
+  const all = await item.getValue();
+  if (value === undefined) {
+    if (!(key in all)) return;
+    delete all[key];
+  } else all[key] = value;
+  await item.setValue(all);
 }
+
+const COUR_PINS: Record<CourTracker, CourPins> = {
+  anilist: {
+    search: searchAniList,
+    // The identity, not the seam item: a title pin keeps `idMal`, so MAL can follow it.
+    load: anilistIdentityById,
+    override: "forward",
+    async setCorrection(media, identity) {
+      const key = anilistCacheKey(media);
+      await setKey(anilistCorrections, key, identity as AniListIdentity | null | undefined);
+      await setKey(anilistResolutionCache, key, undefined);
+    },
+  },
+  mal: {
+    search: searchMal,
+    load: getMalAnime,
+    override: "forwardMal",
+    async setCorrection(media, identity) {
+      const key = malCacheKey(media);
+      await setKey(malCorrections, key, identity as MalIdentity | null | undefined);
+      await setKey(malResolutionCache, key, undefined);
+      await setKey(malMissCache, key, undefined); // a remembered miss
+    },
+  },
+};
 
 /**
  * Resolve a derived tracker's entry: by the exact ids the derivation named (the
@@ -1115,7 +1129,9 @@ function resolveDerived(
   d: { media: ParsedMedia; ids?: TargetIds },
 ): Promise<TrackedItem | null> {
   const adapter = getAdapter(tk);
-  return d.ids && adapter.resolveById ? adapter.resolveById(d.ids) : adapter.resolve(d.media);
+  return d.ids && adapter.resolveById
+    ? adapter.resolveById(d.ids, d.media)
+    : adapter.resolve(d.media);
 }
 
 /** A resolved tracker's readout row. An id of 0 (Simkl before its first write)
@@ -1159,17 +1175,15 @@ async function resolveAcross(
     const item = await getAdapter(tk)
       .resolve(media)
       .catch(() => null);
-    return item
-      ? { ...resolvedRow(item), native: true }
-      : { tracker: tk, resolved: false, reason: "no_match", native: true };
+    return item ? resolvedRow(item) : { tracker: tk, resolved: false, reason: "no_match" };
   };
   const out: TrackerResolution[] = [];
   for (const tk of trackers) {
     if (tk === native) {
       out.push(
         nativeItem
-          ? { ...resolvedRow(nativeItem), native: true }
-          : { tracker: tk, resolved: false, reason: "unresolved", native: true },
+          ? resolvedRow(nativeItem)
+          : { tracker: tk, resolved: false, reason: "unresolved" },
       );
       continue;
     }
@@ -1483,7 +1497,7 @@ async function fetchRemoteRecipes(
     await graduateRecipes(library.recipes);
     return { ok: true, count: library.recipes.length };
   } catch (e) {
-    return { ok: false, count: 0, error: errMsg(e) };
+    return { ok: false, count: 0, error: errorMessage(e) };
   }
 }
 
@@ -1522,7 +1536,7 @@ async function fetchAnimeMap(
     });
     return { ok: true, rows: rows.length };
   } catch (e) {
-    return { ok: false, rows: 0, error: errMsg(e) };
+    return { ok: false, rows: 0, error: errorMessage(e) };
   }
 }
 
@@ -1733,7 +1747,7 @@ async function registerSite(origin: string): Promise<{ ok: boolean; error?: stri
     const list = await enabledOrigins.getValue();
     if (!list.includes(origin)) await enabledOrigins.setValue([...list, origin]);
   } catch (e) {
-    return { ok: false, error: errMsg(e) };
+    return { ok: false, error: errorMessage(e) };
   }
   // Under the broad grant the catch-all script already covers this origin; adding a
   // per-origin script too would inject the content script twice into the same frame.

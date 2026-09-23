@@ -199,6 +199,7 @@ export function RateNotePanel({
   spoiler,
   trackers = ["trakt"],
   ratingState,
+  differs,
 }: {
   variant: Variant;
   isShow: boolean;
@@ -209,9 +210,11 @@ export function RateNotePanel({
   spoiler: boolean;
   /** Enabled trackers (multi-track): the composer fans out; cour trackers only on "show". */
   trackers?: Tracker[];
-  /** "remove": a saved rating cleared, waiting for Save. "differs": the selected
-   * trackers hold different ratings and notes. */
-  ratingState?: "remove" | "differs";
+  /** "remove": a saved rating cleared, waiting for Save. */
+  ratingState?: "remove";
+  /** The selected trackers hold different values: each tracker's rating, and the
+   * trackers whose notes differ. */
+  differs?: { ratings: [Tracker, number | null][]; notes: Tracker[] };
 }) {
   const t = tokens(variant);
   const courApplies = level === "show";
@@ -277,24 +280,25 @@ export function RateNotePanel({
           label={
             ratingState === "remove"
               ? "Rating will be removed"
-              : ratingState === "differs"
+              : differs?.ratings.length
                 ? "differs"
                 : undefined
           }
         />
-        {ratingState === "differs" && (
+        {differs?.ratings.length ? (
           <p class={clsx("mt-1 text-[10px]", t.faint)}>
-            Trakt 8 · AniList 6. Pick a rating to set it on all.
+            {differs.ratings.map(([tk, r]) => `${trackerLabel(tk)} ${r ?? "none"}`).join(" · ")}.
+            Pick a rating to set it on all.
           </p>
-        )}
+        ) : null}
       </div>
 
-      {ratingState === "differs" && (
+      {differs?.notes.length ? (
         <p class={clsx("mb-1 text-[10px]", t.faint)}>
-          Trakt and AniList have different notes. Leave this empty to keep them, or type to replace
-          them.
+          {differs.notes.map(trackerLabel).join(" and ")} have different notes. Leave this empty to
+          keep them, or type to replace them.
         </p>
-      )}
+      ) : null}
 
       <textarea
         rows={4}

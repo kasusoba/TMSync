@@ -1,5 +1,6 @@
 import type { ParsedMedia } from "@tmsync/shared";
 import { anilistCorrections, anilistResolutionCache } from "../storage";
+import type { CourSearchOption } from "../tracker/types";
 import { getValidAccessToken } from "./auth";
 import { ANILIST } from "./config";
 import type { AniListEntry, AniListIdentity, MediaListStatus, ScoreFormat } from "./types";
@@ -28,15 +29,6 @@ interface MediaNode {
   format?: string | null;
   startDate?: { year?: number | null } | null;
   title?: { romaji?: string | null; english?: string | null } | null;
-}
-
-/** A search result for the AniList correction picker (mirrors TraktSearchOption). */
-export interface AniListSearchOption {
-  id: number;
-  title: string;
-  year?: number;
-  episodes: number | null;
-  format?: string;
 }
 
 /** Pick a display title + map a `Media` node to our identity. Pure (unit-tested). */
@@ -141,7 +133,10 @@ export async function resolve(media: ParsedMedia): Promise<AniListIdentity | nul
   }
   if (!node) return null;
   const identity = mediaToIdentity(node);
-  await anilistResolutionCache.setValue({ ...cache, [key]: identity });
+  await anilistResolutionCache.setValue({
+    ...(await anilistResolutionCache.getValue()),
+    [key]: identity,
+  });
   return identity;
 }
 
@@ -177,7 +172,10 @@ export async function resolveById(anilistId: number): Promise<AniListIdentity | 
   const data = await gql<{ Media: MediaNode | null }>(BY_ID_QUERY, { id: anilistId });
   if (!data.Media) return null;
   const identity = mediaToIdentity(data.Media);
-  await anilistResolutionCache.setValue({ ...cache, [key]: identity });
+  await anilistResolutionCache.setValue({
+    ...(await anilistResolutionCache.getValue()),
+    [key]: identity,
+  });
   return identity;
 }
 
@@ -194,7 +192,10 @@ export async function resolveByMalId(idMal: number): Promise<AniListIdentity | n
   const data = await gql<{ Media: MediaNode | null }>(BY_MAL_QUERY, { idMal });
   if (!data.Media) return null;
   const identity = mediaToIdentity(data.Media);
-  await anilistResolutionCache.setValue({ ...cache, [key]: identity });
+  await anilistResolutionCache.setValue({
+    ...(await anilistResolutionCache.getValue()),
+    [key]: identity,
+  });
   return identity;
 }
 
@@ -211,7 +212,7 @@ query ($search: String) {
 
 /** Free-text AniList search for the correction picker — top matches (reads work
  * unauthenticated). Returns [] for a blank query. */
-export async function searchAniList(query: string): Promise<AniListSearchOption[]> {
+export async function searchAniList(query: string): Promise<CourSearchOption[]> {
   if (!query.trim()) return [];
   const data = await gql<{ Page: { media: MediaNode[] } | null }>(SEARCH_LIST_QUERY, {
     search: query,

@@ -1,7 +1,7 @@
 import type { ScrobbleReply } from "@/messaging";
 import type { ParsedMedia } from "@tmsync/shared";
 import { describe, expect, it } from "vitest";
-import { statusFromReply } from "./session";
+import { mergeFollowUp, statusFromReply } from "./session";
 
 const anime: ParsedMedia = { mediaType: "show", title: "Akame ga Kill", season: 1, episode: 24 };
 
@@ -219,5 +219,50 @@ describe("statusFromReply multi-track already watched", () => {
     expect(status.state).toBe("stopped");
     expect(status.detail).toBe("already watched · completed on AniList");
     expect(status.rewatchTrackers).toEqual(["anilist"]);
+  });
+});
+
+describe("a stop's deferred trackers (Simkl waiting out its lock)", () => {
+  const reply: ScrobbleReply = {
+    ok: true,
+    resolved: true,
+    action: "scrobble",
+    primaryTracker: "trakt",
+    derived: [{ tracker: "simkl", ok: true, deferred: true }],
+  };
+
+  it("shows the deferred tracker as pending while it records", () => {
+    const status = statusFromReply("stop", reply, anime, "trakt");
+    expect(status.detail).toBe("recorded");
+    expect(status.trackers).toEqual([
+      { tracker: "trakt", state: "ok", note: "added to history" },
+      { tracker: "simkl", state: "pending", note: "recording" },
+    ]);
+  });
+
+  it("takes the real outcome from the follow-up", () => {
+    const merged = mergeFollowUp(reply, [{ tracker: "simkl", ok: true, action: "scrobble" }]);
+    expect(statusFromReply("stop", merged, anime, "trakt").trackers).toEqual([
+      { tracker: "trakt", state: "ok", note: "added to history" },
+      { tracker: "simkl", state: "ok", note: "added to history" },
+    ]);
+  });
+
+  it("keeps the other trackers' outcomes as they were", () => {
+    const both: ScrobbleReply = {
+      ...reply,
+      derived: [
+        { tracker: "anilist", ok: false, reason: "not_connected" },
+        { tracker: "simkl", ok: true, deferred: true },
+      ],
+    };
+    const merged = mergeFollowUp(both, [
+      { tracker: "simkl", ok: false, reason: "http" },
+      { tracker: "anilist", ok: true, action: "scrobble" },
+    ]);
+    expect(merged.derived).toEqual([
+      { tracker: "anilist", ok: false, reason: "not_connected" },
+      { tracker: "simkl", ok: false, reason: "http" },
+    ]);
   });
 });

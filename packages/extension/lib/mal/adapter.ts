@@ -14,6 +14,7 @@ import {
   type MalListFields,
   MalNotConnectedError,
   MalRateLimitError,
+  correctionFor,
   getAnime,
   getListEntry,
   resolve as malResolve,
@@ -125,7 +126,10 @@ export const malAdapter: TrackerAdapter = {
     return identity ? toItem(identity) : null;
   },
 
-  async resolveById(ids) {
+  async resolveById(ids, media) {
+    // A title pin made on the MAL row wins, also when MAL follows AniList's entry.
+    const pin = await correctionFor(media);
+    if (pin) return pin.identity ? toItem(pin.identity) : null;
     try {
       if (ids.mal !== undefined) {
         const identity = await getAnime(ids.mal);

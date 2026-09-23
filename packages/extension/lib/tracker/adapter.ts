@@ -41,9 +41,11 @@ export interface TrackerAdapter {
    * same-family sibling), by id only. No correction lookup and no title fallback: a
    * title search could pick another cour. The adapter uses whichever id it can
    * (e.g. MAL from `mal`, or from `anilist` via AniList's `idMal`); null when none
-   * fits. Optional: a tracker without it is resolved from the derived media.
+   * fits. `media` is the derived media: a user pin the adapter keys by it (a title
+   * correction) may win over the ids. Optional: a tracker without it is resolved
+   * from the derived media.
    */
-  resolveById?(ids: ExternalIds): Promise<TrackedItem | null>;
+  resolveById?(ids: ExternalIds, media: ParsedMedia): Promise<TrackedItem | null>;
 
   /**
    * Record a progress phase for a resolved item.
@@ -61,6 +63,14 @@ export interface TrackerAdapter {
     /** 0–1; per-recipe "treat as finished here" point. */
     watchedThreshold: number,
   ): Promise<RecordResult>;
+
+  /**
+   * How long a `stop` would wait before this tracker can take it (ms, 0 = now).
+   * Simkl allows one scrobble call per 20 s, so a stop inside that window waits.
+   * The background then records the tracker after replying, so the badge shows the
+   * other trackers at once. Optional: a tracker without it never waits.
+   */
+  stopDelayMs?(): Promise<number>;
 
   /**
    * The user confirmed a rewatch of a completed entry (after `needs_rewatch`):

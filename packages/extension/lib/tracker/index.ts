@@ -54,13 +54,15 @@ export function routeTracker(tracker: Tracker, mediaType: ParsedMedia["mediaType
 }
 
 /**
- * The NATIVE tracker for scraped media (multi-track — docs/MULTI-TRACK.md): the one
+ * The NATIVE tracker for scraped media (multi-track, docs/MULTI-TRACK.md): the one
  * whose numbering the page ALREADY speaks, so it's recorded directly; every other
- * enabled tracker is DERIVED via the anime-map crosswalk. Inferred, NOT user-picked:
- * a page id in a tracker's `resolvableNamespaces` (or western seasoning — a season)
- * ⇒ that tracker; a bare linear episode (dedicated anime site) ⇒ AniList. Trakt is
- * checked first (its namespaces cover the general/TMDB case). When more trackers are
- * added, extend the ordered list below — the shared engine stays untouched.
+ * enabled tracker is DERIVED (the crosswalk across families, ids within one, the
+ * page as is for Simkl). Inferred, NOT user-picked: a page id in a tracker's
+ * `resolvableNamespaces` (or western seasoning, a season) ⇒ that tracker; a bare
+ * linear episode (dedicated anime site) ⇒ the first enabled cour tracker. Trackers
+ * are checked in `TRACKER_INFO` order, so Trakt first (its namespaces cover the
+ * general/TMDB case). A passthrough tracker (Simkl) is native only when it stands
+ * alone. A new tracker needs no change here: the shared engine stays untouched.
  *
  * `enabled` (when given) constrains the choice to trackers the user actually turned
  * on. A DISABLED tracker can't be the "recorded directly" native one — e.g. an
@@ -78,7 +80,8 @@ export function inferNativeTracker(media: ParsedMedia, enabled?: Tracker[]): Tra
   const speaks = (tk: Tracker) =>
     getAdapter(tk).resolvableNamespaces.some((ns) => media.ids?.[ns] !== undefined);
   // 1) A tracker whose id namespace the page carries speaks it natively (exact) —
-  //    tmdb/imdb ⇒ Trakt, anilist/mal ⇒ AniList. First match in tracker order wins.
+  //    tmdb/imdb ⇒ Trakt, anilist/mal ⇒ AniList (MAL when AniList is off). First
+  //    match in tracker order wins.
   const byId = candidates.find(speaks);
   if (byId) return byId;
   // 2) A scraped season implies seasoned numbering ⇒ the first enabled SEASONED tracker.

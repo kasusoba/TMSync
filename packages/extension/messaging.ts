@@ -1,6 +1,11 @@
-import type { AniListSearchOption } from "@/lib/anilist/client";
 import type { ScoreFormat } from "@/lib/anilist/types";
-import type { RatingLevel, Tracker, WatchedState } from "@/lib/tracker/types";
+import type {
+  CourSearchOption,
+  CourTracker,
+  RatingLevel,
+  Tracker,
+  WatchedState,
+} from "@/lib/tracker/types";
 import type {
   ResolvedIdentity,
   ScrobbleAction,
@@ -37,6 +42,9 @@ export interface DerivedOutcome {
   completed?: boolean;
   /** Recorded nothing because this episode is already counted on the tracker. */
   info?: "already_watched";
+  /** Recorded after the reply (Simkl waiting out its scrobble lock). A
+   * `scrobbleFollowUp` to the scrobbling frame brings the real outcome. */
+  deferred?: boolean;
   resolvedTitle?: string;
   resolvedYear?: number;
   resolvedEpisodes?: number;
@@ -55,7 +63,7 @@ export interface WatchStanding {
 
 export interface ScrobbleReply {
   ok: boolean;
-  /** HTTP status from Trakt (when a call was made). */
+  /** HTTP status from the primary tracker (when a call was made). */
   status?: number;
   /** False when the title couldn't be resolved against Trakt. */
   resolved: boolean;
@@ -179,9 +187,6 @@ export interface TrackerResolution {
    * "map_loading" (the CDN crosswalk hasn't landed yet) | "unresolved" (searched,
    * nothing) | "http". */
   reason?: string;
-  /** This tracker is the item's native tracker (resolved directly, not derived). A
-   * native title match is what a title correction fixes. */
-  native?: boolean;
   /** The item's own page on the tracker, when the tracker gives one that an id
    * alone can't build (Simkl: the section of simkl.com). */
   url?: string;
@@ -340,28 +345,25 @@ export interface ProtocolMap {
   searchTrakt(q: { query: string; type?: "movie" | "show" }): TraktSearchOption[];
   /** Persist a correction for the scraped media and re-resolve the tab. */
   saveCorrection(data: { media: ParsedMedia; identity: ResolvedIdentity; tabId?: number }): void;
-  /** Free-text AniList search for the DERIVED-tracker correction picker (multi-track). */
-  searchAniList(q: { query: string }): AniListSearchOption[];
-  /** Pin (or block, via `anilistId: null`) the AniList entry for this TMDB item — a
-   * local override above the Fribb crosswalk (docs/MULTI-TRACK.md) — then re-resolve. */
-  setAniListMatch(q: { media: ParsedMedia; anilistId: number | null; tabId?: number }): {
+  /** Free-text search for a cour tracker's fix-match panel. */
+  searchCour(q: { tracker: CourTracker; query: string }): CourSearchOption[];
+  /** Pin (or block, via `id: null`) a cour tracker's entry for this item: a
+   * tmdb-keyed crosswalk pin when the page has a tmdb id, plus a title correction.
+   * Then re-resolve the tab. */
+  setCourMatch(q: {
+    tracker: CourTracker;
+    media: ParsedMedia;
+    id: number | null;
+    tabId?: number;
+  }): { ok: boolean; error?: string };
+  /** Clear that pin (or "Not on <tracker>"): back to the automatic match. Then
+   * re-resolve the tab. */
+  resetCourMatch(q: { tracker: CourTracker; media: ParsedMedia; tabId?: number }): {
     ok: boolean;
-    error?: string;
   };
-  /** Clear the AniList override for this TMDB item — fall back to the Fribb crosswalk
-   * (undo a pin or a "Not on AniList"). Then re-resolve the tab. */
-  resetAniListMatch(q: { media: ParsedMedia; tabId?: number }): { ok: boolean };
-  /** Free-text MAL search for the MAL fix-match panel (public read). */
-  searchMal(q: { query: string }): AniListSearchOption[];
-  /** Pin (or block, via `malId: null`) the MAL entry for this item: a tmdb-keyed
-   * crosswalk pin when the page has a tmdb id, else a title correction. Then
-   * re-resolve. */
-  setMalMatch(q: { media: ParsedMedia; malId: number | null; tabId?: number }): {
-    ok: boolean;
-    error?: string;
-  };
-  /** Clear the MAL pin for this item (back to the automatic match). */
-  resetMalMatch(q: { media: ParsedMedia; tabId?: number }): { ok: boolean };
+  /** Background → the scrobbling frame: the outcome of trackers a stop recorded
+   * after its reply (`DerivedOutcome.deferred`). */
+  scrobbleFollowUp(q: { media: ParsedMedia; outcomes: DerivedOutcome[] }): void;
   /** Background → frames: a correction landed, re-resolve the current session. */
   recheck(): void;
 
@@ -370,11 +372,10 @@ export interface ProtocolMap {
    * episode it re-completes and bumps the repeat count. */
   confirmRewatch(q: {
     media: ParsedMedia;
-    /** The cour trackers that asked (`BadgeStatus.rewatchTrackers`). Defaults to
-     * AniList for older callers. */
-    trackers?: Tracker[];
+    /** The cour trackers that asked (`BadgeStatus.rewatchTrackers`). */
+    trackers: Tracker[];
     /** The recipe's enabled set, so a derived tracker confirms the crosswalk's entry. */
-    enabled?: Tracker[];
+    enabled: Tracker[];
     tabId?: number;
   }): {
     ok: boolean;

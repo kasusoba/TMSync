@@ -1,4 +1,5 @@
 import type { ParsedMedia } from "@tmsync/shared";
+import { errorMessage } from "../errors";
 import { anilistNotes, anilistRatings } from "../storage";
 import {
   AniListNotConnectedError,
@@ -14,8 +15,6 @@ import {
  * no spoiler flag, no word minimum). Stars are 1–10 in the UI; we store a
  * format-agnostic scoreRaw (0–100) and mirror it locally for instant display.
  */
-
-const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export async function anilistGetReview(
   media: ParsedMedia,
@@ -51,7 +50,7 @@ export async function anilistRate(
   } catch (e) {
     return {
       ok: false,
-      error: e instanceof AniListNotConnectedError ? "Not connected to AniList" : errMsg(e),
+      error: e instanceof AniListNotConnectedError ? "Not connected to AniList" : errorMessage(e),
     };
   }
 }
@@ -69,7 +68,7 @@ export async function anilistUnrate(media: ParsedMedia): Promise<{ ok: boolean; 
   } catch (e) {
     return {
       ok: false,
-      error: e instanceof AniListNotConnectedError ? "Not connected to AniList" : errMsg(e),
+      error: e instanceof AniListNotConnectedError ? "Not connected to AniList" : errorMessage(e),
     };
   }
 }
@@ -92,7 +91,7 @@ export async function anilistSaveNote(
   } catch (e) {
     return {
       ok: false,
-      error: e instanceof AniListNotConnectedError ? "Not connected to AniList" : errMsg(e),
+      error: e instanceof AniListNotConnectedError ? "Not connected to AniList" : errorMessage(e),
     };
   }
 }
@@ -112,7 +111,7 @@ export async function anilistDeleteNote(
   } catch (e) {
     return {
       ok: false,
-      error: e instanceof AniListNotConnectedError ? "Not connected to AniList" : errMsg(e),
+      error: e instanceof AniListNotConnectedError ? "Not connected to AniList" : errorMessage(e),
     };
   }
 }
