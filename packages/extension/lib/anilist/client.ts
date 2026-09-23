@@ -22,6 +22,18 @@ export function anilistCacheKey(media: ParsedMedia): string {
   return `${media.title.trim().toLowerCase()}:${media.year ?? ""}${season}`;
 }
 
+/**
+ * The key a title pin had before keys carried the season (title + year). Only for
+ * media with a season and no id; else undefined. A pin saved under it still wins
+ * until the user pins this season again, so an update never brings back a match
+ * the user already fixed.
+ */
+export function legacyAnilistKey(media: ParsedMedia): string | undefined {
+  if (media.ids?.anilist !== undefined || media.ids?.mal !== undefined) return undefined;
+  if (media.season === undefined) return undefined;
+  return `${media.title.trim().toLowerCase()}:${media.year ?? ""}`;
+}
+
 interface MediaNode {
   id: number;
   idMal?: number | null;
@@ -103,6 +115,8 @@ export async function resolve(media: ParsedMedia): Promise<AniListIdentity | nul
   // the derived path; this covers the AniList-native, resolve-by-title case.)
   const corr = await anilistCorrections.getValue();
   if (key in corr) return corr[key] ?? null;
+  const legacy = legacyAnilistKey(media);
+  if (legacy !== undefined && legacy in corr) return corr[legacy] ?? null;
 
   const cache = await anilistResolutionCache.getValue();
   const cached = cache[key];

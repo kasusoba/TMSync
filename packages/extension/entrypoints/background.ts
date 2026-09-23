@@ -10,6 +10,7 @@ import {
   anilistCacheKey,
   resolveById as anilistIdentityById,
   resolve as anilistResolve,
+  legacyAnilistKey,
   searchAniList,
   viewerScoreFormat,
 } from "@/lib/anilist/client";
@@ -1080,6 +1081,9 @@ const COUR_PINS: Record<CourTracker, BoundCourPins> = {
       const key = anilistCacheKey(media);
       await setKey(anilistCorrections, key, identity);
       await setKey(anilistResolutionCache, key, undefined);
+      // A pin from before keys carried the season gives way to this one.
+      const legacy = legacyAnilistKey(media);
+      if (legacy !== undefined) await setKey(anilistCorrections, legacy, undefined);
     },
   }),
   mal: bindPins<MalIdentity>({

@@ -1,6 +1,6 @@
 import type { ParsedMedia } from "@tmsync/shared";
 import { describe, expect, it } from "vitest";
-import { anilistCacheKey, mediaToIdentity } from "./client";
+import { anilistCacheKey, legacyAnilistKey, mediaToIdentity } from "./client";
 
 describe("mediaToIdentity", () => {
   it("prefers the English title, falls back to romaji", () => {
@@ -37,5 +37,19 @@ describe("anilistCacheKey", () => {
     const s2: ParsedMedia = { ...s1, season: 2 };
     expect(anilistCacheKey(s1)).toBe("frieren:2023:s1");
     expect(anilistCacheKey(s1)).not.toBe(anilistCacheKey(s2));
+  });
+});
+
+describe("legacyAnilistKey", () => {
+  const media = { mediaType: "show" as const, title: " Show ", year: 2020, season: 2 };
+
+  it("is the title key without the season, for a page with a season", () => {
+    expect(anilistCacheKey(media)).toBe("show:2020:s2");
+    expect(legacyAnilistKey(media)).toBe("show:2020");
+  });
+
+  it("is undefined when the key never changed (no season, or an id)", () => {
+    expect(legacyAnilistKey({ ...media, season: undefined })).toBeUndefined();
+    expect(legacyAnilistKey({ ...media, ids: { anilist: 1 } })).toBeUndefined();
   });
 });
