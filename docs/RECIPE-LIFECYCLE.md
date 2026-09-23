@@ -10,7 +10,7 @@ The short version: **existing recipes don't break when we iterate**, because cha
 
 | | Where it lives | What it gates | When it changes |
 |---|---|---|---|
-| **`schemaVersion`** | on every recipe (`SCHEMA_VERSION`, currently `2`) | the *shape* of recipe data | only when a change would make an old client mis-read a recipe |
+| **`schemaVersion`** | on every recipe (`SCHEMA_VERSION`, currently `4`) | the *shape* of recipe data | only when a change would make an old client mis-read a recipe |
 | **Extension version** | `packages/extension/package.json` | the app build | every release — and **never appears on a recipe** |
 
 A recipe is data shared across many extension versions. Stamping the extension version onto it would couple two things that evolve on different clocks. The recipe's own `schemaVersion` is the only version a recipe carries.

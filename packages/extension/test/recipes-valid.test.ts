@@ -1,4 +1,4 @@
-import { parseLibrary } from "@tmsync/shared";
+import { minSchemaVersion, parseLibrary, recipeTrackers } from "@tmsync/shared";
 import { describe, expect, it } from "vitest";
 import rawLibrary from "../../../recipes/index.json";
 
@@ -22,6 +22,14 @@ describe("recipes/index.json", () => {
 
   it("every link passes the Zod schema", () => {
     expect(parsed.links).toHaveLength(raw.links?.length ?? 0);
+  });
+
+  // A build older than v4 can't parse "mal" or "simkl", so a library recipe naming
+  // one must say so with its version (older builds then skip it by version).
+  it("every recipe's schemaVersion covers the trackers it names", () => {
+    for (const r of parsed.recipes) {
+      expect(r.schemaVersion, r.id).toBeGreaterThanOrEqual(minSchemaVersion(recipeTrackers(r)));
+    }
   });
 
   it("has unique recipe ids and unique link ids", () => {

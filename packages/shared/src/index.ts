@@ -3,6 +3,7 @@ export {
   IdNamespace,
   LibraryLink,
   LinkTemplates,
+  minSchemaVersion,
   Recipe,
   RecipeSchema,
   recipeTrackers,

@@ -18,8 +18,13 @@ import { z } from "zod";
  * `IdNamespace`; docs/IDENTITY-NAMESPACES.md). A page may expose several ids;
  * resolution tries them best-first. A v≤2 `extract.tmdbId` is folded into
  * `ids.tmdb` by the transform below, so old recipes still parse (back-compat).
+ *
+ * v4 adds the MyAnimeList and Simkl trackers (`"mal"`, `"simkl"` in `tracker` and
+ * `trackers`). An older build can't parse those values, so a recipe that names one
+ * carries `schemaVersion: 4`; a recipe that names only Trakt and AniList stays at 3
+ * and still reaches older builds (`minSchemaVersion`).
  */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export const Transform = z.enum([
   "trim",
@@ -40,6 +45,18 @@ export type Transform = z.infer<typeof Transform>;
  * smaller list: a tracker hosts links only once it has a quick-link content script.
  */
 export const TrackerId = z.enum(["trakt", "anilist", "mal", "simkl"]);
+
+/** Trackers added in schema v4. A build older than v4 rejects a recipe naming one. */
+const V4_TRACKERS: readonly string[] = ["mal", "simkl"];
+
+/**
+ * The lowest `schemaVersion` a recipe that writes to `trackers` can carry: 4 when
+ * it names a v4 tracker, else 3. The picker stamps this, so a Trakt or AniList
+ * recipe stays readable by older builds. Pure.
+ */
+export function minSchemaVersion(trackers: readonly string[]): number {
+  return trackers.some((tk) => V4_TRACKERS.includes(tk)) ? 4 : 3;
+}
 
 /**
  * An external id catalog a page can key into — the site's SOURCE identity, NOT a
@@ -141,8 +158,9 @@ export const Recipe = z.object({
   // page → written directly) vs "derived" (mapped via the anime-map crosswalk,
   // best-effort, refuse-on-ambiguous, skip-on-miss) is inferred at scrobble time
   // from the scraped media — not chosen here. Additive: omitted ⇒ `[tracker]`, so
-  // older recipes/engines degrade to single-tracker (no schemaVersion bump). Read
-  // via `recipeTrackers()`, never `recipe.trackers` directly.
+  // older recipes/engines degrade to single-tracker. Naming a v4 tracker (MAL,
+  // Simkl) needs `schemaVersion: 4` (see `minSchemaVersion`). Read via
+  // `recipeTrackers()`, never `recipe.trackers` directly.
   trackers: z.array(TrackerId).optional(),
   video: z
     .object({

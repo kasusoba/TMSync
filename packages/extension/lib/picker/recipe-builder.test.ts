@@ -669,6 +669,20 @@ describe("cour trackers (AniList, MAL)", () => {
     if (!built.ok) return;
     expect(built.recipe.tracker).toBe("mal");
     expect(built.recipe.trackers).toEqual(["mal", "anilist"]);
+    // MAL is a v4 tracker: builds before v4 can't parse it.
+    expect(built.recipe.schemaVersion).toBe(4);
+  });
+
+  it("keeps a Trakt + AniList recipe at schema 3, so older builds still read it", () => {
+    const draft: RecipeDraft = {
+      ...emptyDraft("https://anime.example/frieren/ep-3"),
+      trackers: ["trakt", "anilist"],
+      fields: { title, episode },
+    };
+    const built = buildRecipe(draft, { id: "anime-example", name: "Anime" });
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    expect(built.recipe.schemaVersion).toBe(3);
   });
 
   it("never hints Simkl as native while another tracker is on", () => {

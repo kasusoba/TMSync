@@ -125,7 +125,7 @@ The heart of the "recipes are data, not code" guarantee. Everything here is pure
   (first match whose `schemaVersion ≤ SCHEMA_VERSION`).
 - **`hosts.ts`**: the one place that reads and rewrites a recipe's host: `recipeHosts`, `siteLabel`,
   `withRecipeHosts`, and the parser for the host anchor older patterns carry.
-- **`schema.ts`** — the Zod source of truth. `SCHEMA_VERSION = 3`. A recipe is validated here before
+- **`schema.ts`**: the Zod source of truth. `SCHEMA_VERSION = 4` (v4 adds the MAL and Simkl trackers; a recipe that names one carries 4, others stay at 3, see `minSchemaVersion`). A recipe is validated here before
   it's ever used; an invalid recipe is discarded, never partially applied. `recipeTrackers()` reads
   the multi-track set (`trackers` if present, else `[tracker]`). Schema evolution is handled with
   Zod `.transform`s for back-compat (e.g. legacy `tmdbId` folds into the open `ids` map).

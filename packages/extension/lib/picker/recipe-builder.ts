@@ -6,10 +6,10 @@ import {
   type LinkTemplates,
   type Recipe,
   RecipeSchema,
-  SCHEMA_VERSION,
   escapeRegex,
   extract,
   hostText,
+  minSchemaVersion,
   normalizeHost,
   readField,
   recipeHosts,
@@ -396,7 +396,9 @@ export function buildRecipe(draft: RecipeDraft, meta: { id: string; name: string
   const hasSeasoned = trackers.some((tk) => !isSeasonless(tk));
   const base = {
     id: meta.id,
-    schemaVersion: SCHEMA_VERSION,
+    // The lowest version that can carry these trackers, so a Trakt or AniList
+    // recipe stays readable by builds that predate MAL and Simkl.
+    schemaVersion: minSchemaVersion(trackers),
     name: meta.name,
     match: draft.match,
     mediaType: draft.mediaType,
