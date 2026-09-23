@@ -107,6 +107,10 @@ export const anilistAdapter: TrackerAdapter = {
     };
   },
 
+  resolveById(ids) {
+    return ids.anilist !== undefined ? resolveAniListById(ids.anilist) : Promise.resolve(null);
+  },
+
   async recordProgress(
     item: TrackedItem,
     media: ParsedMedia,

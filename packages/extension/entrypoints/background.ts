@@ -21,7 +21,12 @@ import {
   anilistSaveNote,
   anilistUnrate,
 } from "@/lib/anilist/review";
-import { type AnimapOverrides, deriveMediaWith, forwardKey } from "@/lib/animap/derive";
+import {
+  type AnimapOverrides,
+  type TargetIds,
+  deriveMediaWith,
+  forwardKey,
+} from "@/lib/animap/derive";
 import type { Animap } from "@/lib/animap/index";
 import { loadAnimap, parseAnimeMap } from "@/lib/animap/load";
 import { bundledLinks } from "@/lib/recipes";
@@ -47,7 +52,13 @@ import {
   tabSessions,
   tabStatus,
 } from "@/lib/storage";
-import { getAdapter, inferNativeTracker, routeTracker, trackerLabel } from "@/lib/tracker";
+import {
+  getAdapter,
+  inferNativeTracker,
+  routeTracker,
+  trackerFamily,
+  trackerLabel,
+} from "@/lib/tracker";
 import type { RatingLevel, TrackedItem, Tracker } from "@/lib/tracker/types";
 import { connect, disconnect, getRedirectUri, isConnected } from "@/lib/trakt/auth";
 import {
@@ -732,10 +743,10 @@ async function recordScrobble(data: ScrobbleRequest): Promise<ScrobbleReply> {
   // the scraped episode instead of forcing it through the crosswalk.
   const native = inferNativeTracker(data.media, enabled);
   const nativeEnabled = enabled.includes(native);
-  // Resolve the native item when we'll record it, OR to BRIDGE a reverse (→Trakt)
-  // derive (which needs the AniList id). Forward (→AniList) uses the scraped
-  // tmdbId, so it needs no native item.
-  const needNative = nativeEnabled || (native === "anilist" && enabled.includes("trakt"));
+  // Resolve the native item when we'll record it, OR to BRIDGE a reverse (cour →
+  // seasoned) derive, which needs the cour entry's id. Forward (seasoned → cour)
+  // uses the scraped tmdbId, so it needs no native item.
+  const needNative = nativeEnabled || needsCourBridge(native, enabled);
   let nativeItem: TrackedItem | null = null;
   let nativeThrew = false;
   if (needNative) {
@@ -840,6 +851,35 @@ function derivedToReply(d: DerivedOutcome): ScrobbleReply {
  * nothing — powers the rate/correction UI's per-tracker destination readout, so it
  * can show "Trakt → The Boondocks / AniList → not found" and gate actions.
  */
+/**
+ * Reverse derivation (cour → seasoned) needs the cour-native entry's id, so the
+ * native item must be resolved even when its own tracker is off, as long as a
+ * seasoned tracker is enabled. Forward derivation needs only the scraped tmdb id.
+ */
+function needsCourBridge(native: Tracker, enabled: Tracker[]): boolean {
+  return trackerFamily(native) === "cour" && enabled.some((tk) => trackerFamily(tk) === "seasoned");
+}
+
+/**
+ * Resolve a derived tracker's entry: by the crosswalk's exact ids when the adapter
+ * supports that and one of its namespaces is present, else from the derived media.
+ */
+function resolveDerived(
+  tk: Tracker,
+  d: { media: ParsedMedia; ids?: TargetIds },
+): Promise<TrackedItem | null> {
+  const adapter = getAdapter(tk);
+  const ids = d.ids;
+  if (
+    ids &&
+    adapter.resolveById &&
+    adapter.resolvableNamespaces.some((ns) => ids[ns] !== undefined)
+  ) {
+    return adapter.resolveById(ids);
+  }
+  return adapter.resolve(d.media);
+}
+
 async function resolveAcross(
   media: ParsedMedia,
   trackers: Tracker[],
@@ -849,7 +889,7 @@ async function resolveAcross(
   const native = inferNativeTracker(media, trackers); // native must be an enabled tracker
   const nativeEnabled = trackers.includes(native);
   const soloFallback = !nativeEnabled; // no enabled native anchor to bridge from
-  const needNative = nativeEnabled || (native === "anilist" && trackers.includes("trakt"));
+  const needNative = nativeEnabled || needsCourBridge(native, trackers);
   let nativeItem: TrackedItem | null = null;
   if (needNative) {
     try {
@@ -893,10 +933,7 @@ async function resolveAcross(
       continue;
     }
     try {
-      const item =
-        tk === "anilist" && d.anilistId !== undefined
-          ? await resolveAniListById(d.anilistId)
-          : await getAdapter(tk).resolve(d.media);
+      const item = await resolveDerived(tk, d);
       out.push(
         item
           ? { tracker: tk, resolved: true, title: item.title, id: item.id }
@@ -922,12 +959,11 @@ async function reviewTarget(
   const enabled = data.trackers?.length ? data.trackers : [tracker];
   const native = inferNativeTracker(data.media, enabled);
   if (tracker === native) return { review, media: data.media };
-  const nativeItem =
-    native === "anilist"
-      ? await getAdapter(native)
-          .resolve(data.media)
-          .catch(() => null)
-      : null;
+  const nativeItem = needsCourBridge(native, [tracker])
+    ? await getAdapter(native)
+        .resolve(data.media)
+        .catch(() => null)
+    : null;
   const d = deriveMediaWith(
     tracker,
     data.media,
@@ -942,10 +978,7 @@ async function reviewTarget(
     if (!enabled.includes(native)) return { review, media: data.media };
     return { ok: false, error: `not found on ${name}` };
   }
-  const media =
-    d.anilistId === undefined
-      ? d.media
-      : { ...d.media, ids: { ...d.media.ids, anilist: d.anilistId } };
+  const media = d.ids ? { ...d.media, ids: { ...d.media.ids, ...d.ids } } : d.media;
   return { review, media };
 }
 
@@ -1018,10 +1051,7 @@ async function recordDerivedTrackers(
     }
     let item: TrackedItem | null;
     try {
-      item =
-        target === "anilist" && d.anilistId !== undefined
-          ? await resolveAniListById(d.anilistId)
-          : await getAdapter(target).resolve(d.media);
+      item = await resolveDerived(target, d);
     } catch {
       out.push({ tracker: target, ok: false, reason: "http" });
       continue;

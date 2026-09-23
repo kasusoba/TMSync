@@ -5,28 +5,42 @@
  * tracker-specific lives behind `TrackerAdapter` + the metadata below.
  */
 
+import type { IdNamespace } from "@tmsync/shared";
+
 /** The trackers — a growing list (multi-track, constraint #1). Add a member here,
  * then a `TRACKER_INFO` entry, an adapter (registered in `getAdapter`), a mark, and
  * a picker toggle. Nothing should switch on the string with an "else ⇒ trakt" default. */
 export type Tracker = "trakt" | "anilist";
 
 /**
- * Static per-tracker metadata — the SINGLE source for a tracker's display name and
- * whether its numbering is seasonless. Pure data (no adapter/client code), so it
- * imports weightlessly into the injected UI, and every `=== "anilist" ? … : "Trakt"`
- * or `seasonless = tracker === "anilist"` reads from here instead of hardcoding two.
+ * How a tracker numbers episodes. Trackers in one family share numbering, so moving
+ * an item between them only changes the id. Moving it between families needs the
+ * anime-map crosswalk (`lib/animap/`), which maps one family to the other.
+ *  - `seasoned`: season + episode, keyed by TMDB/IMDB/TVDB ids (Trakt).
+ *  - `cour`: one entry per cour, linear episodes, no seasons (AniList).
+ */
+export type NumberingFamily = "seasoned" | "cour";
+
+/**
+ * Static per-tracker metadata, the SINGLE source for a tracker's display name and
+ * numbering family. Pure data (no adapter/client code), so it imports weightlessly
+ * into the injected UI. Read it through the helpers below instead of comparing
+ * tracker names.
  */
 export interface TrackerInfo {
   /** Display name (badge, panels, account rows). */
   label: string;
-  /** Numbering is linear/per-cour with no seasons (AniList) vs seasoned (Trakt). The
-   * badge drops the season for a seasonless tracker; the engine passes episode as-is. */
-  seasonless: boolean;
+  /** How the tracker numbers episodes. The badge drops the season for a `cour`
+   * tracker; derivation uses the crosswalk only across families. */
+  family: NumberingFamily;
+  /** The id namespace of the tracker's OWN ids, when that namespace is one the
+   * crosswalk knows (AniList ids are `anilist`). Trakt ids are not a namespace. */
+  ownNamespace?: IdNamespace;
 }
 
 export const TRACKER_INFO: Record<Tracker, TrackerInfo> = {
-  trakt: { label: "Trakt", seasonless: false },
-  anilist: { label: "AniList", seasonless: true },
+  trakt: { label: "Trakt", family: "seasoned" },
+  anilist: { label: "AniList", family: "cour", ownNamespace: "anilist" },
 };
 
 /** All trackers in a stable order — for UI iteration (toggles, tabs) + registries. */
@@ -35,8 +49,11 @@ export const ALL_TRACKERS = Object.keys(TRACKER_INFO) as Tracker[];
 /** A tracker's display name. Use everywhere instead of `t === "anilist" ? … : "Trakt"`. */
 export const trackerLabel = (tracker: Tracker): string => TRACKER_INFO[tracker].label;
 
-/** Whether a tracker's numbering is seasonless (no seasons). */
-export const isSeasonless = (tracker: Tracker): boolean => TRACKER_INFO[tracker].seasonless;
+/** A tracker's numbering family. */
+export const trackerFamily = (tracker: Tracker): NumberingFamily => TRACKER_INFO[tracker].family;
+
+/** Whether a tracker's numbering is seasonless (the `cour` family). */
+export const isSeasonless = (tracker: Tracker): boolean => trackerFamily(tracker) === "cour";
 
 /**
  * A resolved item on a specific tracker — the seam-level identity. A discriminated

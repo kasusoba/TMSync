@@ -7,9 +7,9 @@
  * service-worker bundle and a refresh needs no extension release. Loading lives
  * in `lib/animap/load.ts`; this file stays pure (rows in, lookups out).
  *
- * Two directions, used by whichever tracker the site does NOT natively speak:
- *   - forward  (general/TMDB-native site → AniList): tmdb+season+ep → anilist entry + local ep
- *   - reverse  (dedicated/AniList-native site → Trakt): anilist+ep → tmdb + season + tmdb ep
+ * It maps between the two numbering families (`NumberingFamily` in lib/tracker):
+ *   - forward  (seasoned → cour): tmdb+season+ep → anilist/mal entry + local ep
+ *   - reverse  (cour → seasoned): anilist or mal id + ep → tmdb + season + tmdb ep
  *
  * CONSTRAINT: this module is background-side and MUST NOT be imported by the shared
  * `extract()` engine (CLAUDE.md #2 — the one rule that survives the multi-track
@@ -22,6 +22,8 @@
 export interface AnimapRow {
   /** AniList id. */
   a: number;
+  /** MyAnimeList id, when Fribb has one. AniList and MAL entries map 1:1. */
+  m?: number | null;
   /** TMDB id. */
   t: number;
   /** Which TMDB id namespace (tv and movie ids overlap). */
@@ -37,11 +39,16 @@ export type Derive<T> =
   | { kind: "ambiguous" } // >1 candidate we can't split → refuse (never guess)
   | { kind: "miss" }; // not in the crosswalk → derived tracker skipped (native-only)
 
-/** Forward hit: the AniList target. `localEpisode` is 0 for movies. */
+/** Forward hit: the cour-family target. `localEpisode` is 0 for movies. */
 export interface ForwardHit {
   anilistId: number;
+  /** The same entry's MAL id, when known. */
+  malId?: number;
   localEpisode: number;
 }
+
+/** Which cour-family id a reverse lookup starts from. */
+export type CourNamespace = "anilist" | "mal";
 
 /** Reverse hit: the TMDB/Trakt target. `tmdbEpisode` is 0 for movies. */
 export interface ReverseHit {
@@ -53,9 +60,17 @@ export interface ReverseHit {
 
 const off = (r: AnimapRow) => r.o ?? 0;
 
+/** A forward hit for a row: its AniList id, plus its MAL id when the row has one. */
+function hit(r: AnimapRow, localEpisode: number): ForwardHit {
+  const out: ForwardHit = { anilistId: r.a, localEpisode };
+  if (r.m != null) out.malId = r.m;
+  return out;
+}
+
 export class Animap {
   private readonly byTmdb = new Map<string, AnimapRow[]>();
   private readonly byAnilist = new Map<number, AnimapRow[]>();
+  private readonly byMal = new Map<number, AnimapRow[]>();
 
   /** How many rows are loaded. 0 = the CDN copy hasn't landed yet, so every
    *  lookup misses. Callers use this to say "still downloading" rather than
@@ -72,6 +87,11 @@ export class Animap {
       const byA = this.byAnilist.get(r.a);
       if (byA) byA.push(r);
       else this.byAnilist.set(r.a, [r]);
+      if (r.m != null) {
+        const byM = this.byMal.get(r.m);
+        if (byM) byM.push(r);
+        else this.byMal.set(r.m, [r]);
+      }
     }
   }
 
@@ -91,10 +111,10 @@ export class Animap {
     if (!rows?.length) return { kind: "miss" };
 
     if (kind === "movie") {
-      const ids = [...new Set(rows.map((r) => r.a))];
-      const only = ids.length === 1 ? ids[0] : undefined;
-      return only !== undefined
-        ? { kind: "resolved", value: { anilistId: only, localEpisode: 0 } }
+      const ids = new Set(rows.map((r) => r.a));
+      const only = rows[0];
+      return ids.size === 1 && only
+        ? { kind: "resolved", value: hit(only, 0) }
         : { kind: "ambiguous" };
     }
 
@@ -104,7 +124,7 @@ export class Animap {
     if (!first) return { kind: "miss" };
     if (episode == null) {
       return cands.length === 1
-        ? { kind: "resolved", value: { anilistId: first.a, localEpisode: 0 } }
+        ? { kind: "resolved", value: hit(first, 0) }
         : { kind: "ambiguous" };
     }
     // Without a season we can't split a multi-cour run by an absolute number.
@@ -121,16 +141,16 @@ export class Animap {
 
     return {
       kind: "resolved",
-      value: { anilistId: chosen.a, localEpisode: episode - off(chosen) },
+      value: hit(chosen, episode - off(chosen)),
     };
   }
 
   /**
-   * AniList-native site → TMDB/Trakt. `episode` is the local episode within the
-   * cour. Ambiguous only if one AniList id maps to >1 distinct TMDB target.
+   * Cour-native site (AniList or MAL) → TMDB/Trakt. `episode` is the local episode
+   * within the cour. Ambiguous only if one entry maps to >1 distinct TMDB target.
    */
-  reverse(anilistId: number, episode: number | undefined): Derive<ReverseHit> {
-    const rows = this.byAnilist.get(anilistId);
+  reverse(ns: CourNamespace, id: number, episode: number | undefined): Derive<ReverseHit> {
+    const rows = (ns === "anilist" ? this.byAnilist : this.byMal).get(id);
     if (!rows?.length) return { kind: "miss" };
     const distinct = [...new Map(rows.map((r) => [`${r.k}:${r.t}:${r.s ?? ""}`, r])).values()];
     if (distinct.length > 1) return { kind: "ambiguous" };

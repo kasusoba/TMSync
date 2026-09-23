@@ -31,7 +31,7 @@ describe("deriveMedia — forward (TMDB-native → AniList)", () => {
     const out = deriveMedia("anilist", media, traktItem, map);
     expect(out).toEqual({
       kind: "resolved",
-      anilistId: 104578,
+      ids: { anilist: 104578 },
       media: {
         mediaType: "show",
         title: "AoT",
@@ -108,7 +108,7 @@ describe("deriveMediaWith — local overrides sit above Fribb", () => {
     };
     expect(deriveMediaWith("anilist", media, traktItem, overrides, map)).toEqual({
       kind: "resolved",
-      anilistId: 42,
+      ids: { anilist: 42 },
       media: {
         mediaType: "show",
         title: "New",
@@ -158,7 +158,7 @@ describe("deriveMedia — anime movies (via the crosswalk)", () => {
     };
     expect(deriveMedia("anilist", media, traktItem, withMovie)).toEqual({
       kind: "resolved",
-      anilistId: 20954,
+      ids: { anilist: 20954 },
       media: {
         mediaType: "show",
         title: "A Silent Voice",
@@ -179,7 +179,7 @@ describe("deriveMedia — anime movies (via the crosswalk)", () => {
     const media: ParsedMedia = { mediaType: "movie", title: "Look Back", ids: { tmdb: 1244492 } };
     expect(deriveMediaWith("anilist", media, traktItem, overrides, map)).toEqual({
       kind: "resolved",
-      anilistId: 178025,
+      ids: { anilist: 178025 },
       media: {
         mediaType: "show",
         title: "Look Back",
