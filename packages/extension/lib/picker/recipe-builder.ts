@@ -1,4 +1,4 @@
-import type { Tracker } from "@/lib/tracker/types";
+import { type Tracker, isSeasonless } from "@/lib/tracker/types";
 import {
   type EngineContext,
   type ExtractResult,
@@ -371,20 +371,25 @@ export type BuildResult = { ok: true; recipe: Recipe } | { ok: false; error: str
 
 /** Assemble + validate a recipe from a draft. */
 export function buildRecipe(draft: RecipeDraft, meta: { id: string; name: string }): BuildResult {
-  // The native hint = the tracker whose numbering the scraped fields already speak
-  // (a tmdbId or a season ⇒ TMDB/Trakt; else a bare linear episode ⇒ AniList). The
-  // runtime re-infers this per watch; we persist it as the legacy `tracker` field.
+  // The native hint = the enabled tracker whose numbering the scraped fields already
+  // speak (a tmdbId or a season ⇒ a seasoned tracker; else a bare linear episode ⇒ a
+  // cour tracker). The runtime re-infers this per watch; we persist it as the legacy
+  // `tracker` field.
   const trackers = draft.trackers.length ? draft.trackers : (["trakt"] as Tracker[]);
-  const nativeHint: Tracker = draft.fields.tmdbId || draft.fields.season ? "trakt" : "anilist";
+  const seasonedFields = !!(draft.fields.tmdbId || draft.fields.season);
+  const nativeHint: Tracker =
+    trackers.find((tk) => isSeasonless(tk) !== seasonedFields) ??
+    (seasonedFields ? "trakt" : "anilist");
   // The scraped fields are PRUNED to what the enabled trackers actually consume, so
-  // toggling Trakt off drops its fields instead of leaving them stale on the recipe:
-  //   • season  — western seasoning; Trakt only (AniList entries are per-cour).
-  //   • tmdb id — an exact TMDB id (that's what detectTmdbIdField finds); Trakt/the
-  //     crosswalk use it. AniList-only resolves by TITLE, and a URL number on a
-  //     TMDB-shaped site (…/tmdb-tv-60564) is a TMDB id, not an AniList id — so
-  //     persisting it as `ids.anilist` was the mislabel that broke resolution.
+  // toggling the seasoned trackers off drops their fields instead of leaving them
+  // stale on the recipe:
+  //   • season: western seasoning; seasoned trackers only (cour entries have none).
+  //   • tmdb id: an exact TMDB id (that's what detectTmdbIdField finds); seasoned
+  //     trackers and the crosswalk use it. A cour-only recipe resolves by TITLE, and a
+  //     URL number on a TMDB-shaped site (…/tmdb-tv-60564) is a TMDB id, not an
+  //     AniList id, and persisting it as `ids.anilist` was the mislabel that broke it.
   // The draft keeps every picked field; only the SAVED recipe reflects the toggles.
-  const hasTrakt = trackers.includes("trakt");
+  const hasSeasoned = trackers.some((tk) => !isSeasonless(tk));
   const base = {
     id: meta.id,
     schemaVersion: SCHEMA_VERSION,
@@ -402,9 +407,9 @@ export function buildRecipe(draft: RecipeDraft, meta: { id: string; name: string
   // mis-pick) carries them, so the recipe can't later be resolved as a show.
   const isMovie = draft.mediaType === "movie";
 
-  // A TMDB id only helps a tracker that consumes it (Trakt / the crosswalk). For an
-  // AniList-only recipe it's dropped, so it can't stand in for a title.
-  const usableId = hasTrakt ? draft.fields.tmdbId : undefined;
+  // A TMDB id only helps a tracker that consumes it (a seasoned tracker / the
+  // crosswalk). For a cour-only recipe it's dropped, so it can't stand in for a title.
+  const usableId = hasSeasoned ? draft.fields.tmdbId : undefined;
 
   // Manual recipe: no extract. An optional manualKey remembers a pick by the
   // page's distinguishing string (filename / room title).
@@ -416,10 +421,10 @@ export function buildRecipe(draft: RecipeDraft, meta: { id: string; name: string
           extract: {
             title: draft.fields.title,
             year: draft.fields.year,
-            // season: Trakt-only (dropped for AniList-only or a movie).
-            season: isMovie || !hasTrakt ? undefined : draft.fields.season,
+            // season: seasoned trackers only (dropped for cour-only or a movie).
+            season: isMovie || !hasSeasoned ? undefined : draft.fields.season,
             episode: isMovie ? undefined : draft.fields.episode,
-            // The captured id is a TMDB id — persist it only when Trakt is enabled.
+            // The captured id is a TMDB id: persist it only for a seasoned tracker.
             ...(usableId ? { ids: { tmdb: usableId } } : {}),
           },
         }
@@ -428,7 +433,7 @@ export function buildRecipe(draft: RecipeDraft, meta: { id: string; name: string
   if (!candidate) {
     return {
       ok: false,
-      error: hasTrakt ? "Pick a title or a TMDB id first." : "Pick a title first.",
+      error: hasSeasoned ? "Pick a title or a TMDB id first." : "Pick a title first.",
     };
   }
 

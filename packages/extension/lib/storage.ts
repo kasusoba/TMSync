@@ -62,6 +62,16 @@ export const malTokens = storage.defineItem<MalTokens | null>("local:mal_tokens"
   fallback: null,
 });
 
+/**
+ * When the popup asked for MAL host access to connect (ms). On Firefox the
+ * permission prompt closes the popup, so the popup cannot send `connectMal` after
+ * a first grant. The background sees the grant (`permissions.onAdded`) and signs in
+ * when this is recent. In storage, not memory: the background is stateless.
+ */
+export const malConnectIntent = storage.defineItem<number>("session:mal_connect_intent", {
+  fallback: 0,
+});
+
 /** MAL resolution cache keyed by malCacheKey(media). */
 export const malResolutionCache = storage.defineItem<Record<string, MalIdentity>>(
   "local:mal_resolution_cache",

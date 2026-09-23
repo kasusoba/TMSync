@@ -114,3 +114,110 @@ describe("statusFromReply multi-track outcomes", () => {
     ]);
   });
 });
+
+describe("statusFromReply rewatch prompt", () => {
+  const cour: ParsedMedia = { mediaType: "show", title: "Frieren", episode: 3 };
+
+  it("lists the native cour tracker that asked for a rewatch", () => {
+    const reply: ScrobbleReply = {
+      ok: false,
+      resolved: true,
+      reason: "needs_rewatch",
+      primaryTracker: "mal",
+    };
+    const status = statusFromReply("start", reply, cour, "mal");
+    expect(status.rewatch).toBe(true);
+    expect(status.rewatchTrackers).toEqual(["mal"]);
+  });
+
+  it("raises the prompt for a derived tracker too, and lists every one that asked", () => {
+    const reply: ScrobbleReply = {
+      ok: true,
+      resolved: true,
+      action: "start",
+      primaryTracker: "trakt",
+      derived: [
+        { tracker: "anilist", ok: false, reason: "needs_rewatch" },
+        { tracker: "mal", ok: false, reason: "needs_rewatch" },
+      ],
+    };
+    const status = statusFromReply("start", reply, cour, "trakt");
+    expect(status.rewatch).toBe(true);
+    expect(status.rewatchTrackers).toEqual(["anilist", "mal"]);
+  });
+
+  it("names a cour tracker in its own saved note", () => {
+    const reply: ScrobbleReply = {
+      ok: true,
+      resolved: true,
+      action: "scrobble",
+      primaryTracker: "mal",
+      completed: true,
+    };
+    expect(statusFromReply("stop", reply, cour, "mal").detail).toBe("completed on MyAnimeList");
+  });
+});
+
+describe("statusFromReply multi-track already watched", () => {
+  const ep5: ParsedMedia = { mediaType: "show", title: "Trigun Stargaze", episode: 5 };
+
+  // The Trigun case: AniList already at ep 5, MAL at ep 3. MAL still records, so the
+  // item is NOT "already watched"; only AniList's mark says so.
+  it("shows the normal state while another tracker still records", () => {
+    const reply: ScrobbleReply = {
+      ok: true,
+      resolved: true,
+      info: "already_watched",
+      atEpisode: 5,
+      primaryTracker: "anilist",
+      derived: [{ tracker: "mal", ok: true }],
+    };
+    const status = statusFromReply("start", reply, ep5, "anilist");
+    expect(status.state).toBe("watching");
+    expect(status.trackers).toEqual([
+      { tracker: "anilist", state: "pending", note: "already watched" },
+      { tracker: "mal", state: "pending", note: undefined },
+    ]);
+  });
+
+  it("says recorded once the other tracker writes at the threshold", () => {
+    const reply: ScrobbleReply = {
+      ok: true,
+      resolved: true,
+      info: "already_watched",
+      atEpisode: 5,
+      primaryTracker: "anilist",
+      derived: [{ tracker: "mal", ok: true, action: "scrobble", completed: false }],
+    };
+    const status = statusFromReply("stop", reply, ep5, "anilist");
+    expect(status.state).toBe("scrobbled");
+    expect(status.detail).toBe("recorded");
+  });
+
+  it("says already watched only when every tracker already counts the episode", () => {
+    const reply: ScrobbleReply = {
+      ok: true,
+      resolved: true,
+      info: "already_watched",
+      atEpisode: 5,
+      primaryTracker: "anilist",
+      derived: [{ tracker: "mal", ok: true, info: "already_watched" }],
+    };
+    const status = statusFromReply("start", reply, ep5, "anilist");
+    expect(status.state).toBe("stopped");
+    expect(status.detail).toBe("already watched");
+  });
+
+  it("keeps 'already watched' on the main badge for a rewatch and names who asked", () => {
+    const reply: ScrobbleReply = {
+      ok: false,
+      resolved: true,
+      reason: "needs_rewatch",
+      primaryTracker: "anilist",
+    };
+    const status = statusFromReply("start", reply, ep5, "anilist");
+    expect(status.state).toBe("stopped");
+    expect(status.detail).toBe("already watched · completed on AniList");
+    expect(status.rewatchTrackers).toEqual(["anilist"]);
+  });
+});

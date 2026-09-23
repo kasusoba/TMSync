@@ -6,6 +6,7 @@
  */
 
 import type { IdNamespace } from "@tmsync/shared";
+import type { CourEntry } from "./cour-plan";
 
 /** The trackers — a growing list (multi-track, constraint #1). Add a member here,
  * then a `TRACKER_INFO` entry, an adapter (registered in `getAdapter`), a mark, and
@@ -180,4 +181,10 @@ export interface WatchedState {
   next: WatchedEpisode | null;
   /** Trakt only: `next` sits before `lastWatched` (an earlier episode is unwatched). Always false for AniList. */
   hasGaps: boolean;
+  /** Cour trackers: the entry is COMPLETED (not mid-rewatch), so watching any episode
+   * again first asks "Rewatching?". */
+  completed?: boolean;
+  /** Cour trackers: the list entry as read (null = not on the list), so a caller can
+   * plan with `planCourWrite` exactly as the write will. */
+  entry?: CourEntry | null;
 }

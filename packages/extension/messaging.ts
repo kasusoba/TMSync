@@ -35,9 +35,22 @@ export interface DerivedOutcome {
   reason?: string;
   skipped?: boolean;
   completed?: boolean;
+  /** Recorded nothing because this episode is already counted on the tracker. */
+  info?: "already_watched";
   resolvedTitle?: string;
   resolvedYear?: number;
   resolvedEpisodes?: number;
+}
+
+/** One tracker's standing on the current episode (see `getWatchStanding`). */
+export interface WatchStanding {
+  tracker: Tracker;
+  /** The episode is already counted, so playing it records nothing here. */
+  already: boolean;
+  /** The tracker's recorded progress (episode #). */
+  atEpisode: number;
+  /** The entry is completed: watching again first asks "Rewatching?". */
+  completed: boolean;
 }
 
 export interface ScrobbleReply {
@@ -122,10 +135,12 @@ export interface BadgeStatus {
    * isn't enabled (or whose embed host changed), so playback can't be tracked — the
    * badge points the user to enable the player frame in the popup. */
   needFrame?: boolean;
-  /** An already-COMPLETED AniList cour is being re-watched — the badge shows a
+  /** An already-COMPLETED cour is being re-watched: the badge shows a
    * "rewatching?" confirmation; nothing is written until the user says yes. */
   rewatch?: boolean;
-  /** AniList only: the last write finished the cour (gates the cour-rating prompt). */
+  /** The trackers that asked (answered `needs_rewatch`); confirming writes each. */
+  rewatchTrackers?: Tracker[];
+  /** Cour trackers only: the last write finished the cour (gates the cour-rating prompt). */
   completed?: boolean;
   /** Dismiss the badge entirely — sent when an SPA navigates away from a
    * scrobblable page so a stale "watching" badge doesn't linger. */
@@ -175,14 +190,17 @@ export interface ReviewTarget {
   trackers?: Tracker[];
 }
 
-/** AniList account status (the second, independent provider — constraint #1). */
-export interface AniListStatus {
+/** An OAuth provider's account status (AniList, MAL: independent connections). */
+export interface ProviderStatus {
   connected: boolean;
-  /** The redirect URI to register in the AniList app (shown in the options page). */
+  /** The redirect URI to register in the provider's app (shown in the options page). */
   redirectUri: string;
   /** Whether a client id is configured at all (so the UI can explain if not). */
   configured: boolean;
 }
+
+/** AniList account status. */
+export type AniListStatus = ProviderStatus;
 
 /**
  * Typed content↔background↔popup contract. Background handlers are stateless and
@@ -197,6 +215,10 @@ export interface ProtocolMap {
   getAniListStatus(): AniListStatus;
   connectAniList(): { ok: boolean; error?: string };
   disconnectAniList(): void;
+  /** MyAnimeList account. The UI requests MAL host access before `connectMal`. */
+  getMalStatus(): ProviderStatus;
+  connectMal(): { ok: boolean; error?: string };
+  disconnectMal(): void;
   scrobble(req: ScrobbleRequest): ScrobbleReply;
   /** Resolve scraped media to its tracker identity WITHOUT recording — lets the
    * badge show the matched title before the user presses play (transparency). */
@@ -245,6 +267,10 @@ export interface ProtocolMap {
    * next up" for the popup. Resolves (cached) then reads the routed tracker; null
    * for movies, unresolved titles, or when not connected. */
   getWatchedState(q?: { tabId?: number }): WatchedState | null;
+  /** Where each enabled tracker stands on the tab's current episode, BEFORE playing:
+   * already counted (a cour tracker never re-counts it), or a completed entry (a
+   * rewatch needs confirming). Each derived tracker is checked on its own entry. */
+  getWatchStanding(q?: { tabId?: number }): WatchStanding[];
   /** Playing frame reports latest progress (reconciliation safety net). */
   updateProgress(progress: number): void;
   /** Playing frame signals a clean stop of `media` so the background won't
@@ -318,14 +344,16 @@ export interface ProtocolMap {
   /** Background → frames: a correction landed, re-resolve the current session. */
   recheck(): void;
 
-  /** Confirm a rewatch of an already-COMPLETED AniList cour (the badge prompt).
+  /** Confirm a rewatch of an already-COMPLETED cour (the badge prompt).
    * Switches the entry to REPEATING and records this episode; on the final
    * episode it re-completes and bumps the repeat count. */
   confirmRewatch(q: {
     media: ParsedMedia;
-    /** Which cour tracker asked (the one that answered `needs_rewatch`). Defaults
-     * to "anilist" for older callers. */
-    tracker?: Tracker;
+    /** The cour trackers that asked (`BadgeStatus.rewatchTrackers`). Defaults to
+     * AniList for older callers. */
+    trackers?: Tracker[];
+    /** The recipe's enabled set, so a derived tracker confirms the crosswalk's entry. */
+    enabled?: Tracker[];
     tabId?: number;
   }): {
     ok: boolean;

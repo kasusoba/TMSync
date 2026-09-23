@@ -1,5 +1,6 @@
 import { RECIPES } from "@/config";
 import type { QuickLinkSite } from "@/lib/storage";
+import type { Tracker } from "@/lib/tracker/types";
 import type { Recipe } from "@tmsync/shared";
 
 /**
@@ -18,7 +19,7 @@ export interface ContributionEntry {
   /** Which tracker(s) this writes to. The library is ONE tracker-agnostic file
    *  (recipes/index.json) — each recipe carries its own `tracker`, so this is for
    *  display/back-compat, not file routing. */
-  tracker: "trakt" | "anilist";
+  tracker: Tracker;
   /** The client always proposes "add"; the bot/maintainer flips to "update" on an
    *  existing id (and reviews foreign-author updates) — never a silent overwrite. */
   action: "add";

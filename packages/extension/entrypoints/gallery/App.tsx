@@ -494,6 +494,21 @@ export function App() {
               preview={{ ok: true, text: "show: Frieren E3 → AniList + Trakt" }}
             />
           </Tile>
+          <Tile label="Multi-track: anime site → AniList + MyAnimeList + Trakt" t={t}>
+            <PickerPanel
+              variant={variant}
+              mode="setup"
+              name="reanime.to"
+              fields={[
+                { key: "title", label: "Title", value: "Frieren", source: "dom" },
+                { key: "episode", label: "Episode", value: "3", source: "url" },
+              ]}
+              mediaType="show"
+              trackers={["anilist", "mal", "trakt"]}
+              iframe
+              preview={{ ok: true, text: "show: Frieren E3 → AniList + MyAnimeList + Trakt" }}
+            />
+          </Tile>
         </Group>
 
         {/* BADGE */}
@@ -535,6 +550,17 @@ export function App() {
                   { tracker: "anilist", state: "attention", note: "connect" },
                 ]}
               />
+              <BadgePill
+                variant={variant}
+                state="scrobbled"
+                detail="recorded"
+                title="Frieren E3"
+                trackers={[
+                  { tracker: "anilist", state: "ok", note: "saved" },
+                  { tracker: "mal", state: "ok", note: "saved" },
+                  { tracker: "trakt", state: "ok", note: "added to history" },
+                ]}
+              />
             </div>
           </Tile>
           <Tile label="Minimized dot" t={t}>
@@ -546,6 +572,17 @@ export function App() {
           </Tile>
           <Tile label="“Now” panel · auto-opens when a watch lands" t={t}>
             <NowPanel variant={variant} trackers={["trakt"]} />
+          </Tile>
+          <Tile label="“Now” panel · anime on three trackers" t={t}>
+            <NowPanel
+              variant={variant}
+              trackers={["anilist", "mal", "trakt"]}
+              outcomes={[
+                { tracker: "anilist", state: "ok", note: "saved" },
+                { tracker: "mal", state: "attention", note: "rewatch?" },
+                { tracker: "trakt", state: "ok", note: "added to history" },
+              ]}
+            />
           </Tile>
           <Tile label="“Now” panel · multi-track (anime)" t={t}>
             <NowPanel
@@ -587,6 +624,18 @@ export function App() {
               value={8}
               note="Peak Frieren. The elf-time framing device lands."
               hasNote
+              spoiler={false}
+            />
+          </Tile>
+          <Tile label="Rate & note · episode level (cour trackers dimmed)" t={t}>
+            <RateNotePanel
+              variant={variant}
+              isShow
+              level="episode"
+              trackers={["trakt", "anilist", "mal"]}
+              value={null}
+              note=""
+              hasNote={false}
               spoiler={false}
             />
           </Tile>

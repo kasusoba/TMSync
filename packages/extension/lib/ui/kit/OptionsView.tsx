@@ -7,6 +7,7 @@ import {
   Icon,
   IconBtn,
   type IconName,
+  MalMark,
   Switch,
   type Tokens,
   TrackerMark,
@@ -224,8 +225,8 @@ export function OptionsView({
               <>
                 <PaneHead t={t} title="Account" />
                 <p class={clsx("text-[12px]", t.sub)}>
-                  Two independent trackers. Movies &amp; non-anime TV route to Trakt; anime series
-                  to AniList · one item to one tracker, never both.
+                  Independent trackers. Movies &amp; TV go to Trakt; anime can go to AniList and
+                  MyAnimeList too, all at once.
                 </p>
                 <div class={clsx("flex items-center gap-3 rounded-lg px-3 py-2.5", t.card)}>
                   <TraktMark />
@@ -250,6 +251,21 @@ export function OptionsView({
                   </span>
                   <Btn t={t} tone="primary">
                     Connect
+                  </Btn>
+                </div>
+                <div class={clsx("flex items-center gap-3 rounded-lg px-3 py-2.5", t.card)}>
+                  <MalMark />
+                  <span class="min-w-0 flex-1">
+                    <span class={clsx("block text-[13px] font-semibold", t.heading)}>
+                      MyAnimeList
+                    </span>
+                    <span class={clsx("flex items-center gap-1.5 text-[11px]", t.sub)}>
+                      <span class="size-1.5 rounded-full bg-emerald-500" />
+                      Connected
+                    </span>
+                  </span>
+                  <Btn t={t} tone="ghost">
+                    Disconnect
                   </Btn>
                 </div>
                 <div class={clsx("space-y-2 rounded-lg px-3 py-2.5", t.card)}>
