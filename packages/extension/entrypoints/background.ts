@@ -414,8 +414,8 @@ export default defineBackground(() => {
   // without a login, so this works even before Connect. MAL needs its site access,
   // and Simkl never searches, so they may show no match until connected or written.
   onMessage("resolveMedia", async ({ data }) => {
+    const adapter = getAdapter(routeTracker(data.tracker ?? "trakt", data.media.mediaType));
     try {
-      const adapter = getAdapter(routeTracker(data.tracker ?? "trakt", data.media.mediaType));
       const item = await adapter.resolve(data.media);
       if (!item) return { resolved: false };
       return {
@@ -426,7 +426,12 @@ export default defineBackground(() => {
         mediaType: item.mediaType,
       };
     } catch {
-      return { resolved: false };
+      // A tracker that can't read without its connection (MAL without site access)
+      // fails here. Say "connect", not "not found".
+      const connected = await adapter.isConnected().catch(() => true);
+      return connected
+        ? { resolved: false }
+        : { resolved: false, reason: "not_connected" as const };
     }
   });
 
