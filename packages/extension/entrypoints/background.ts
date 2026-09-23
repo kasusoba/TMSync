@@ -21,6 +21,7 @@ import {
   anilistSaveNote,
   anilistUnrate,
 } from "@/lib/anilist/review";
+import type { AniListIdentity } from "@/lib/anilist/types";
 import {
   type AnimapOverrides,
   type TargetIds,
@@ -506,41 +507,36 @@ export default defineBackground(() => {
     }
   });
 
-  // Pin/block the AniList entry for this TMDB item — a local override above Fribb.
+  // Pin/block the AniList entry, a local override above Fribb. It writes both keys:
+  // a tmdb id keys a crosswalk pin (AniList derived), and the title key pins the
+  // match when AniList resolves the page itself (AniList native, which can happen
+  // with a tmdb id too, e.g. Trakt off). The title key carries the season, so a pin
+  // for one season never applies to another.
   onMessage("setAniListMatch", async ({ data, sender }) => {
+    let identity: AniListIdentity | null = null;
+    if (data.anilistId !== null) {
+      identity = await resolveAniListById(data.anilistId);
+      if (!identity) return { ok: false, error: "couldn't load that AniList entry" };
+    }
     const tmdbId = data.media.ids?.tmdb;
     if (tmdbId !== undefined) {
-      // TMDB-keyed crosswalk override (the derived / multi-track path).
       const ov = await animapOverrides.getValue();
       ov.forward[forwardKey(Number(tmdbId), data.media.season)] = data.anilistId;
       await animapOverrides.setValue(ov);
-    } else {
-      // No tmdb id → an AniList-NATIVE recipe resolved by title. Pin the entry under
-      // the title key (or null = "not on AniList"). Mirrors saveCorrection for Trakt.
-      const key = anilistCacheKey(data.media);
-      const corr = await anilistCorrections.getValue();
-      if (data.anilistId === null) {
-        corr[key] = null;
-      } else {
-        const identity = await resolveAniListById(data.anilistId);
-        if (!identity) return { ok: false, error: "couldn't load that AniList entry" };
-        corr[key] = identity;
-      }
-      await anilistCorrections.setValue(corr);
-      // Drop any stale auto-resolution so the pin takes effect immediately.
-      const cache = await anilistResolutionCache.getValue();
-      if (key in cache) {
-        delete cache[key];
-        await anilistResolutionCache.setValue(cache);
-      }
     }
+    const key = anilistCacheKey(data.media);
+    await anilistCorrections.setValue({
+      ...(await anilistCorrections.getValue()),
+      [key]: identity,
+    });
+    await dropAniListCache(key);
     const tabId = data.tabId ?? sender.tab?.id;
     if (tabId !== undefined) void sendMessage("recheck", undefined, tabId);
     return { ok: true };
   });
 
   // Undo an AniList override (pin or "Not on AniList") → back to auto-resolution
-  // (the Fribb crosswalk for a tmdb item, or the title search for a native one).
+  // (the Fribb crosswalk, or the title search). Clears both keys, like the set.
   onMessage("resetAniListMatch", async ({ data, sender }) => {
     const tmdbId = data.media.ids?.tmdb;
     if (tmdbId !== undefined) {
@@ -550,19 +546,14 @@ export default defineBackground(() => {
         delete ov.forward[key];
         await animapOverrides.setValue(ov);
       }
-    } else {
-      const key = anilistCacheKey(data.media);
-      const corr = await anilistCorrections.getValue();
-      if (key in corr) {
-        delete corr[key];
-        await anilistCorrections.setValue(corr);
-      }
-      const cache = await anilistResolutionCache.getValue();
-      if (key in cache) {
-        delete cache[key];
-        await anilistResolutionCache.setValue(cache);
-      }
     }
+    const key = anilistCacheKey(data.media);
+    const corr = await anilistCorrections.getValue();
+    if (key in corr) {
+      delete corr[key];
+      await anilistCorrections.setValue(corr);
+    }
+    await dropAniListCache(key);
     const tabId = data.tabId ?? sender.tab?.id;
     if (tabId !== undefined) void sendMessage("recheck", undefined, tabId);
     return { ok: true };
@@ -1051,6 +1042,15 @@ function derivedToReply(d: DerivedOutcome): ScrobbleReply {
  */
 function needsCourBridge(native: Tracker, enabled: Tracker[]): boolean {
   return trackerFamily(native) === "cour" && enabled.some((tk) => trackerFamily(tk) === "seasoned");
+}
+
+/** Drop a stale AniList auto-resolution so a pin (or its removal) takes effect now. */
+async function dropAniListCache(key: string): Promise<void> {
+  const cache = await anilistResolutionCache.getValue();
+  if (key in cache) {
+    delete cache[key];
+    await anilistResolutionCache.setValue(cache);
+  }
 }
 
 /** Drop a stale MAL auto-resolution (or a remembered miss) so a pin, or its

@@ -20,7 +20,7 @@ describe("mediaToIdentity", () => {
 });
 
 describe("anilistCacheKey", () => {
-  it("keys on lowercased title + year and ignores season/episode", () => {
+  it("keys on lowercased title + year and ignores the episode", () => {
     const a: ParsedMedia = { mediaType: "show", title: "Frieren", year: 2023, episode: 5 };
     const b: ParsedMedia = {
       mediaType: "show",
@@ -30,5 +30,12 @@ describe("anilistCacheKey", () => {
     };
     expect(anilistCacheKey(a)).toBe(anilistCacheKey(b));
     expect(anilistCacheKey(a)).toBe("frieren:2023");
+  });
+
+  it("keeps seasons apart, so a pin for one season never applies to another", () => {
+    const s1: ParsedMedia = { mediaType: "show", title: "Frieren", year: 2023, season: 1 };
+    const s2: ParsedMedia = { ...s1, season: 2 };
+    expect(anilistCacheKey(s1)).toBe("frieren:2023:s1");
+    expect(anilistCacheKey(s1)).not.toBe(anilistCacheKey(s2));
   });
 });
