@@ -40,7 +40,7 @@ export interface RecipeDraft {
     year?: Field;
     season?: Field;
     episode?: Field;
-    /** TMDB id (Trakt only) — exact resolution, no title ambiguity. */
+    /** TMDB id (seasoned trackers and Simkl, and the crosswalk): exact resolution, no title ambiguity. */
     tmdbId?: Field;
   };
 }

@@ -80,9 +80,10 @@ export function placeholderHint(list: readonly PlaceholderDoc[]): string {
  *   Trakt movie:   trakt.tv/movies/{id}
  *   Trakt show:    trakt.tv/shows/{id}
  *   Trakt episode: trakt.tv/shows/{id}/seasons/{s}/episodes/{e}  (when s+e known)
- *   AniList:       anilist.co/anime/{id}  (no per-episode pages — always the entry)
- *   Simkl:         simkl.com/{movies|tv|anime}/{id}  (`simklType` names the section;
- *                  without it a show is assumed to be under `tv`)
+ *   AniList:       anilist.co/anime/{id}  (no per-episode pages, always the entry)
+ *   MyAnimeList:   myanimelist.net/anime/{id}  (the entry, like AniList)
+ *   Simkl:         simkl.com/{movies|tv}/{id}  (a guess from the media type; the
+ *                  real page, `anime` included, comes from the write that names it)
  */
 export function trackerItemUrl(
   tracker: Tracker,
@@ -91,14 +92,12 @@ export function trackerItemUrl(
     mediaType?: "movie" | "show";
     season?: number;
     episode?: number;
-    simklType?: "movies" | "tv" | "anime";
   },
 ): string {
   if (tracker === "anilist") return `https://anilist.co/anime/${id}`;
   if (tracker === "mal") return `https://myanimelist.net/anime/${id}`;
   if (tracker === "simkl") {
-    const type = opts?.simklType ?? (opts?.mediaType === "movie" ? "movies" : "tv");
-    return `https://simkl.com/${type}/${id}`;
+    return `https://simkl.com/${opts?.mediaType === "movie" ? "movies" : "tv"}/${id}`;
   }
   if (opts?.mediaType === "movie") return `https://trakt.tv/movies/${id}`;
   const base = `https://trakt.tv/shows/${id}`;

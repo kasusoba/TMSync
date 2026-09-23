@@ -1755,7 +1755,7 @@ export function App() {
                 {allCorrections.length === 0 ? (
                   <p class={clsx("rounded-lg px-3 py-4 text-center text-[12px]", t.card, t.sub)}>
                     No saved corrections. When a match is wrong, click the badge to “fix match” and
-                    pick the right entry — Trakt or AniList — and it shows up here.
+                    pick the right entry (Trakt, AniList, or MyAnimeList), and it shows up here.
                   </p>
                 ) : (
                   <>
