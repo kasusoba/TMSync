@@ -4,6 +4,7 @@ import { errorMessage } from "../errors";
 import { errorDetail } from "../oauth";
 import { malCorrections, malEntryCache, malMissCache, malResolutionCache } from "../storage";
 import type { CourEntry, CourStatus } from "../tracker/cour-plan";
+import { freshHit, stamp } from "../tracker/identity-cache";
 import type { CourSearchOption } from "../tracker/types";
 import { hasMalAccess } from "./access";
 import { forgetGrant, getValidAccessToken, refreshAfterReject } from "./auth";
@@ -158,10 +159,23 @@ export function pickBest(
   return exact[0] ?? series[0];
 }
 
-/** One anime by MAL id (public read). Null when MAL has no such id. */
+/**
+ * One anime by MAL id (public read, cached). Null when MAL has no such id. The
+ * derived path resolves by id on every scrobble phase, so the cache keeps those
+ * calls off MAL, which answers bursts with 403.
+ */
 export async function getAnime(id: number): Promise<MalIdentity | null> {
+  const key = `id:${id}`;
+  const cached = freshHit((await malResolutionCache.getValue())[key]);
+  if (cached) return cached;
   const node = await malFetch<MalAnimeNode>(`/anime/${id}?fields=${NODE_FIELDS}`);
-  return node ? nodeToIdentity(node) : null;
+  if (!node) return null;
+  const identity = nodeToIdentity(node);
+  await malResolutionCache.setValue({
+    ...(await malResolutionCache.getValue()),
+    [key]: stamp(identity),
+  });
+  return identity;
 }
 
 /** Title search (public read). MAL's `limit` caps at 100; ten is plenty. */
@@ -204,7 +218,7 @@ export async function resolve(media: ParsedMedia): Promise<MalIdentity | null> {
   const key = malCacheKey(media);
 
   const cache = await malResolutionCache.getValue();
-  const cached = cache[key];
+  const cached = freshHit(cache[key]);
   if (cached) return cached;
   const missedAt = (await malMissCache.getValue())[key];
   if (missedAt && Date.now() - missedAt < MISS_TTL_MS) return null;
@@ -233,7 +247,10 @@ export async function resolve(media: ParsedMedia): Promise<MalIdentity | null> {
     return null;
   }
   // Re-read: the search above awaited, and another resolve may have written.
-  await malResolutionCache.setValue({ ...(await malResolutionCache.getValue()), [key]: identity });
+  await malResolutionCache.setValue({
+    ...(await malResolutionCache.getValue()),
+    [key]: stamp(identity),
+  });
   return identity;
 }
 
