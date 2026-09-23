@@ -50,6 +50,7 @@ import {
   isConnected as simklIsConnected,
   getRedirectUri as simklRedirectUri,
 } from "@/lib/simkl/auth";
+import { HELD_STOP_ALARM, flushHeldStop } from "@/lib/simkl/client";
 import { SIMKL } from "@/lib/simkl/config";
 import {
   simklDeleteNote,
@@ -257,6 +258,7 @@ export default defineBackground(() => {
   browser.alarms.onAlarm.addListener((alarm) => {
     if (alarm.name === "tmsync-recipes") void fetchRemoteRecipes(true);
     if (alarm.name === "tmsync-anime-map") void fetchAnimeMap(true);
+    if (alarm.name === HELD_STOP_ALARM) void flushHeldStop();
   });
 
   onMessage("refreshRecipes", async () => {
@@ -934,20 +936,26 @@ async function recordScrobble(
   // uses the scraped tmdbId, so it needs no native item.
   const needNative = nativeEnabled || needsCourBridge(native, enabled);
   let nativeItem: TrackedItem | null = null;
-  let nativeThrew = false;
+  let nativeError: string | undefined;
   if (needNative) {
     try {
       nativeItem = await getAdapter(native).resolve(data.media);
-    } catch {
-      nativeThrew = true;
+    } catch (e) {
+      nativeError = errorMessage(e);
     }
   }
 
   // Record the native tracker directly — only if the user enabled it.
   let nativeReply: ScrobbleReply | null = null;
   if (nativeEnabled) {
-    if (nativeThrew) {
-      nativeReply = { ok: false, resolved: false, reason: "http", primaryTracker: native };
+    if (nativeError !== undefined) {
+      nativeReply = {
+        ok: false,
+        resolved: false,
+        reason: "http",
+        httpError: nativeError,
+        primaryTracker: native,
+      };
     } else if (!nativeItem) {
       nativeReply = { ok: false, resolved: false, reason: "unresolved", primaryTracker: native };
     } else {
@@ -1329,8 +1337,8 @@ async function recordDerivedTrackers(
     let item: TrackedItem | null;
     try {
       item = await resolveDerived(target, d);
-    } catch {
-      out.push({ tracker: target, ok: false, reason: "http" });
+    } catch (e) {
+      out.push({ tracker: target, ok: false, reason: "http", httpError: errorMessage(e) });
       continue;
     }
     if (!item) {

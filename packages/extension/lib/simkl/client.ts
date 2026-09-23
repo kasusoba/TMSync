@@ -1,7 +1,7 @@
 import type { ParsedMedia } from "@tmsync/shared";
 import { browser } from "wxt/browser";
-import { simklMatches, simklScrobbleAt } from "../storage";
-import { getValidAccessToken, refreshAfterReject } from "./auth";
+import { simklHeldStop, simklMatches, simklScrobbleAt } from "../storage";
+import { forgetGrant, getValidAccessToken, refreshAfterReject } from "./auth";
 import { SCROBBLE_LOCK_MS, SIMKL } from "./config";
 import type { SimklMatch, SimklMediaObject, SimklScrobbleResponse, SimklSection } from "./types";
 
@@ -37,7 +37,8 @@ function appParams(): string {
 /**
  * POST to the Simkl API with the user's token. JSON body; no `User-Agent` (a
  * browser can't set it; `app-name` identifies us instead). A 401 retries once with
- * a refreshed token. Never retries anything else: Simkl throttles repeated POSTs.
+ * a refreshed token, and a second 401 drops the grant. Never retries anything else:
+ * Simkl throttles repeated POSTs.
  */
 export async function simklPost<T>(path: string, body: unknown): Promise<SimklReply<T>> {
   const token = await getValidAccessToken();
@@ -57,7 +58,10 @@ export async function simklPost<T>(path: string, body: unknown): Promise<SimklRe
     const next = await refreshAfterReject(token);
     if (!next) throw new SimklNotConnectedError();
     res = await send(next);
-    if (res.status === 401) throw new SimklNotConnectedError();
+    if (res.status === 401) {
+      await forgetGrant();
+      throw new SimklNotConnectedError();
+    }
   }
   let data: unknown;
   try {
@@ -215,6 +219,51 @@ async function waitAwake(ms: number): Promise<void> {
   }
 }
 
+/** The alarm that sends a held stop if the worker was stopped during its wait. */
+export const HELD_STOP_ALARM = "tmsync-simkl-held-stop";
+
+/** Alarms fire no sooner than 30 s after they are set (Chrome), so the fallback
+ * comes this long after the wait would have ended. */
+const HELD_STOP_GRACE_MS = 30_000;
+
+/**
+ * Keep a stop in storage, with an alarm to send it, before waiting out the lock.
+ * If the worker lives through the wait, `releaseStop` clears both and the stop
+ * goes out as usual. If not, the alarm sends it (`flushHeldStop`).
+ */
+async function holdStop(body: Record<string, unknown>, waitMs: number): Promise<void> {
+  await simklHeldStop.setValue({ at: Date.now(), body });
+  try {
+    await browser.alarms.create(HELD_STOP_ALARM, {
+      when: Date.now() + waitMs + HELD_STOP_GRACE_MS,
+    });
+  } catch {
+    // no alarms (tests): the wait below still sends it
+  }
+}
+
+/** The wait ended with the worker alive: the stop goes out now, not by alarm. */
+async function releaseStop(): Promise<void> {
+  await simklHeldStop.setValue(null);
+  try {
+    await browser.alarms.clear(HELD_STOP_ALARM);
+  } catch {
+    // no alarms (tests)
+  }
+}
+
+/**
+ * Send a stop that the worker held but never sent (it was stopped during the
+ * wait). Run by `HELD_STOP_ALARM`. The watch is recorded; the match Simkl names is
+ * learned again on the next write.
+ */
+export async function flushHeldStop(): Promise<void> {
+  const held = await simklHeldStop.getValue();
+  if (!held) return;
+  await simklHeldStop.setValue(null);
+  await scrobble("stop", held.body).catch(() => {});
+}
+
 export type ScrobblePhase = "start" | "pause" | "stop";
 
 /**
@@ -250,8 +299,9 @@ export type ScrobbleOutcome =
  *    the stop still records the watch).
  *  - stop waits for the window, and waits once more if Simkl still reports the
  *    lock, so the watched write is never lost. The wait (at most about 40 s) runs
- *    inside this one request and keeps the worker awake (`waitAwake`). It is not a
- *    timer kept in the background (constraint #4).
+ *    inside this one request and keeps the worker awake (`waitAwake`). The stop is
+ *    also held in storage with an alarm (`holdStop`), so it still goes out if the
+ *    browser stops the worker anyway (constraint #4).
  * The last-call time lives in storage, so every wake of the worker sees it.
  */
 export async function scrobble(
@@ -261,12 +311,16 @@ export async function scrobble(
   const wait = lockWait(await simklScrobbleAt.getValue(), Date.now());
   if (wait > 0) {
     if (phase !== "stop") return { kind: "skipped" };
+    await holdStop(body, wait);
     await waitAwake(wait);
+    await releaseStop();
   }
   let res = await lockedPost(phase, body);
   if (res.status === 400 && res.error === "RATE_LIMIT") {
     if (phase !== "stop") return { kind: "skipped" };
+    await holdStop(body, SCROBBLE_LOCK_MS);
     await waitAwake(SCROBBLE_LOCK_MS);
+    await releaseStop();
     res = await lockedPost(phase, body);
   }
   // Re-stopping a finished item within an hour: the watch is already recorded.

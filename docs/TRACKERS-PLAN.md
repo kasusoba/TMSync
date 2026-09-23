@@ -303,4 +303,5 @@ on the Simkl app, exactly as the options page shows them.
 movie, a seasoned show, and an anime page; Trakt + Simkl multi-track; a stop right after a
 start (the lock wait, and the badge updating once Simkl records after it); rating and
 unrating. On Firefox, confirm the worker stays alive through the wait (`waitAwake` pings
-an extension API every 10 s; Chrome counts that as activity, Firefox is unverified).
+an extension API every 10 s; Chrome counts that as activity, Firefox is unverified). If it
+does not, the held stop still goes out from its alarm about 30 s later (`holdStop`).

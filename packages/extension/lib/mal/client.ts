@@ -4,7 +4,8 @@ import { errorDetail } from "../oauth";
 import { malCorrections, malEntryCache, malMissCache, malResolutionCache } from "../storage";
 import type { CourEntry, CourStatus } from "../tracker/cour-plan";
 import type { CourSearchOption } from "../tracker/types";
-import { getValidAccessToken, refreshAfterReject } from "./auth";
+import { hasMalAccess } from "./access";
+import { forgetGrant, getValidAccessToken, refreshAfterReject } from "./auth";
 import { MAL } from "./config";
 import type { MalAnimeNode, MalIdentity, MalListStatus } from "./types";
 
@@ -31,13 +32,15 @@ type FormValue = string | number | boolean;
 /**
  * Call the MAL REST API. With a token it sends the bearer; without one, a public
  * read sends `X-MAL-CLIENT-ID` (search and details work logged out). `auth` makes
- * the token required. A 401 refreshes the token once and retries. Returns null on
- * 404 (no such anime).
+ * the token required. A 401 refreshes the token once and retries; a second 401
+ * drops the grant. Returns null on 404 (no such anime). Without host access every
+ * call would fail on CORS, so that reads as "not connected".
  */
 async function malFetch<T>(
   path: string,
   opts: { method?: "GET" | "PATCH"; form?: Record<string, FormValue>; auth?: boolean } = {},
 ): Promise<T | null> {
+  if (!(await hasMalAccess())) throw new MalNotConnectedError();
   let token = await getValidAccessToken();
   if (opts.auth && !token) throw new MalNotConnectedError();
   if (!token && !MAL.clientId) throw new MalNotConnectedError();
@@ -65,6 +68,11 @@ async function malFetch<T>(
       res = await send(null); // a public read can still go through logged out
     } else {
       res = await send(token);
+      if (res.status === 401) {
+        await forgetGrant();
+        if (opts.auth) throw new MalNotConnectedError();
+        res = await send(null);
+      }
     }
   }
   if (res.status === 403) throw new MalRateLimitError();
@@ -83,6 +91,15 @@ const MISS_TTL_MS = 60 * 60 * 1000;
 export const ENTRY_FRESH_MS = 60 * 1000;
 
 const NODE_FIELDS = "id,title,alternative_titles,start_date,media_type,num_episodes";
+
+/** The misses still inside their TTL. Expired ones are dropped on each write, so the
+ * cache holds only recent misses. Pure. */
+export function liveMisses(
+  misses: Record<string, number>,
+  now = Date.now(),
+): Record<string, number> {
+  return Object.fromEntries(Object.entries(misses).filter(([, at]) => now - at < MISS_TTL_MS));
+}
 
 /** Cache key for a MAL resolution: a native id when present, else title (+year,
  * + season when the page has one: each season is its own entry, so a title pin for
@@ -203,7 +220,10 @@ export async function resolve(media: ParsedMedia): Promise<MalIdentity | null> {
     identity = best ? nodeToIdentity(best) : null;
   }
   if (!identity) {
-    await malMissCache.setValue({ ...(await malMissCache.getValue()), [key]: Date.now() });
+    await malMissCache.setValue({
+      ...liveMisses(await malMissCache.getValue()),
+      [key]: Date.now(),
+    });
     return null;
   }
   // Re-read: the search above awaited, and another resolve may have written.

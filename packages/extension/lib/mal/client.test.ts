@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { malCacheKey, nodeToIdentity, pickBest, toCourEntry } from "./client";
+import { liveMisses, malCacheKey, nodeToIdentity, pickBest, toCourEntry } from "./client";
 import type { MalAnimeNode } from "./types";
 
 const node = (n: Partial<MalAnimeNode> & { id: number; title: string }): MalAnimeNode => ({
@@ -82,5 +82,14 @@ describe("malCacheKey", () => {
     expect(malCacheKey({ mediaType: "show", title: "Frieren", year: 2023, season: 2 })).toBe(
       "frieren:2023:s2",
     );
+  });
+});
+
+describe("liveMisses", () => {
+  it("drops misses older than the hour, so the cache does not grow forever", () => {
+    const now = 10 * 60 * 60 * 1000;
+    expect(liveMisses({ old: now - 2 * 60 * 60 * 1000, recent: now - 60_000 }, now)).toEqual({
+      recent: now - 60_000,
+    });
   });
 });

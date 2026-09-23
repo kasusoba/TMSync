@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { canWrite, codeChallenge, readCallback } from "./auth";
+import { canWrite, codeChallenge, readCallback, staleRefresh } from "./auth";
+import type { SimklTokens } from "./types";
 
 describe("codeChallenge", () => {
   it("is base64url(SHA-256(verifier)), unpadded", async () => {
@@ -34,5 +35,23 @@ describe("canWrite", () => {
     expect(canWrite("media:read media:write")).toBe(true);
     expect(canWrite("media:read")).toBe(false);
     expect(canWrite(undefined)).toBe(false);
+  });
+});
+
+describe("staleRefresh", () => {
+  const old: SimklTokens = {
+    access_token: "a",
+    refresh_token: "r-old",
+    expires_in: 604800,
+    obtained_at: 0,
+  };
+
+  it("revokes the old grant after a re-connect gives a new one", () => {
+    expect(staleRefresh(old, "r-new")).toBe("r-old");
+  });
+
+  it("keeps a grant that Simkl handed back unchanged, and a first connect", () => {
+    expect(staleRefresh(old, "r-old")).toBeNull();
+    expect(staleRefresh(null, "r-new")).toBeNull();
   });
 });
