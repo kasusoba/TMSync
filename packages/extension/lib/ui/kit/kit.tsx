@@ -395,7 +395,7 @@ export function Switch({
 }
 
 /** 1–10 star scale, filled up to `value`. Presentational (no hover state). */
-export function Stars({ value }: { value: number | null }) {
+export function Stars({ value, label }: { value: number | null; label?: string }) {
   return (
     <span class="inline-flex items-center gap-px">
       {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
@@ -409,7 +409,7 @@ export function Stars({ value }: { value: number | null }) {
           ★
         </span>
       ))}
-      <span class="ml-1.5 text-[11px] opacity-70">{value ? `${value}/10` : "·"}</span>
+      <span class="ml-1.5 text-[11px] opacity-70">{label ?? (value ? `${value}/10` : "·")}</span>
     </span>
   );
 }

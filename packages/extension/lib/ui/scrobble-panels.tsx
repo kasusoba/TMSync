@@ -17,7 +17,15 @@ import {
 } from "@/messaging";
 import { type ParsedMedia, trackerItemUrl } from "@tmsync/shared";
 import clsx from "clsx";
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
+import {
+  type LoadedReview,
+  type StagedReview,
+  noteChanged,
+  planReview,
+  ratingChanged,
+  sharedReview,
+} from "../review-plan";
 import { Btn, Icon, IconBtn, type Tokens, TrackerMark } from "./kit/kit";
 
 /**
@@ -80,10 +88,13 @@ const stopKeys = {
 /** 1–10 star scale. Hover to preview, click to set, click your current value to clear. */
 export function Stars({
   value,
+  label,
   onChoose,
   t,
 }: {
   value: number | null;
+  /** Replaces the "8/10" readout (e.g. a pending removal, or differing ratings). */
+  label?: string;
   onChoose: (n: number) => void;
   t: Tokens;
 }) {
@@ -108,7 +119,7 @@ export function Stars({
         </button>
       ))}
       <span class={clsx("ml-1.5 min-w-[30px] text-[11px]", t.sub)}>
-        {value ? `${value}/10` : "·"}
+        {label ?? (value ? `${value}/10` : "·")}
       </span>
     </div>
   );
@@ -316,42 +327,79 @@ export function RateNote({
   const [rating, setRating] = useState<number | null>(null);
   const [note, setNote] = useState("");
   const [spoiler, setSpoiler] = useState(false);
-  const [hasNote, setHasNote] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  // Each selected tracker's own rating + note, at its own level. Loading them all
+  // (not just the first) is what lets the panel say "these differ" instead of
+  // showing one tracker's value and then writing it over the others on Save.
+  const [loaded, setLoaded] = useState<Partial<Record<Tracker, LoadedReview>>>({});
+  const [reloadKey, setReloadKey] = useState(0);
+  // Fields the user edited since the last load. A reload (targets changed, or
+  // after Save) reseeds only the untouched ones, so switching trackers keeps edits.
+  const edited = useRef({ rating: false, note: false });
 
-  // Seed the score + note from the primary target (first applicable, prefer a
-  // selected one) so editing shows what's already there.
-  const primary = targets[0] ?? applicable[0] ?? null;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: primary encodes tracker+level
+  // biome-ignore lint/correctness/useExhaustiveDependencies: targets + level encode each tracker's level
   useEffect(() => {
-    setMsg(null);
-    if (!primary) {
-      setRating(null);
-      setNote("");
-      setSpoiler(false);
-      setHasNote(false);
-      return;
-    }
-    void sendMessage("getReview", {
-      media,
-      trackers,
-      level: trackerLevel(primary),
-      tracker: primary,
-    }).then((r) => {
-      setRating(r.rating);
-      setNote(r.note?.text ?? "");
-      setSpoiler(r.note?.spoiler ?? false);
-      setHasNote(!!r.note);
+    let alive = true;
+    // Drop the old values first: until the new ones land, Save stays off, so it
+    // never diffs against another level's (or a stale) rating.
+    setLoaded({});
+    void Promise.all(
+      targets.map(async (tk) => {
+        const r = await sendMessage("getReview", {
+          media,
+          trackers,
+          level: trackerLevel(tk),
+          tracker: tk,
+        });
+        return [tk, { rating: r.rating, note: r.note }] as const;
+      }),
+    ).then((rows) => {
+      if (!alive) return;
+      const next = Object.fromEntries(rows) as Partial<Record<Tracker, LoadedReview>>;
+      setLoaded(next);
+      const shown = sharedReview(rows.map(([, l]) => l));
+      if (!edited.current.rating) {
+        setRating(shown.rating.kind === "same" ? shown.rating.value : null);
+      }
+      if (!edited.current.note) {
+        const n = shown.note.kind === "same" ? shown.note.value : null;
+        setNote(n?.text ?? "");
+        setSpoiler(n?.spoiler ?? false);
+      }
     });
-  }, [media, level, primary]);
+    return () => {
+      alive = false;
+    };
+  }, [media, level, targets.join(","), reloadKey]);
 
+  const loadedFor = targets.map((tk) => loaded[tk]).filter((l): l is LoadedReview => !!l);
+  const allLoaded = loadedFor.length === targets.length;
+  const shown = sharedReview(loadedFor);
   const spoilerApplies = targets.includes("trakt");
-  const canSubmit = targets.length > 0 && (rating !== null || note.trim().length > 0) && !busy;
+  const staged: StagedReview = { rating, note, spoiler };
+  const changed = {
+    rating: allLoaded && ratingChanged(shown.rating, rating),
+    note: allLoaded && noteChanged(shown.note, staged, spoilerApplies),
+  };
+  const hasNote = loadedFor.some((l) => l.note);
+  const canSubmit = targets.length > 0 && (changed.rating || changed.note) && !busy;
+
+  // The label beside the stars: a pending removal, or each tracker's own rating
+  // when they differ (the stars then show empty until the user picks one).
+  const ratingLabel =
+    changed.rating && rating === null
+      ? "Rating will be removed"
+      : shown.rating.kind === "mixed" && !changed.rating
+        ? "differs"
+        : undefined;
+  const ratingsDiffer = shown.rating.kind === "mixed" && !changed.rating;
+  const notesDiffer = shown.note.kind === "mixed" && !changed.note;
+  const joinNames = (tks: Tracker[]) => tks.map(trackerLabel).join(" and ");
 
   // Keep at least one destination selected: unchecking the ONLY selected tracker
   // leaves nothing to save to (Save would just disable), so the last remaining
-  // check is locked. Symmetric for Trakt and AniList — whichever ends up sole.
+  // check is locked. Symmetric for every tracker, whichever ends up sole.
   const isSoleTarget = (tk: Tracker) => targets.length === 1 && targets[0] === tk;
   const toggleTarget = (tk: Tracker) =>
     setSelected((prev) => {
@@ -364,51 +412,75 @@ export function RateNote({
       return next;
     });
 
-  // One Submit fans out the staged score + note to every selected tracker, at that
-  // tracker's level (Trakt = picked level; AniList = its cour). Spoiler is Trakt-only.
+  // Save sends only what changed, per tracker, at that tracker's level (Trakt = the
+  // picked level; a cour tracker = its cour). Spoiler is Trakt-only.
   const submit = async () => {
     if (!canSubmit) return;
     setBusy(true);
     setMsg(null);
     const fails: string[] = [];
+    const did = { saved: false, unrated: false, deleted: false };
     for (const tk of targets) {
-      const lv = trackerLevel(tk);
-      if (rating !== null) {
-        const r = await sendMessage("rateItem", {
-          media,
-          trackers,
-          level: lv,
-          rating,
-          tracker: tk,
-        });
-        if (!r.ok) fails.push(`${trackerLabel(tk)}: ${r.error ?? "rating failed"}`);
+      const current = loaded[tk];
+      if (!current) continue;
+      const ops = planReview(current, staged, changed, tk === "trakt");
+      const base = { media, trackers, level: trackerLevel(tk), tracker: tk };
+      const name = trackerLabel(tk);
+      if (ops.rate !== undefined) {
+        const r = await sendMessage("rateItem", { ...base, rating: ops.rate });
+        if (!r.ok) fails.push(`${name}: ${r.error ?? "rating failed"}`);
+        did.saved = true;
       }
-      if (note.trim()) {
-        const n = await sendMessage("saveNote", {
-          media,
-          trackers,
-          level: lv,
-          text: note,
-          spoiler: tk === "trakt" ? spoiler : false,
-          tracker: tk,
-        });
-        if (!n.ok) fails.push(`${trackerLabel(tk)}: ${n.error ?? "note failed"}`);
+      if (ops.unrate) {
+        const r = await sendMessage("unrateItem", base);
+        if (!r.ok) fails.push(`${name}: ${r.error ?? "removing the rating failed"}`);
+        did.unrated = true;
+      }
+      if (ops.saveNote) {
+        const n = await sendMessage("saveNote", { ...base, ...ops.saveNote });
+        if (!n.ok) fails.push(`${name}: ${n.error ?? "note failed"}`);
+        did.saved = true;
+      }
+      if (ops.deleteNote) {
+        const n = await sendMessage("deleteNote", base);
+        if (!n.ok) fails.push(`${name}: ${n.error ?? "deleting the note failed"}`);
+        did.deleted = true;
       }
     }
-    if (note.trim()) setHasNote(true);
-    setMsg(fails.length ? fails.join(" · ") : `Saved to ${targets.map(trackerLabel).join(" & ")}`);
+    const where = targets.map(trackerLabel).join(" & ");
+    setMsg(
+      fails.length
+        ? fails.join(" · ")
+        : did.saved
+          ? `Saved to ${where}`
+          : did.unrated
+            ? `Rating removed from ${where}`
+            : did.deleted
+              ? `Note deleted from ${where}`
+              : "Nothing to change",
+    );
+    edited.current = { rating: false, note: false };
+    setReloadKey((k) => k + 1);
     setBusy(false);
   };
 
   const removeNote = async () => {
     setBusy(true);
     setMsg(null);
+    const fails: string[] = [];
     for (const tk of targets) {
-      await sendMessage("deleteNote", { media, trackers, level: trackerLevel(tk), tracker: tk });
+      if (!loaded[tk]?.note) continue;
+      const n = await sendMessage("deleteNote", {
+        media,
+        trackers,
+        level: trackerLevel(tk),
+        tracker: tk,
+      });
+      if (!n.ok) fails.push(`${trackerLabel(tk)}: ${n.error ?? "deleting the note failed"}`);
     }
-    setNote("");
-    setHasNote(false);
-    setMsg("Deleted");
+    edited.current.note = false;
+    setMsg(fails.length ? fails.join(" · ") : "Deleted");
+    setReloadKey((k) => k + 1);
     setBusy(false);
   };
 
@@ -508,14 +580,37 @@ export function RateNote({
 
       <div class="mb-3">
         <span class={clsx("mb-1 block text-[11px]", t.faint)}>Your rating</span>
-        <Stars value={rating} onChoose={(n) => setRating(n === rating ? null : n)} t={t} />
+        <Stars
+          value={rating}
+          label={ratingLabel}
+          onChoose={(n) => {
+            edited.current.rating = true;
+            setRating(n === rating ? null : n);
+          }}
+          t={t}
+        />
+        {ratingsDiffer && (
+          <p class={clsx("mt-1 text-[10px]", t.faint)}>
+            {targets.map((tk) => `${trackerLabel(tk)} ${loaded[tk]?.rating ?? "none"}`).join(" · ")}
+            . Pick a rating to set it on all.
+          </p>
+        )}
       </div>
 
+      {notesDiffer && (
+        <p class={clsx("mb-1 text-[10px]", t.faint)}>
+          {joinNames(targets)} have different notes. Leave this empty to keep them, or type to
+          replace them.
+        </p>
+      )}
       <textarea
         {...stopKeys}
         rows={4}
         value={note}
-        onInput={(e) => setNote((e.target as HTMLTextAreaElement).value)}
+        onInput={(e) => {
+          edited.current.note = true;
+          setNote((e.target as HTMLTextAreaElement).value);
+        }}
         placeholder={notePlaceholder}
         class={clsx(
           "mb-2 w-full resize-none rounded-lg px-2.5 py-2 text-[12px] outline-none ring-inset focus:ring-2",
@@ -529,7 +624,10 @@ export function RateNote({
             type="checkbox"
             class="accent-trakt"
             checked={spoiler}
-            onChange={(e) => setSpoiler((e.target as HTMLInputElement).checked)}
+            onChange={(e) => {
+              edited.current.note = true;
+              setSpoiler((e.target as HTMLInputElement).checked);
+            }}
           />
           Mark as spoiler
           <span class={t.faint} title="Only applies to Trakt public comments">
