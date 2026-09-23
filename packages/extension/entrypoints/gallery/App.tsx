@@ -565,6 +565,12 @@ export function App() {
                 trackers={[
                   { tracker: "trakt", state: "ok", note: "added to history" },
                   { tracker: "anilist", state: "attention", note: "connect" },
+                  {
+                    tracker: "simkl",
+                    state: "attention",
+                    note: "failed",
+                    detail: "Simkl's daily request limit is used up",
+                  },
                 ]}
               />
               <BadgePill

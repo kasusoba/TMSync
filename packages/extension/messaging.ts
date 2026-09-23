@@ -42,6 +42,8 @@ export interface DerivedOutcome {
   completed?: boolean;
   /** Recorded nothing because this episode is already counted on the tracker. */
   info?: "already_watched";
+  /** The tracker's own error text (a rate limit, a numbering mismatch), for the badge. */
+  httpError?: string;
   /** Recorded after the reply (Simkl waiting out its scrobble lock). A
    * `scrobbleFollowUp` to the scrobbling frame brings the real outcome. */
   deferred?: boolean;
@@ -120,6 +122,9 @@ export interface TrackerOutcome {
   /** Short per-tracker note for the glyph tooltip + panel row, e.g. "added to
    * history", "saved", "connect", "numbering ✗". */
   note?: string;
+  /** The tracker's own error text behind an `attention` note (e.g. Simkl's daily
+   * limit), shown in the mark's tooltip. */
+  detail?: string;
 }
 
 export interface BadgeStatus {

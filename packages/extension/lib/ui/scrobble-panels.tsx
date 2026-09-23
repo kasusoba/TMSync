@@ -29,7 +29,7 @@ import {
   ratingChanged,
   sharedReview,
 } from "../review-plan";
-import { Btn, Icon, IconBtn, type Tokens, TrackerMark } from "./kit/kit";
+import { Btn, Icon, IconBtn, type Tokens, TrackerMark, outcomeTip } from "./kit/kit";
 
 /**
  * The interactive scrobble panels — rate/note, fix-match, manual pick, episode
@@ -246,7 +246,7 @@ export function TrackingRows({
               {outcome && (
                 <span
                   class="flex shrink-0 items-center gap-1"
-                  title={`${trackerLabel(tk)} · ${outcome.note ?? OUTCOME_GLYPH[outcome.state].label}`}
+                  title={outcomeTip(outcome, OUTCOME_GLYPH[outcome.state].label)}
                 >
                   {outcome.note && outcome.state !== "ok" && (
                     <span class={clsx("text-[10px]", t.faint)}>{outcome.note}</span>

@@ -26,6 +26,24 @@ describe("statusFromReply multi-track outcomes", () => {
     ]);
   });
 
+  it("keeps a derived tracker's own error text for its mark's tooltip", () => {
+    const limit = "Simkl's daily request limit is used up";
+    const reply: ScrobbleReply = {
+      ok: true,
+      resolved: true,
+      action: "scrobble",
+      primaryTracker: "trakt",
+      derived: [{ tracker: "simkl", ok: false, reason: "http", httpError: limit }],
+    };
+    const status = statusFromReply("stop", reply, anime, "trakt");
+    expect(status.trackers?.[1]).toEqual({
+      tracker: "simkl",
+      state: "attention",
+      note: "failed",
+      detail: limit,
+    });
+  });
+
   it("flags the failing tracker as attention and neutral-verbs the rest", () => {
     const reply: ScrobbleReply = {
       ok: true,

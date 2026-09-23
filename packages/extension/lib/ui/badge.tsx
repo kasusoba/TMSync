@@ -15,7 +15,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import type { ContentScriptContext } from "wxt/utils/content-script-context";
 import { createShadowRootUi } from "wxt/utils/content-script-ui/shadow-root";
 import { useKeyShield } from "./key-shield";
-import { Btn, Icon, IconBtn, TrackerMark, tokens } from "./kit/kit";
+import { Btn, Icon, IconBtn, TrackerMark, outcomeTip, tokens } from "./kit/kit";
 import {
   Correction,
   CourCorrection,
@@ -144,11 +144,7 @@ function TrackerMarks({ outcomes }: { outcomes: TrackerOutcome[] }) {
   return (
     <span class="inline-flex shrink-0 items-center gap-1.5">
       {outcomes.map((o) => (
-        <span
-          key={o.tracker}
-          class="relative inline-grid place-items-center"
-          title={`${trackerLabel(o.tracker)}${o.note ? ` · ${o.note}` : ""}`}
-        >
+        <span key={o.tracker} class="relative inline-grid place-items-center" title={outcomeTip(o)}>
           <TrackerMark tracker={o.tracker} class="size-4" />
           <span
             class={clsx(
