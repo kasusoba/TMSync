@@ -1,11 +1,17 @@
-import type { IdNamespace, ParsedMedia } from "@tmsync/shared";
-import { TRACKER_INFO, type TrackedItem, type Tracker, trackerFamily } from "../tracker/types";
+import type { ParsedMedia } from "@tmsync/shared";
+import {
+  type ExternalIds,
+  TRACKER_INFO,
+  type TrackedItem,
+  type Tracker,
+  trackerFamily,
+} from "../tracker/types";
 import type { Animap } from "./index";
 
 /** Exact ids of the derived tracker's entry, from the crosswalk or a user pin. The
  * background resolves by these directly (no title search, which could pick the
  * wrong cour). */
-export type TargetIds = Partial<Record<IdNamespace, number>>;
+export type TargetIds = ExternalIds;
 
 /**
  * The result of deriving a DERIVED tracker's media coordinates from a natively-
@@ -38,12 +44,13 @@ export function forwardKey(tmdbId: number, season: number | undefined): string {
 }
 
 /**
- * Transform a natively-resolved item into the DERIVED tracker's numbering via the
- * anime-map crosswalk. Pure. The crosswalk maps between numbering FAMILIES
- * (`TRACKER_INFO.family`), so the direction follows the target's family:
+ * Transform a natively-resolved item into the DERIVED tracker's numbering. Pure.
+ * Trackers are grouped by numbering FAMILY (`TRACKER_INFO.family`):
  *
- *  - target in `cour` (AniList):   forward, from the scraped `media.ids.tmdb`
- *  - target in `seasoned` (Trakt): reverse, from the cour-native item's own id
+ *  - same family as the native item: the numbering already matches, so only the
+ *    ids carry over (AniList ⇄ MAL are 1:1). No crosswalk.
+ *  - target in `cour` (AniList, MAL): forward crosswalk, from the scraped `media.ids.tmdb`
+ *  - target in `seasoned` (Trakt):    reverse crosswalk, from the cour-native item's id
  *
  * Handles series AND anime movies. A movie is a single-entry (1-episode) cour on
  * the cour side, so a non-anime movie simply misses the crosswalk and stays
@@ -58,9 +65,20 @@ export function deriveMedia(
   nativeItem: TrackedItem | null,
   animap: Animap,
 ): DeriveOutcome {
-  return trackerFamily(target) === "cour"
-    ? toCour(media, animap)
-    : toSeasoned(media, nativeItem, animap);
+  const family = trackerFamily(target);
+  if (nativeItem && trackerFamily(nativeItem.tracker) === family) {
+    return sameFamily(media, nativeItem);
+  }
+  return family === "cour" ? toCour(media, animap) : toSeasoned(media, nativeItem, animap);
+}
+
+/** Same numbering family: keep the media as is and pass every id the native item
+ * is known by, so the target resolves its own entry exactly. */
+function sameFamily(media: ParsedMedia, nativeItem: TrackedItem): DeriveOutcome {
+  const ids: TargetIds = "ids" in nativeItem ? { ...nativeItem.ids } : {};
+  const own = TRACKER_INFO[nativeItem.tracker].ownNamespace;
+  if (own) ids[own] = nativeItem.id;
+  return Object.keys(ids).length ? { kind: "resolved", media, ids } : { kind: "miss" };
 }
 
 /** Seasoned → cour (forward). Needs the scraped TMDB id. */

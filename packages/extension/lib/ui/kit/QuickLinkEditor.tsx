@@ -1,5 +1,5 @@
 import { defaultRecipeName } from "@/lib/picker/recipe-builder";
-import type { Tracker } from "@/lib/tracker/types";
+import type { QuickLinkTracker, Tracker } from "@/lib/tracker/types";
 import {
   ANILIST_PLACEHOLDERS,
   type LinkTemplates,
@@ -16,7 +16,7 @@ import { Btn, Icon, type Tokens } from "./kit";
 /** A saved quick link's editable shape (per-site "watch on" templates). */
 export interface QuickLinkValue extends LinkTemplates {
   name: string;
-  tracker: Tracker;
+  tracker: QuickLinkTracker;
 }
 
 /**
@@ -39,7 +39,7 @@ export function QuickLinkEditor({
   /** The site's existing quick link, if any (then we're editing, not creating). */
   initial?: QuickLinkValue | null;
   /** Best-guess templates from the current URL for a tracker (fills empty fields). */
-  derive?: (tracker: Tracker) => LinkTemplates;
+  derive?: (tracker: QuickLinkTracker) => LinkTemplates;
   busy?: boolean;
   onSave: (value: QuickLinkValue) => void;
   onRemove?: () => void;
@@ -49,7 +49,7 @@ export function QuickLinkEditor({
   // Default to the friendly capitalized hostname ("cineby.at" → "Cineby"), same as
   // a new recipe — not the raw host.
   const [name, setName] = useState(initial?.name ?? defaultRecipeName(host));
-  const [tracker, setTracker] = useState<Tracker>(initial?.tracker ?? "trakt");
+  const [tracker, setTracker] = useState<QuickLinkTracker>(initial?.tracker ?? "trakt");
   const [domain, setDomain] = useState(seed.host || linkHost(seed) || host);
   const [movie, setMovie] = useState(seed.movie ?? "");
   const [tv, setTv] = useState(seed.tv ?? "");
@@ -60,7 +60,7 @@ export function QuickLinkEditor({
 
   // Switching tracker fills the target tracker's EMPTY fields from a fresh guess
   // (so you get auto-fill per tracker) without clobbering anything you've typed.
-  const switchTracker = (tk: Tracker) => {
+  const switchTracker = (tk: QuickLinkTracker) => {
     setTracker(tk);
     if (editing) return;
     const d = derive?.(tk) ?? {};

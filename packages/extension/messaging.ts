@@ -321,7 +321,13 @@ export interface ProtocolMap {
   /** Confirm a rewatch of an already-COMPLETED AniList cour (the badge prompt).
    * Switches the entry to REPEATING and records this episode; on the final
    * episode it re-completes and bumps the repeat count. */
-  confirmRewatch(q: { media: ParsedMedia; tabId?: number }): {
+  confirmRewatch(q: {
+    media: ParsedMedia;
+    /** Which cour tracker asked (the one that answered `needs_rewatch`). Defaults
+     * to "anilist" for older callers. */
+    tracker?: Tracker;
+    tabId?: number;
+  }): {
     ok: boolean;
     error?: string;
     completed?: boolean;

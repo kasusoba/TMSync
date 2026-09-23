@@ -88,6 +88,7 @@ export function trackerItemUrl(
   opts?: { mediaType?: "movie" | "show"; season?: number; episode?: number },
 ): string {
   if (tracker === "anilist") return `https://anilist.co/anime/${id}`;
+  if (tracker === "mal") return `https://myanimelist.net/anime/${id}`;
   if (opts?.mediaType === "movie") return `https://trakt.tv/movies/${id}`;
   const base = `https://trakt.tv/shows/${id}`;
   return opts?.season !== undefined && opts?.episode !== undefined

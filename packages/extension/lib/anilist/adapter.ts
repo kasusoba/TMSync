@@ -14,9 +14,10 @@ import {
   resolve as anilistResolve,
   getListEntry,
   resolveById,
+  resolveByMalId,
   saveEntry,
 } from "./client";
-import type { AniListEntry } from "./types";
+import type { AniListEntry, AniListIdentity } from "./types";
 
 type AniListItem = Extract<TrackedItem, { tracker: "anilist" }>;
 
@@ -96,19 +97,16 @@ export const anilistAdapter: TrackerAdapter = {
 
   async resolve(media: ParsedMedia): Promise<TrackedItem | null> {
     const identity = await anilistResolve(media);
-    if (!identity) return null;
-    return {
-      tracker: "anilist",
-      mediaType: "show",
-      id: identity.id,
-      title: identity.title,
-      year: identity.year,
-      episodes: identity.episodes,
-    };
+    return identity ? toItem(identity) : null;
   },
 
-  resolveById(ids) {
-    return ids.anilist !== undefined ? resolveAniListById(ids.anilist) : Promise.resolve(null);
+  async resolveById(ids) {
+    if (ids.anilist !== undefined) return resolveAniListById(ids.anilist);
+    if (ids.mal !== undefined) {
+      const identity = await resolveByMalId(ids.mal);
+      return identity ? toItem(identity) : null;
+    }
+    return null;
   },
 
   async recordProgress(
@@ -143,6 +141,11 @@ export const anilistAdapter: TrackerAdapter = {
       rewatchConfirmed: false,
     });
     return applyPlan(item, plan);
+  },
+
+  confirmRewatch(item: TrackedItem, media: ParsedMedia): Promise<RecordResult> {
+    if (item.tracker !== "anilist") return Promise.resolve({ ok: false, reason: "unresolved" });
+    return confirmAniListRewatch(item, media);
   },
 
   ratingLevels(_media: ParsedMedia): RatingLevel[] {
@@ -183,7 +186,12 @@ export const anilistAdapter: TrackerAdapter = {
  */
 export async function resolveAniListById(anilistId: number): Promise<AniListItem | null> {
   const identity = await resolveById(anilistId);
-  if (!identity) return null;
+  return identity ? toItem(identity) : null;
+}
+
+/** An AniList identity as a seam item. Its MAL id rides along for same-family
+ * bridging (derive.ts). */
+function toItem(identity: AniListIdentity): AniListItem {
   return {
     tracker: "anilist",
     mediaType: "show",
@@ -191,6 +199,7 @@ export async function resolveAniListById(anilistId: number): Promise<AniListItem
     title: identity.title,
     year: identity.year,
     episodes: identity.episodes,
+    ...(identity.idMal !== undefined ? { ids: { mal: identity.idMal } } : {}),
   };
 }
 

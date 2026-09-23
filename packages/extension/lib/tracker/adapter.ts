@@ -1,5 +1,6 @@
 import type { IdNamespace, ParsedMedia } from "@tmsync/shared";
 import type {
+  ExternalIds,
   RatingLevel,
   RecordPhase,
   RecordResult,
@@ -35,12 +36,13 @@ export interface TrackerAdapter {
   resolve(media: ParsedMedia): Promise<TrackedItem | null>;
 
   /**
-   * Resolve an EXACT entry the crosswalk (or a user pin) already named, by id only.
-   * No correction lookup and no title fallback: a title search could pick another
-   * cour. Called only when `ids` holds one of `resolvableNamespaces`. Optional: a
-   * tracker without it is resolved from the derived media instead.
+   * Resolve an EXACT entry that derivation already named (crosswalk, user pin, or a
+   * same-family sibling), by id only. No correction lookup and no title fallback: a
+   * title search could pick another cour. The adapter uses whichever id it can
+   * (e.g. MAL from `mal`, or from `anilist` via AniList's `idMal`); null when none
+   * fits. Optional: a tracker without it is resolved from the derived media.
    */
-  resolveById?(ids: Partial<Record<IdNamespace, number>>): Promise<TrackedItem | null>;
+  resolveById?(ids: ExternalIds): Promise<TrackedItem | null>;
 
   /**
    * Record a progress phase for a resolved item.
@@ -57,6 +59,13 @@ export interface TrackerAdapter {
     /** 0–1; per-recipe "treat as finished here" point. */
     watchedThreshold: number,
   ): Promise<RecordResult>;
+
+  /**
+   * The user confirmed a rewatch of a completed entry (after `needs_rewatch`):
+   * write the rewatch transition for this episode. Only trackers that ask first
+   * (the cour family) implement it.
+   */
+  confirmRewatch?(item: TrackedItem, media: ParsedMedia): Promise<RecordResult>;
 
   /**
    * Which levels this tracker lets the user rate for the given media — empty if

@@ -41,6 +41,6 @@ export interface AniListIdentity {
   title: string;
   year?: number;
   episodes: number | null;
-  /** MAL id, if any — bridges to MAL-keyed data later; not used in v1. */
+  /** MAL id, if any. Bridges to the MAL tracker (the entries are 1:1). */
   idMal?: number;
 }

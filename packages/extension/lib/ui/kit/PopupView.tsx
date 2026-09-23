@@ -1,5 +1,5 @@
 import type { FrameNode } from "@/lib/diagnostics/frame-tree";
-import type { Tracker } from "@/lib/tracker/types";
+import type { QuickLinkTracker, Tracker } from "@/lib/tracker/types";
 import type { LinkTemplates } from "@tmsync/shared";
 import clsx from "clsx";
 import { useState } from "preact/hooks";
@@ -57,7 +57,7 @@ export interface PopupViewProps {
   /** The site's saved quick link, if any (then we're editing). */
   quickLinkInitial?: QuickLinkValue | null;
   /** Best-guess templates from the active tab URL for a tracker. */
-  quickLinkDerive?: (tracker: Tracker) => LinkTemplates;
+  quickLinkDerive?: (tracker: QuickLinkTracker) => LinkTemplates;
   onSaveQuickLink?: (value: QuickLinkValue) => void;
   onRemoveQuickLink?: () => void;
   // --- frame map (diagnostics) — rebuild the page's iframe tree in-extension ---

@@ -4,7 +4,8 @@ import { storage } from "wxt/utils/storage";
 import type { AniListIdentity, AniListTokens } from "./anilist/types";
 import type { AnimapOverrides } from "./animap/derive";
 import type { AnimapRow } from "./animap/index";
-import type { Tracker } from "./tracker/types";
+import type { MalIdentity, MalTokens } from "./mal/types";
+import type { QuickLinkTracker, Tracker } from "./tracker/types";
 import type { ResolvedIdentity, TraktIds, TraktTokens } from "./trakt/types";
 
 /**
@@ -51,6 +52,29 @@ export const anilistRatings = storage.defineItem<Record<number, number>>("local:
 
 /** Local mirror of the AniList private `MediaList.notes`, keyed by `Media` id. */
 export const anilistNotes = storage.defineItem<Record<number, string>>("local:anilist_notes", {
+  fallback: {},
+});
+
+// --- MyAnimeList (a cour-family tracker like AniList) ---
+
+/** MAL OAuth tokens. The access token expires; auth.ts refreshes it. */
+export const malTokens = storage.defineItem<MalTokens | null>("local:mal_tokens", {
+  fallback: null,
+});
+
+/** MAL resolution cache keyed by malCacheKey(media). */
+export const malResolutionCache = storage.defineItem<Record<string, MalIdentity>>(
+  "local:mal_resolution_cache",
+  { fallback: {} },
+);
+
+/** Local mirror of the user's MAL score (1 to 10), keyed by MAL anime id. */
+export const malRatings = storage.defineItem<Record<number, number>>("local:mal_ratings", {
+  fallback: {},
+});
+
+/** Local mirror of the MAL private `comments` note, keyed by MAL anime id. */
+export const malNotes = storage.defineItem<Record<number, string>>("local:mal_notes", {
   fallback: {},
 });
 
@@ -144,8 +168,9 @@ export interface QuickLinkSite extends LinkTemplates {
   name: string;
   enabled: boolean;
   /** Which tracker's pages this link injects on: trakt.tv (movies/TV) or
-   * anilist.co (anime). Defaults to "trakt" for back-compat (v1 links). */
-  tracker?: Tracker;
+   * anilist.co (anime). Defaults to "trakt" for back-compat (v1 links). Only the
+   * trackers with a quick-link content script can host links. */
+  tracker?: QuickLinkTracker;
   /** "library" = synced from the shared list (templates refresh on sync);
    * "user"/undefined = created or fully owned by the user. */
   source?: "library" | "user";

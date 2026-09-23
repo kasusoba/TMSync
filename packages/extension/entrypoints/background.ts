@@ -1,5 +1,5 @@
 import { ANIME_MAP, RECIPES } from "@/config";
-import { confirmAniListRewatch, resolveAniListById } from "@/lib/anilist/adapter";
+import { resolveAniListById } from "@/lib/anilist/adapter";
 import {
   connect as anilistConnect,
   disconnect as anilistDisconnect,
@@ -29,6 +29,7 @@ import {
 } from "@/lib/animap/derive";
 import type { Animap } from "@/lib/animap/index";
 import { loadAnimap, parseAnimeMap } from "@/lib/animap/load";
+import { malDeleteNote, malGetReview, malRate, malSaveNote, malUnrate } from "@/lib/mal/review";
 import { bundledLinks } from "@/lib/recipes";
 import { statusDotColor } from "@/lib/scrobble/action-badge";
 import { addedHosts } from "@/lib/sites";
@@ -152,6 +153,14 @@ const REVIEW: Record<Tracker, ReviewHandler> = {
     unrate: (m) => anilistUnrate(m),
     saveNote: (m, _level, text) => anilistSaveNote(m, text),
     deleteNote: (m) => anilistDeleteNote(m),
+  },
+  // MyAnimeList: the entry (cour) only, 1 to 10, private `comments` note.
+  mal: {
+    getReview: (m) => malGetReview(m),
+    rate: (m, _level, rating) => malRate(m, rating),
+    unrate: (m) => malUnrate(m),
+    saveNote: (m, _level, text) => malSaveNote(m, text),
+    deleteNote: (m) => malDeleteNote(m),
   },
 };
 
@@ -506,17 +515,20 @@ export default defineBackground(() => {
     return { ok: true };
   });
 
-  // The user confirmed a rewatch of a COMPLETED AniList cour → write REPEATING
-  // (or re-COMPLETED + repeat++ on the final episode) and update the badge.
+  // The user confirmed a rewatch of a completed cour entry → write the rewatch
+  // (or re-complete + bump the rewatch count on the final episode), update the badge.
   onMessage("confirmRewatch", async ({ data, sender }) => {
+    const tracker = data.tracker ?? "anilist";
+    const name = trackerLabel(tracker);
     try {
-      const item = await getAdapter("anilist").resolve(data.media);
-      if (!item || item.tracker !== "anilist") return { ok: false, error: "not found on AniList" };
-      const result = await confirmAniListRewatch(item, data.media);
+      const adapter = getAdapter(tracker);
+      const item = await adapter.resolve(data.media);
+      if (!item || !adapter.confirmRewatch) return { ok: false, error: `not found on ${name}` };
+      const result = await adapter.confirmRewatch(item, data.media);
       if (!result.ok) {
         return {
           ok: false,
-          error: result.reason === "not_connected" ? "Not connected to AniList" : result.httpError,
+          error: result.reason === "not_connected" ? `Not connected to ${name}` : result.httpError,
         };
       }
       // Reflect it on the badge (and gate the rating prompt on completion).
@@ -528,7 +540,7 @@ export default defineBackground(() => {
           {
             state: "scrobbled",
             title: `${item.title}${ep !== undefined ? ` E${ep}` : ""}`,
-            detail: result.completed ? "rewatch complete on AniList" : "rewatching on AniList",
+            detail: result.completed ? `rewatch complete on ${name}` : `rewatching on ${name}`,
             completed: result.completed,
           },
           { tabId, frameId: 0 },
@@ -783,7 +795,7 @@ async function recordScrobble(data: ScrobbleRequest): Promise<ScrobbleReply> {
         atEpisode: result.atEpisode,
         resolvedTitle: result.reason === "no_episode" ? undefined : nativeItem.title,
         resolvedYear: result.reason === "no_episode" ? undefined : nativeItem.year,
-        resolvedEpisodes: nativeItem.tracker === "anilist" ? nativeItem.episodes : undefined,
+        resolvedEpisodes: "episodes" in nativeItem ? nativeItem.episodes : undefined,
         httpError: result.httpError,
         primaryTracker: native,
       };
@@ -861,23 +873,15 @@ function needsCourBridge(native: Tracker, enabled: Tracker[]): boolean {
 }
 
 /**
- * Resolve a derived tracker's entry: by the crosswalk's exact ids when the adapter
- * supports that and one of its namespaces is present, else from the derived media.
+ * Resolve a derived tracker's entry: by the exact ids the derivation named (the
+ * adapter picks the namespace it can use), else from the derived media.
  */
 function resolveDerived(
   tk: Tracker,
   d: { media: ParsedMedia; ids?: TargetIds },
 ): Promise<TrackedItem | null> {
   const adapter = getAdapter(tk);
-  const ids = d.ids;
-  if (
-    ids &&
-    adapter.resolveById &&
-    adapter.resolvableNamespaces.some((ns) => ids[ns] !== undefined)
-  ) {
-    return adapter.resolveById(ids);
-  }
-  return adapter.resolve(d.media);
+  return d.ids && adapter.resolveById ? adapter.resolveById(d.ids) : adapter.resolve(d.media);
 }
 
 async function resolveAcross(
@@ -959,7 +963,11 @@ async function reviewTarget(
   const enabled = data.trackers?.length ? data.trackers : [tracker];
   const native = inferNativeTracker(data.media, enabled);
   if (tracker === native) return { review, media: data.media };
-  const nativeItem = needsCourBridge(native, [tracker])
+  // The native item bridges a reverse derive, and a same-family sibling (AniList ⇄
+  // MAL) takes its ids straight from it.
+  const bridges =
+    needsCourBridge(native, [tracker]) || trackerFamily(native) === trackerFamily(tracker);
+  const nativeItem = bridges
     ? await getAdapter(native)
         .resolve(data.media)
         .catch(() => null)
@@ -1018,7 +1026,7 @@ async function recordDerivedTrackers(
       completed: r.completed,
       resolvedTitle: item.title,
       resolvedYear: item.year,
-      resolvedEpisodes: item.tracker === "anilist" ? (item.episodes ?? undefined) : undefined,
+      resolvedEpisodes: "episodes" in item ? (item.episodes ?? undefined) : undefined,
     };
   };
 

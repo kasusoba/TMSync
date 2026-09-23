@@ -1,6 +1,6 @@
 /**
  * The tracker-adapter seam (CLAUDE.md → "Tracker adapters"). One interface, N
- * implementations (Trakt, AniList so far), picked per recipe by its tracker list.
+ * implementations (Trakt, AniList, MAL so far), picked per recipe by its tracker list.
  * The shared engine (extract/video/session/badge) stays tracker-agnostic; everything
  * tracker-specific lives behind `TrackerAdapter` + the metadata below.
  */
@@ -10,14 +10,14 @@ import type { IdNamespace } from "@tmsync/shared";
 /** The trackers — a growing list (multi-track, constraint #1). Add a member here,
  * then a `TRACKER_INFO` entry, an adapter (registered in `getAdapter`), a mark, and
  * a picker toggle. Nothing should switch on the string with an "else ⇒ trakt" default. */
-export type Tracker = "trakt" | "anilist";
+export type Tracker = "trakt" | "anilist" | "mal";
 
 /**
  * How a tracker numbers episodes. Trackers in one family share numbering, so moving
  * an item between them only changes the id. Moving it between families needs the
  * anime-map crosswalk (`lib/animap/`), which maps one family to the other.
  *  - `seasoned`: season + episode, keyed by TMDB/IMDB/TVDB ids (Trakt).
- *  - `cour`: one entry per cour, linear episodes, no seasons (AniList).
+ *  - `cour`: one entry per cour, linear episodes, no seasons (AniList, MAL).
  */
 export type NumberingFamily = "seasoned" | "cour";
 
@@ -41,7 +41,15 @@ export interface TrackerInfo {
 export const TRACKER_INFO: Record<Tracker, TrackerInfo> = {
   trakt: { label: "Trakt", family: "seasoned" },
   anilist: { label: "AniList", family: "cour", ownNamespace: "anilist" },
+  mal: { label: "MyAnimeList", family: "cour", ownNamespace: "mal" },
 };
+
+/** Trackers whose pages can host quick links (each has a quick-link content
+ * script). A subset of `Tracker`: a new tracker gets links only with its own script. */
+export type QuickLinkTracker = "trakt" | "anilist";
+
+/** The quick-link trackers, in display order (the quick-link editors' tabs). */
+export const QUICK_LINK_TRACKERS: QuickLinkTracker[] = ["trakt", "anilist"];
 
 /** All trackers in a stable order — for UI iteration (toggles, tabs) + registries. */
 export const ALL_TRACKERS = Object.keys(TRACKER_INFO) as Tracker[];
@@ -54,6 +62,11 @@ export const trackerFamily = (tracker: Tracker): NumberingFamily => TRACKER_INFO
 
 /** Whether a tracker's numbering is seasonless (the `cour` family). */
 export const isSeasonless = (tracker: Tracker): boolean => trackerFamily(tracker) === "cour";
+
+/** Ids of one entry in other trackers' namespaces. Inside a numbering family these
+ * bridge trackers without the crosswalk (an AniList entry's `mal` id is its MAL
+ * entry: the two are 1:1). */
+export type ExternalIds = Partial<Record<IdNamespace, number>>;
 
 /**
  * A resolved item on a specific tracker — the seam-level identity. A discriminated
@@ -79,6 +92,21 @@ export type TrackedItem =
       year?: number;
       /** Total episodes on the AniList entry; null when unknown/ongoing. */
       episodes: number | null;
+      /** Other ids the same entry is known by (AniList `idMal` ⇒ `mal`). */
+      ids?: ExternalIds;
+    }
+  | {
+      tracker: "mal";
+      /** Cour entries; anime movies route to Trakt, like AniList. */
+      mediaType: "show";
+      /** MAL anime id. */
+      id: number;
+      title: string;
+      year?: number;
+      /** Total episodes on the MAL entry; null when unknown/ongoing. */
+      episodes: number | null;
+      /** Other ids the same entry is known by. */
+      ids?: ExternalIds;
     };
 
 /** A progress phase from the content-side scrobble state machine. */

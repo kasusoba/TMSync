@@ -24,7 +24,7 @@ import {
   quickLinksEnabled,
   remoteRecipes,
 } from "@/lib/storage";
-import { type Tracker, trackerLabel } from "@/lib/tracker/types";
+import { type QuickLinkTracker, type Tracker, trackerLabel } from "@/lib/tracker/types";
 import type { ResolvedIdentity } from "@/lib/trakt/types";
 import { BadgeModeToggle } from "@/lib/ui/kit/PopupView";
 import { TrackerTab } from "@/lib/ui/kit/TrackerTab";
@@ -207,7 +207,7 @@ function QuickLinkRow({
 }) {
   const rowRef = useRef<HTMLDivElement>(null);
   const [name, setName] = useState(site.name);
-  const [tracker, setTracker] = useState<Tracker>(site.tracker ?? "trakt");
+  const [tracker, setTracker] = useState<QuickLinkTracker>(site.tracker ?? "trakt");
   const [domain, setDomain] = useState(site.host || linkHost(site));
   const [movie, setMovie] = useState(site.movie ?? "");
   const [tv, setTv] = useState(site.tv ?? "");

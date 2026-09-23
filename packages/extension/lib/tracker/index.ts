@@ -1,5 +1,6 @@
 import type { ParsedMedia } from "@tmsync/shared";
 import { anilistAdapter } from "../anilist/adapter";
+import { malAdapter } from "../mal/adapter";
 import { traktAdapter } from "../trakt/adapter";
 import type { TrackerAdapter } from "./adapter";
 import { ALL_TRACKERS, type Tracker, isSeasonless } from "./types";
@@ -29,6 +30,7 @@ export {
 const ADAPTERS: Record<Tracker, TrackerAdapter> = {
   trakt: traktAdapter,
   anilist: anilistAdapter,
+  mal: malAdapter,
 };
 
 /** The adapter for a tracker. */
