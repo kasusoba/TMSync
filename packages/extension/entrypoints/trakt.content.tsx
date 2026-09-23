@@ -1,5 +1,5 @@
 import { stampBuild } from "@/lib/diagnostics/build-stamp";
-import { quickLinks } from "@/lib/storage";
+import { quickLinks, quickLinksEnabled } from "@/lib/storage";
 import { type QuickLinkItem, mountQuickLinks } from "@/lib/ui/quicklinks";
 import { sendMessage } from "@/messaging";
 import { type TraktPageMedia, buildSiteLinks } from "@tmsync/shared";
@@ -16,6 +16,7 @@ export default defineContentScript({
   cssInjectionMode: "ui",
   async main(ctx) {
     stampBuild();
+    if (!(await quickLinksEnabled.getValue())) return; // quick links turned off in Options
 
     // Only Trakt-tracker quick links inject on Trakt pages (AniList ones show on
     // anilist.co — see anilist.content.tsx). Undefined tracker defaults to trakt.

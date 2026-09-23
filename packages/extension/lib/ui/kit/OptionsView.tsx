@@ -396,9 +396,15 @@ export function OptionsView({
                   t={t}
                   title="Quick links"
                   right={
-                    <Btn t={t} tone="ghost">
-                      <Icon name="plus" class="text-[12px]" /> Add blank
-                    </Btn>
+                    <div class="flex items-center gap-3">
+                      <span class={clsx("flex items-center gap-2 text-[12px]", t.sub)}>
+                        On
+                        <Switch on t={t} />
+                      </span>
+                      <Btn t={t} tone="ghost">
+                        <Icon name="plus" class="text-[12px]" /> Add blank
+                      </Btn>
+                    </div>
                   }
                 />
                 <p class={clsx("text-[12px]", t.sub)}>

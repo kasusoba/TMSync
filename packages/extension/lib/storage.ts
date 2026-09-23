@@ -155,6 +155,15 @@ export const quickLinks = storage.defineItem<QuickLinkSite[]>("sync:quick_links"
 });
 
 /**
+ * Master switch for quick links. Off = no "watch on" block on any tracker page,
+ * whatever the per-site toggles say. The per-site toggles keep their values, so
+ * turning it back on restores the user's set. A small user pref, so `sync`.
+ */
+export const quickLinksEnabled = storage.defineItem<boolean>("sync:quick_links_enabled", {
+  fallback: true,
+});
+
+/**
  * User corrections: scraped media key → the Trakt identity the user picked.
  * Authoritative over search results (so a wrong auto-match stays fixed).
  */
