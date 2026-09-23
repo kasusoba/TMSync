@@ -701,7 +701,13 @@ export function App() {
               note=""
               hasNote
               spoiler={false}
-              ratingState="differs"
+              differs={{
+                ratings: [
+                  ["trakt", 8],
+                  ["anilist", 6],
+                ],
+                notes: ["trakt", "anilist"],
+              }}
             />
           </Tile>
           <Tile label="Fix match · search" t={t}>

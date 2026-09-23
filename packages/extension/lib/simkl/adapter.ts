@@ -15,6 +15,7 @@ import {
   saveMatch,
   scrobble,
   scrobbleBody,
+  scrobbleLockWait,
 } from "./client";
 
 type SimklItem = Extract<TrackedItem, { tracker: "simkl" }>;
@@ -94,6 +95,9 @@ export const simklAdapter: TrackerAdapter = {
       }
     }
   },
+
+  // A stop inside the 20 s lock waits for it (see `scrobble`).
+  stopDelayMs: scrobbleLockWait,
 
   ratingLevels(media: ParsedMedia): RatingLevel[] {
     // The whole entry only: Simkl has no season or episode ratings.

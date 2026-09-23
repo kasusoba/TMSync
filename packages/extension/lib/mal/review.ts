@@ -1,11 +1,7 @@
 import type { ParsedMedia } from "@tmsync/shared";
+import { errorMessage } from "../errors";
 import { malNotes, malRatings } from "../storage";
-import {
-  MalNotConnectedError,
-  getMyListStatus,
-  resolve as malResolve,
-  updateListStatus,
-} from "./client";
+import { getMyListStatus, resolve as malResolve, updateListStatus } from "./client";
 
 /**
  * MyAnimeList rating + private note. MAL scores the entry (the cour) 1 to 10, the
@@ -14,13 +10,6 @@ import {
  * public text. Read from MAL itself, so a score or note set on the MAL site shows
  * (and can be removed) here. The local mirror is the fallback when MAL can't be read.
  */
-
-const errMsg = (e: unknown) =>
-  e instanceof MalNotConnectedError
-    ? "Not connected to MyAnimeList"
-    : e instanceof Error
-      ? e.message
-      : String(e);
 
 type Ok = { ok: boolean; error?: string };
 
@@ -38,7 +27,7 @@ async function withEntry(
     await mirror(identity.id);
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: errMsg(e) };
+    return { ok: false, error: errorMessage(e) };
   }
 }
 

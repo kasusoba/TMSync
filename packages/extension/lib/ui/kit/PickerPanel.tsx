@@ -125,6 +125,13 @@ const TRACKER_TOGGLES: {
   },
 ];
 
+/** The note under the tracker toggles when a cour tracker is on. */
+function courOnlyNote(cour: Tracker[]): string {
+  const names = cour.map(trackerLabel).join(" and ");
+  const verb = cour.length === 1 ? "tracks" : "track";
+  return `${names} ${verb} anime only · on a general site the crosswalk maps it (non-anime skipped, ambiguous numbering refused).`;
+}
+
 /** A compact on/off row: switch + label + a hover-info icon (native tooltip) —
  * keeps the picker uncramped instead of a paragraph under every toggle. */
 function ToggleRow({
@@ -322,9 +329,7 @@ export function PickerPanel(p: PickerPanelProps) {
             )}
             {p.trackers.some(isSeasonless) && (
               <p class={clsx("mt-1 text-[10px] leading-snug", t.faint)}>
-                {p.trackers.filter(isSeasonless).map(trackerLabel).join(" and ")} track anime only ·
-                on a general site it’s mapped via the crosswalk (non-anime skipped, ambiguous
-                numbering refused).
+                {courOnlyNote(p.trackers.filter(isSeasonless))}
               </p>
             )}
           </div>

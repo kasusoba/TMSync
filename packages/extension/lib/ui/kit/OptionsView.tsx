@@ -226,8 +226,8 @@ export function OptionsView({
               <>
                 <PaneHead t={t} title="Account" />
                 <p class={clsx("text-[12px]", t.sub)}>
-                  Independent trackers. Movies &amp; TV go to Trakt; anime can go to AniList and
-                  MyAnimeList too, all at once.
+                  Independent trackers. Movies &amp; TV go to Trakt and Simkl; anime can go to
+                  AniList, MyAnimeList, and Simkl too, all at once.
                 </p>
                 <div class={clsx("flex items-center gap-3 rounded-lg px-3 py-2.5", t.card)}>
                   <TraktMark />

@@ -1,6 +1,6 @@
 import "@/lib/ui/theme.css";
 import { type BadgePrefs, badgePrefs } from "@/lib/storage";
-import { type Tracker, isSeasonless, trackerLabel } from "@/lib/tracker/types";
+import { type CourTracker, type Tracker, isSeasonless, trackerLabel } from "@/lib/tracker/types";
 import {
   type BadgeState,
   type BadgeStatus,
@@ -19,7 +19,6 @@ import { Btn, Icon, IconBtn, TrackerMark, tokens } from "./kit/kit";
 import {
   Correction,
   CourCorrection,
-  type CourFixTracker,
   EpisodePick,
   ManualPick,
   RateNote,
@@ -172,7 +171,7 @@ function BadgeRoot() {
   const [panel, setPanel] = useState<
     null | "now" | "review" | "fix" | "cour-fix" | "manual" | "episode"
   >(null);
-  const [fixTracker, setFixTracker] = useState<CourFixTracker>("anilist");
+  const [fixTracker, setFixTracker] = useState<CourTracker>("anilist");
   const [media, setMedia] = useState<ParsedMedia | null>(null);
   const [tracker, setTracker] = useState<Tracker>("trakt");
   /** The item's enabled trackers (multi-track) — the rate/note composer fans out
@@ -426,7 +425,7 @@ function BadgeRoot() {
     setRewatchHidden(true); // background pushes the resulting status back
     void sendMessage("confirmRewatch", {
       media,
-      trackers: status.rewatchTrackers,
+      trackers: status.rewatchTrackers ?? [],
       enabled: activeTrackers,
     });
   };

@@ -148,7 +148,7 @@ tracker rates (`levels` or the whole `entry`) and what note it keeps (`public`, 
 
 | | **Trakt** (`lib/trakt/`) | **AniList** (`lib/anilist/`) | **MyAnimeList** (`lib/mal/`) | **Simkl** (`lib/simkl/`) |
 |---|---|---|---|---|
-| Progress | real-time scrobble `start`/`pause`/`stop` | none — one `SaveMediaListEntry` per episode at threshold | none, one `PATCH my_list_status` per episode at threshold | real-time scrobble, one call per 20 s |
+| Progress | real-time scrobble `start`/`pause`/`stop` | none, one `SaveMediaListEntry` per episode at threshold | none, one `PATCH my_list_status` per episode at threshold | real-time scrobble, one call per 20 s |
 | Watched decision | Trakt owns it (≥80% on stop) | *we* own it (crossing `watchedThreshold`) | *we* own it (same planner) | Simkl owns it (≥80% on stop) |
 | Auth | OAuth authorization-code, refresh-token rotation | OAuth authorization-code, ~1-year token, no refresh | authorization code + PKCE, no secret, refresh on 401 / near expiry | AUTH V2 code + PKCE (S256), no secret, 7-day token, refresh + revoke |
 | Identity | `/search` → trakt/imdb/tmdb ids | GraphQL `Media` search → AniList id | MAL id, AniList `idMal`, else MAL search | none: each write sends ids + title + year; the match is cached from the reply |

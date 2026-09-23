@@ -104,11 +104,12 @@ export function simklIds(media: ParsedMedia, simklId?: number): Record<string, s
  * The cache key for a page item. Per show season, not per show: Simkl files each
  * anime season as its own entry, so AoT S1 and S3 match different items. An
  * `anime` item (no season) keys on its cour id first: a TMDB show id names the
- * whole show, so it would give every cour one key. Pure.
+ * whole show, so it would give every cour one key. `perSeason: false` drops the
+ * season (the whole show, for what Simkl keeps per show). Pure.
  */
-export function simklKey(media: ParsedMedia): string {
+export function simklKey(media: ParsedMedia, perSeason = true): string {
   const kind = simklKind(media);
-  const season = kind === "show" ? `:s${media.season}` : "";
+  const season = kind === "show" && perSeason ? `:s${media.season}` : "";
   const order =
     kind === "anime"
       ? (["mal", "anilist", "tmdb", "imdb", "tvdb"] as const)
@@ -188,6 +189,11 @@ export function lockWait(lastAt: number, now: number): number {
   return Math.max(0, lastAt + SCROBBLE_LOCK_MS - now);
 }
 
+/** How long until a scrobble call may go out (0 = now). */
+export async function scrobbleLockWait(): Promise<number> {
+  return lockWait(await simklScrobbleAt.getValue(), Date.now());
+}
+
 /** Ping an extension API this often while waiting. A timer alone does not count
  * as activity, and the browser stops an idle service worker after about 30 s. */
 const KEEP_ALIVE_MS = 10_000;
@@ -210,6 +216,25 @@ async function waitAwake(ms: number): Promise<void> {
 }
 
 export type ScrobblePhase = "start" | "pause" | "stop";
+
+/**
+ * One scrobble call, stamped as the lock's start before it goes out (so a second
+ * caller sees the lock at once). A call that never reached Simkl (offline, or not
+ * connected) gives the stamp back, so it does not cost the next call 20 s.
+ */
+async function lockedPost(
+  phase: ScrobblePhase,
+  body: Record<string, unknown>,
+): Promise<SimklReply<SimklScrobbleResponse>> {
+  const before = await simklScrobbleAt.getValue();
+  await simklScrobbleAt.setValue(Date.now());
+  try {
+    return await simklPost<SimklScrobbleResponse>(`/scrobble/${phase}`, body);
+  } catch (e) {
+    await simklScrobbleAt.setValue(before);
+    throw e;
+  }
+}
 
 /** The outcome of one scrobble call. `skipped` = a start/pause inside the lock. */
 export type ScrobbleOutcome =
@@ -238,13 +263,11 @@ export async function scrobble(
     if (phase !== "stop") return { kind: "skipped" };
     await waitAwake(wait);
   }
-  await simklScrobbleAt.setValue(Date.now());
-  let res = await simklPost<SimklScrobbleResponse>(`/scrobble/${phase}`, body);
+  let res = await lockedPost(phase, body);
   if (res.status === 400 && res.error === "RATE_LIMIT") {
     if (phase !== "stop") return { kind: "skipped" };
     await waitAwake(SCROBBLE_LOCK_MS);
-    await simklScrobbleAt.setValue(Date.now());
-    res = await simklPost<SimklScrobbleResponse>(`/scrobble/${phase}`, body);
+    res = await lockedPost(phase, body);
   }
   // Re-stopping a finished item within an hour: the watch is already recorded.
   if (res.status === 409) return { kind: "already_recorded" };

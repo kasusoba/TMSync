@@ -130,7 +130,8 @@ export const simklMatches = storage.defineItem<Record<string, SimklMatch>>("loca
   fallback: {},
 });
 
-/** Local mirror of the user's Simkl rating (1 to 10), keyed by simklKey(media).
+/** Local mirror of the user's Simkl rating (1 to 10), keyed by the rated entry
+ * (`simkl:<id>`, else the page item without its season; see simkl/review.ts).
  * Reading one rating back from Simkl costs a whole-list call, so we don't. */
 export const simklRatings = storage.defineItem<Record<string, number>>("local:simkl_ratings", {
   fallback: {},

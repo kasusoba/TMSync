@@ -1,4 +1,5 @@
 import type { ParsedMedia } from "@tmsync/shared";
+import { errorMessage } from "../errors";
 import { notes, ratings, remoteRatings } from "../storage";
 import {
   commentItem,
@@ -19,7 +20,6 @@ import { buildRatingBody, reviewKey } from "./util";
  * ≥5-word comment. Ratings set on the Trakt website are synced back on read.
  */
 
-const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const wordCount = (s: string) => s.split(/\s+/).filter(Boolean).length;
 
 export async function traktGetReview(
@@ -76,7 +76,7 @@ export async function traktRate(
     await remoteRatings.setValue({}); // invalidate the sync cache
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: errMsg(e) };
+    return { ok: false, error: errorMessage(e) };
   }
 }
 
@@ -98,7 +98,7 @@ export async function traktUnrate(
     await remoteRatings.setValue({}); // invalidate the sync cache
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: errMsg(e) };
+    return { ok: false, error: errorMessage(e) };
   }
 }
 
@@ -132,7 +132,7 @@ export async function traktSaveNote(
     await notes.setValue(all);
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: errMsg(e) };
+    return { ok: false, error: errorMessage(e) };
   }
 }
 
@@ -153,6 +153,6 @@ export async function traktDeleteNote(
     await notes.setValue(all);
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: errMsg(e) };
+    return { ok: false, error: errorMessage(e) };
   }
 }

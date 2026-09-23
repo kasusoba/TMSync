@@ -256,8 +256,12 @@ rewatch prompt (shows on page load, tracker icons, confirms every asking tracker
 (`completed` + `is_rewatching`); the Firefox redirect URI (SHA-1 of the gecko id); the
 new MAL fix-match panel (native title pin, and a tmdb pin with Trakt + MAL on).
 
-**AniList fix-match, same shape:** `setAniListMatch` now also writes both keys (tmdb pin
-and title pin), so a fix works when AniList is native on a tmdb page (Trakt off).
+**Cour fix-match, one shape:** AniList and MAL share `searchCour` / `setCourMatch` /
+`resetCourMatch`, keyed by tracker. A set writes both keys (the tmdb pin and the title
+pin), so a fix works when the tracker is native on a tmdb page (Trakt off). The MAL title
+pin also wins when MAL follows AniList's entry through `idMal`, so the MAL row can always
+be fixed. An AniList title pin stores the AniList identity (with `idMal`), so MAL can
+follow a pinned entry.
 
 **Before pushing:** fold the `fixup!` commits
 (`GIT_SEQUENCE_EDITOR=: git rebase -i --autosquash main`), run lint, tsc, tests, build.
@@ -272,9 +276,15 @@ and title pin), so a fix works when AniList is native on a tmdb page (Trakt off)
   Simkl files each anime season separately). A Simkl id of 0 means "not matched yet".
 - The 20 s lock: the last call time is in storage (`simkl_scrobble_at`). A start or
   pause inside it is dropped; a stop waits (at most about 20 s, inside that one request)
-  and waits once more on `400 RATE_LIMIT`. `409` on stop counts as recorded.
+  and waits once more on `400 RATE_LIMIT`. `409` on stop counts as recorded. When Simkl
+  is derived, a stop that would wait is recorded after the scrobble reply
+  (`stopDelayMs` on the seam), so the badge shows the other trackers at once; a
+  `scrobbleFollowUp` to the scrobbling frame then updates Simkl's mark. A call that
+  never reached Simkl (offline) gives the lock back.
 - Rating: `/sync/ratings` (anime under `anime`, remove under `shows`), with a local
-  mirror, because reading one rating back costs a whole-list call. Simkl answers 201
+  mirror, because reading one rating back costs a whole-list call. The mirror is keyed
+  by the rated entry (`simkl:<id>`, else the page item without its season), since
+  Simkl rates a western show as a whole. Simkl answers 201
   even when it ignored an item, so `not_found` is checked. Rating an unlisted item makes
   Simkl add it to the user's list (Simkl's documented side effect).
 - `TRACKER_INFO` gains `rates` (`levels` / `entry`) and `note` (`public` / `private` /
@@ -291,4 +301,6 @@ on the Simkl app, exactly as the options page shows them.
 
 **Still to confirm live (owner):** Simkl connect (Chrome and Firefox), a scrobble of a
 movie, a seasoned show, and an anime page; Trakt + Simkl multi-track; a stop right after a
-start (the lock wait); rating and unrating.
+start (the lock wait, and the badge updating once Simkl records after it); rating and
+unrating. On Firefox, confirm the worker stays alive through the wait (`waitAwake` pings
+an extension API every 10 s; Chrome counts that as activity, Firefox is unverified).

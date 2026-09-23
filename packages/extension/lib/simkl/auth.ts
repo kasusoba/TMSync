@@ -1,5 +1,11 @@
 import { browser } from "wxt/browser";
-import { launchAuthFlow } from "../oauth";
+import {
+  TokenEndpointError,
+  base64url,
+  launchAuthFlow,
+  postTokenForm,
+  singleFlight,
+} from "../oauth";
 import { simklTokens } from "../storage";
 import { SIMKL } from "./config";
 import type { SimklTokens } from "./types";
@@ -13,22 +19,6 @@ const REFRESH_EARLY_SEC = 24 * 60 * 60;
 export function getRedirectUri(): string {
   return browser.identity.getRedirectURL();
 }
-
-/** The token endpoint answered with an error status. */
-class SimklTokenError extends Error {
-  constructor(
-    readonly status: number,
-    detail: string,
-  ) {
-    super(`Simkl token endpoint returned ${status}${detail ? `: ${detail}` : ""}`);
-  }
-}
-
-const base64url = (bytes: Uint8Array) =>
-  btoa(String.fromCharCode(...bytes))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
 
 /** A PKCE code verifier: 32 random bytes as base64url (43 characters), new per sign-in. */
 export function codeVerifier(): string {
@@ -64,21 +54,10 @@ export function readCallback(redirect: string, state: string): string {
 async function tokenRequest(
   params: Record<string, string>,
 ): Promise<{ tokens: Omit<SimklTokens, "refresh_token">; refresh?: string; scope?: string }> {
-  const res = await fetch(SIMKL.tokenUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
-    body: new URLSearchParams({ client_id: SIMKL.clientId, ...params }),
-  });
-  if (!res.ok) {
-    let detail = "";
-    try {
-      detail = (await res.text()).trim().slice(0, 160);
-    } catch {
-      // ignore unreadable body
-    }
-    throw new SimklTokenError(res.status, detail);
-  }
-  const data = (await res.json()) as {
+  const data = (await postTokenForm(SIMKL.tokenUrl, "Simkl", {
+    client_id: SIMKL.clientId,
+    ...params,
+  })) as {
     access_token?: string;
     refresh_token?: string;
     expires_in?: number;
@@ -143,8 +122,6 @@ export async function connect(): Promise<void> {
   if (old) await revoke(old.refresh_token);
 }
 
-let refreshing: Promise<SimklTokens | null> | null = null;
-
 /**
  * Get a new access token. A refresh kills the previous access token at once, so
  * concurrent callers share one in-flight refresh (never two refreshes of one
@@ -153,15 +130,7 @@ let refreshing: Promise<SimklTokens | null> | null = null;
  * so the UI asks to connect again. Anything else (a rate limit, a network or server
  * error) keeps it for a later try.
  */
-function refresh(tokens: SimklTokens): Promise<SimklTokens | null> {
-  // Only lives for the duration of one request: not session state (constraint #4).
-  refreshing ??= doRefresh(tokens).finally(() => {
-    refreshing = null;
-  });
-  return refreshing;
-}
-
-async function doRefresh(tokens: SimklTokens): Promise<SimklTokens | null> {
+const refresh = singleFlight(async (tokens: SimklTokens): Promise<SimklTokens | null> => {
   try {
     const out = await tokenRequest({
       grant_type: "refresh_token",
@@ -171,12 +140,10 @@ async function doRefresh(tokens: SimklTokens): Promise<SimklTokens | null> {
     await simklTokens.setValue(next);
     return next;
   } catch (e) {
-    if (e instanceof SimklTokenError && (e.status === 400 || e.status === 401)) {
-      await simklTokens.setValue(null);
-    }
+    if (e instanceof TokenEndpointError && e.grantGone) await simklTokens.setValue(null);
     return null;
   }
-}
+});
 
 /** A usable access token, refreshed first when it is close to expiry. Null when not
  * connected, or when a refresh failed. */

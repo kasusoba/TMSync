@@ -1,7 +1,9 @@
 import type { ParsedMedia } from "@tmsync/shared";
-import { type AniListSearchOption, resolveById as anilistResolveById } from "../anilist/client";
+import { resolveById as anilistResolveById } from "../anilist/client";
+import { errorDetail } from "../oauth";
 import { malCorrections, malEntryCache, malMissCache, malResolutionCache } from "../storage";
 import type { CourEntry, CourStatus } from "../tracker/cour-plan";
+import type { CourSearchOption } from "../tracker/types";
 import { getValidAccessToken, refreshAfterReject } from "./auth";
 import { MAL } from "./config";
 import type { MalAnimeNode, MalIdentity, MalListStatus } from "./types";
@@ -68,12 +70,7 @@ async function malFetch<T>(
   if (res.status === 403) throw new MalRateLimitError();
   if (res.status === 404) return null;
   if (!res.ok) {
-    let detail = "";
-    try {
-      detail = (await res.text()).trim().slice(0, 160);
-    } catch {
-      // ignore unreadable body
-    }
+    const detail = await errorDetail(res);
     throw new Error(`MyAnimeList ${res.status}${detail ? `: ${detail}` : ""}`);
   }
   return (await res.json()) as T;
@@ -153,14 +150,11 @@ async function searchAnime(title: string): Promise<MalAnimeNode[]> {
   return (data?.data ?? []).map((d) => d.node);
 }
 
-/** A search result for the correction picker, in the AniList picker's shape. */
-export type MalSearchOption = AniListSearchOption;
-
 /**
  * Free-text MAL search for the correction picker (public read). Movies stay in: the
  * user picks, and a wrong pick is theirs to see. Returns [] for a blank query.
  */
-export async function searchMal(query: string): Promise<MalSearchOption[]> {
+export async function searchMal(query: string): Promise<CourSearchOption[]> {
   if (!query.trim()) return [];
   return (await searchAnime(query)).map((n) => {
     const id = nodeToIdentity(n);
@@ -183,8 +177,8 @@ export async function searchMal(query: string): Promise<MalSearchOption[]> {
 export async function resolve(media: ParsedMedia): Promise<MalIdentity | null> {
   const key = malCacheKey(media);
   // A user title-match correction is authoritative. `null` = "not on MyAnimeList".
-  const corr = await malCorrections.getValue();
-  if (key in corr) return corr[key] ?? null;
+  const pin = await correctionFor(media);
+  if (pin) return pin.identity;
 
   const cache = await malResolutionCache.getValue();
   const cached = cache[key];
@@ -212,8 +206,22 @@ export async function resolve(media: ParsedMedia): Promise<MalIdentity | null> {
     await malMissCache.setValue({ ...(await malMissCache.getValue()), [key]: Date.now() });
     return null;
   }
-  await malResolutionCache.setValue({ ...cache, [key]: identity });
+  // Re-read: the search above awaited, and another resolve may have written.
+  await malResolutionCache.setValue({ ...(await malResolutionCache.getValue()), [key]: identity });
   return identity;
+}
+
+/**
+ * The user's MAL pin for this media, if any: `identity` null = "not on
+ * MyAnimeList". It wins over every automatic match, including an id that another
+ * tracker's entry bridges to (MAL following AniList through `idMal`).
+ */
+export async function correctionFor(
+  media: ParsedMedia,
+): Promise<{ identity: MalIdentity | null } | undefined> {
+  const corr = await malCorrections.getValue();
+  const key = malCacheKey(media);
+  return key in corr ? { identity: corr[key] ?? null } : undefined;
 }
 
 /** The MAL entry for a known AniList id, via AniList's `idMal`. */
