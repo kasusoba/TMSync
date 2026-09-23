@@ -1,6 +1,6 @@
 /**
  * The tracker-adapter seam (CLAUDE.md → "Tracker adapters"). One interface, N
- * implementations (Trakt, AniList, MAL so far), picked per recipe by its tracker list.
+ * implementations (Trakt, AniList, MAL, Simkl so far), picked per recipe by its tracker list.
  * The shared engine (extract/video/session/badge) stays tracker-agnostic; everything
  * tracker-specific lives behind `TrackerAdapter` + the metadata below.
  */
@@ -11,7 +11,7 @@ import type { CourEntry } from "./cour-plan";
 /** The trackers — a growing list (multi-track, constraint #1). Add a member here,
  * then a `TRACKER_INFO` entry, an adapter (registered in `getAdapter`), a mark, and
  * a picker toggle. Nothing should switch on the string with an "else ⇒ trakt" default. */
-export type Tracker = "trakt" | "anilist" | "mal";
+export type Tracker = "trakt" | "anilist" | "mal" | "simkl";
 
 /**
  * How a tracker numbers episodes. Trackers in one family share numbering, so moving
@@ -19,8 +19,19 @@ export type Tracker = "trakt" | "anilist" | "mal";
  * anime-map crosswalk (`lib/animap/`), which maps one family to the other.
  *  - `seasoned`: season + episode, keyed by TMDB/IMDB/TVDB ids (Trakt).
  *  - `cour`: one entry per cour, linear episodes, no seasons (AniList, MAL).
+ *  - `any`: takes either numbering and maps it server-side (Simkl). It gets the
+ *    page's own numbering and ids as they are, never the crosswalk, and is native
+ *    only when it is the only enabled tracker.
  */
-export type NumberingFamily = "seasoned" | "cour";
+export type NumberingFamily = "seasoned" | "cour" | "any";
+
+/** What a tracker rates: `levels` = movie / show / season / episode (Trakt);
+ * `entry` = only the whole entry (AniList, MAL: the cour; Simkl: the show or movie). */
+export type RatingScope = "levels" | "entry";
+
+/** The note a tracker keeps: a `public` comment (Trakt), a `private` note (AniList,
+ * MAL), or `none` (Simkl). */
+export type NoteKind = "public" | "private" | "none";
 
 /**
  * Static per-tracker metadata, the SINGLE source for a tracker's display name and
@@ -37,12 +48,31 @@ export interface TrackerInfo {
   /** The id namespace of the tracker's OWN ids, when that namespace is one the
    * crosswalk knows (AniList ids are `anilist`). Trakt ids are not a namespace. */
   ownNamespace?: IdNamespace;
+  /** What the rating panel can rate on this tracker. */
+  rates: RatingScope;
+  /** What kind of note the rating panel can write to this tracker. */
+  note: NoteKind;
 }
 
+// Order matters: `ALL_TRACKERS` follows it, and native inference takes the first
+// match. Simkl stays last (it is native only when it stands alone anyway).
 export const TRACKER_INFO: Record<Tracker, TrackerInfo> = {
-  trakt: { label: "Trakt", family: "seasoned" },
-  anilist: { label: "AniList", family: "cour", ownNamespace: "anilist" },
-  mal: { label: "MyAnimeList", family: "cour", ownNamespace: "mal" },
+  trakt: { label: "Trakt", family: "seasoned", rates: "levels", note: "public" },
+  anilist: {
+    label: "AniList",
+    family: "cour",
+    ownNamespace: "anilist",
+    rates: "entry",
+    note: "private",
+  },
+  mal: {
+    label: "MyAnimeList",
+    family: "cour",
+    ownNamespace: "mal",
+    rates: "entry",
+    note: "private",
+  },
+  simkl: { label: "Simkl", family: "any", rates: "entry", note: "none" },
 };
 
 /** Trackers whose pages can host quick links (each has a quick-link content
@@ -63,6 +93,15 @@ export const trackerFamily = (tracker: Tracker): NumberingFamily => TRACKER_INFO
 
 /** Whether a tracker's numbering is seasonless (the `cour` family). */
 export const isSeasonless = (tracker: Tracker): boolean => trackerFamily(tracker) === "cour";
+
+/** Whether a tracker takes the page's numbering as is (the `any` family). */
+export const isPassthrough = (tracker: Tracker): boolean => trackerFamily(tracker) === "any";
+
+/** The note a tracker keeps (`none` = the rating panel sends it no note). */
+export const trackerNote = (tracker: Tracker): NoteKind => TRACKER_INFO[tracker].note;
+
+/** Whether a tracker rates at every level (Trakt) or only the whole entry. */
+export const trackerRates = (tracker: Tracker): RatingScope => TRACKER_INFO[tracker].rates;
 
 /** Ids of one entry in other trackers' namespaces. Inside a numbering family these
  * bridge trackers without the crosswalk (an AniList entry's `mal` id is its MAL
@@ -108,6 +147,17 @@ export type TrackedItem =
       episodes: number | null;
       /** Other ids the same entry is known by. */
       ids?: ExternalIds;
+    }
+  | {
+      tracker: "simkl";
+      mediaType: "movie" | "show";
+      /** Simkl id, or 0 until Simkl has matched the item. Simkl matches on every
+       * write from the page's ids + title + year, so we never search first. */
+      id: number;
+      title: string;
+      year?: number;
+      /** The item's Simkl page, once a write has told us its id and section. */
+      url?: string;
     };
 
 /** A progress phase from the content-side scrobble state machine. */

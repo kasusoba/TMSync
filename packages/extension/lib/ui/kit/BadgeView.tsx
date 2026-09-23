@@ -1,4 +1,4 @@
-import { type Tracker, isSeasonless, trackerLabel } from "@/lib/tracker/types";
+import { type Tracker, trackerLabel, trackerRates } from "@/lib/tracker/types";
 import type { TrackerOutcome } from "@/messaging";
 import clsx from "clsx";
 import { Btn, Icon, IconBtn, Stars, TrackerMark, type Variant, tokens } from "./kit";
@@ -247,7 +247,7 @@ export function RateNotePanel({
           <span class={clsx("mb-1 block text-[11px]", t.faint)}>Send to</span>
           <div class="flex flex-wrap gap-1.5">
             {trackers.map((tk) => {
-              const canSend = !isSeasonless(tk) || courApplies;
+              const canSend = trackerRates(tk) === "levels" || courApplies;
               return (
                 <span
                   key={tk}

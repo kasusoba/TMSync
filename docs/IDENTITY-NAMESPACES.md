@@ -67,11 +67,16 @@ strongest first:
 | Trakt | `["tmdb", "imdb", "tvdb"]` |
 | AniList | `["anilist", "mal"]` |
 | MyAnimeList | `["mal"]` |
+| Simkl | `["tmdb", "imdb", "tvdb", "mal", "anilist"]` |
 
 AniList and MAL both speak `mal`. With both enabled, the first match in tracker order
 (AniList) is native, and MAL derives inside the cour family by id (no crosswalk). With
 AniList off, MAL is native for a `mal` id and reaches an `anilist` id through AniList's
 `idMal` (`resolveById`).
+
+Simkl speaks every namespace but is never the native anchor while another tracker is on
+(`inferNativeTracker` skips `any`-family trackers unless one stands alone). It gets the
+page's ids plus the native item's ids, and Simkl matches them server-side.
 
 Adding a tracker = a new adapter + its `resolvableNamespaces` (+ maybe an animap entry).
 The shared engine never learns a new namespace by hand.

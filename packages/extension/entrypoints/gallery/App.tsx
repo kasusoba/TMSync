@@ -509,6 +509,23 @@ export function App() {
               preview={{ ok: true, text: "show: Frieren E3 → AniList + MyAnimeList + Trakt" }}
             />
           </Tile>
+          <Tile label="Multi-track: general site → Trakt + Simkl" t={t}>
+            <PickerPanel
+              variant={variant}
+              mode="setup"
+              name="cineby.app"
+              fields={[
+                { key: "title", label: "Title", value: "Severance", source: "meta" },
+                { key: "season", label: "Season", value: "2", source: "url" },
+                { key: "episode", label: "Episode", value: "4", source: "url" },
+                { key: "tmdbId", label: "TMDB id", value: "95396", source: "url" },
+              ]}
+              mediaType="show"
+              trackers={["trakt", "simkl"]}
+              iframe
+              preview={{ ok: true, text: "show: Severance S2E4 → Trakt + Simkl" }}
+            />
+          </Tile>
         </Group>
 
         {/* BADGE */}
@@ -559,6 +576,16 @@ export function App() {
                   { tracker: "anilist", state: "ok", note: "saved" },
                   { tracker: "mal", state: "ok", note: "saved" },
                   { tracker: "trakt", state: "ok", note: "added to history" },
+                ]}
+              />
+              <BadgePill
+                variant={variant}
+                state="scrobbled"
+                detail="recorded"
+                title="Severance S2E4"
+                trackers={[
+                  { tracker: "trakt", state: "ok", note: "added to history" },
+                  { tracker: "simkl", state: "ok", note: "added to history" },
                 ]}
               />
             </div>
@@ -633,6 +660,18 @@ export function App() {
               isShow
               level="episode"
               trackers={["trakt", "anilist", "mal"]}
+              value={null}
+              note=""
+              hasNote={false}
+              spoiler={false}
+            />
+          </Tile>
+          <Tile label="Rate & note · episode level (Simkl rates the whole show)" t={t}>
+            <RateNotePanel
+              variant={variant}
+              isShow
+              level="episode"
+              trackers={["trakt", "simkl"]}
               value={null}
               note=""
               hasNote={false}

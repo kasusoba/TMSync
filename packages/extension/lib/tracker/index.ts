@@ -1,9 +1,10 @@
 import type { ParsedMedia } from "@tmsync/shared";
 import { anilistAdapter } from "../anilist/adapter";
 import { malAdapter } from "../mal/adapter";
+import { simklAdapter } from "../simkl/adapter";
 import { traktAdapter } from "../trakt/adapter";
 import type { TrackerAdapter } from "./adapter";
-import { ALL_TRACKERS, type Tracker, isSeasonless } from "./types";
+import { ALL_TRACKERS, type Tracker, isPassthrough, isSeasonless } from "./types";
 
 export type { TrackerAdapter } from "./adapter";
 export type {
@@ -17,6 +18,7 @@ export type {
 export {
   ALL_TRACKERS,
   TRACKER_INFO,
+  isPassthrough,
   isSeasonless,
   trackerFamily,
   trackerLabel,
@@ -31,6 +33,7 @@ const ADAPTERS: Record<Tracker, TrackerAdapter> = {
   trakt: traktAdapter,
   anilist: anilistAdapter,
   mal: malAdapter,
+  simkl: simklAdapter,
 };
 
 /** The adapter for a tracker. */
@@ -39,15 +42,15 @@ export function getAdapter(tracker: Tracker): TrackerAdapter {
 }
 
 /**
- * The tracker an item actually routes to, decided by TYPE (constraint #1):
- * movies — anime or not — always go to Trakt, even on an `anilist` (anime) site,
- * which has no movie scrobble path. Series follow the recipe's tracker. This lets
- * one `mediaType: "auto"` recipe on a mixed anime site (where movie & series pages
- * are indistinguishable by URL/DOM) send series → AniList and movies → Trakt,
- * keyed off whether an episode was scraped.
+ * The tracker an item actually routes to, decided by TYPE (constraint #1). A cour
+ * tracker (AniList, MAL) records series only, so a movie on a cour site goes to
+ * Trakt. This lets one `mediaType: "auto"` recipe on a mixed anime site (where
+ * movie and series pages look the same by URL/DOM) send series to the cour tracker
+ * and movies to Trakt, keyed off whether an episode was scraped. A tracker that
+ * takes movies (Trakt, Simkl) keeps them.
  */
 export function routeTracker(tracker: Tracker, mediaType: ParsedMedia["mediaType"]): Tracker {
-  return mediaType === "movie" ? "trakt" : tracker;
+  return mediaType === "movie" && isSeasonless(tracker) ? "trakt" : tracker;
 }
 
 /**
@@ -67,7 +70,11 @@ export function routeTracker(tracker: Tracker, mediaType: ParsedMedia["mediaType
  * resolve. Omit `enabled` for a pure field-based answer (e.g. tests, pre-resolve).
  */
 export function inferNativeTracker(media: ParsedMedia, enabled?: Tracker[]): Tracker {
-  const candidates = ALL_TRACKERS.filter((tk) => !enabled || enabled.includes(tk));
+  const allowed = ALL_TRACKERS.filter((tk) => !enabled || enabled.includes(tk));
+  // A passthrough tracker (Simkl) takes whatever numbering the page has, so it is
+  // never the anchor others derive from. It is native only when it stands alone.
+  const anchors = allowed.filter((tk) => !isPassthrough(tk));
+  const candidates = anchors.length ? anchors : allowed;
   const speaks = (tk: Tracker) =>
     getAdapter(tk).resolvableNamespaces.some((ns) => media.ids?.[ns] !== undefined);
   // 1) A tracker whose id namespace the page carries speaks it natively (exact) —

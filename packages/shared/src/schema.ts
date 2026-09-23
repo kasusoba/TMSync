@@ -34,6 +34,14 @@ export const Transform = z.enum([
 export type Transform = z.infer<typeof Transform>;
 
 /**
+ * Every tracker this build can write to: the growing list behind the adapter seam
+ * (CLAUDE.md constraint #1). Recipes name theirs in `trackers` (and a
+ * single-tracker recipe in the legacy `tracker`). Quick-link hosts are a separate,
+ * smaller list: a tracker hosts links only once it has a quick-link content script.
+ */
+export const TrackerId = z.enum(["trakt", "anilist", "mal", "simkl"]);
+
+/**
  * An external id catalog a page can key into — the site's SOURCE identity, NOT a
  * destination tracker (those are `tracker`/`trackers`). Open by design: it grows
  * when a new adapter needs a namespace, exactly like the tracker list. Each tracker
@@ -41,14 +49,6 @@ export type Transform = z.infer<typeof Transform>;
  * anything else is reached via the anime-map crosswalk (derived) or a title search.
  * `imdb` ids are strings ("tt1375666"); the rest are numeric.
  */
-/**
- * Every tracker this build can write to: the growing list behind the adapter seam
- * (CLAUDE.md constraint #1). Recipes name theirs in `trackers` (and a
- * single-tracker recipe in the legacy `tracker`). Quick-link hosts are a separate,
- * smaller list: a tracker hosts links only once it has a quick-link content script.
- */
-export const TrackerId = z.enum(["trakt", "anilist", "mal"]);
-
 export const IdNamespace = z.enum(["tmdb", "imdb", "tvdb", "anilist", "mal"]);
 export type IdNamespace = z.infer<typeof IdNamespace>;
 

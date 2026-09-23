@@ -60,7 +60,7 @@ describe("multi-track: recipe.trackers (additive) + recipeTrackers()", () => {
         name: "Bad",
         match: { urlPattern: ".*" },
         extract: { title: { source: "title" } },
-        trackers: ["trakt", "simkl"],
+        trackers: ["trakt", "kitsu"],
       }).success,
     ).toBe(false);
   });

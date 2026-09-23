@@ -10,12 +10,13 @@ import type {
 } from "./types";
 
 /**
- * One seam, one implementation per tracker (Trakt, AniList). Adding a tracker must
- * not touch the others' paths: all satisfy this interface and the background routes
- * to them by the recipe's tracker list. The two progress paradigms are genuinely different (Trakt
- * = real-time scrobble owning the watched decision; AniList = one threshold write
- * we decide) so `recordProgress` is phase-based and each adapter interprets the
- * phases as its API needs (see CLAUDE.md "Tracker adapters").
+ * One seam, one implementation per tracker (Trakt, AniList, MAL, Simkl). Adding a
+ * tracker must not touch the others' paths: all satisfy this interface and the
+ * background routes to them by the recipe's tracker list. The two progress
+ * paradigms are genuinely different (scrobble: Trakt and Simkl send start/pause/stop
+ * and the tracker owns the watched decision; cour list: AniList and MAL write once
+ * at a threshold we decide), so `recordProgress` is phase-based and each adapter
+ * interprets the phases as its API needs (see CLAUDE.md "Tracker adapters").
  */
 export interface TrackerAdapter {
   readonly tracker: Tracker;
@@ -46,9 +47,10 @@ export interface TrackerAdapter {
 
   /**
    * Record a progress phase for a resolved item.
-   *  - Trakt: real-time scrobble start/pause/stop; Trakt owns the ≥80% decision.
-   *  - AniList: no scrobble API — start/pause are no-ops; a `stop` at/after
-   *    `watchedThreshold` writes `SaveMediaListEntry` once (idempotent).
+   *  - Trakt, Simkl: real-time scrobble start/pause/stop; the tracker owns the
+   *    80% decision (Simkl allows one call per 20 s, so it may drop a start/pause).
+   *  - AniList, MAL: no scrobble API. Start/pause only read the entry; a `stop`
+   *    at/after `watchedThreshold` writes the list entry once (idempotent).
    */
   recordProgress(
     item: TrackedItem,

@@ -463,6 +463,7 @@ function BadgeRoot() {
             outcomes={status.trackers}
             onFix={(tk) => {
               if (tk === "trakt") return setPanel(manualMode ? "manual" : "fix");
+              if (tk === "simkl") return; // Simkl matches server-side: nothing to fix
               setFixTracker(tk);
               setPanel("cour-fix");
             }}
