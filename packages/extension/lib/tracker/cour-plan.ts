@@ -1,18 +1,33 @@
-import type { RecordPhase } from "../tracker/types";
-import type { AniListEntry, MediaListStatus } from "./types";
+import type { RecordPhase } from "./types";
 
 /**
- * The decision for an AniList progress event, computed purely (no I/O) so it can
- * be unit-tested. Unlike Trakt, AniList tracks a per-cour *status* (CURRENT /
- * COMPLETED / REPEATING) plus a progress count and a rewatch count — so we read
- * the viewer's current entry and compute the right transition, never lowering
- * remote progress.
+ * List status of a cour-family entry, in AniList's vocabulary (MAL maps onto it:
+ * watching = CURRENT, completed = COMPLETED, completed + is_rewatching = REPEATING,
+ * on_hold = PAUSED, dropped = DROPPED, plan_to_watch = PLANNING). We READ all of
+ * them to decide transitions but only ever WRITE CURRENT / COMPLETED / REPEATING.
+ */
+export type CourStatus = "CURRENT" | "PLANNING" | "COMPLETED" | "DROPPED" | "PAUSED" | "REPEATING";
+
+/** The viewer's existing list entry (null when not on their list). */
+export interface CourEntry {
+  status: CourStatus | null;
+  progress: number;
+  /** Completed rewatches (AniList `repeat`, MAL `num_times_rewatched`). */
+  repeat: number;
+}
+
+/**
+ * The decision for a cour-family progress event (AniList, MAL), computed purely
+ * (no I/O) so it can be unit-tested. Unlike Trakt, these trackers keep a per-cour
+ * *status* (CURRENT / COMPLETED / REPEATING) plus a progress count and a rewatch
+ * count, so we read the viewer's current entry and compute the right transition,
+ * never lowering remote progress. Each adapter maps the plan onto its own API.
  *
  * Rewatch rule (per the user): a COMPLETED cour is **never silently mutated**.
  * Watching any episode of it yields `needs_rewatch` (a prompt) and writes nothing
  * until the user confirms; only then do we switch to REPEATING and track again.
  */
-export type AniListPlan =
+export type CourPlan =
   | { kind: "noop" } // start/pause, or stop below threshold — nothing to say yet
   | { kind: "already_watched"; episode: number; progress: number } // ep ≤ remote progress
   | { kind: "no_episode" } // a show with no scraped episode number
@@ -21,13 +36,13 @@ export type AniListPlan =
   | {
       kind: "write";
       progress: number;
-      status: MediaListStatus;
+      status: CourStatus;
       repeat?: number;
       /** True when this write finishes the cour (drives the rating prompt). */
       completed: boolean;
     };
 
-export interface AniListPlanInput {
+export interface CourPlanInput {
   phase: RecordPhase;
   /** 0–100. */
   progress: number;
@@ -38,7 +53,7 @@ export interface AniListPlanInput {
   /** Entry total episodes; null ⇒ unknown/ongoing (guardrail + "final" can't fire). */
   total: number | null;
   /** The viewer's current list entry (null ⇒ not on their list / not connected). */
-  entry: AniListEntry | null;
+  entry: CourEntry | null;
   /**
    * Whether the user has just confirmed a rewatch of a COMPLETED cour. Normal
    * threshold writes pass false (→ `needs_rewatch`); the explicit confirm passes
@@ -47,15 +62,15 @@ export interface AniListPlanInput {
   rewatchConfirmed: boolean;
 }
 
-const EMPTY: AniListEntry = { status: null, progress: 0, repeat: 0 };
+const EMPTY: CourEntry = { status: null, progress: 0, repeat: 0 };
 
 /**
- * Decide what (if anything) to write to AniList for a progress phase, given the
+ * Decide what (if anything) to write to a cour tracker for a progress phase, given the
  * viewer's current entry. Only a `stop` at/after `watchedThreshold` counts as
  * watched. Idempotent: never lowers progress within a status, never re-writes an
  * already-counted episode.
  */
-export function planAniListWrite(input: AniListPlanInput): AniListPlan {
+export function planCourWrite(input: CourPlanInput): CourPlan {
   const { phase, progress, watchedThreshold, episode, total, rewatchConfirmed } = input;
   const entry = input.entry ?? EMPTY;
   const atThreshold = phase === "stop" && progress >= watchedThreshold * 100;
@@ -76,7 +91,7 @@ export function planAniListWrite(input: AniListPlanInput): AniListPlan {
     return { kind: "needs_rewatch", episode };
   }
 
-  // Already counted this episode: AniList never lowers progress, so nothing will be
+  // Already counted this episode: we never lower progress, so nothing will be
   // written. Report it on ANY phase (so the user learns at PLAY, not via a confusing
   // "stopped" once the threshold passes) rather than a silent noop. NOT for a just-
   // confirmed rewatch of a COMPLETED cour — that resets tracking and must write below.

@@ -1,5 +1,6 @@
 import type { ParsedMedia } from "@tmsync/shared";
 import type { TrackerAdapter } from "../tracker/adapter";
+import { type CourPlan, planCourWrite } from "../tracker/cour-plan";
 import type {
   RatingLevel,
   RecordPhase,
@@ -16,7 +17,6 @@ import {
   saveEntry,
 } from "./client";
 import type { AniListEntry } from "./types";
-import { type AniListPlan, planAniListWrite } from "./util";
 
 type AniListItem = Extract<TrackedItem, { tracker: "anilist" }>;
 
@@ -25,7 +25,7 @@ type AniListItem = Extract<TrackedItem, { tracker: "anilist" }>;
  * and map the outcome to a RecordResult. Shared by the normal threshold path and
  * the explicit rewatch confirmation.
  */
-async function applyPlan(item: AniListItem, plan: AniListPlan): Promise<RecordResult> {
+async function applyPlan(item: AniListItem, plan: CourPlan): Promise<RecordResult> {
   switch (plan.kind) {
     case "noop":
       return { ok: true };
@@ -133,7 +133,7 @@ export const anilistAdapter: TrackerAdapter = {
     // a confusing "stopped" once the threshold passes. One cheap read per phase.
     const read = await readEntry(item);
     if ("fail" in read) return read.fail;
-    const plan = planAniListWrite({
+    const plan = planCourWrite({
       phase,
       progress,
       watchedThreshold,
@@ -206,7 +206,7 @@ export async function confirmAniListRewatch(
 ): Promise<RecordResult> {
   const read = await readEntry(item);
   if ("fail" in read) return read.fail;
-  const plan = planAniListWrite({
+  const plan = planCourWrite({
     phase: "stop",
     progress: 100,
     watchedThreshold: 0,
