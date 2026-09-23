@@ -1,13 +1,18 @@
-import type { ParsedMedia } from "@tmsync/shared";
-import type { TrackedItem, Tracker } from "../tracker/types";
+import type { IdNamespace, ParsedMedia } from "@tmsync/shared";
+import { TRACKER_INFO, type TrackedItem, type Tracker, trackerFamily } from "../tracker/types";
 import type { Animap } from "./index";
+
+/** Exact ids of the derived tracker's entry, from the crosswalk or a user pin. The
+ * background resolves by these directly (no title search, which could pick the
+ * wrong cour). */
+export type TargetIds = Partial<Record<IdNamespace, number>>;
 
 /**
  * The result of deriving a DERIVED tracker's media coordinates from a natively-
- * resolved item (multi-track — docs/MULTI-TRACK.md). Never a silent guess.
+ * resolved item (multi-track, docs/MULTI-TRACK.md). Never a silent guess.
  */
 export type DeriveOutcome =
-  | { kind: "resolved"; media: ParsedMedia; anilistId?: number }
+  | { kind: "resolved"; media: ParsedMedia; ids?: TargetIds }
   | { kind: "miss" } // not in the crosswalk → skip this tracker (native-only)
   | { kind: "ambiguous" }; // can't pin a single cour → refuse + warn
 
@@ -34,16 +39,18 @@ export function forwardKey(tmdbId: number, season: number | undefined): string {
 
 /**
  * Transform a natively-resolved item into the DERIVED tracker's numbering via the
- * anime-map crosswalk. Pure. Handles both series AND anime movies — a movie is a
- * single-entry (1-episode) cour on AniList, so a non-anime movie simply misses the
- * crosswalk and stays native-only (no is-anime classifier needed).
+ * anime-map crosswalk. Pure. The crosswalk maps between numbering FAMILIES
+ * (`TRACKER_INFO.family`), so the direction follows the target's family:
  *
- *  - target "anilist": from a TMDB-native item (uses scraped `media.ids.tmdb`) → forward
- *  - target "trakt":   from an AniList-native item (uses `nativeItem.id`)      → reverse
+ *  - target in `cour` (AniList):   forward, from the scraped `media.ids.tmdb`
+ *  - target in `seasoned` (Trakt): reverse, from the cour-native item's own id
  *
- * On `resolved`, returns a ParsedMedia carrying the DERIVED tracker's episode
- * numbering (+ the AniList id for a direct id resolve), ready to hand to that
- * adapter's resolve/record.
+ * Handles series AND anime movies. A movie is a single-entry (1-episode) cour on
+ * the cour side, so a non-anime movie simply misses the crosswalk and stays
+ * native-only (no is-anime classifier needed).
+ *
+ * On `resolved`, returns a ParsedMedia in the derived tracker's numbering, plus the
+ * exact target ids when the crosswalk names the entry, ready for that adapter.
  */
 export function deriveMedia(
   target: Tracker,
@@ -51,32 +58,45 @@ export function deriveMedia(
   nativeItem: TrackedItem | null,
   animap: Animap,
 ): DeriveOutcome {
-  if (target === "anilist") {
-    // TMDB-native → AniList (forward). Needs the scraped TMDB id.
-    const tmdbId = media.ids?.tmdb;
-    if (tmdbId === undefined) return { kind: "miss" };
-    const kind = media.mediaType === "movie" ? "movie" : "tv";
-    const r = animap.forward(Number(tmdbId), kind, media.season, media.episode);
-    if (r.kind !== "resolved") return r;
-    // An anime movie is one entry with a single episode on AniList → progress 1 marks
-    // it COMPLETED; a series carries its local cour episode. AniList is linear (no
-    // season).
-    const episode = kind === "movie" ? 1 : r.value.localEpisode;
-    return {
-      kind: "resolved",
-      anilistId: r.value.anilistId,
-      media: { ...media, mediaType: "show", season: undefined, episode },
-    };
-  }
+  return trackerFamily(target) === "cour"
+    ? toCour(media, animap)
+    : toSeasoned(media, nativeItem, animap);
+}
 
-  // target "trakt": AniList-native → Trakt (reverse). Needs a resolved AniList id
-  // to bridge — null when we couldn't get one (skip cleanly).
-  if (nativeItem?.tracker !== "anilist") return { kind: "miss" };
-  const r = animap.reverse(nativeItem.id, media.episode);
+/** Seasoned → cour (forward). Needs the scraped TMDB id. */
+function toCour(media: ParsedMedia, animap: Animap): DeriveOutcome {
+  const tmdbId = media.ids?.tmdb;
+  if (tmdbId === undefined) return { kind: "miss" };
+  const kind = media.mediaType === "movie" ? "movie" : "tv";
+  const r = animap.forward(Number(tmdbId), kind, media.season, media.episode);
+  if (r.kind !== "resolved") return r;
+  // An anime movie is one entry with a single episode on the cour side → progress 1
+  // marks it COMPLETED; a series carries its local cour episode. Cour numbering is
+  // linear (no season).
+  const episode = kind === "movie" ? 1 : r.value.localEpisode;
+  const ids: TargetIds = { anilist: r.value.anilistId };
+  if (r.value.malId !== undefined) ids.mal = r.value.malId;
+  return {
+    kind: "resolved",
+    ids,
+    media: { ...media, mediaType: "show", season: undefined, episode },
+  };
+}
+
+/** Cour → seasoned (reverse). Needs a resolved cour-native item to bridge from;
+ * null when we couldn't get one (skip cleanly). */
+function toSeasoned(
+  media: ParsedMedia,
+  nativeItem: TrackedItem | null,
+  animap: Animap,
+): DeriveOutcome {
+  const ns = nativeItem ? TRACKER_INFO[nativeItem.tracker].ownNamespace : undefined;
+  if (!nativeItem || (ns !== "anilist" && ns !== "mal")) return { kind: "miss" };
+  const r = animap.reverse(ns, nativeItem.id, media.episode);
   if (r.kind !== "resolved") return r;
   const { tmdbId, tmdbKind, tmdbSeason, tmdbEpisode } = r.value;
-  // The derived Trakt media is identified by the crosswalk's TMDB id (not the
-  // source AniList-native id) — overwrite `ids` so Trakt resolves by tmdb.
+  // The derived media is identified by the crosswalk's TMDB id (not the source
+  // cour id), so overwrite `ids` and the seasoned tracker resolves by tmdb.
   return {
     kind: "resolved",
     media:
@@ -111,7 +131,7 @@ export function deriveMediaWith(
   overrides: AnimapOverrides,
   animap: Animap,
 ): DeriveOutcome {
-  if (target === "anilist") {
+  if (trackerFamily(target) === "cour") {
     const tmdbId = media.ids?.tmdb;
     if (tmdbId !== undefined) {
       const key = forwardKey(Number(tmdbId), media.season);
@@ -122,7 +142,7 @@ export function deriveMediaWith(
         const episode = media.mediaType === "movie" ? 1 : media.episode;
         return {
           kind: "resolved",
-          anilistId,
+          ids: { anilist: anilistId },
           media: { ...media, mediaType: "show", season: undefined, episode },
         };
       }
@@ -130,7 +150,8 @@ export function deriveMediaWith(
     return deriveMedia(target, media, nativeItem, animap);
   }
 
-  // target "trakt": reverse — a pinned TMDB target for this AniList entry.
+  // Seasoned target: reverse. Pins are keyed by AniList id, so only an AniList-native
+  // item can hit one.
   if (nativeItem?.tracker === "anilist") {
     const r = overrides.reverse[nativeItem.id];
     if (r) {

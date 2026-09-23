@@ -5,12 +5,13 @@
  *
  * Source: Fribb/anime-lists `anime-list-full.json`, which a bot regenerates every
  * week. The output is a trimmed subset of it: only entries that carry BOTH an
- * AniList id and a TMDB id, and only the five fields the resolver reads. It is
+ * AniList id and a TMDB id, and only the fields the resolver reads. It is
  * served from the same CDN as the recipe list, so a refresh needs no extension
  * release.
  *
  * Row shape (short keys, because every client downloads this file):
  *   a  AniList id
+ *   m  MyAnimeList id (omitted when Fribb has none; AniList and MAL entries are 1:1)
  *   t  TMDB id (always a number; Fribb gives movie ids as an array, so a movie
  *      with several TMDB entries expands to one row per id)
  *   k  "tv" | "movie": which TMDB id namespace (tv and movie ids overlap)
@@ -45,13 +46,14 @@ async function readSource(from) {
 /** One Fribb entry -> zero or more crosswalk rows. */
 function toRows(entry) {
   const a = entry.anilist_id;
+  const m = typeof entry.mal_id === "number" ? { m: entry.mal_id } : {};
   const tmdb = entry.themoviedb_id;
   if (typeof a !== "number" || !tmdb || typeof tmdb !== "object") return [];
 
   if (typeof tmdb.tv === "number") {
     const season = entry.season?.tmdb;
     const offset = entry.episode_offset?.tmdb;
-    const row = { a, t: tmdb.tv, k: "tv" };
+    const row = { a, ...m, t: tmdb.tv, k: "tv" };
     if (typeof season === "number") row.s = season;
     if (typeof offset === "number" && offset !== 0) row.o = offset;
     return [row];
@@ -61,7 +63,7 @@ function toRows(entry) {
   // several TMDB entries. Each becomes its own row, so the resolver then treats the
   // reverse direction as ambiguous and refuses rather than picking one.
   const ids = Array.isArray(tmdb.movie) ? tmdb.movie : [tmdb.movie];
-  return ids.filter((t) => typeof t === "number").map((t) => ({ a, t, k: "movie" }));
+  return ids.filter((t) => typeof t === "number").map((t) => ({ a, ...m, t, k: "movie" }));
 }
 
 const entries = await readSource(src);

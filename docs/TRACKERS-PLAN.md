@@ -43,9 +43,14 @@ crosswalk stays in `lib/animap/` and never touches `extract()`.
   `seasonless` becomes a helper derived from it.
 - Generalize `deriveMedia` / `deriveMediaWith` from `target === "anilist"` branches to
   family-based steps.
-- `scripts/build-anime-map.mjs`: add an `m` column (Fribb `mal_id`). Also keep rows that
-  have mal + tmdb but no anilist. Rebuild `recipes/anime-map.json` and note the size delta.
-- `lib/animap/index.ts`: forward/reverse results carry the mal id too.
+- `scripts/build-anime-map.mjs`: add an `m` column (Fribb `mal_id`). Measured
+  2026-09-23: only 66 Fribb entries have mal + tmdb but no anilist, and AniList to MAL is
+  exactly 1:1, so `a` stays required and mal-only rows are not kept. The map grew from
+  303 KB to 383 KB raw (60 KB to 85 KB gzipped).
+- `lib/animap/index.ts`: forward hits carry the mal id; reverse starts from an anilist
+  or a mal id.
+- Adapters gain an optional `resolveById(ids)`, so the background resolves a derived
+  tracker by the crosswalk's exact ids without naming AniList.
 - Tests: all current derive/animap tests stay green. Add family-level cases.
 
 ## Step 1: MyAnimeList adapter

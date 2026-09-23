@@ -5,11 +5,19 @@ import type { TrackerAdapter } from "./adapter";
 import { ALL_TRACKERS, type Tracker, isSeasonless } from "./types";
 
 export type { TrackerAdapter } from "./adapter";
-export type { RatingLevel, RecordPhase, RecordResult, Tracker, TrackedItem } from "./types";
+export type {
+  NumberingFamily,
+  RatingLevel,
+  RecordPhase,
+  RecordResult,
+  Tracker,
+  TrackedItem,
+} from "./types";
 export {
   ALL_TRACKERS,
   TRACKER_INFO,
   isSeasonless,
+  trackerFamily,
   trackerLabel,
 } from "./types";
 

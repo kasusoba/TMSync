@@ -16,6 +16,7 @@ import { Animap, type AnimapRow, EMPTY_ANIMAP } from "./index";
  *  (constraint #8). */
 const Row = z.object({
   a: z.number().int(),
+  m: z.number().int().nullish(),
   t: z.number().int(),
   k: z.enum(["tv", "movie"]),
   s: z.number().int().nullish(),

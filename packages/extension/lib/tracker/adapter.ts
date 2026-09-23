@@ -9,9 +9,9 @@ import type {
 } from "./types";
 
 /**
- * One seam, two implementations (Trakt, AniList). Adding AniList must not touch
- * the Trakt path — both satisfy this interface and the background routes to one
- * by `recipe.tracker`. The two progress paradigms are genuinely different (Trakt
+ * One seam, one implementation per tracker (Trakt, AniList). Adding a tracker must
+ * not touch the others' paths: all satisfy this interface and the background routes
+ * to them by the recipe's tracker list. The two progress paradigms are genuinely different (Trakt
  * = real-time scrobble owning the watched decision; AniList = one threshold write
  * we decide) so `recordProgress` is phase-based and each adapter interprets the
  * phases as its API needs (see CLAUDE.md "Tracker adapters").
@@ -33,6 +33,14 @@ export interface TrackerAdapter {
 
   /** Resolve scraped media → a tracker item (cached), or null if nothing matches. */
   resolve(media: ParsedMedia): Promise<TrackedItem | null>;
+
+  /**
+   * Resolve an EXACT entry the crosswalk (or a user pin) already named, by id only.
+   * No correction lookup and no title fallback: a title search could pick another
+   * cour. Called only when `ids` holds one of `resolvableNamespaces`. Optional: a
+   * tracker without it is resolved from the derived media instead.
+   */
+  resolveById?(ids: Partial<Record<IdNamespace, number>>): Promise<TrackedItem | null>;
 
   /**
    * Record a progress phase for a resolved item.

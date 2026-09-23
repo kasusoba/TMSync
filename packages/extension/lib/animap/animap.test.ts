@@ -81,32 +81,32 @@ describe("animap forward (TMDB-native site → AniList)", () => {
 
 describe("animap reverse (AniList-native site → TMDB/Trakt)", () => {
   it("round-trips the AoT split: local ep + offset = tmdb ep", () => {
-    expect(map.reverse(104578, 3)).toEqual({
+    expect(map.reverse("anilist", 104578, 3)).toEqual({
       kind: "resolved",
       value: { tmdbId: 1429, tmdbKind: "tv", tmdbSeason: 3, tmdbEpisode: 15 },
     });
-    expect(map.reverse(99147, 5)).toEqual({
+    expect(map.reverse("anilist", 99147, 5)).toEqual({
       kind: "resolved",
       value: { tmdbId: 1429, tmdbKind: "tv", tmdbSeason: 3, tmdbEpisode: 5 },
     });
   });
 
   it("season-less entry keeps the episode as-is", () => {
-    expect(map.reverse(21, 1000)).toEqual({
+    expect(map.reverse("anilist", 21, 1000)).toEqual({
       kind: "resolved",
       value: { tmdbId: 37854, tmdbKind: "tv", tmdbSeason: null, tmdbEpisode: 1000 },
     });
   });
 
   it("movie reverse has no episode", () => {
-    expect(map.reverse(500, undefined)).toEqual({
+    expect(map.reverse("anilist", 500, undefined)).toEqual({
       kind: "resolved",
       value: { tmdbId: 999, tmdbKind: "movie", tmdbSeason: null, tmdbEpisode: 0 },
     });
   });
 
   it("unknown anilist id → miss", () => {
-    expect(map.reverse(123456, 1)).toEqual({ kind: "miss" });
+    expect(map.reverse("anilist", 123456, 1)).toEqual({ kind: "miss" });
   });
 });
 
@@ -130,12 +130,16 @@ describe("the published crosswalk (real Fribb data)", () => {
     // Anchors against real data; regenerating the map shouldn't move these.
     expect(map.forward(1429, "tv", 3, 15)).toEqual({
       kind: "resolved",
-      value: { anilistId: 104578, localEpisode: 3 },
+      value: { anilistId: 104578, malId: 38524, localEpisode: 3 },
     });
   });
 
+  it("reverse-resolves a known MAL id to the same TMDB target", () => {
+    expect(map.reverse("mal", 38524, 3)).toEqual(map.reverse("anilist", 104578, 3));
+  });
+
   it("reverse-resolves a known AniList id to its TMDB show", () => {
-    const r = map.reverse(16498, 1); // AoT S1 ep1
+    const r = map.reverse("anilist", 16498, 1); // AoT S1 ep1
     expect(r).toEqual({
       kind: "resolved",
       value: { tmdbId: 1429, tmdbKind: "tv", tmdbSeason: 1, tmdbEpisode: 1 },
@@ -143,10 +147,42 @@ describe("the published crosswalk (real Fribb data)", () => {
   });
 });
 
+describe("animap MAL column", () => {
+  // AoT S3 split again, now carrying MAL ids (AniList and MAL entries are 1:1).
+  const withMal = new Animap([
+    { a: 99147, m: 35760, t: 1429, k: "tv", s: 3, o: null },
+    { a: 104578, m: 38524, t: 1429, k: "tv", s: 3, o: 12 },
+    { a: 500, t: 999, k: "movie" }, // no MAL id
+  ]);
+
+  it("forward hits carry the MAL id when the row has one", () => {
+    expect(withMal.forward(1429, "tv", 3, 15)).toEqual({
+      kind: "resolved",
+      value: { anilistId: 104578, malId: 38524, localEpisode: 3 },
+    });
+    expect(withMal.forward(999, "movie", undefined, undefined)).toEqual({
+      kind: "resolved",
+      value: { anilistId: 500, localEpisode: 0 },
+    });
+  });
+
+  it("reverse resolves from a MAL id like from an AniList id", () => {
+    expect(withMal.reverse("mal", 38524, 3)).toEqual(withMal.reverse("anilist", 104578, 3));
+    expect(withMal.reverse("mal", 38524, 3)).toEqual({
+      kind: "resolved",
+      value: { tmdbId: 1429, tmdbKind: "tv", tmdbSeason: 3, tmdbEpisode: 15 },
+    });
+  });
+
+  it("unknown MAL id → miss", () => {
+    expect(withMal.reverse("mal", 1, 1)).toEqual({ kind: "miss" });
+  });
+});
+
 describe("an unloaded crosswalk", () => {
   it("misses everything, so a derived tracker degrades to native-only", () => {
     expect(EMPTY_ANIMAP.size).toBe(0);
     expect(EMPTY_ANIMAP.forward(1429, "tv", 3, 15)).toEqual({ kind: "miss" });
-    expect(EMPTY_ANIMAP.reverse(16498, 1)).toEqual({ kind: "miss" });
+    expect(EMPTY_ANIMAP.reverse("anilist", 16498, 1)).toEqual({ kind: "miss" });
   });
 });
