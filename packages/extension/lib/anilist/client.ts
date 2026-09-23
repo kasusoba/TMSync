@@ -1,5 +1,6 @@
 import type { ParsedMedia } from "@tmsync/shared";
 import { anilistCorrections, anilistResolutionCache } from "../storage";
+import { freshHit, stamp } from "../tracker/identity-cache";
 import type { CourSearchOption } from "../tracker/types";
 import { getValidAccessToken } from "./auth";
 import { ANILIST } from "./config";
@@ -119,7 +120,7 @@ export async function resolve(media: ParsedMedia): Promise<AniListIdentity | nul
   if (legacy !== undefined && legacy in corr) return corr[legacy] ?? null;
 
   const cache = await anilistResolutionCache.getValue();
-  const cached = cache[key];
+  const cached = freshHit(cache[key]);
   if (cached) return cached;
 
   // Native id first (exact, no same-title ambiguity): an anilist id, else a MAL id.
@@ -149,7 +150,7 @@ export async function resolve(media: ParsedMedia): Promise<AniListIdentity | nul
   const identity = mediaToIdentity(node);
   await anilistResolutionCache.setValue({
     ...(await anilistResolutionCache.getValue()),
-    [key]: identity,
+    [key]: stamp(identity),
   });
   return identity;
 }
@@ -180,7 +181,7 @@ query ($id: Int) {
 export async function resolveById(anilistId: number): Promise<AniListIdentity | null> {
   const key = `id:${anilistId}`;
   const cache = await anilistResolutionCache.getValue();
-  const cached = cache[key];
+  const cached = freshHit(cache[key]);
   if (cached) return cached;
 
   const data = await gql<{ Media: MediaNode | null }>(BY_ID_QUERY, { id: anilistId });
@@ -188,7 +189,7 @@ export async function resolveById(anilistId: number): Promise<AniListIdentity | 
   const identity = mediaToIdentity(data.Media);
   await anilistResolutionCache.setValue({
     ...(await anilistResolutionCache.getValue()),
-    [key]: identity,
+    [key]: stamp(identity),
   });
   return identity;
 }
@@ -200,7 +201,7 @@ export async function resolveById(anilistId: number): Promise<AniListIdentity | 
 export async function resolveByMalId(idMal: number): Promise<AniListIdentity | null> {
   const key = `mal:${idMal}`;
   const cache = await anilistResolutionCache.getValue();
-  const cached = cache[key];
+  const cached = freshHit(cache[key]);
   if (cached) return cached;
 
   const data = await gql<{ Media: MediaNode | null }>(BY_MAL_QUERY, { idMal });
@@ -208,7 +209,7 @@ export async function resolveByMalId(idMal: number): Promise<AniListIdentity | n
   const identity = mediaToIdentity(data.Media);
   await anilistResolutionCache.setValue({
     ...(await anilistResolutionCache.getValue()),
-    [key]: identity,
+    [key]: stamp(identity),
   });
   return identity;
 }

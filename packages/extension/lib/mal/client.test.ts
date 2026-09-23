@@ -1,8 +1,9 @@
-import { malCorrections } from "@/lib/storage";
-import { beforeEach, describe, expect, it } from "vitest";
+import { malCorrections, malResolutionCache } from "@/lib/storage";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeBrowser } from "wxt/testing";
 import {
   correctionFor,
+  getAnime,
   liveMisses,
   malCacheKey,
   nodeToIdentity,
@@ -127,5 +128,21 @@ describe("correctionFor", () => {
     await malCorrections.setValue({ "id:99": other, "show:2020": pinned });
     const media = { mediaType: "show" as const, title: "Show", year: 2020, ids: { mal: 99 } };
     expect(await correctionFor(media)).toEqual({ identity: other });
+  });
+});
+
+describe("getAnime", () => {
+  beforeEach(() => {
+    fakeBrowser.reset();
+    vi.spyOn(fakeBrowser.permissions, "contains").mockResolvedValue(true);
+  });
+
+  it("serves a cached entry without calling MAL", async () => {
+    const identity = { id: 52991, title: "Frieren", year: 2023, episodes: 28 };
+    await malResolutionCache.setValue({ "id:52991": { ...identity, at: 0 } });
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    expect(await getAnime(52991)).toEqual(identity);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
   });
 });

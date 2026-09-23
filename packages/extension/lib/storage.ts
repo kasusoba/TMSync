@@ -6,6 +6,7 @@ import type { AnimapOverrides } from "./animap/derive";
 import type { AnimapRow } from "./animap/index";
 import type { MalIdentity, MalListStatus, MalTokens } from "./mal/types";
 import type { SimklMatch, SimklTokens } from "./simkl/types";
+import type { Cached } from "./tracker/identity-cache";
 import type { QuickLinkTracker, Tracker } from "./tracker/types";
 import type { ResolvedIdentity, TraktIds, TraktTokens } from "./trakt/types";
 
@@ -38,7 +39,7 @@ export const anilistTokens = storage.defineItem<AniListTokens | null>("local:ani
 });
 
 /** AniList resolution cache keyed by anilistCacheKey(media). */
-export const anilistResolutionCache = storage.defineItem<Record<string, AniListIdentity>>(
+export const anilistResolutionCache = storage.defineItem<Record<string, Cached<AniListIdentity>>>(
   "local:anilist_resolution_cache",
   { fallback: {} },
 );
@@ -74,7 +75,7 @@ export const malConnectIntent = storage.defineItem<number>("session:mal_connect_
 });
 
 /** MAL resolution cache keyed by malCacheKey(media). */
-export const malResolutionCache = storage.defineItem<Record<string, MalIdentity>>(
+export const malResolutionCache = storage.defineItem<Record<string, Cached<MalIdentity>>>(
   "local:mal_resolution_cache",
   { fallback: {} },
 );
