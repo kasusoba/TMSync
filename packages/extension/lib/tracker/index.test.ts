@@ -1,6 +1,6 @@
 import type { ParsedMedia } from "@tmsync/shared";
 import { describe, expect, it } from "vitest";
-import { getAdapter, inferNativeTracker, routeTracker } from "./index";
+import { type Tracker, getAdapter, inferNativeTracker, routeTracker } from "./index";
 
 describe("getAdapter", () => {
   it("routes each tracker to its adapter", () => {
@@ -105,5 +105,22 @@ describe("inferNativeTracker with Simkl (passthrough)", () => {
   it("is native when it stands alone", () => {
     expect(inferNativeTracker(tv, ["simkl"])).toBe("simkl");
     expect(inferNativeTracker(anime, ["simkl"])).toBe("simkl");
+  });
+});
+
+describe("inferNativeTracker's choice", () => {
+  const tv: ParsedMedia = { mediaType: "show", title: "The Bear", season: 2, episode: 3 };
+  const anime: ParsedMedia = { mediaType: "show", title: "Frieren", episode: 3 };
+
+  it("is always one of the enabled trackers", () => {
+    for (const enabled of [["mal"], ["anilist", "simkl"], ["trakt"], ["simkl"]] as Tracker[][]) {
+      expect(enabled).toContain(inferNativeTracker(tv, enabled));
+      expect(enabled).toContain(inferNativeTracker(anime, enabled));
+    }
+  });
+
+  it("treats an empty enabled list like no list (no hardcoded default)", () => {
+    expect(inferNativeTracker(tv, [])).toBe(inferNativeTracker(tv));
+    expect(inferNativeTracker(anime, [])).toBe(inferNativeTracker(anime));
   });
 });

@@ -33,6 +33,11 @@ export type RatingScope = "levels" | "entry";
  * MAL), or `none` (Simkl). */
 export type NoteKind = "public" | "private" | "none";
 
+/** How the user fixes a wrong match on a tracker: `search` = pick from a search of
+ * the tracker (Trakt), `cour` = the cour fix-match panel (AniList, MAL), `none` =
+ * nothing to fix (Simkl matches server-side on every write). */
+export type FixKind = "search" | "cour" | "none";
+
 /**
  * Static per-tracker metadata, the SINGLE source for a tracker's display name and
  * numbering family. Pure data (no adapter/client code), so it imports weightlessly
@@ -52,18 +57,21 @@ export interface TrackerInfo {
   rates: RatingScope;
   /** What kind of note the rating panel can write to this tracker. */
   note: NoteKind;
+  /** How a wrong match is fixed (which panel the fix button opens). */
+  fix: FixKind;
 }
 
 // Order matters: `ALL_TRACKERS` follows it, and native inference takes the first
 // match. Simkl stays last (it is native only when it stands alone anyway).
 export const TRACKER_INFO: Record<Tracker, TrackerInfo> = {
-  trakt: { label: "Trakt", family: "seasoned", rates: "levels", note: "public" },
+  trakt: { label: "Trakt", family: "seasoned", rates: "levels", note: "public", fix: "search" },
   anilist: {
     label: "AniList",
     family: "cour",
     ownNamespace: "anilist",
     rates: "entry",
     note: "private",
+    fix: "cour",
   },
   mal: {
     label: "MyAnimeList",
@@ -71,12 +79,20 @@ export const TRACKER_INFO: Record<Tracker, TrackerInfo> = {
     ownNamespace: "mal",
     rates: "entry",
     note: "private",
+    fix: "cour",
   },
-  simkl: { label: "Simkl", family: "any", rates: "entry", note: "none" },
+  simkl: { label: "Simkl", family: "any", rates: "entry", note: "none", fix: "none" },
 };
 
 /** The cour-family trackers (AniList, MAL): the ones with a fix-match panel. */
 export type CourTracker = "anilist" | "mal";
+
+/** How a wrong match is fixed on a tracker. */
+export const trackerFix = (tracker: Tracker): FixKind => TRACKER_INFO[tracker].fix;
+
+/** Whether a tracker is fixed through the cour fix-match panel. */
+export const isCourFix = (tracker: Tracker): tracker is CourTracker =>
+  trackerFix(tracker) === "cour";
 
 /** Trackers whose pages can host quick links (each has a quick-link content
  * script). A subset of `Tracker`: a new tracker gets links only with its own script. */

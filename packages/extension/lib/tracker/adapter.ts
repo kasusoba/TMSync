@@ -38,12 +38,12 @@ export interface TrackerAdapter {
 
   /**
    * Resolve an EXACT entry that derivation already named (crosswalk, user pin, or a
-   * same-family sibling), by id only. No correction lookup and no title fallback: a
-   * title search could pick another cour. The adapter uses whichever id it can
-   * (e.g. MAL from `mal`, or from `anilist` via AniList's `idMal`); null when none
-   * fits. `media` is the derived media: a user pin the adapter keys by it (a title
-   * correction) may win over the ids. Optional: a tracker without it is resolved
-   * from the derived media.
+   * same-family sibling), by id. No title fallback: a title search could pick
+   * another cour. The adapter uses whichever id it can (e.g. MAL from `mal`, or
+   * from `anilist` via AniList's `idMal`); null when none fits. `media` is the
+   * derived media: the adapter may look up a user pin keyed by it (a title
+   * correction), which wins over the ids. Optional: a tracker without it is
+   * resolved from the derived media.
    */
   resolveById?(ids: ExternalIds, media: ParsedMedia): Promise<TrackedItem | null>;
 

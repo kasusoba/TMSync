@@ -64,15 +64,15 @@ export function routeTracker(tracker: Tracker, mediaType: ParsedMedia["mediaType
  * general/TMDB case). A passthrough tracker (Simkl) is native only when it stands
  * alone. A new tracker needs no change here: the shared engine stays untouched.
  *
- * `enabled` (when given) constrains the choice to trackers the user actually turned
- * on. A DISABLED tracker can't be the "recorded directly" native one — e.g. an
- * AniList-only recipe on a TMDB/seasoned site (Trakt off) must record AniList
- * DIRECTLY with the scraped episode, not shove it through the crosswalk. Without
- * this, native=Trakt (off) forced AniList onto the derived path and it failed to
- * resolve. Omit `enabled` for a pure field-based answer (e.g. tests, pre-resolve).
+ * `enabled` (when given and not empty) limits the choice to the trackers the user
+ * turned on, so the result is ALWAYS one of them: an AniList-only recipe on a
+ * TMDB/seasoned site (Trakt off) records AniList directly with the scraped episode.
+ * Omit `enabled` for a pure field-based answer (e.g. tests, pre-resolve).
  */
 export function inferNativeTracker(media: ParsedMedia, enabled?: Tracker[]): Tracker {
-  const allowed = ALL_TRACKERS.filter((tk) => !enabled || enabled.includes(tk));
+  const allowed = enabled?.length
+    ? ALL_TRACKERS.filter((tk) => enabled.includes(tk))
+    : ALL_TRACKERS;
   // A passthrough tracker (Simkl) takes whatever numbering the page has, so it is
   // never the anchor others derive from. It is native only when it stands alone.
   const anchors = allowed.filter((tk) => !isPassthrough(tk));
@@ -90,6 +90,6 @@ export function inferNativeTracker(media: ParsedMedia, enabled?: Tracker[]): Tra
     if (seasoned) return seasoned;
   }
   // 3) A bare linear episode (or nothing) ⇒ a SEASONLESS tracker, else the first
-  //    enabled (never a disabled one). No hardcoded "else ⇒ anilist".
-  return candidates.find(isSeasonless) ?? candidates[0] ?? "anilist";
+  //    allowed one. `allowed` is never empty, so there is no hardcoded default.
+  return candidates.find(isSeasonless) ?? (candidates[0] as Tracker);
 }
