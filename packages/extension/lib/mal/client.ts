@@ -132,18 +132,22 @@ export function nodeToIdentity(node: MalAnimeNode): MalIdentity {
 
 const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
 
+/** MAL media types that are not a series: anime movies route to Trakt, and music
+ * videos, promos (`pv`), and commercials (`cm`) are never what a page plays. */
+const NOT_SERIES = new Set(["movie", "music", "pv", "cm"]);
+
 /**
- * Pick the best search hit for a scraped title. Movies are skipped: anime movies
- * route to Trakt, and cour trackers record series (as AniList's search does). An
- * exact title match (main, English, or synonym) wins, preferring the scraped year;
- * else the first hit from the scraped year; else MAL's top hit. Pure.
+ * Pick the best search hit for a scraped title. Only series count (see
+ * `NOT_SERIES`): cour trackers record series, as AniList's search does. An exact
+ * title match (main, English, or synonym) wins, preferring the scraped year; else
+ * the first hit from the scraped year; else MAL's top hit. Pure.
  */
 export function pickBest(
   nodes: MalAnimeNode[],
   title: string,
   year?: number,
 ): MalAnimeNode | undefined {
-  const series = nodes.filter((n) => n.media_type !== "movie");
+  const series = nodes.filter((n) => !NOT_SERIES.has(n.media_type ?? ""));
   const want = norm(title);
   const yearOf = (n: MalAnimeNode) => Number(n.start_date?.slice(0, 4));
   const names = (n: MalAnimeNode) => [
