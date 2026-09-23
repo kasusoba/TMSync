@@ -43,6 +43,20 @@ import { malDeleteNote, malGetReview, malRate, malSaveNote, malUnrate } from "@/
 import type { MalIdentity } from "@/lib/mal/types";
 import { bundledLinks } from "@/lib/recipes";
 import { statusDotColor } from "@/lib/scrobble/action-badge";
+import {
+  connect as simklConnect,
+  disconnect as simklDisconnect,
+  isConnected as simklIsConnected,
+  getRedirectUri as simklRedirectUri,
+} from "@/lib/simkl/auth";
+import { SIMKL } from "@/lib/simkl/config";
+import {
+  simklDeleteNote,
+  simklGetReview,
+  simklRate,
+  simklSaveNote,
+  simklUnrate,
+} from "@/lib/simkl/review";
 import { addedHosts } from "@/lib/sites";
 import {
   type QuickLinkSite,
@@ -71,6 +85,7 @@ import {
 import {
   getAdapter,
   inferNativeTracker,
+  isPassthrough,
   isSeasonless,
   routeTracker,
   trackerFamily,
@@ -179,6 +194,14 @@ const REVIEW: Record<Tracker, ReviewHandler> = {
     unrate: (m) => malUnrate(m),
     saveNote: (m, _level, text) => malSaveNote(m, text),
     deleteNote: (m) => malDeleteNote(m),
+  },
+  // Simkl: the whole entry (movie or show) only, 1 to 10. No notes.
+  simkl: {
+    getReview: (m) => simklGetReview(m),
+    rate: (m, _level, rating) => simklRate(m, rating),
+    unrate: (m) => simklUnrate(m),
+    saveNote: () => simklSaveNote(),
+    deleteNote: () => simklDeleteNote(),
   },
 };
 
@@ -305,6 +328,23 @@ export default defineBackground(() => {
   });
 
   onMessage("disconnectMal", () => malDisconnect());
+
+  onMessage("getSimklStatus", async () => ({
+    connected: await simklIsConnected(),
+    redirectUri: simklRedirectUri(),
+    configured: !!SIMKL.clientId,
+  }));
+
+  onMessage("connectSimkl", async () => {
+    try {
+      await simklConnect();
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: errMsg(e) };
+    }
+  });
+
+  onMessage("disconnectSimkl", () => simklDisconnect());
 
   onMessage("exportLetterboxd", async () => {
     try {
@@ -637,7 +677,7 @@ export default defineBackground(() => {
           errors.push(target.error);
           continue;
         }
-        const item = await adapter.resolve(target.media);
+        const item = await resolveDerived(tracker, target); // the entry the scrobble wrote to
         if (!item || !adapter.confirmRewatch) {
           errors.push(`not found on ${name}`);
           continue;
@@ -786,7 +826,7 @@ export default defineBackground(() => {
         if ("error" in target) continue;
         const episode = target.media.episode;
         const adapter = getAdapter(tracker);
-        const item = await adapter.resolve(target.media);
+        const item = await resolveDerived(tracker, target); // the entry the scrobble wrote to
         const w = item ? await adapter.watchedState(item) : null;
         if (!w || episode === undefined) continue;
         // The planner the write uses: "already" exactly when playing writes nothing
@@ -979,7 +1019,11 @@ async function recordScrobble(data: ScrobbleRequest): Promise<ScrobbleReply> {
   // those trackers resolve themselves on a miss (id → title) instead of skipping.
   const derived = await recordDerivedTrackers(
     nativeItem,
-    enabled.filter((t) => t !== native),
+    // Passthrough trackers last: a Simkl stop may wait out its 20 s scrobble lock,
+    // and the others are recorded in order, so they must not wait behind it.
+    enabled
+      .filter((t) => t !== native)
+      .sort((a, b) => Number(isPassthrough(a)) - Number(isPassthrough(b))),
     data,
     await animapOverrides.getValue(),
     await loadAnimap(),
@@ -1030,12 +1074,6 @@ function derivedToReply(d: DerivedOutcome): ScrobbleReply {
 }
 
 /**
- * MULTI-TRACK read-only resolve: what each enabled tracker matches for this media
- * (native direct + derived via the crosswalk). Mirrors the record fan-out but writes
- * nothing — powers the rate/correction UI's per-tracker destination readout, so it
- * can show "Trakt → The Boondocks / AniList → not found" and gate actions.
- */
-/**
  * Reverse derivation (cour → seasoned) needs the cour-native entry's id, so the
  * native item must be resolved even when its own tracker is off, as long as a
  * seasoned tracker is enabled. Forward derivation needs only the scraped tmdb id.
@@ -1080,6 +1118,24 @@ function resolveDerived(
   return d.ids && adapter.resolveById ? adapter.resolveById(d.ids) : adapter.resolve(d.media);
 }
 
+/** A resolved tracker's readout row. An id of 0 (Simkl before its first write)
+ * is not an id yet, so the row links nowhere until the tracker names one. */
+function resolvedRow(item: TrackedItem): TrackerResolution {
+  return {
+    tracker: item.tracker,
+    resolved: true,
+    title: item.title,
+    id: item.id || undefined,
+    url: "url" in item ? item.url : undefined,
+  };
+}
+
+/**
+ * MULTI-TRACK read-only resolve: what each enabled tracker matches for this media
+ * (native direct + derived via the crosswalk). Mirrors the record fan-out but writes
+ * nothing — powers the rate/correction UI's per-tracker destination readout, so it
+ * can show "Trakt → The Boondocks / AniList → not found" and gate actions.
+ */
 async function resolveAcross(
   media: ParsedMedia,
   trackers: Tracker[],
@@ -1104,7 +1160,7 @@ async function resolveAcross(
       .resolve(media)
       .catch(() => null);
     return item
-      ? { tracker: tk, resolved: true, title: item.title, id: item.id, native: true }
+      ? { ...resolvedRow(item), native: true }
       : { tracker: tk, resolved: false, reason: "no_match", native: true };
   };
   const out: TrackerResolution[] = [];
@@ -1112,13 +1168,7 @@ async function resolveAcross(
     if (tk === native) {
       out.push(
         nativeItem
-          ? {
-              tracker: tk,
-              resolved: true,
-              title: nativeItem.title,
-              id: nativeItem.id,
-              native: true,
-            }
+          ? { ...resolvedRow(nativeItem), native: true }
           : { tracker: tk, resolved: false, reason: "unresolved", native: true },
       );
       continue;
@@ -1140,11 +1190,7 @@ async function resolveAcross(
     }
     try {
       const item = await resolveDerived(tk, d);
-      out.push(
-        item
-          ? { tracker: tk, resolved: true, title: item.title, id: item.id }
-          : { tracker: tk, resolved: false, reason: "unresolved" },
-      );
+      out.push(item ? resolvedRow(item) : { tracker: tk, resolved: false, reason: "unresolved" });
     } catch {
       out.push({ tracker: tk, resolved: false, reason: "http" });
     }
@@ -1159,16 +1205,20 @@ async function resolveAcross(
  */
 async function reviewTarget(
   data: ReviewTarget,
-): Promise<{ review: ReviewHandler; media: ParsedMedia } | { ok: false; error: string }> {
+): Promise<
+  { review: ReviewHandler; media: ParsedMedia; ids?: TargetIds } | { ok: false; error: string }
+> {
   const tracker = data.tracker ?? "trakt";
   const review = REVIEW[tracker];
   const enabled = data.trackers?.length ? data.trackers : [tracker];
   const native = inferNativeTracker(data.media, enabled);
   if (tracker === native) return { review, media: data.media };
-  // The native item bridges a reverse derive, and a same-family sibling (AniList ⇄
-  // MAL) takes its ids straight from it.
+  // The native item bridges a reverse derive, a same-family sibling (AniList ⇄
+  // MAL) takes its ids straight from it, and a passthrough tracker (Simkl) adds them.
   const bridges =
-    needsCourBridge(native, [tracker]) || trackerFamily(native) === trackerFamily(tracker);
+    needsCourBridge(native, [tracker]) ||
+    trackerFamily(native) === trackerFamily(tracker) ||
+    trackerFamily(tracker) === "any";
   const nativeItem = bridges
     ? await getAdapter(native)
         .resolve(data.media)
@@ -1189,7 +1239,7 @@ async function reviewTarget(
     return { ok: false, error: `not found on ${name}` };
   }
   const media = d.ids ? { ...d.media, ids: { ...d.media.ids, ...d.ids } } : d.media;
-  return { review, media };
+  return { review, media, ids: d.ids };
 }
 
 async function recordDerivedTrackers(

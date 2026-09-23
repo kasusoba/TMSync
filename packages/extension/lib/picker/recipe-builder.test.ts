@@ -670,6 +670,18 @@ describe("cour trackers (AniList, MAL)", () => {
     expect(built.recipe.tracker).toBe("mal");
     expect(built.recipe.trackers).toEqual(["mal", "anilist"]);
   });
+
+  it("never hints Simkl as native while another tracker is on", () => {
+    const draft: RecipeDraft = {
+      ...emptyDraft("https://tv.example/show/s1/ep-3"),
+      trackers: ["simkl", "trakt"],
+      fields: { title, episode, season },
+    };
+    const built = buildRecipe(draft, { id: "tv-example", name: "TV" });
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    expect(built.recipe.tracker).toBe("trakt");
+  });
 });
 
 describe("manual recipes", () => {

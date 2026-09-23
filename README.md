@@ -10,16 +10,16 @@
 
 Automatically scrobble what you watch to your media trackers, on any streaming site. TMSync is
 multi-tracker by design. Today it supports [Trakt](https://trakt.tv),
-[AniList](https://anilist.co), and [MyAnimeList](https://myanimelist.net), with room for more.
+[AniList](https://anilist.co), [MyAnimeList](https://myanimelist.net), and
+[Simkl](https://simkl.com), with room for more.
 
 TMSync is a browser extension for Chrome and Firefox. While you watch on a streaming site it
 reads what's playing, finds it on the right tracker, and logs it for you. No manual check-ins.
 It also works on aggregator sites that don't have an official app or API, which most trackers
 can't touch.
 
-Each thing you watch is routed to the tracker that fits it. Right now that means movies and
-live-action TV go to Trakt, and anime goes to AniList and/or MyAnimeList (anime can go to all
-three at once). If you know MAL-Sync for anime, this is the same idea, made general across
+Each thing you watch is routed to the trackers that fit it. Right now that means movies and
+live-action TV go to Trakt and/or Simkl, and anime goes to any of the four at once. If you know MAL-Sync for anime, this is the same idea, made general across
 trackers.
 
 <table>
@@ -39,8 +39,8 @@ trackers.
 
 - Detects the title and episode when you press play and records it to the right tracker, so your
   profile shows what you're currently watching and marks it watched when you finish. Movies and
-  live-action TV go to Trakt in real time; anime goes to AniList and/or MyAnimeList (and can go
-  to Trakt too).
+  live-action TV go to Trakt and/or Simkl in real time; anime goes to AniList and/or MyAnimeList
+  (and can go to Trakt and Simkl too).
 - Works on most sites with a video and a readable title, including ones with no API.
 - Lets you add a new site yourself with a point-and-click picker, like an ad blocker's element
   picker. No code.
@@ -57,8 +57,8 @@ trackers.
 1. Install it from the
    [Chrome Web Store](https://chromewebstore.google.com/detail/tmsync/hkfpacmhbiccimikfleemmhfemdnjfpf)
    or [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/tmsync/).
-2. Click the toolbar icon and connect the trackers you use: Trakt, AniList, MyAnimeList, or any
-   mix. MyAnimeList asks for access to myanimelist.net when you connect it.
+2. Click the toolbar icon and connect the trackers you use: Trakt, AniList, MyAnimeList, Simkl,
+   or any mix. MyAnimeList asks for access to myanimelist.net when you connect it.
 3. Open something to watch on a supported site. A small badge shows what it matched. Press play.
 4. On a new site, click "Set it up with the picker," point at the title and episode, and you're
    tracking it. You can share the result so others get the site too.
@@ -83,7 +83,7 @@ Want to chat, ask a question, or request a site? Join the
   Chrome Web Store listing copy, kept here so it stays in sync.
 
   Short description (max 132 chars):
-  Auto-scrobble what you watch to your trackers (Trakt, AniList, MyAnimeList). Works on most streaming sites, no manual logging.
+  Auto-scrobble what you watch to your trackers (Trakt, AniList, MyAnimeList, Simkl). Works on most streaming sites, no manual logging.
 
   Full description: the "What it does" + "Getting started" sections above.
 
@@ -99,10 +99,10 @@ Want to chat, ask a question, or request a site? Join the
 ## For developers
 
 Cross-browser WebExtension that passively scrobbles what you watch to the right tracker (movies
-and live-action TV to Trakt, anime to AniList and MyAnimeList) using declarative **recipes** (data,
-not code). Trackers sit behind a pluggable adapter seam, so more trackers (Simkl is next, see
-[`docs/TRACKERS-PLAN.md`](./docs/TRACKERS-PLAN.md)) are added behind the same seam, never
-special-cased in the shared engine.
+and live-action TV to Trakt and Simkl, anime to AniList, MyAnimeList, and the others) using
+declarative **recipes** (data, not code). Trackers sit behind a pluggable adapter seam, so more
+trackers are added behind the same seam, never special-cased in the shared engine (see
+[`docs/TRACKERS-PLAN.md`](./docs/TRACKERS-PLAN.md)).
 
 - [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md): **how the code works**, subsystem by subsystem (start here).
 - [`docs/TMSync-PRD.md`](./docs/TMSync-PRD.md): the what/why (product).
@@ -115,7 +115,7 @@ special-cased in the shared engine.
 packages/shared      # recipe schema (Zod) + types + pure extraction engine (no DOM/browser globals)
 packages/extension   # WXT app: entrypoints (background, content, options), engine, tracker adapters, picker, UI
 recipes/index.json   # one tracker-agnostic recipe + quick-link library; each recipe carries its own
-                     #   `trackers` (trakt | anilist | mal); the engine routes per-recipe (PR-contributed)
+                     #   `trackers` (trakt | anilist | mal | simkl); the engine routes per-recipe (PR-contributed)
 ```
 
 **Adding a site or quick link?** See [`CONTRIBUTING.md`](./CONTRIBUTING.md); the recipe library is
@@ -212,10 +212,14 @@ What works today:
 - **MyAnimeList**: OAuth (authorization code + PKCE, refresh tokens), resolution through
   AniList's `idMal` or MAL search, and the same threshold-based list writes as AniList (one
   shared cour planner). Host access to MAL is optional and asked for on Connect.
+- **Simkl**: OAuth (AUTH V2, authorization code + PKCE), real-time scrobbling like Trakt, and
+  entry-level ratings. It gets each page's own numbering (Simkl maps anime itself), never
+  searches before a write, and spaces its calls around Simkl's 20-second scrobble lock.
 - **Element picker**: uBlock-style point-and-click (`@medv/finder`) in a Shadow-DOM overlay with
   auto-detect + live extract preview; saves a custom recipe and enables the site.
 - **Ratings & notes**: rate what you finish at the levels each tracker supports (Trakt does
-  show/season/episode, AniList and MyAnimeList do the cour), auto-prompted after a write or from the badge, plus
+  show/season/episode, AniList and MyAnimeList do the cour, Simkl the whole show or movie),
+  auto-prompted after a write or from the badge, plus
   one private note per item. Existing scores are read back from the tracker.
 - **Quick links**: on a trakt.tv or anilist.co page, injects deep "watch on ..." links to your
   sites at the right episode (movie, show S1E1, season S{n}E1, episode S{n}E{m}); managed per-site,
@@ -237,5 +241,5 @@ Running the extension locally (load unpacked, connect a tracker, test a scrobble
 ## License
 
 [GPL-3.0](./LICENSE). You're free to use, study, modify, and share it; derivative works must stay
-open under the same license. TMSync talks only to your own Trakt, AniList, and MyAnimeList
-accounts and is not affiliated with or endorsed by Trakt, AniList, or MyAnimeList.
+open under the same license. TMSync talks only to your own Trakt, AniList, MyAnimeList, and
+Simkl accounts and is not affiliated with or endorsed by Trakt, AniList, MyAnimeList, or Simkl.

@@ -12,6 +12,7 @@ import {
   IconBtn,
   MalMark,
   Section,
+  SimklMark,
   type Tokens,
   TraktMark,
   type Variant,
@@ -32,6 +33,7 @@ export interface PopupViewProps {
   anilistConnected?: boolean;
   /** MyAnimeList account (another independent provider). */
   malConnected?: boolean;
+  simklConnected?: boolean;
   /** null = no eligible page in the active tab. */
   origins: OriginRow[] | null;
   busy?: boolean;
@@ -41,6 +43,7 @@ export interface PopupViewProps {
   onConnectAniList?: () => void;
   onDisconnectAniList?: () => void;
   onConnectMal?: () => void;
+  onConnectSimkl?: () => void;
   onEnable?: (origin: string) => void;
   /** Sites a sync or import added that still need access. Only these nudge: a
    * site left off on purpose never shows here. */
@@ -163,7 +166,7 @@ export function PopupView(p: PopupViewProps) {
             },
           ]
         : [];
-  const noAccount = !p.connected && !p.anilistConnected && !p.malConnected;
+  const noAccount = !p.connected && !p.anilistConnected && !p.malConnected && !p.simklConnected;
   const [watchOpen, setWatchOpen] = useState(false);
 
   return (
@@ -179,15 +182,18 @@ export function PopupView(p: PopupViewProps) {
       {noAccount && (
         <div class={clsx("space-y-2 rounded-xl px-3 py-2.5", t.infoBox)}>
           <p class="text-[12px] leading-snug">Connect a tracker to start scrobbling.</p>
-          <div class="flex gap-2">
-            <Btn t={t} tone="primary" class="flex-1" disabled={p.busy} onClick={p.onConnect}>
+          <div class="grid grid-cols-2 gap-2">
+            <Btn t={t} tone="primary" disabled={p.busy} onClick={p.onConnect}>
               <TraktMark class="size-4" /> Connect Trakt
             </Btn>
-            <Btn t={t} tone="ghost" class="flex-1" disabled={p.busy} onClick={p.onConnectAniList}>
+            <Btn t={t} tone="ghost" disabled={p.busy} onClick={p.onConnectAniList}>
               <AniListMark class="size-4" /> AniList
             </Btn>
-            <Btn t={t} tone="ghost" class="flex-1" disabled={p.busy} onClick={p.onConnectMal}>
-              <MalMark class="size-4" /> MAL
+            <Btn t={t} tone="ghost" disabled={p.busy} onClick={p.onConnectMal}>
+              <MalMark class="size-4" /> MyAnimeList
+            </Btn>
+            <Btn t={t} tone="ghost" disabled={p.busy} onClick={p.onConnectSimkl}>
+              <SimklMark class="size-4" /> Simkl
             </Btn>
           </div>
         </div>

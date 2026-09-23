@@ -2,7 +2,7 @@ import type { Tracker } from "@/lib/tracker/types";
 import clsx from "clsx";
 import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
-import { ANILIST_LOGO, MAL_LOGO, TRAKT_LOGO } from "./marks.data";
+import { ANILIST_LOGO, MAL_LOGO, SIMKL_LOGO, TRAKT_LOGO } from "./marks.data";
 
 /**
  * The shared design kit — presentational only (no browser APIs, no effects), so
@@ -290,6 +290,37 @@ export function MalMark({
   );
 }
 
+/**
+ * The Simkl provider mark: Simkl's own colored brand mark (their attribution
+ * guide names it), with an "S" monogram fallback if the asset can't load.
+ */
+export function SimklMark({
+  class: cls = "size-8",
+  src = SIMKL_LOGO,
+}: { class?: string; src?: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <span
+        class={clsx(
+          "grid shrink-0 place-items-center rounded-lg bg-[#0B0F10] text-[14px] font-bold text-white",
+          cls,
+        )}
+      >
+        S
+      </span>
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt="Simkl"
+      class={clsx("shrink-0 rounded-md object-contain", cls)}
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 /** Per-tracker logo component — the ONE place tracker → mark is decided. Every
  * `tk === "anilist" ? <AniListMark/> : <TraktMark/>` becomes `<TrackerMark tracker={tk}/>`,
  * so adding a tracker = one entry here, not a hunt through the UI. */
@@ -297,6 +328,7 @@ const TRACKER_MARK: Record<Tracker, (p: { class?: string }) => preact.JSX.Elemen
   trakt: TraktMark,
   anilist: AniListMark,
   mal: MalMark,
+  simkl: SimklMark,
 };
 
 export function TrackerMark({ tracker, class: cls }: { tracker: Tracker; class?: string }) {

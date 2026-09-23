@@ -8,6 +8,7 @@ import {
   Icon,
   IconBtn,
   MalMark,
+  SimklMark,
   Switch,
   type Tokens,
   TraktMark,
@@ -113,6 +114,14 @@ const TRACKER_TOGGLES: {
     mark: <MalMark class="size-4" />,
     need: (v) => !!v("title"),
     needHint: "Needs a title.",
+  },
+  {
+    key: "simkl",
+    label: "Simkl",
+    mark: <SimklMark class="size-4" />,
+    // Simkl matches movies, TV, and anime from a title or any id.
+    need: (v) => !!v("title") || !!v("tmdbId"),
+    needHint: "Needs a title or a TMDB id.",
   },
 ];
 

@@ -1,4 +1,4 @@
-import { type Tracker, isSeasonless } from "@/lib/tracker/types";
+import { type Tracker, isPassthrough, isSeasonless } from "@/lib/tracker/types";
 import {
   type EngineContext,
   type ExtractResult,
@@ -373,13 +373,17 @@ export type BuildResult = { ok: true; recipe: Recipe } | { ok: false; error: str
 export function buildRecipe(draft: RecipeDraft, meta: { id: string; name: string }): BuildResult {
   // The native hint = the enabled tracker whose numbering the scraped fields already
   // speak (a tmdbId or a season ⇒ a seasoned tracker; else a bare linear episode ⇒ a
-  // cour tracker). The runtime re-infers this per watch; we persist it as the legacy
-  // `tracker` field.
+  // cour tracker). A passthrough tracker (Simkl) is never native while another is
+  // on, so it is the hint only when it stands alone. The runtime re-infers this per
+  // watch; we persist it as the legacy `tracker` field.
   const trackers = draft.trackers.length ? draft.trackers : (["trakt"] as Tracker[]);
   const seasonedFields = !!(draft.fields.tmdbId || draft.fields.season);
+  const anchors = trackers.filter((tk) => !isPassthrough(tk));
   const nativeHint: Tracker =
-    trackers.find((tk) => isSeasonless(tk) !== seasonedFields) ??
-    (seasonedFields ? "trakt" : "anilist");
+    anchors.find((tk) => isSeasonless(tk) !== seasonedFields) ??
+    anchors[0] ??
+    trackers[0] ??
+    "trakt";
   // The scraped fields are PRUNED to what the enabled trackers actually consume, so
   // toggling the seasoned trackers off drops their fields instead of leaving them
   // stale on the recipe:

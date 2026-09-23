@@ -182,6 +182,9 @@ export interface TrackerResolution {
   /** This tracker is the item's native tracker (resolved directly, not derived). A
    * native title match is what a title correction fixes. */
   native?: boolean;
+  /** The item's own page on the tracker, when the tracker gives one that an id
+   * alone can't build (Simkl: the section of simkl.com). */
+  url?: string;
 }
 
 /** The item a rating or note is for. `media` is the scraped media; `trackers` is the
@@ -222,6 +225,10 @@ export interface ProtocolMap {
   getMalStatus(): ProviderStatus;
   connectMal(): { ok: boolean; error?: string };
   disconnectMal(): void;
+  /** Simkl account. api.simkl.com answers CORS, so no host access is needed. */
+  getSimklStatus(): ProviderStatus;
+  connectSimkl(): { ok: boolean; error?: string };
+  disconnectSimkl(): void;
   scrobble(req: ScrobbleRequest): ScrobbleReply;
   /** Resolve scraped media to its tracker identity WITHOUT recording — lets the
    * badge show the matched title before the user presses play (transparency). */

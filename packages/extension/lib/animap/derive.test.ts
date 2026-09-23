@@ -297,3 +297,47 @@ describe("deriveMedia: same numbering family (AniList ⇄ MAL)", () => {
     });
   });
 });
+
+describe("deriveMedia: passthrough (Simkl)", () => {
+  it("keeps the page numbering and adds the native item's ids", () => {
+    const page: ParsedMedia = { mediaType: "show", title: "AoT", episode: 3 };
+    const al: TrackedItem = { ...anilistItem, ids: { mal: 38524 } };
+    expect(deriveMedia("simkl", page, al, map)).toEqual({
+      kind: "resolved",
+      media: { ...page, ids: { mal: 38524, anilist: 104578 } },
+    });
+  });
+
+  it("keeps a seasoned page as is and ignores crosswalk overrides", () => {
+    const page: ParsedMedia = {
+      mediaType: "show",
+      title: "AoT",
+      ids: { tmdb: 1429 },
+      season: 3,
+      episode: 15,
+    };
+    const overrides: AnimapOverrides = { forward: { "1429:3": 42 }, reverse: {} };
+    expect(deriveMediaWith("simkl", page, traktItem, overrides, map)).toEqual({
+      kind: "resolved",
+      media: page,
+    });
+  });
+
+  it("leaves out a native item's ids when its type differs from the page", () => {
+    const page: ParsedMedia = { mediaType: "movie", title: "Your Name" };
+    const malSeries: TrackedItem = {
+      tracker: "mal",
+      mediaType: "show",
+      id: 38524,
+      title: "Some Series",
+      episodes: 12,
+      ids: { anilist: 104578 },
+    };
+    expect(deriveMedia("simkl", page, malSeries, map)).toEqual({ kind: "resolved", media: page });
+  });
+
+  it("resolves a page with no ids (Simkl matches the title)", () => {
+    const page: ParsedMedia = { mediaType: "movie", title: "Dune" };
+    expect(deriveMedia("simkl", page, null, map)).toEqual({ kind: "resolved", media: page });
+  });
+});

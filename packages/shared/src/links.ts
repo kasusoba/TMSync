@@ -81,14 +81,25 @@ export function placeholderHint(list: readonly PlaceholderDoc[]): string {
  *   Trakt show:    trakt.tv/shows/{id}
  *   Trakt episode: trakt.tv/shows/{id}/seasons/{s}/episodes/{e}  (when s+e known)
  *   AniList:       anilist.co/anime/{id}  (no per-episode pages — always the entry)
+ *   Simkl:         simkl.com/{movies|tv|anime}/{id}  (`simklType` names the section;
+ *                  without it a show is assumed to be under `tv`)
  */
 export function trackerItemUrl(
   tracker: Tracker,
   id: number,
-  opts?: { mediaType?: "movie" | "show"; season?: number; episode?: number },
+  opts?: {
+    mediaType?: "movie" | "show";
+    season?: number;
+    episode?: number;
+    simklType?: "movies" | "tv" | "anime";
+  },
 ): string {
   if (tracker === "anilist") return `https://anilist.co/anime/${id}`;
   if (tracker === "mal") return `https://myanimelist.net/anime/${id}`;
+  if (tracker === "simkl") {
+    const type = opts?.simklType ?? (opts?.mediaType === "movie" ? "movies" : "tv");
+    return `https://simkl.com/${type}/${id}`;
+  }
   if (opts?.mediaType === "movie") return `https://trakt.tv/movies/${id}`;
   const base = `https://trakt.tv/shows/${id}`;
   return opts?.season !== undefined && opts?.episode !== undefined

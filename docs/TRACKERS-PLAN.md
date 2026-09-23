@@ -1,7 +1,7 @@
 # More trackers: MyAnimeList and Simkl
 
-Status (2026-09-23): **Step 0 and Step 1 (MAL) built** on `feat/more-trackers`, not yet
-pushed. **Step 2 (Simkl) researched, not started.** See "Where things stand" at the end. Read alongside `MULTI-TRACK.md` (native vs derived),
+Status (2026-09-23): **Steps 0, 1 (MAL), and 2 (Simkl) built** on `feat/more-trackers`, not
+yet pushed. See "Where things stand" at the end. Read alongside `MULTI-TRACK.md` (native vs derived),
 `IDENTITY-NAMESPACES.md` (id namespaces, `resolvableNamespaces`), and `CLAUDE.md` →
 "Tracker adapters".
 
@@ -262,4 +262,33 @@ and title pin), so a fix works when AniList is native on a tmdb page (Trakt off)
 **Before pushing:** fold the `fixup!` commits
 (`GIT_SEQUENCE_EDITOR=: git rebase -i --autosquash main`), run lint, tsc, tests, build.
 
-**Next:** Step 2 (Simkl), design above. The owner registers a Simkl V2 app first.
+**Simkl built (2026-09-23), following the Step 2 design.** Choices made while building:
+- `NumberingFamily` gains `any`. `derive.ts` passes the page's numbering and ids through to
+  an `any` tracker (plus the native item's ids), and skips crosswalk overrides for it.
+  `inferNativeTracker` never picks an `any` tracker while another enabled one exists, so
+  Simkl is native only when it stands alone. The record fan-out puts Simkl last.
+- `resolve()` makes no network call. The item is the page's title, with Simkl's id and
+  title once a scrobble reply names them (`simkl_matches`, keyed per show season, since
+  Simkl files each anime season separately). A Simkl id of 0 means "not matched yet".
+- The 20 s lock: the last call time is in storage (`simkl_scrobble_at`). A start or
+  pause inside it is dropped; a stop waits (at most about 20 s, inside that one request)
+  and waits once more on `400 RATE_LIMIT`. `409` on stop counts as recorded.
+- Rating: `/sync/ratings` (anime under `anime`, remove under `shows`), with a local
+  mirror, because reading one rating back costs a whole-list call. Simkl answers 201
+  even when it ignored an item, so `not_found` is checked. Rating an unlisted item makes
+  Simkl add it to the user's list (Simkl's documented side effect).
+- `TRACKER_INFO` gains `rates` (`levels` / `entry`) and `note` (`public` / `private` /
+  `none`). The rating panel uses them instead of `isSeasonless`. With only Simkl
+  selected, the panel is "Rate" with no note box.
+- No fix-match panel for Simkl: it matches server-side and search is off limits.
+- No host permission: api.simkl.com (token endpoint included) answers CORS, checked
+  live. The client id was checked live too (the token endpoint accepts it as a public
+  V2 client).
+
+**Owner to-dos before a release:** add the `WXT_SIMKL_CLIENT_ID` and `WXT_MAL_CLIENT_ID`
+repository secrets (the release workflow now requires both). Register both redirect URIs
+on the Simkl app, exactly as the options page shows them.
+
+**Still to confirm live (owner):** Simkl connect (Chrome and Firefox), a scrobble of a
+movie, a seasoned show, and an anime page; Trakt + Simkl multi-track; a stop right after a
+start (the lock wait); rating and unrating.

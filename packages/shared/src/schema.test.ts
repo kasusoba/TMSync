@@ -33,7 +33,7 @@ describe("RecipeSchema", () => {
   });
 
   it("rejects an unknown tracker value", () => {
-    const bad = { ...validRecipe, tracker: "simkl" };
+    const bad = { ...validRecipe, tracker: "kitsu" };
     expect(RecipeSchema.safeParse(bad).success).toBe(false);
   });
 

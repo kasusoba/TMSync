@@ -5,6 +5,7 @@ import type { AniListIdentity, AniListTokens } from "./anilist/types";
 import type { AnimapOverrides } from "./animap/derive";
 import type { AnimapRow } from "./animap/index";
 import type { MalIdentity, MalListStatus, MalTokens } from "./mal/types";
+import type { SimklMatch, SimklTokens } from "./simkl/types";
 import type { QuickLinkTracker, Tracker } from "./tracker/types";
 import type { ResolvedIdentity, TraktIds, TraktTokens } from "./trakt/types";
 
@@ -101,14 +102,47 @@ export const malCorrections = storage.defineItem<Record<string, MalIdentity | nu
   { fallback: {} },
 );
 
-/** Local mirror of the user's MAL score (1 to 10), keyed by MAL anime id. */
+/** Local mirror of the user's MAL score (1 to 10), keyed by MAL anime id. The
+ * fallback when MAL can't be read (the panel reads MAL first). */
 export const malRatings = storage.defineItem<Record<number, number>>("local:mal_ratings", {
   fallback: {},
 });
 
-/** Local mirror of the MAL private `comments` note, keyed by MAL anime id. */
+/** Local mirror of the MAL private `comments` note, keyed by MAL anime id. The
+ * fallback when MAL can't be read. */
 export const malNotes = storage.defineItem<Record<number, string>>("local:mal_notes", {
   fallback: {},
+});
+
+// --- Simkl (the `any` family: takes the page's own numbering) ---
+
+/** Simkl OAuth tokens. The access token lasts 7 days; auth.ts refreshes it. */
+export const simklTokens = storage.defineItem<SimklTokens | null>("local:simkl_tokens", {
+  fallback: null,
+});
+
+/**
+ * What Simkl matched a page item to, keyed by simklKey(media). Filled from write
+ * responses (Simkl forbids a search before a write), so it is empty until the
+ * first scrobble or rating of an item.
+ */
+export const simklMatches = storage.defineItem<Record<string, SimklMatch>>("local:simkl_matches", {
+  fallback: {},
+});
+
+/** Local mirror of the user's Simkl rating (1 to 10), keyed by simklKey(media).
+ * Reading one rating back from Simkl costs a whole-list call, so we don't. */
+export const simklRatings = storage.defineItem<Record<string, number>>("local:simkl_ratings", {
+  fallback: {},
+});
+
+/**
+ * When the last Simkl scrobble call went out (ms). Simkl allows one per user per
+ * 20 s, so the adapter spaces its calls by this. In storage, not memory: the
+ * background is stateless (constraint #4).
+ */
+export const simklScrobbleAt = storage.defineItem<number>("local:simkl_scrobble_at", {
+  fallback: 0,
 });
 
 /** Resolution cache keyed by resolutionCacheKey(media). */

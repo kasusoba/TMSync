@@ -39,6 +39,7 @@ import {
   IconBtn,
   type IconName,
   MalMark,
+  SimklMark,
   Switch,
   TrackerMark,
   TraktMark,
@@ -646,6 +647,7 @@ export function App() {
   const [status, setStatus] = useState<TraktStatus | null>(null);
   const [anilist, setAnilist] = useState<AniListStatus | null>(null);
   const [mal, setMal] = useState<ProviderStatus | null>(null);
+  const [simkl, setSimkl] = useState<ProviderStatus | null>(null);
   const [sites, setSites] = useState<string[]>([]);
   /** Broad "enable all sites" grant held (then every recipe site is enabled). */
   const [allSites, setAllSites] = useState(false);
@@ -705,26 +707,29 @@ export function App() {
   const has = (s: string) => s.toLowerCase().includes(q.toLowerCase());
 
   const refresh = async () => {
-    const [s, al, ml, sit, rec, ql, qlOn, c, ac, mc, am, rem, amap, bp, broad] = await Promise.all([
-      sendMessage("getTraktStatus", undefined),
-      sendMessage("getAniListStatus", undefined),
-      sendMessage("getMalStatus", undefined),
-      sendMessage("listEnabledSites", undefined),
-      customRecipes.getValue(),
-      quickLinks.getValue(),
-      quickLinksEnabled.getValue(),
-      corrections.getValue(),
-      anilistCorrections.getValue(),
-      malCorrections.getValue(),
-      animapOverrides.getValue(),
-      remoteRecipes.getValue(),
-      animeMap.getValue(),
-      badgePrefs.getValue(),
-      browser.permissions.contains({ origins: ["*://*/*"] }),
-    ]);
+    const [s, al, ml, sk, sit, rec, ql, qlOn, c, ac, mc, am, rem, amap, bp, broad] =
+      await Promise.all([
+        sendMessage("getTraktStatus", undefined),
+        sendMessage("getAniListStatus", undefined),
+        sendMessage("getMalStatus", undefined),
+        sendMessage("getSimklStatus", undefined),
+        sendMessage("listEnabledSites", undefined),
+        customRecipes.getValue(),
+        quickLinks.getValue(),
+        quickLinksEnabled.getValue(),
+        corrections.getValue(),
+        anilistCorrections.getValue(),
+        malCorrections.getValue(),
+        animapOverrides.getValue(),
+        remoteRecipes.getValue(),
+        animeMap.getValue(),
+        badgePrefs.getValue(),
+        browser.permissions.contains({ origins: ["*://*/*"] }),
+      ]);
     setStatus(s);
     setAnilist(al);
     setMal(ml);
+    setSimkl(sk);
     setSites(sit);
     setRecipes(rec);
     setLinks(ql);
@@ -894,7 +899,12 @@ export function App() {
     setBusy(true);
     setAccountMsg(null);
     const message = (
-      { trakt: "connectTrakt", anilist: "connectAniList", mal: "connectMal" } as const
+      {
+        trakt: "connectTrakt",
+        anilist: "connectAniList",
+        mal: "connectMal",
+        simkl: "connectSimkl",
+      } as const
     )[which];
     const res = await sendMessage(message, undefined);
     if (!res.ok) setAccountMsg(res.error ?? "Connection failed. The sign-in didn’t complete.");
@@ -1470,6 +1480,37 @@ export function App() {
                     </code>
                   </p>
                 )}
+                <ProviderRow
+                  mark={<SimklMark />}
+                  name="Simkl"
+                  connected={simkl?.connected ?? false}
+                  busy={busy}
+                  onConnect={() => connectProvider("simkl")}
+                  onDisconnect={() => act(() => sendMessage("disconnectSimkl", undefined))}
+                />
+                {simkl && !simkl.configured && (
+                  <p class={clsx("rounded-md px-2.5 py-1.5 text-[11px]", t.infoBox)}>
+                    Simkl isn’t configured in this build · set{" "}
+                    <code class="font-mono">WXT_SIMKL_CLIENT_ID</code> to enable it.
+                  </p>
+                )}
+                {/* Dev-only, same as the redirect hints above. */}
+                {import.meta.env.DEV &&
+                  simkl?.configured &&
+                  !simkl.connected &&
+                  simkl.redirectUri && (
+                    <p class={clsx("text-[11px] leading-relaxed", t.sub)}>
+                      Set this redirect URI in your Simkl app:
+                      <code
+                        class={clsx(
+                          "mt-1 block break-all rounded-md px-2 py-1 font-mono text-[10px]",
+                          t.chip,
+                        )}
+                      >
+                        {simkl.redirectUri}
+                      </code>
+                    </p>
+                  )}
               </>
             )}
 

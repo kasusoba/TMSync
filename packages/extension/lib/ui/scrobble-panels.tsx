@@ -6,6 +6,8 @@ import {
   type WatchedState,
   isSeasonless,
   trackerLabel,
+  trackerNote,
+  trackerRates,
 } from "@/lib/tracker/types";
 import type { ResolvedIdentity, ReviewLevel, TraktSearchOption } from "@/lib/trakt/types";
 import {
@@ -84,6 +86,9 @@ const stopKeys = {
   onKeyUp: (e: KeyboardEvent) => e.stopPropagation(),
   onKeyPress: (e: KeyboardEvent) => e.stopPropagation(),
 };
+
+/** Whether the rating panel sends this tracker a note (Simkl keeps none). */
+const takesNote = (tk: Tracker) => trackerNote(tk) !== "none";
 
 /** 1–10 star scale. Hover to preview, click to set, click your current value to clear. */
 export function Stars({
@@ -193,13 +198,15 @@ export function TrackingRows({
           // When resolved, the tracker's own page for this item — click to open it
           // in a new tab (episode/movie/entry). Absent until we have an id.
           const url =
-            res?.resolved && res.id !== undefined
-              ? trackerItemUrl(tk, res.id, {
-                  mediaType: media.mediaType,
-                  season: media.season,
-                  episode: media.episode,
-                })
-              : undefined;
+            res?.resolved && res.url
+              ? res.url
+              : res?.resolved && res.id !== undefined
+                ? trackerItemUrl(tk, res.id, {
+                    mediaType: media.mediaType,
+                    season: media.season,
+                    episode: media.episode,
+                  })
+                : undefined;
           const inner = (
             <>
               <TrackerMark tracker={tk} class="size-4" />
@@ -288,15 +295,17 @@ export function RateNote({
   onBack?: () => void;
 }) {
   const isShow = media.season !== undefined || media.episode !== undefined;
-  const hasTrakt = trackers.includes("trakt");
+  // Only a `levels` tracker (Trakt) rates seasons and episodes; the rest rate the
+  // whole entry.
+  const hasLevels = trackers.some((tk) => trackerRates(tk) === "levels");
 
   // Levels: a movie has just "movie"; a show is episode/season/show. But the level
   // picker is a Trakt concept — AniList rates only the cour (≈ the "show" level). So
   // an AniList-only show has no picker and sits at "show" (its cour).
   const levels: RatingLevel[] = isShow ? ["episode", "season", "show"] : ["movie"];
-  const showLevelPicker = isShow && hasTrakt;
+  const showLevelPicker = isShow && hasLevels;
   const [level, setLevel] = useState<RatingLevel>(
-    isShow && !hasTrakt ? "show" : (levels[0] ?? "movie"),
+    isShow && !hasLevels ? "show" : (levels[0] ?? "movie"),
   );
 
   // What each enabled tracker ACTUALLY resolves to for this item (async). Gates
@@ -318,7 +327,10 @@ export function RateNote({
   // A cour tracker (AniList, MAL) rates only the cour (≈ the whole series), so it's a
   // valid target only on the top "show" level; Trakt rates whatever level is picked.
   // AND the tracker must actually have resolved the item.
-  const levelOk = (tk: Tracker): boolean => !isSeasonless(tk) || level === "show";
+  // An entry tracker rates only the top level: "show" (a cour tracker's cour, or
+  // Simkl's show), or "movie" for Simkl (cour trackers don't rate movies here).
+  const levelOk = (tk: Tracker): boolean =>
+    trackerRates(tk) === "levels" || level === "show" || (!isSeasonless(tk) && level === "movie");
   const applicable: Tracker[] = trackers.filter((tk) => levelOk(tk) && resolvedOk(tk));
   const [selected, setSelected] = useState<Set<Tracker>>(new Set(trackers));
   const targets = applicable.filter((tk) => selected.has(tk));
@@ -358,12 +370,13 @@ export function RateNote({
       if (!alive) return;
       const next = Object.fromEntries(rows) as Partial<Record<Tracker, LoadedReview>>;
       setLoaded(next);
-      const shown = sharedReview(rows.map(([, l]) => l));
+      const ratingShown = sharedReview(rows.map(([, l]) => l)).rating;
+      const noteShown = sharedReview(rows.filter(([tk]) => takesNote(tk)).map(([, l]) => l)).note;
       if (!edited.current.rating) {
-        setRating(shown.rating.kind === "same" ? shown.rating.value : null);
+        setRating(ratingShown.kind === "same" ? ratingShown.value : null);
       }
       if (!edited.current.note) {
-        const n = shown.note.kind === "same" ? shown.note.value : null;
+        const n = noteShown.kind === "same" ? noteShown.value : null;
         setNote(n?.text ?? "");
         setSpoiler(n?.spoiler ?? false);
       }
@@ -375,14 +388,19 @@ export function RateNote({
 
   const loadedFor = targets.map((tk) => loaded[tk]).filter((l): l is LoadedReview => !!l);
   const allLoaded = loadedFor.length === targets.length;
-  const shown = sharedReview(loadedFor);
-  const spoilerApplies = targets.includes("trakt");
+  // Notes compare only across trackers that keep one (Simkl keeps none, so its
+  // missing note must not read as "the notes differ").
+  const noteTargets = targets.filter(takesNote);
+  const noteLoaded = noteTargets.map((tk) => loaded[tk]).filter((l): l is LoadedReview => !!l);
+  const shown = { rating: sharedReview(loadedFor).rating, note: sharedReview(noteLoaded).note };
+  // Only a public comment (Trakt) has a spoiler flag.
+  const spoilerApplies = targets.some((tk) => trackerNote(tk) === "public");
   const staged: StagedReview = { rating, note, spoiler };
   const changed = {
     rating: allLoaded && ratingChanged(shown.rating, rating),
     note: allLoaded && noteChanged(shown.note, staged, spoilerApplies),
   };
-  const hasNote = loadedFor.some((l) => l.note);
+  const hasNote = noteLoaded.some((l) => l.note);
   const canSubmit = targets.length > 0 && (changed.rating || changed.note) && !busy;
 
   // The label beside the stars: a pending removal, or each tracker's own rating
@@ -423,7 +441,12 @@ export function RateNote({
     for (const tk of targets) {
       const current = loaded[tk];
       if (!current) continue;
-      const ops = planReview(current, staged, changed, tk === "trakt");
+      const ops = planReview(
+        current,
+        staged,
+        { rating: changed.rating, note: changed.note && takesNote(tk) },
+        trackerNote(tk) === "public",
+      );
       const base = { media, trackers, level: trackerLevel(tk), tracker: tk };
       const name = trackerLabel(tk);
       if (ops.rate !== undefined) {
@@ -468,7 +491,7 @@ export function RateNote({
     setBusy(true);
     setMsg(null);
     const fails: string[] = [];
-    for (const tk of targets) {
+    for (const tk of noteTargets) {
       if (!loaded[tk]?.note) continue;
       const n = await sendMessage("deleteNote", {
         media,
@@ -488,19 +511,29 @@ export function RateNote({
   // targets, or (before anything is picked) what could receive it. Never infer
   // "AniList" just because Trakt is deselected: on a Trakt-only item that left the
   // box reading "Private note on AniList…" when no tracker was even AniList.
-  const noteTrackers = targets.length > 0 ? targets : applicable;
-  // Cour trackers keep a private note; Trakt posts a public comment.
-  const privateOn = noteTrackers.filter(isSeasonless).map(trackerLabel).join(" and ");
+  const noteTrackers = (targets.length > 0 ? targets : applicable).filter(takesNote);
+  // Cour trackers keep a private note; Trakt posts a public comment; Simkl keeps none.
+  const privateOn = noteTrackers
+    .filter((tk) => trackerNote(tk) === "private")
+    .map(trackerLabel)
+    .join(" and ");
+  const publicOn = noteTrackers.find((tk) => trackerNote(tk) === "public");
   const notePlaceholder =
-    noteTrackers.includes("trakt") && privateOn
-      ? `Public comment on Trakt · private note on ${privateOn}…`
+    publicOn && privateOn
+      ? `Public comment on ${trackerLabel(publicOn)} · private note on ${privateOn}…`
       : privateOn
         ? `Private note on ${privateOn}…`
         : "Your note · public on Trakt, at least 5 words…";
+  const noNotes = noteTrackers.length === 0;
 
   return (
     <div class={panelClass(t)}>
-      <PanelHeader t={t} title="Rate & note" onBack={onBack} onClose={onClose} />
+      <PanelHeader
+        t={t}
+        title={noNotes ? "Rate" : "Rate & note"}
+        onBack={onBack}
+        onClose={onClose}
+      />
 
       {showLevelPicker && (
         <div class="mb-3">
@@ -597,43 +630,47 @@ export function RateNote({
         )}
       </div>
 
-      {notesDiffer && (
-        <p class={clsx("mb-1 text-[10px]", t.faint)}>
-          {joinNames(targets)} have different notes. Leave this empty to keep them, or type to
-          replace them.
-        </p>
-      )}
-      <textarea
-        {...stopKeys}
-        rows={4}
-        value={note}
-        onInput={(e) => {
-          edited.current.note = true;
-          setNote((e.target as HTMLTextAreaElement).value);
-        }}
-        placeholder={notePlaceholder}
-        class={clsx(
-          "mb-2 w-full resize-none rounded-lg px-2.5 py-2 text-[12px] outline-none ring-inset focus:ring-2",
-          t.input,
-        )}
-      />
-
-      {spoilerApplies && (
-        <label class={clsx("mb-3 flex cursor-pointer items-center gap-2 text-[11px]", t.sub)}>
-          <input
-            type="checkbox"
-            class="accent-trakt"
-            checked={spoiler}
-            onChange={(e) => {
+      {!noNotes && (
+        <>
+          {notesDiffer && (
+            <p class={clsx("mb-1 text-[10px]", t.faint)}>
+              {joinNames(noteTargets)} have different notes. Leave this empty to keep them, or type
+              to replace them.
+            </p>
+          )}
+          <textarea
+            {...stopKeys}
+            rows={4}
+            value={note}
+            onInput={(e) => {
               edited.current.note = true;
-              setSpoiler((e.target as HTMLInputElement).checked);
+              setNote((e.target as HTMLTextAreaElement).value);
             }}
+            placeholder={notePlaceholder}
+            class={clsx(
+              "mb-2 w-full resize-none rounded-lg px-2.5 py-2 text-[12px] outline-none ring-inset focus:ring-2",
+              t.input,
+            )}
           />
-          Mark as spoiler
-          <span class={t.faint} title="Only applies to Trakt public comments">
-            <Icon name="info" class="text-[12px]" />
-          </span>
-        </label>
+
+          {spoilerApplies && (
+            <label class={clsx("mb-3 flex cursor-pointer items-center gap-2 text-[11px]", t.sub)}>
+              <input
+                type="checkbox"
+                class="accent-trakt"
+                checked={spoiler}
+                onChange={(e) => {
+                  edited.current.note = true;
+                  setSpoiler((e.target as HTMLInputElement).checked);
+                }}
+              />
+              Mark as spoiler
+              <span class={t.faint} title="Only applies to Trakt public comments">
+                <Icon name="info" class="text-[12px]" />
+              </span>
+            </label>
+          )}
+        </>
       )}
 
       <div class="flex items-stretch gap-2">
@@ -1345,6 +1382,7 @@ export function NowPlaying({
             trackers={trackers}
             onFix={(tk) => {
               if (tk === "trakt") return setPanel("fix");
+              if (tk === "simkl") return; // Simkl matches server-side: nothing to fix
               setFixTracker(tk);
               setPanel("cour-fix");
             }}

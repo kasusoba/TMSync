@@ -55,6 +55,7 @@ export function forwardKey(tmdbId: number, season: number | undefined): string {
  *    ids carry over (AniList ⇄ MAL are 1:1). No crosswalk.
  *  - target in `cour` (AniList, MAL): forward crosswalk, from the scraped `media.ids.tmdb`
  *  - target in `seasoned` (Trakt):    reverse crosswalk, from the cour-native item's id
+ *  - target in `any` (Simkl):         the page's numbering and ids as they are
  *
  * Handles series AND anime movies. A movie is a single-entry (1-episode) cour on
  * the cour side, so a non-anime movie simply misses the crosswalk and stays
@@ -70,10 +71,33 @@ export function deriveMedia(
   animap: Animap,
 ): DeriveOutcome {
   const family = trackerFamily(target);
+  if (family === "any") return passThrough(media, nativeItem);
   if (nativeItem && trackerFamily(nativeItem.tracker) === family) {
     return sameFamily(media, nativeItem);
   }
   return family === "cour" ? toCour(media, animap) : toSeasoned(media, nativeItem, animap);
+}
+
+/**
+ * Passthrough (the `any` family, Simkl): the page's own numbering, plus every id
+ * the native item is known by. The target maps it server-side, so the crosswalk
+ * is never used, and a page with no ids still resolves (the target matches the
+ * title). Page ids win over the native item's. A native item of another type
+ * (a cour search's series fallback on a movie page) names a different title, so
+ * its ids are left out.
+ */
+function passThrough(media: ParsedMedia, nativeItem: TrackedItem | null): DeriveOutcome {
+  const ids: NonNullable<ParsedMedia["ids"]> = {};
+  if (nativeItem && nativeItem.mediaType === media.mediaType) {
+    if ("ids" in nativeItem && nativeItem.ids) Object.assign(ids, nativeItem.ids);
+    const own = TRACKER_INFO[nativeItem.tracker].ownNamespace;
+    if (own) ids[own] = nativeItem.id;
+  }
+  Object.assign(ids, media.ids);
+  return {
+    kind: "resolved",
+    media: Object.keys(ids).length ? { ...media, ids } : media,
+  };
 }
 
 /** Same numbering family: keep the media as is and pass every id the native item
@@ -154,6 +178,8 @@ export function deriveMediaWith(
   overrides: AnimapOverrides,
   animap: Animap,
 ): DeriveOutcome {
+  // Passthrough takes the page as is: no crosswalk, so no crosswalk overrides.
+  if (trackerFamily(target) === "any") return deriveMedia(target, media, nativeItem, animap);
   if (trackerFamily(target) === "cour") {
     const tmdbId = media.ids?.tmdb;
     if (tmdbId !== undefined) {

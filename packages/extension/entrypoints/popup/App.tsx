@@ -172,6 +172,7 @@ export function App() {
   const [status, setStatus] = useState<TraktStatus | null>(null);
   const [anilist, setAnilist] = useState<AniListStatus | null>(null);
   const [mal, setMal] = useState<ProviderStatus | null>(null);
+  const [simkl, setSimkl] = useState<ProviderStatus | null>(null);
   const [topOrigin, setTopOrigin] = useState<string | null>(null);
   const [origins, setOrigins] = useState<string[]>([]); // top + every iframe origin on the page
   const [enabled, setEnabled] = useState<string[]>([]);
@@ -219,11 +220,12 @@ export function App() {
 
   const refresh = async () => {
     const tabId = await activeTabId();
-    const [s, al, ml, url, found, sites, links, badge, custom, remote, pending, fresh] =
+    const [s, al, ml, sk, url, found, sites, links, badge, custom, remote, pending, fresh] =
       await Promise.all([
         sendMessage("getTraktStatus", undefined),
         sendMessage("getAniListStatus", undefined),
         sendMessage("getMalStatus", undefined),
+        sendMessage("getSimklStatus", undefined),
         activeTabUrl(),
         tabId !== null ? collectOrigins(tabId) : Promise.resolve<string[]>([]),
         sendMessage("listEnabledSites", undefined),
@@ -247,6 +249,7 @@ export function App() {
     setStatus(s);
     setAnilist(al);
     setMal(ml);
+    setSimkl(sk);
     setTopOrigin(origin);
     setOrigins(allOrigins);
     setEnabled(
@@ -352,6 +355,15 @@ export function App() {
     setBusy(true);
     const res = await sendMessage("connectMal", undefined);
     if (!res.ok) setNote(res.error ?? "MyAnimeList connection failed");
+    await refresh();
+    setBusy(false);
+  };
+
+  const connectSimkl = async () => {
+    setNote(null);
+    setBusy(true);
+    const res = await sendMessage("connectSimkl", undefined);
+    if (!res.ok) setNote(res.error ?? "Simkl connection failed");
     await refresh();
     setBusy(false);
   };
@@ -511,6 +523,7 @@ export function App() {
       redirectUri={status?.redirectUri}
       anilistConnected={anilist?.connected ?? false}
       malConnected={mal?.connected ?? false}
+      simklConnected={simkl?.connected ?? false}
       busy={busy}
       note={note}
       origins={origins.map((origin) => ({
@@ -522,6 +535,7 @@ export function App() {
       onDisconnect={disconnect}
       onConnectAniList={connectAniList}
       onConnectMal={connectMal}
+      onConnectSimkl={connectSimkl}
       onDisconnectAniList={disconnectAniList}
       onEnable={enableOrigin}
       newSites={newSites.length}

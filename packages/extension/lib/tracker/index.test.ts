@@ -21,7 +21,12 @@ describe("getAdapter", () => {
 describe("routeTracker (route by type — constraint #1)", () => {
   it("sends a movie to Trakt even on an anilist site (anime movies → Trakt)", () => {
     expect(routeTracker("anilist", "movie")).toBe("trakt");
+    expect(routeTracker("mal", "movie")).toBe("trakt");
     expect(routeTracker("trakt", "movie")).toBe("trakt");
+  });
+
+  it("keeps a movie on a tracker that takes movies (Simkl)", () => {
+    expect(routeTracker("simkl", "movie")).toBe("simkl");
   });
 
   it("leaves shows on the recipe's tracker (series → AniList stays)", () => {
@@ -73,5 +78,32 @@ describe("inferNativeTracker (multi-track — which numbering the page speaks)",
     expect(inferNativeTracker(media)).toBe("trakt"); // no enabled set ⇒ pure field answer
     expect(inferNativeTracker(media, ["anilist"])).toBe("anilist"); // Trakt off ⇒ AniList native
     expect(inferNativeTracker(media, ["trakt", "anilist"])).toBe("trakt"); // both ⇒ Trakt native
+  });
+});
+
+describe("inferNativeTracker with Simkl (passthrough)", () => {
+  const anime: ParsedMedia = {
+    mediaType: "show",
+    title: "Frieren",
+    ids: { anilist: 1 },
+    episode: 3,
+  };
+  const tv: ParsedMedia = {
+    mediaType: "show",
+    title: "x",
+    ids: { tmdb: 5 },
+    season: 1,
+    episode: 2,
+  };
+
+  it("is never the anchor while another tracker is on", () => {
+    expect(inferNativeTracker(tv, ["simkl", "trakt"])).toBe("trakt");
+    expect(inferNativeTracker(anime, ["simkl", "anilist"])).toBe("anilist");
+    expect(inferNativeTracker(anime, ["simkl", "trakt"])).toBe("trakt");
+  });
+
+  it("is native when it stands alone", () => {
+    expect(inferNativeTracker(tv, ["simkl"])).toBe("simkl");
+    expect(inferNativeTracker(anime, ["simkl"])).toBe("simkl");
   });
 });

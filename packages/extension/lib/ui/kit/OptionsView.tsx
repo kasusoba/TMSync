@@ -8,6 +8,7 @@ import {
   IconBtn,
   type IconName,
   MalMark,
+  SimklMark,
   Switch,
   type Tokens,
   TrackerMark,
@@ -266,6 +267,18 @@ export function OptionsView({
                   </span>
                   <Btn t={t} tone="ghost">
                     Disconnect
+                  </Btn>
+                </div>
+                <div class={clsx("flex items-center gap-3 rounded-lg px-3 py-2.5", t.card)}>
+                  <SimklMark />
+                  <span class="min-w-0 flex-1">
+                    <span class={clsx("block text-[13px] font-semibold", t.heading)}>Simkl</span>
+                    <span class={clsx("flex items-center gap-1.5 text-[11px]", t.sub)}>
+                      Not connected
+                    </span>
+                  </span>
+                  <Btn t={t} tone="primary">
+                    Connect
                   </Btn>
                 </div>
                 <div class={clsx("space-y-2 rounded-lg px-3 py-2.5", t.card)}>
