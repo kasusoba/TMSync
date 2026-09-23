@@ -103,6 +103,18 @@ export function planCourWrite(input: CourPlanInput): CourPlan {
     return { kind: "already_watched", episode, progress: entry.progress };
   }
 
+  // A rewatch confirmed before this episode is watched (the prompt shows before
+  // play): start the rewatch at the episode before it, so an episode the user
+  // never finishes is never counted. Its own stop at the threshold counts it.
+  if (entry.status === "COMPLETED" && rewatchConfirmed && !atThreshold) {
+    return {
+      kind: "write",
+      progress: Math.max(0, episode - 1),
+      status: "REPEATING",
+      completed: false,
+    };
+  }
+
   // Not a write moment yet (start/pause, or a stop below threshold) → nothing to do.
   if (!atThreshold) return { kind: "noop" };
 
@@ -144,4 +156,27 @@ export function planCourWrite(input: CourPlanInput): CourPlan {
     status: isFinal ? "COMPLETED" : "CURRENT",
     completed: isFinal,
   };
+}
+
+/**
+ * The plan for an explicit rewatch confirmation of a COMPLETED entry. `watched`
+ * says this episode already played past the threshold: then it counts now.
+ * Otherwise the rewatch starts at the episode before it, and the episode counts at
+ * its own stop. Pure.
+ */
+export function planRewatchConfirm(input: {
+  episode: number | undefined;
+  total: number | null;
+  entry: CourEntry | null;
+  watched: boolean;
+}): CourPlan {
+  return planCourWrite({
+    phase: "stop",
+    progress: input.watched ? 100 : 0,
+    watchedThreshold: 1,
+    episode: input.episode,
+    total: input.total,
+    entry: input.entry,
+    rewatchConfirmed: true,
+  });
 }

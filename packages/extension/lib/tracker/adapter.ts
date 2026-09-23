@@ -74,10 +74,11 @@ export interface TrackerAdapter {
 
   /**
    * The user confirmed a rewatch of a completed entry (after `needs_rewatch`):
-   * write the rewatch transition for this episode. Only trackers that ask first
-   * (the cour family) implement it.
+   * write the rewatch transition. `watched` says this episode already played past
+   * the threshold, so it counts now; else it counts at its own stop. Only trackers
+   * that ask first (the cour family) implement it.
    */
-  confirmRewatch?(item: TrackedItem, media: ParsedMedia): Promise<RecordResult>;
+  confirmRewatch?(item: TrackedItem, media: ParsedMedia, watched: boolean): Promise<RecordResult>;
 
   /**
    * Which levels this tracker lets the user rate for the given media — empty if

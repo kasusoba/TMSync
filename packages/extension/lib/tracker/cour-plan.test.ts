@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type CourEntry, type CourPlanInput, planCourWrite } from "./cour-plan";
+import { type CourEntry, type CourPlanInput, planCourWrite, planRewatchConfirm } from "./cour-plan";
 
 const base: CourPlanInput = {
   phase: "stop",
@@ -149,5 +149,44 @@ describe("planCourWrite: rewatch", () => {
         entry: entry({ status: "REPEATING", progress: 11, repeat: 0 }),
       }),
     ).toEqual({ kind: "write", progress: 12, status: "COMPLETED", repeat: 1, completed: true });
+  });
+});
+
+describe("planRewatchConfirm", () => {
+  const completed = entry({ status: "COMPLETED", progress: 12, repeat: 1 });
+  const confirm = (episode: number, watched: boolean) =>
+    planRewatchConfirm({ episode, total: 12, entry: completed, watched });
+
+  it("counts an episode that already played past the threshold", () => {
+    expect(confirm(3, true)).toEqual({
+      kind: "write",
+      progress: 3,
+      status: "REPEATING",
+      completed: false,
+    });
+    expect(confirm(12, true)).toEqual({
+      kind: "write",
+      progress: 12,
+      status: "COMPLETED",
+      repeat: 2,
+      completed: true,
+    });
+  });
+
+  it("starts the rewatch before an unwatched episode, so it counts at its own stop", () => {
+    expect(confirm(3, false)).toEqual({
+      kind: "write",
+      progress: 2,
+      status: "REPEATING",
+      completed: false,
+    });
+    expect(confirm(1, false)).toMatchObject({ progress: 0, status: "REPEATING" });
+    // The final episode does not complete the rewatch until it is watched.
+    expect(confirm(12, false)).toMatchObject({ progress: 11, status: "REPEATING" });
+    const next = entry({ status: "REPEATING", progress: 2, repeat: 1 });
+    expect(planCourWrite({ ...base, episode: 3, entry: next })).toMatchObject({
+      progress: 3,
+      status: "REPEATING",
+    });
   });
 });
