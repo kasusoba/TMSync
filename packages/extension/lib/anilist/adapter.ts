@@ -16,6 +16,7 @@ import {
   resolveById,
   resolveByMalId,
   saveEntry,
+  viewerScoreFormat,
 } from "./client";
 import type { AniListEntry, AniListIdentity } from "./types";
 
@@ -152,6 +153,9 @@ export const anilistAdapter: TrackerAdapter = {
     // AniList rates the cour entry only — no per-episode, no franchise-wide score.
     return ["cour"];
   },
+
+  // The user picks their own score scale on AniList.
+  scoreFormat: viewerScoreFormat,
 
   async watchedState(item: TrackedItem): Promise<WatchedState | null> {
     if (item.tracker !== "anilist") return null;

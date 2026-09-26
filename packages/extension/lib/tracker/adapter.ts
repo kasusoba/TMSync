@@ -1,4 +1,5 @@
 import type { IdNamespace, ParsedMedia } from "@tmsync/shared";
+import type { ScoreFormat } from "../anilist/types";
 import type {
   ExternalIds,
   RatingLevel,
@@ -85,6 +86,12 @@ export interface TrackerAdapter {
    * rating is unsupported. The shared badge renders only these affordances.
    */
   ratingLevels(media: ParsedMedia): RatingLevel[];
+
+  /**
+   * The score scale the user picked on this tracker, when it is theirs to pick
+   * (AniList's `scoreFormat`). Optional: a tracker without it rates 1 to 10.
+   */
+  scoreFormat?(): Promise<ScoreFormat | null>;
 
   /**
    * The viewer's watched progress for a resolved show (the popup's "last watched /

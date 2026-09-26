@@ -131,9 +131,9 @@ function recipeSuggestions(recipes: Recipe[], links: QuickLinkSite[]): RecipeSug
   const hasLinkFor = (h: string) => linked.has(normalizeHost(h));
   const byHost = new Map<string, Recipe[]>();
   for (const r of recipes) {
-    // Quick-link suggestions are Trakt-only (we can derive a movie/tv URL base
-    // from the recipe). Anime recipes don't map to an anilist.co anime-site URL.
-    if ((r.tracker ?? "trakt") === "anilist") continue;
+    // Quick-link suggestions are for trakt.tv pages only (we can derive a movie/tv
+    // URL base from the recipe), so only recipes that record to Trakt qualify.
+    if (!recipeTrackers(r).includes("trakt")) continue;
     const h = recipeHost(r);
     const g = byHost.get(h) ?? [];
     g.push(r);

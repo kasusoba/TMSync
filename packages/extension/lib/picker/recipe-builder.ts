@@ -1,4 +1,9 @@
-import { type Tracker, isPassthrough, isSeasonless } from "@/lib/tracker/types";
+import {
+  type QuickLinkTracker,
+  type Tracker,
+  isPassthrough,
+  isSeasonless,
+} from "@/lib/tracker/types";
 import {
   type EngineContext,
   type ExtractResult,
@@ -54,7 +59,11 @@ export type DraftFieldKey = keyof RecipeDraft["fields"];
  * `…/{id}/{season}/{episode}` or `…/{slug}/{s}-{e}` shape is recognised. AniList
  * anime sites use `{slug}`. `isShow` is a hint (the popup may not know).
  */
-export function deriveQuickLink(url: string, tracker: Tracker, isShow = false): LinkTemplates {
+export function deriveQuickLink(
+  url: string,
+  tracker: QuickLinkTracker,
+  isShow = false,
+): LinkTemplates {
   let host: string;
   let path: string;
   try {
