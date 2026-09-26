@@ -1,4 +1,4 @@
-import { malCorrections, malResolutionCache } from "@/lib/storage";
+import { malCorrections, malResolutionCache, malTokens } from "@/lib/storage";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeBrowser } from "wxt/testing";
 import {
@@ -8,6 +8,7 @@ import {
   malCacheKey,
   nodeToIdentity,
   pickBest,
+  resolve,
   toCourEntry,
 } from "./client";
 import type { MalAnimeNode } from "./types";
@@ -151,5 +152,39 @@ describe("getAnime", () => {
     expect(await getAnime(52991)).toEqual(identity);
     expect(fetchSpy).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
+  });
+});
+
+describe("resolve by id", () => {
+  const media = { mediaType: "show" as const, title: "Frieren", ids: { mal: 52991 } };
+  const search = { data: [{ node: node({ id: 7, title: "Frieren", num_episodes: 12 }) }] };
+  const json = (status: number, body: unknown) =>
+    new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+
+  beforeEach(async () => {
+    fakeBrowser.reset();
+    vi.restoreAllMocks();
+    vi.spyOn(fakeBrowser.permissions, "contains").mockResolvedValue(true);
+    const now = Math.floor(Date.now() / 1000);
+    await malTokens.setValue({
+      access_token: "a",
+      refresh_token: "r",
+      expires_in: 3600,
+      obtained_at: now,
+    });
+  });
+
+  it("falls back to a title match when MAL has no such id", async () => {
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(json(404, {}))
+      .mockResolvedValueOnce(json(200, search));
+    expect((await resolve(media))?.id).toBe(7);
+  });
+
+  it("throws on a failed id lookup, and caches no title match under the id", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(json(500, {}));
+    await expect(resolve(media)).rejects.toThrow("MyAnimeList 500");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(await malResolutionCache.getValue()).toEqual({});
   });
 });

@@ -66,6 +66,17 @@ interface GraphQLResponse<T> {
  * writes + Viewer); reads (Media search) work unauthenticated, so the badge can
  * show the matched AniList title before the user connects.
  */
+/** AniList answered with an error status (a missing Media id is a 404). */
+export class AniListHttpError extends Error {
+  constructor(
+    readonly status: number,
+    detail: string,
+  ) {
+    super(`AniList ${status}${detail ? `: ${detail}` : ""}`);
+    this.name = "AniListHttpError";
+  }
+}
+
 async function gql<T>(query: string, variables: Record<string, unknown>, auth = false): Promise<T> {
   const token = await getValidAccessToken();
   if (auth && !token) throw new AniListNotConnectedError();
@@ -85,7 +96,7 @@ async function gql<T>(query: string, variables: Record<string, unknown>, auth = 
     } catch {
       // ignore unreadable body
     }
-    throw new Error(`AniList ${res.status}${detail ? `: ${detail}` : ""}`);
+    throw new AniListHttpError(res.status, detail);
   }
   const body = (await res.json()) as GraphQLResponse<T>;
   if (body.errors?.length) throw new Error(body.errors.map((e) => e.message).join("; "));
@@ -184,7 +195,14 @@ export async function resolveById(anilistId: number): Promise<AniListIdentity | 
   const cached = freshHit(cache[key]);
   if (cached) return cached;
 
-  const data = await gql<{ Media: MediaNode | null }>(BY_ID_QUERY, { id: anilistId });
+  let data: { Media: MediaNode | null };
+  try {
+    data = await gql<{ Media: MediaNode | null }>(BY_ID_QUERY, { id: anilistId });
+  } catch (e) {
+    // AniList answers an unknown id with 404: no such entry, not a failure.
+    if (e instanceof AniListHttpError && e.status === 404) return null;
+    throw e;
+  }
   if (!data.Media) return null;
   const identity = mediaToIdentity(data.Media);
   await anilistResolutionCache.setValue({
