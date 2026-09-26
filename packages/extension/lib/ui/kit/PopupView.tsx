@@ -1,5 +1,10 @@
 import type { FrameNode } from "@/lib/diagnostics/frame-tree";
-import type { QuickLinkTracker, Tracker } from "@/lib/tracker/types";
+import {
+  QUICK_LINK_TRACKERS,
+  type QuickLinkTracker,
+  type Tracker,
+  trackerLabel,
+} from "@/lib/tracker/types";
 import type { LinkTemplates } from "@tmsync/shared";
 import clsx from "clsx";
 import { useState } from "preact/hooks";
@@ -311,9 +316,9 @@ export function PopupView(p: PopupViewProps) {
           {watchOpen ? (
             <>
               <p class={clsx("text-[11px] leading-relaxed", t.sub)}>
-                A quick link on {p.quickLinkInitial?.tracker === "anilist" ? "anilist.co" : "Trakt"}{" "}
-                pages that opens <span class="font-mono">{p.quickLinkHost}</span>. Per-site · works
-                from any page here.
+                A quick link on {trackerLabel(p.quickLinkInitial?.tracker ?? "trakt")} pages that
+                opens <span class="font-mono">{p.quickLinkHost}</span>. Per-site · works from any
+                page here.
               </p>
               <QuickLinkEditor
                 key={p.quickLinkHost}
@@ -329,8 +334,8 @@ export function PopupView(p: PopupViewProps) {
           ) : (
             <p class={clsx("text-[11px] leading-relaxed", t.faint)}>
               {p.quickLinkInitial
-                ? `Quick link added · opens ${p.quickLinkHost} from ${p.quickLinkInitial.tracker === "anilist" ? "anilist.co" : "Trakt"}.`
-                : `Add a quick link on Trakt/AniList pages that opens ${p.quickLinkHost}.`}
+                ? `Quick link added · opens ${p.quickLinkHost} from ${trackerLabel(p.quickLinkInitial.tracker ?? "trakt")} pages.`
+                : `Add a quick link on ${QUICK_LINK_TRACKERS.map(trackerLabel).join("/")} pages that opens ${p.quickLinkHost}.`}
             </p>
           )}
         </Section>

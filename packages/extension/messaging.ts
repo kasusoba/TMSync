@@ -20,9 +20,9 @@ export interface ScrobbleRequest {
   media: ParsedMedia;
   /** 0–100. */
   progress: number;
-  /** The PRIMARY/native tracker — its numbering is what the page speaks; recorded
-   * directly. Default trakt. */
-  tracker?: Tracker;
+  /** The recipe's primary tracker (the legacy single field). The native tracker is
+   * inferred from `trackers` at scrobble time. */
+  tracker: Tracker;
   /** MULTI-TRACK (docs/MULTI-TRACK.md): the full toggled set. Any tracker beyond
    * the native one is DERIVED via the anime-map crosswalk. Omitted ⇒ [tracker]
    * (native-only, unchanged behaviour). */
@@ -202,7 +202,7 @@ export interface TrackerResolution {
  * (the crosswalk's entry for a derived tracker). */
 export interface ReviewTarget {
   media: ParsedMedia;
-  tracker?: Tracker;
+  tracker: Tracker;
   trackers?: Tracker[];
 }
 
@@ -242,7 +242,7 @@ export interface ProtocolMap {
   scrobble(req: ScrobbleRequest): ScrobbleReply;
   /** Resolve scraped media to its tracker identity WITHOUT recording — lets the
    * badge show the matched title before the user presses play (transparency). */
-  resolveMedia(q: { media: ParsedMedia; tracker?: Tracker }): {
+  resolveMedia(q: { media: ParsedMedia; tracker: Tracker }): {
     resolved: boolean;
     /** Why it didn't resolve, when the tracker needs a connection first. */
     reason?: "not_connected";
@@ -256,7 +256,7 @@ export interface ProtocolMap {
   /** MULTI-TRACK: resolve the current media on EACH enabled tracker (read-only,
    * native direct + derived via the crosswalk) so the rate/correction UI can show
    * per-tracker destinations and gate actions. */
-  resolveAll(q: { media: ParsedMedia; trackers?: Tracker[] }): TrackerResolution[];
+  resolveAll(q: { media: ParsedMedia; trackers: Tracker[] }): TrackerResolution[];
   /** Force-refresh the CDN recipe list; returns how many recipes are now cached. */
   refreshRecipes(): { ok: boolean; count: number; error?: string };
   /** Build a Letterboxd-import CSV from the user's Trakt movie history, ratings
@@ -395,7 +395,7 @@ export interface ProtocolMap {
   /** Which rating levels the routed tracker supports for this media, plus the
    * AniList score format when relevant — so the badge renders only valid
    * affordances (Trakt: show/season/episode; AniList: a single "cour"). */
-  getRatingMeta(q: { media: ParsedMedia; tracker?: Tracker }): {
+  getRatingMeta(q: { media: ParsedMedia; tracker: Tracker }): {
     levels: RatingLevel[];
     scoreFormat?: ScoreFormat;
   };

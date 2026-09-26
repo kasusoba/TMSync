@@ -63,7 +63,7 @@ export interface TrackerInfo {
 
 // Order matters: `ALL_TRACKERS` follows it, and native inference takes the first
 // match. Simkl stays last (it is native only when it stands alone anyway).
-export const TRACKER_INFO: Record<Tracker, TrackerInfo> = {
+const INFO = {
   trakt: { label: "Trakt", family: "seasoned", rates: "levels", note: "public", fix: "search" },
   anilist: {
     label: "AniList",
@@ -82,10 +82,15 @@ export const TRACKER_INFO: Record<Tracker, TrackerInfo> = {
     fix: "cour",
   },
   simkl: { label: "Simkl", family: "any", rates: "entry", note: "none", fix: "none" },
-};
+} as const satisfies Record<Tracker, TrackerInfo>;
 
-/** The cour-family trackers (AniList, MAL): the ones with a fix-match panel. */
-export type CourTracker = "anilist" | "mal";
+export const TRACKER_INFO: Record<Tracker, TrackerInfo> = INFO;
+
+/** The trackers fixed through the cour fix-match panel (AniList, MAL). Derived from
+ * `TRACKER_INFO`, so a new tracker with `fix: "cour"` joins it with no edit here. */
+export type CourTracker = {
+  [K in Tracker]: (typeof INFO)[K]["fix"] extends "cour" ? K : never;
+}[Tracker];
 
 /** How a wrong match is fixed on a tracker. */
 export const trackerFix = (tracker: Tracker): FixKind => TRACKER_INFO[tracker].fix;

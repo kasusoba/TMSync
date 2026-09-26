@@ -12,7 +12,6 @@ import {
   resolve as anilistResolve,
   legacyAnilistKey,
   searchAniList,
-  viewerScoreFormat,
 } from "@/lib/anilist/client";
 import { ANILIST } from "@/lib/anilist/config";
 import {
@@ -414,7 +413,7 @@ export default defineBackground(() => {
   // without a login, so this works even before Connect. MAL needs its site access,
   // and Simkl never searches, so they may show no match until connected or written.
   onMessage("resolveMedia", async ({ data }) => {
-    const adapter = getAdapter(routeTracker(data.tracker ?? "trakt", data.media.mediaType));
+    const adapter = getAdapter(routeTracker(data.tracker, data.media.mediaType));
     try {
       const item = await adapter.resolve(data.media);
       if (!item) return { resolved: false };
@@ -437,7 +436,8 @@ export default defineBackground(() => {
 
   // MULTI-TRACK: per-tracker destination readout for the rate/correction UI.
   onMessage("resolveAll", async ({ data }) => {
-    const trackers = data.trackers?.length ? data.trackers : (["trakt"] as Tracker[]);
+    const { trackers } = data;
+    if (!trackers.length) return [];
     try {
       return await resolveAcross(
         data.media,
@@ -676,21 +676,20 @@ export default defineBackground(() => {
       : { ok: true, completed };
   });
 
-  // --- ratings & notes (routed: Trakt comment-per-level / AniList cour entry) ---
-  // Which affordances the badge should render for the routed tracker. Trakt:
-  // movie or episode/season/show. AniList: a single "cour" + the user's score format.
+  // --- ratings & notes (routed per tracker: see REVIEW) ---
+  // Which affordances the badge should render for the routed tracker (the adapter's
+  // levels), plus the user's own score scale where the tracker has one.
   onMessage("getRatingMeta", async ({ data }) => {
-    const tracker = data.tracker ?? "trakt";
-    const levels = getAdapter(tracker).ratingLevels(data.media);
-    if (tracker !== "anilist") return { levels };
-    return { levels, scoreFormat: (await viewerScoreFormat()) ?? undefined };
+    const adapter = getAdapter(data.tracker);
+    const levels = adapter.ratingLevels(data.media);
+    const scoreFormat = await adapter.scoreFormat?.();
+    return scoreFormat ? { levels, scoreFormat } : { levels };
   });
 
-  // Rating + notes route through a per-tracker REGISTRY, not a `=== "anilist" ? … :
-  // trakt` ternary — the review path never went through the adapter seam, so this is
-  // the seam for it. Adding a tracker = one entry (its rating/note semantics differ:
-  // Trakt rates per level with a public comment; AniList rates the cour with a
-  // private note; each impl uses only the params it needs).
+  // Rating + notes route through a per-tracker REGISTRY (REVIEW), never a switch on
+  // the tracker name: the review path is not part of the adapter seam, so this is
+  // its seam. Adding a tracker = one entry. Rating and note semantics differ per
+  // tracker, and each handler uses only the params it needs.
   onMessage("getReview", async ({ data }) => {
     const t = await reviewTarget(data);
     return "error" in t ? { rating: null, note: null } : t.review.getReview(t.media, data.level);
@@ -927,7 +926,7 @@ async function recordScrobble(
   // MULTI-TRACK: the enabled set + which tracker speaks the page's numbering
   // natively (recorded directly). Every OTHER enabled tracker is derived via the
   // crosswalk. `trackers` is authoritative; fall back to the legacy single field.
-  const enabled = data.trackers?.length ? data.trackers : [data.tracker ?? "trakt"];
+  const enabled = data.trackers?.length ? data.trackers : [data.tracker];
   // The native tracker is always an ENABLED one (inferNativeTracker picks from
   // `enabled`). So an AniList-only recipe on a TMDB/seasoned site records AniList
   // directly with the scraped episode instead of forcing it through the crosswalk.
@@ -1212,7 +1211,7 @@ async function reviewTarget(
 ): Promise<
   { review: ReviewHandler; media: ParsedMedia; ids?: TargetIds } | { ok: false; error: string }
 > {
-  const tracker = data.tracker ?? "trakt";
+  const tracker = data.tracker;
   const review = REVIEW[tracker];
   const enabled = data.trackers?.length ? data.trackers : [tracker];
   const native = inferNativeTracker(data.media, enabled);
@@ -1323,8 +1322,8 @@ async function recordDerivedTrackers(
   return out;
 }
 
-// AniList rating + notes live in lib/anilist/review.ts; Trakt rating + notes in
-// lib/trakt/review.ts. The message handlers above just dispatch by tracker.
+// Each tracker's rating + notes live in lib/<tracker>/review.ts. The message
+// handlers above just dispatch through REVIEW.
 
 // MV3 (Chrome + Firefox 109+) expose `action`; Firefox MV2 uses `browserAction`.
 const tabAction = browser.action ?? browser.browserAction;

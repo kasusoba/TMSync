@@ -75,8 +75,8 @@ export function placeholderHint(list: readonly PlaceholderDoc[]): string {
 
 /**
  * The tracker's OWN website URL for a resolved item — so the now-playing UI can
- * "open on Trakt / AniList" in a new tab. Both sites redirect a numeric id in the
- * path to the canonical slug page, so the resolved id is enough:
+ * "open on <tracker>" in a new tab. Each site takes a numeric id in the path (Trakt
+ * redirects it to the canonical slug page), so the resolved id is enough:
  *   Trakt movie:   trakt.tv/movies/{id}
  *   Trakt show:    trakt.tv/shows/{id}
  *   Trakt episode: trakt.tv/shows/{id}/seasons/{s}/episodes/{e}  (when s+e known)
@@ -85,26 +85,30 @@ export function placeholderHint(list: readonly PlaceholderDoc[]): string {
  *   Simkl:         simkl.com/{movies|tv}/{id}  (a guess from the media type; the
  *                  real page, `anime` included, comes from the write that names it)
  */
-export function trackerItemUrl(
-  tracker: Tracker,
-  id: number,
-  opts?: {
-    mediaType?: "movie" | "show";
-    season?: number;
-    episode?: number;
-  },
-): string {
-  if (tracker === "anilist") return `https://anilist.co/anime/${id}`;
-  if (tracker === "mal") return `https://myanimelist.net/anime/${id}`;
-  if (tracker === "simkl") {
-    return `https://simkl.com/${opts?.mediaType === "movie" ? "movies" : "tv"}/${id}`;
-  }
-  if (opts?.mediaType === "movie") return `https://trakt.tv/movies/${id}`;
-  const base = `https://trakt.tv/shows/${id}`;
-  return opts?.season !== undefined && opts?.episode !== undefined
-    ? `${base}/seasons/${opts.season}/episodes/${opts.episode}`
-    : base;
+export function trackerItemUrl(tracker: Tracker, id: number, opts?: ItemUrlOpts): string {
+  return ITEM_URL[tracker](id, opts ?? {});
 }
+
+interface ItemUrlOpts {
+  mediaType?: "movie" | "show";
+  season?: number;
+  episode?: number;
+}
+
+/** One URL builder per tracker. A record, so a new tracker must add its own (no
+ * fall-through to Trakt). */
+const ITEM_URL: Record<Tracker, (id: number, o: ItemUrlOpts) => string> = {
+  trakt: (id, o) => {
+    if (o.mediaType === "movie") return `https://trakt.tv/movies/${id}`;
+    const base = `https://trakt.tv/shows/${id}`;
+    return o.season !== undefined && o.episode !== undefined
+      ? `${base}/seasons/${o.season}/episodes/${o.episode}`
+      : base;
+  },
+  anilist: (id) => `https://anilist.co/anime/${id}`,
+  mal: (id) => `https://myanimelist.net/anime/${id}`,
+  simkl: (id, o) => `https://simkl.com/${o.mediaType === "movie" ? "movies" : "tv"}/${id}`,
+};
 
 /** Split an absolute template into host and path. Null for a path template.
  * Textual, not URL(): a template holds `{placeholder}` braces, and URL() would
