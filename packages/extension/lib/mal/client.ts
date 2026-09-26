@@ -227,16 +227,14 @@ export async function resolve(media: ParsedMedia): Promise<MalIdentity | null> {
   const missedAt = (await malMissCache.getValue())[key];
   if (missedAt && Date.now() - missedAt < MISS_TTL_MS) return null;
 
+  // A bad id (MAL or AniList has no such entry) reads as null and falls through to
+  // a title match below. Any other failure (network, server, no access) throws:
+  // a title match made then would be cached under the id key, for good.
   let identity: MalIdentity | null = null;
-  try {
-    if (media.ids?.mal !== undefined) {
-      identity = await getAnime(Number(media.ids.mal));
-    } else if (media.ids?.anilist !== undefined) {
-      identity = await resolveViaAniList(Number(media.ids.anilist));
-    }
-  } catch (e) {
-    if (e instanceof MalRateLimitError) throw e;
-    identity = null; // bad id → degrade to a title match below
+  if (media.ids?.mal !== undefined) {
+    identity = await getAnime(Number(media.ids.mal));
+  } else if (media.ids?.anilist !== undefined) {
+    identity = await resolveViaAniList(Number(media.ids.anilist));
   }
   // MAL rejects very short queries; a title that short can't be matched well anyway.
   if (!identity && media.title && media.title.trim().length >= 3) {

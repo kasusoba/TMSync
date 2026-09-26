@@ -161,7 +161,10 @@ const refresh = singleFlight(async (tokens: SimklTokens): Promise<SimklTokens | 
 export async function getValidAccessToken(): Promise<string | null> {
   const tokens = await simklTokens.getValue();
   if (!tokens) return null;
-  if (nowSec() < tokens.obtained_at + tokens.expires_in - REFRESH_EARLY_SEC) {
+  // Early by a day, or by half the lifetime for a short-lived token, so a token
+  // shorter than a day is not refreshed on every call (each one costs quota).
+  const early = Math.min(REFRESH_EARLY_SEC, tokens.expires_in / 2);
+  if (nowSec() < tokens.obtained_at + tokens.expires_in - early) {
     return tokens.access_token;
   }
   return (await refresh(tokens))?.access_token ?? null;

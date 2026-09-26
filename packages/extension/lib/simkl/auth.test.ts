@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
-import { canWrite, codeChallenge, readCallback, staleRefresh } from "./auth";
+import { simklTokens } from "@/lib/storage";
+import { describe, expect, it, vi } from "vitest";
+import { fakeBrowser } from "wxt/testing";
+import { canWrite, codeChallenge, getValidAccessToken, readCallback, staleRefresh } from "./auth";
 import type { SimklTokens } from "./types";
 
 describe("codeChallenge", () => {
@@ -53,5 +55,22 @@ describe("staleRefresh", () => {
   it("keeps a grant that Simkl handed back unchanged, and a first connect", () => {
     expect(staleRefresh(old, "r-old")).toBeNull();
     expect(staleRefresh(null, "r-new")).toBeNull();
+  });
+});
+
+describe("getValidAccessToken", () => {
+  it("does not refresh a fresh token that lasts less than a day", async () => {
+    fakeBrowser.reset();
+    const now = Math.floor(Date.now() / 1000);
+    await simklTokens.setValue({
+      access_token: "a",
+      refresh_token: "r",
+      expires_in: 3600,
+      obtained_at: now,
+    });
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    expect(await getValidAccessToken()).toBe("a");
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
   });
 });
