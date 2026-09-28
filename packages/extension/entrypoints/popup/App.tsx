@@ -30,12 +30,7 @@ import type { QuickLinkValue } from "@/lib/ui/kit/QuickLinkEditor";
 import { tokens } from "@/lib/ui/kit/kit";
 import { NowPlaying } from "@/lib/ui/scrobble-panels";
 import type { BadgeStatus } from "@/messaging";
-import {
-  type AniListStatus,
-  type ProviderStatus,
-  type TraktStatus,
-  sendMessage,
-} from "@/messaging";
+import { type AccountStatus, sendMessage } from "@/messaging";
 import { type ParsedMedia, hostText, matchesUrl } from "@tmsync/shared";
 import { useEffect, useState } from "preact/hooks";
 import { browser } from "wxt/browser";
@@ -169,10 +164,10 @@ async function collectFrames(tabId: number): Promise<RawFrame[]> {
 }
 
 export function App() {
-  const [status, setStatus] = useState<TraktStatus | null>(null);
-  const [anilist, setAnilist] = useState<AniListStatus | null>(null);
-  const [mal, setMal] = useState<ProviderStatus | null>(null);
-  const [simkl, setSimkl] = useState<ProviderStatus | null>(null);
+  const [status, setStatus] = useState<AccountStatus | null>(null);
+  const [anilist, setAnilist] = useState<AccountStatus | null>(null);
+  const [mal, setMal] = useState<AccountStatus | null>(null);
+  const [simkl, setSimkl] = useState<AccountStatus | null>(null);
   const [topOrigin, setTopOrigin] = useState<string | null>(null);
   const [origins, setOrigins] = useState<string[]>([]); // top + every iframe origin on the page
   const [enabled, setEnabled] = useState<string[]>([]);
@@ -222,10 +217,10 @@ export function App() {
     const tabId = await activeTabId();
     const [s, al, ml, sk, url, found, sites, links, badge, custom, remote, pending, fresh] =
       await Promise.all([
-        sendMessage("getTraktStatus", undefined),
-        sendMessage("getAniListStatus", undefined),
-        sendMessage("getMalStatus", undefined),
-        sendMessage("getSimklStatus", undefined),
+        sendMessage("getTrackerStatus", "trakt"),
+        sendMessage("getTrackerStatus", "anilist"),
+        sendMessage("getTrackerStatus", "mal"),
+        sendMessage("getTrackerStatus", "simkl"),
         activeTabUrl(),
         tabId !== null ? collectOrigins(tabId) : Promise.resolve<string[]>([]),
         sendMessage("listEnabledSites", undefined),
@@ -304,7 +299,7 @@ export function App() {
   const connect = async () => {
     setBusy(true);
     setNote(null);
-    const res = await sendMessage("connectTrakt", undefined);
+    const res = await sendMessage("connectTracker", "trakt");
     if (!res.ok) setNote(res.error ?? "Connection failed");
     await refresh();
     setBusy(false);
@@ -312,7 +307,7 @@ export function App() {
 
   const disconnect = async () => {
     setBusy(true);
-    await sendMessage("disconnectTrakt", undefined);
+    await sendMessage("disconnectTracker", "trakt");
     await refresh();
     setBusy(false);
   };
@@ -320,7 +315,7 @@ export function App() {
   const connectAniList = async () => {
     setBusy(true);
     setNote(null);
-    const res = await sendMessage("connectAniList", undefined);
+    const res = await sendMessage("connectTracker", "anilist");
     if (!res.ok) setNote(res.error ?? "AniList connection failed");
     await refresh();
     setBusy(false);
@@ -328,7 +323,7 @@ export function App() {
 
   const disconnectAniList = async () => {
     setBusy(true);
-    await sendMessage("disconnectAniList", undefined);
+    await sendMessage("disconnectTracker", "anilist");
     await refresh();
     setBusy(false);
   };
@@ -353,7 +348,7 @@ export function App() {
     }
     void malConnectIntent.setValue(0);
     setBusy(true);
-    const res = await sendMessage("connectMal", undefined);
+    const res = await sendMessage("connectTracker", "mal");
     if (!res.ok) setNote(res.error ?? "MyAnimeList connection failed");
     await refresh();
     setBusy(false);
@@ -362,7 +357,7 @@ export function App() {
   const connectSimkl = async () => {
     setNote(null);
     setBusy(true);
-    const res = await sendMessage("connectSimkl", undefined);
+    const res = await sendMessage("connectTracker", "simkl");
     if (!res.ok) setNote(res.error ?? "Simkl connection failed");
     await refresh();
     setBusy(false);

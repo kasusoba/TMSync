@@ -5,18 +5,12 @@ import { statusDotColor } from "@/lib/scrobble/action-badge";
 import { addedHosts } from "@/lib/sites";
 import {
   type QuickLinkSite,
-  anilistCorrections,
-  anilistResolutionCache,
   animapOverrides,
   animeMap,
   corrections,
   customRecipes,
   enabledOrigins,
   episodeOverrides,
-  malConnectIntent,
-  malCorrections,
-  malMissCache,
-  malResolutionCache,
   manualContexts,
   manualSelections,
   newPendingSites,
@@ -37,70 +31,14 @@ import {
   trackerLabel,
 } from "@/lib/trackers";
 import {
-  connect as anilistConnect,
-  disconnect as anilistDisconnect,
-  isConnected as anilistIsConnected,
-  getRedirectUri as anilistRedirectUri,
-} from "@/lib/trackers/anilist/auth";
-import {
-  AniListNotConnectedError,
-  anilistCacheKey,
-  resolveById as anilistIdentityById,
-  resolve as anilistResolve,
-  legacyAnilistKey,
-  searchAniList,
-} from "@/lib/trackers/anilist/client";
-import { ANILIST } from "@/lib/trackers/anilist/config";
-import {
-  anilistDeleteNote,
-  anilistGetReview,
-  anilistRate,
-  anilistSaveNote,
-  anilistUnrate,
-} from "@/lib/trackers/anilist/review";
-import type { AniListIdentity } from "@/lib/trackers/anilist/types";
-import {
   type AnimapOverrides,
   type TargetIds,
   deriveMediaWith,
-  forwardKey,
 } from "@/lib/trackers/animap/derive";
 import type { Animap } from "@/lib/trackers/animap/index";
 import { loadAnimap, parseAnimeMap } from "@/lib/trackers/animap/load";
 import { planCourWrite } from "@/lib/trackers/cour-plan";
-import { hasMalAccess, isMalGrant } from "@/lib/trackers/mal/access";
-import {
-  connect as malConnect,
-  disconnect as malDisconnect,
-  isConnected as malIsConnected,
-  getRedirectUri as malRedirectUri,
-} from "@/lib/trackers/mal/auth";
-import { getAnime as getMalAnime, malCacheKey, searchMal } from "@/lib/trackers/mal/client";
-import { MAL } from "@/lib/trackers/mal/config";
-import {
-  malDeleteNote,
-  malGetReview,
-  malRate,
-  malSaveNote,
-  malUnrate,
-} from "@/lib/trackers/mal/review";
-import type { MalIdentity } from "@/lib/trackers/mal/types";
-import {
-  connect as simklConnect,
-  disconnect as simklDisconnect,
-  isConnected as simklIsConnected,
-  getRedirectUri as simklRedirectUri,
-} from "@/lib/trackers/simkl/auth";
-import { HELD_STOP_ALARM, flushHeldStops } from "@/lib/trackers/simkl/client";
-import { SIMKL } from "@/lib/trackers/simkl/config";
-import {
-  simklDeleteNote,
-  simklGetReview,
-  simklRate,
-  simklSaveNote,
-  simklUnrate,
-} from "@/lib/trackers/simkl/review";
-import { connect, disconnect, getRedirectUri, isConnected } from "@/lib/trackers/trakt/auth";
+import { type ReviewHandler, allServices, getService } from "@/lib/trackers/service";
 import {
   TraktNotConnectedError,
   exportLetterboxd,
@@ -108,23 +46,8 @@ import {
   resolve,
   search,
 } from "@/lib/trackers/trakt/client";
-import {
-  traktDeleteNote,
-  traktGetReview,
-  traktRate,
-  traktSaveNote,
-  traktUnrate,
-} from "@/lib/trackers/trakt/review";
-import type { ReviewLevel } from "@/lib/trackers/trakt/types";
 import { resolutionCacheKey } from "@/lib/trackers/trakt/util";
-import {
-  type CourSearchOption,
-  type CourTracker,
-  type RatingLevel,
-  type TrackedItem,
-  type Tracker,
-  WATCHED_THRESHOLD,
-} from "@/lib/trackers/types";
+import { type TrackedItem, type Tracker, WATCHED_THRESHOLD } from "@/lib/trackers/types";
 import {
   type BadgeStatus,
   type DerivedOutcome,
@@ -183,58 +106,6 @@ const ALL_SITES = "*://*/*";
 const ALL_SITES_ID = "tmsync-all-sites";
 const hasAllSites = () => browser.permissions.contains({ origins: [ALL_SITES] });
 
-type OkResult = Promise<{ ok: boolean; error?: string }>;
-/** The rating + note seam per tracker (see the getReview/rateItem/… handlers). Each
- * tracker uses only the params it supports; adding a tracker = one entry here. */
-interface ReviewHandler {
-  getReview(
-    media: ParsedMedia,
-    level: RatingLevel,
-  ): Promise<{ rating: number | null; note: { text: string; spoiler: boolean } | null }>;
-  rate(media: ParsedMedia, level: RatingLevel, rating: number): OkResult;
-  unrate(media: ParsedMedia, level: RatingLevel): OkResult;
-  saveNote(media: ParsedMedia, level: RatingLevel, text: string, spoiler: boolean): OkResult;
-  deleteNote(media: ParsedMedia, level: RatingLevel): OkResult;
-}
-
-const REVIEW: Record<Tracker, ReviewHandler> = {
-  // Trakt: per-level (episode/season/show) with a public comment + spoiler flag.
-  trakt: {
-    getReview: (m, level) => traktGetReview(m, level as ReviewLevel),
-    rate: (m, level, rating) => traktRate(m, level as ReviewLevel, rating),
-    unrate: (m, level) => traktUnrate(m, level as ReviewLevel),
-    saveNote: (m, level, text, spoiler) => traktSaveNote(m, level as ReviewLevel, text, spoiler),
-    deleteNote: (m, level) => traktDeleteNote(m, level as ReviewLevel),
-  },
-  // AniList: the cour entry only — private note, no per-level, no spoiler.
-  anilist: {
-    getReview: (m) => anilistGetReview(m),
-    rate: (m, _level, rating) => anilistRate(m, rating),
-    unrate: (m) => anilistUnrate(m),
-    saveNote: (m, _level, text) => anilistSaveNote(m, text),
-    deleteNote: (m) => anilistDeleteNote(m),
-  },
-  // MyAnimeList: the entry (cour) only, 1 to 10, private `comments` note.
-  mal: {
-    getReview: (m) => malGetReview(m),
-    rate: (m, _level, rating) => malRate(m, rating),
-    unrate: (m) => malUnrate(m),
-    saveNote: (m, _level, text) => malSaveNote(m, text),
-    deleteNote: (m) => malDeleteNote(m),
-  },
-  // Simkl: the whole entry (movie or show) only, 1 to 10. No notes.
-  simkl: {
-    getReview: (m) => simklGetReview(m),
-    rate: (m, _level, rating) => simklRate(m, rating),
-    unrate: (m) => simklUnrate(m),
-    saveNote: () => simklSaveNote(),
-    deleteNote: () => simklDeleteNote(),
-  },
-};
-
-/** How long a popup's MAL connect intent stays good (the user answers the prompt). */
-const MAL_INTENT_MS = 2 * 60 * 1000;
-
 /**
  * MV3 service worker. STATELESS (constraint #4): every handler reads from
  * storage; no session state, timers, or buffers held here.
@@ -279,8 +150,11 @@ export default defineBackground(() => {
   browser.alarms.onAlarm.addListener((alarm) => {
     if (alarm.name === "tmsync-recipes") void fetchRemoteRecipes(true);
     if (alarm.name === "tmsync-anime-map") void fetchAnimeMap(true);
-    if (alarm.name === HELD_STOP_ALARM) void flushHeldStops();
+    for (const service of allServices()) void service.alarms?.[alarm.name]?.();
   });
+
+  // Each tracker's own listeners, set up again on each wake (constraint #4).
+  for (const service of allServices()) service.onWake?.();
 
   onMessage("refreshRecipes", async () => {
     // One "Refresh" button, both CDN lists. Awaited so the options page reads a
@@ -291,88 +165,19 @@ export default defineBackground(() => {
 
   onMessage("ping", () => "pong" as const);
 
-  onMessage("getTraktStatus", async () => ({
-    connected: await isConnected(),
-    redirectUri: getRedirectUri(),
-  }));
+  // Accounts: one set of handlers for every tracker, through its service.
+  onMessage("getTrackerStatus", ({ data }) => getService(data).status());
 
-  onMessage("connectTrakt", async () => {
+  onMessage("connectTracker", async ({ data }) => {
     try {
-      await connect();
+      await getService(data).connect();
       return { ok: true };
     } catch (e) {
       return { ok: false, error: errorMessage(e) };
     }
   });
 
-  onMessage("disconnectTrakt", () => disconnect());
-
-  onMessage("getAniListStatus", async () => ({
-    connected: await anilistIsConnected(),
-    redirectUri: anilistRedirectUri(),
-    configured: !!(ANILIST.clientId && ANILIST.clientSecret),
-  }));
-
-  onMessage("connectAniList", async () => {
-    try {
-      await anilistConnect();
-      return { ok: true };
-    } catch (e) {
-      return { ok: false, error: errorMessage(e) };
-    }
-  });
-
-  onMessage("disconnectAniList", () => anilistDisconnect());
-
-  onMessage("getMalStatus", async () => ({
-    connected: await malIsConnected(),
-    redirectUri: malRedirectUri(),
-    configured: !!MAL.clientId,
-  }));
-
-  // A first MAL grant from the popup: Firefox closes the popup at the permission
-  // prompt, so the popup can't ask for the sign-in. It left an intent; sign in here.
-  // A listener re-established on each wake, not held state (constraint #4).
-  browser.permissions.onAdded.addListener(async (granted) => {
-    if (!isMalGrant(granted.origins)) return;
-    const at = await malConnectIntent.getValue();
-    if (!at || Date.now() - at > MAL_INTENT_MS) return;
-    await malConnectIntent.setValue(0);
-    await malConnect().catch((e) => console.warn("[TMSync] MyAnimeList sign-in failed", e));
-  });
-
-  onMessage("connectMal", async () => {
-    // MAL sends no CORS headers, so every call needs the host grant. The UI asks for
-    // it on the Connect click (a gesture the background doesn't have).
-    if (!(await hasMalAccess())) {
-      return { ok: false, error: "Allow access to MyAnimeList to connect" };
-    }
-    try {
-      await malConnect();
-      return { ok: true };
-    } catch (e) {
-      return { ok: false, error: errorMessage(e) };
-    }
-  });
-
-  onMessage("disconnectMal", () => malDisconnect());
-
-  onMessage("getSimklStatus", async () => ({
-    connected: await simklIsConnected(),
-    redirectUri: simklRedirectUri(),
-    configured: !!SIMKL.clientId,
-  }));
-
-  onMessage("connectSimkl", async () => {
-    try {
-      await simklConnect();
-      return { ok: true };
-    } catch (e) {
-      return { ok: false, error: errorMessage(e) };
-    }
-  });
-
-  onMessage("disconnectSimkl", () => simklDisconnect());
+  onMessage("disconnectTracker", ({ data }) => getService(data).disconnect());
 
   onMessage("exportLetterboxd", async () => {
     try {
@@ -590,7 +395,7 @@ export default defineBackground(() => {
 
   onMessage("searchCour", async ({ data }) => {
     try {
-      return await COUR_PINS[data.tracker].search(data.query);
+      return await getService(data.tracker).pins.search(data.query);
     } catch {
       return [];
     }
@@ -602,7 +407,7 @@ export default defineBackground(() => {
   // happen with a tmdb id too, e.g. Trakt off) or follows AniList (MAL). The title
   // key carries the season, so a pin for one season never applies to another.
   onMessage("setCourMatch", async ({ data, sender }) => {
-    const out = await COUR_PINS[data.tracker].apply(data.media, data.id);
+    const out = await getService(data.tracker).pins.apply(data.media, data.id);
     if (!out.ok) {
       return { ok: false, error: `couldn't load that ${trackerLabel(data.tracker)} entry` };
     }
@@ -614,7 +419,7 @@ export default defineBackground(() => {
   // Undo a pin (or a "Not on <tracker>") → back to the automatic match (the Fribb
   // crosswalk, or the title search). Clears both keys, like the set.
   onMessage("resetCourMatch", async ({ data, sender }) => {
-    await COUR_PINS[data.tracker].apply(data.media, undefined);
+    await getService(data.tracker).pins.apply(data.media, undefined);
     const tabId = data.tabId ?? sender.tab?.id;
     if (tabId !== undefined) void sendMessage("recheck", undefined, tabId);
     return { ok: true };
@@ -683,7 +488,7 @@ export default defineBackground(() => {
       : { ok: true, completed };
   });
 
-  // --- ratings & notes (routed per tracker: see REVIEW) ---
+  // --- ratings & notes (routed per tracker through its service) ---
   // Which affordances the badge should render for the routed tracker (the adapter's
   // levels), plus the user's own score scale where the tracker has one.
   onMessage("getRatingMeta", async ({ data }) => {
@@ -693,10 +498,9 @@ export default defineBackground(() => {
     return scoreFormat ? { levels, scoreFormat } : { levels };
   });
 
-  // Rating + notes route through a per-tracker REGISTRY (REVIEW), never a switch on
-  // the tracker name: the review path is not part of the adapter seam, so this is
-  // its seam. Adding a tracker = one entry. Rating and note semantics differ per
-  // tracker, and each handler uses only the params it needs.
+  // Rating + notes route through each tracker's service (`review`), never a switch
+  // on the tracker name. Rating and note semantics differ per tracker, and each
+  // handler uses only the params it needs.
   onMessage("getReview", async ({ data }) => {
     const t = await reviewTarget(data);
     return "error" in t ? { rating: null, note: null } : t.review.getReview(t.media, data.level);
@@ -1026,108 +830,6 @@ function needsCourBridge(native: Tracker, target: Tracker): boolean {
 }
 
 /**
- * Where each cour tracker keeps its fix-match pins: the crosswalk override map
- * for a tmdb-keyed pin, and the title correction (with the caches to drop so a pin,
- * or its removal, takes effect now).
- */
-interface CourPins<I> {
-  search(query: string): Promise<CourSearchOption[]>;
-  /** The entry for a picked id (null when the tracker has no such entry). */
-  load(id: number): Promise<I | null>;
-  /** The `AnimapOverrides` map a tmdb-keyed pin goes in. */
-  override: "forward" | "forwardMal";
-  /** Set (an identity, or null = "not on the tracker") or clear (undefined) the
-   * title correction for this media, and drop its stale auto-resolution. */
-  setCorrection(media: ParsedMedia, identity: I | null | undefined): Promise<void>;
-}
-
-/** A cour tracker's pins with the identity type bound in (see `bindPins`). */
-interface BoundCourPins {
-  search(query: string): Promise<CourSearchOption[]>;
-  /** Pin an entry (an id), block it (null = "not on the tracker"), or clear the pin
-   * (undefined). `ok: false` when the picked entry can't be loaded. */
-  apply(media: ParsedMedia, id: number | null | undefined): Promise<{ ok: boolean }>;
-}
-
-/** Bind a tracker's pins. `load` and `setCorrection` share one `I`, so an AniList
- * identity can never land in the MAL corrections. */
-function bindPins<I>(pins: CourPins<I>): BoundCourPins {
-  return { search: pins.search, apply: (media, id) => applyCourPin(pins, media, id) };
-}
-
-/** Set, block, or clear one cour tracker's pin: the tmdb-keyed crosswalk override
- * and the title correction. */
-async function applyCourPin<I>(
-  pins: CourPins<I>,
-  media: ParsedMedia,
-  id: number | null | undefined,
-): Promise<{ ok: boolean }> {
-  let identity: I | null = null;
-  if (id !== null && id !== undefined) {
-    identity = await pins.load(id).catch(() => null);
-    if (!identity) return { ok: false };
-  }
-  const tmdbId = media.ids?.tmdb;
-  if (tmdbId !== undefined) {
-    const ov = await animapOverrides.getValue();
-    const key = forwardKey(Number(tmdbId), media.season);
-    const pinned = ov[pins.override] ?? {};
-    if (id === undefined) {
-      if (key in pinned) {
-        const { [key]: _gone, ...rest } = pinned;
-        await animapOverrides.setValue({ ...ov, [pins.override]: rest });
-      }
-    } else {
-      await animapOverrides.setValue({ ...ov, [pins.override]: { ...pinned, [key]: id } });
-    }
-  }
-  await pins.setCorrection(media, id === undefined ? undefined : identity);
-  return { ok: true };
-}
-
-/** Set or clear one key of a record in storage. */
-async function setKey<T>(
-  item: { getValue(): Promise<Record<string, T>>; setValue(v: Record<string, T>): Promise<void> },
-  key: string,
-  value: T | undefined,
-): Promise<void> {
-  const all = await item.getValue();
-  if (value === undefined) {
-    if (!(key in all)) return;
-    delete all[key];
-  } else all[key] = value;
-  await item.setValue(all);
-}
-
-const COUR_PINS: Record<CourTracker, BoundCourPins> = {
-  anilist: bindPins<AniListIdentity>({
-    search: searchAniList,
-    // The identity, not the seam item: a title pin keeps `idMal`, so MAL can follow it.
-    load: anilistIdentityById,
-    override: "forward",
-    async setCorrection(media, identity) {
-      const key = anilistCacheKey(media);
-      await setKey(anilistCorrections, key, identity);
-      await setKey(anilistResolutionCache, key, undefined);
-      // A pin from before keys carried the season gives way to this one.
-      const legacy = legacyAnilistKey(media);
-      if (legacy !== undefined) await setKey(anilistCorrections, legacy, undefined);
-    },
-  }),
-  mal: bindPins<MalIdentity>({
-    search: searchMal,
-    load: getMalAnime,
-    override: "forwardMal",
-    async setCorrection(media, identity) {
-      const key = malCacheKey(media);
-      await setKey(malCorrections, key, identity);
-      await setKey(malResolutionCache, key, undefined);
-      await setKey(malMissCache, key, undefined); // a remembered miss
-    },
-  }),
-};
-
-/**
  * Resolve a derived tracker's entry: by the exact ids the derivation named (the
  * adapter picks the namespace it can use), else from the derived media.
  */
@@ -1215,7 +917,7 @@ async function reviewTarget(
   { review: ReviewHandler; media: ParsedMedia; ids?: TargetIds } | { ok: false; error: string }
 > {
   const tracker = data.tracker;
-  const review = REVIEW[tracker];
+  const review = getService(tracker).review;
   const enabled = data.trackers?.length ? data.trackers : [tracker];
   const native = inferNativeTracker(data.media, enabled);
   if (tracker === native) return { review, media: data.media };
@@ -1318,9 +1020,6 @@ async function recordDerivedTrackers(
   }
   return out;
 }
-
-// Each tracker's rating + notes live in lib/trackers/<tracker>/review.ts. The message
-// handlers above just dispatch through REVIEW.
 
 // MV3 (Chrome + Firefox 109+) expose `action`; Firefox MV2 uses `browserAction`.
 const tabAction = browser.action ?? browser.browserAction;

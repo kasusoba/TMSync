@@ -182,12 +182,14 @@ a fixed set:
    `ratingLevels`, `watchedState`, and `resolvableNamespaces`, strongest id first. Register it in
    `ADAPTERS` (`lib/trackers/index.ts`). A tracker in the cour family reuses the pure planner in
    `lib/trackers/cour-plan.ts`. Put it last in `ALL_TRACKERS` if it could claim every namespace.
-3. **Auth and config.** Add `auth.ts` and `config.ts` with connect and disconnect messages, and a
-   client ID in `.env.example`, the release workflow's secret check, and `wxt.config.ts` if needed.
+3. **Auth and config.** Add `auth.ts` and `config.ts`, and a client ID in `.env.example`, the release workflow's secret check, and `wxt.config.ts` if needed.
 4. **Host access.** Never add a host to the install manifest. A required host makes Chrome disable
    the extension on update until the user accepts. Put it in `optional_host_permissions` and request
    it on Connect. Skip this if the API answers CORS.
-5. **Reviews.** Add `lib/trackers/<tracker>/review.ts` and a `REVIEW` registry entry in the background.
+5. **Service.** Add `review.ts` and a `service.ts` with a `TrackerService`: account status, connect,
+   disconnect, the rating and note calls, and any alarms or wake listeners. A cour tracker also
+   brings its fix-match `pins` (the type requires them). Register it in `SERVICES`
+   (`lib/trackers/service.ts`). The background needs no edit.
 6. **UI.** Add a mark (`marks.data.ts`, `kit.tsx`, the `TRACKER_MARK` entry), an Account row in
    Options, a connect button in the popup, and a picker toggle entry in `PickerPanel.tsx`. Provider
    rows are hand-wired per provider, not a loop. Add the new states to the gallery.

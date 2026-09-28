@@ -243,8 +243,13 @@ would need an absolute-to-season step that does not exist. TMSync refuses rather
 **Rating, notes & exports** are co-located with each tracker, not inlined in the background: Trakt
 rating/notes in `lib/trackers/trakt/review.ts`, AniList in `lib/trackers/anilist/review.ts`, MAL in
 `lib/trackers/mal/review.ts`, Simkl in `lib/trackers/simkl/review.ts`, and Trakt's Letterboxd
-CSV export in `lib/portability/letterboxd.ts`. The background's `rateItem`/`saveNote`/etc. handlers are
-thin dispatchers over the `REVIEW` registry. (The `TrackerAdapter` interface itself covers
+CSV export in `lib/portability/letterboxd.ts`.
+
+**Background services.** Each tracker also has a `service.ts`: its account (status, connect,
+disconnect), its rating and note calls, a cour tracker's fix-match pins, and any alarm or
+listener it needs on each worker wake. The registry is `lib/trackers/service.ts`. The
+background's account, `rateItem`/`saveNote`/etc., and fix-match handlers are thin dispatchers over
+it, so the background never names a tracker for these. (The `TrackerAdapter` interface itself covers
 resolve/record/ratingLevels/watchedState; folding rate/note *writes* into the interface is a future
 step best done when a third tracker exists to shape it.)
 
@@ -273,7 +278,9 @@ One typed `ProtocolMap` via `@webext-core/messaging`, no ad-hoc `postMessage`. I
 the contract for content↔background↔popup/options. Content→background carries `scrobble`,
 `publishMedia`, `updateProgress`, `endSession`, resolve/rate/note/correction messages;
 background→content carries `recheck` and `scrobbleStatus`; popup/options→background carries status,
-connect, search, and register/unregister. All handlers live in `background.ts`.
+connect, search, and register/unregister. Account messages take the tracker as data
+(`getTrackerStatus`, `connectTracker`, `disconnectTracker`), so a new tracker adds no message. All
+handlers live in `background.ts`.
 
 ---
 
@@ -392,7 +399,7 @@ regex/number/title chip builders, `buildRecipe` (assembles + Zod-validates), and
 | Change how a site is matched | `packages/shared/src/match.ts` |
 | Touch play/pause/stop timing | `lib/scrobble/controller.ts` |
 | Touch iframe/SPA/late-metadata handling | `lib/scrobble/session.ts` |
-| Add or change a tracker | `lib/trackers/adapter.ts` + a new `lib/trackers/<tracker>/` folder |
+| Add or change a tracker | `lib/trackers/adapter.ts`, `lib/trackers/service.ts` + a new `lib/trackers/<tracker>/` folder |
 | Debug Trakt resolution/scrobble | `lib/trackers/trakt/client.ts`, `lib/trackers/trakt/auth.ts` |
 | Debug AniList / MAL writes | `lib/trackers/anilist/client.ts`, `lib/trackers/mal/client.ts`, `lib/trackers/cour-plan.ts` |
 | Change rating / notes behaviour | `lib/trackers/trakt/review.ts`, `lib/trackers/anilist/review.ts`, `lib/trackers/mal/review.ts` |

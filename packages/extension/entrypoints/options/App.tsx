@@ -45,12 +45,7 @@ import {
   TraktMark,
   tokens,
 } from "@/lib/ui/kit/kit";
-import {
-  type AniListStatus,
-  type ProviderStatus,
-  type TraktStatus,
-  sendMessage,
-} from "@/messaging";
+import { type AccountStatus, sendMessage } from "@/messaging";
 import {
   ANILIST_PLACEHOLDERS,
   type PlaceholderDoc,
@@ -644,10 +639,10 @@ function ProviderRow({
 }
 
 export function App() {
-  const [status, setStatus] = useState<TraktStatus | null>(null);
-  const [anilist, setAnilist] = useState<AniListStatus | null>(null);
-  const [mal, setMal] = useState<ProviderStatus | null>(null);
-  const [simkl, setSimkl] = useState<ProviderStatus | null>(null);
+  const [status, setStatus] = useState<AccountStatus | null>(null);
+  const [anilist, setAnilist] = useState<AccountStatus | null>(null);
+  const [mal, setMal] = useState<AccountStatus | null>(null);
+  const [simkl, setSimkl] = useState<AccountStatus | null>(null);
   const [sites, setSites] = useState<string[]>([]);
   /** Broad "enable all sites" grant held (then every recipe site is enabled). */
   const [allSites, setAllSites] = useState(false);
@@ -709,10 +704,10 @@ export function App() {
   const refresh = async () => {
     const [s, al, ml, sk, sit, rec, ql, qlOn, c, ac, mc, am, rem, amap, bp, broad] =
       await Promise.all([
-        sendMessage("getTraktStatus", undefined),
-        sendMessage("getAniListStatus", undefined),
-        sendMessage("getMalStatus", undefined),
-        sendMessage("getSimklStatus", undefined),
+        sendMessage("getTrackerStatus", "trakt"),
+        sendMessage("getTrackerStatus", "anilist"),
+        sendMessage("getTrackerStatus", "mal"),
+        sendMessage("getTrackerStatus", "simkl"),
         sendMessage("listEnabledSites", undefined),
         customRecipes.getValue(),
         quickLinks.getValue(),
@@ -898,15 +893,7 @@ export function App() {
     }
     setBusy(true);
     setAccountMsg(null);
-    const message = (
-      {
-        trakt: "connectTrakt",
-        anilist: "connectAniList",
-        mal: "connectMal",
-        simkl: "connectSimkl",
-      } as const
-    )[which];
-    const res = await sendMessage(message, undefined);
+    const res = await sendMessage("connectTracker", which);
     if (!res.ok) setAccountMsg(res.error ?? "Connection failed. The sign-in didn’t complete.");
     await refresh();
     setBusy(false);
@@ -1378,7 +1365,7 @@ export function App() {
                   connected={connected}
                   busy={busy}
                   onConnect={() => connectProvider("trakt")}
-                  onDisconnect={() => act(() => sendMessage("disconnectTrakt", undefined))}
+                  onDisconnect={() => act(() => sendMessage("disconnectTracker", "trakt"))}
                 />
                 {/* Dev-only: a forker running their OWN Trakt OAuth app needs to
                     register this redirect URI. The published build uses bundled
@@ -1426,7 +1413,7 @@ export function App() {
                   connected={anilist?.connected ?? false}
                   busy={busy}
                   onConnect={() => connectProvider("anilist")}
-                  onDisconnect={() => act(() => sendMessage("disconnectAniList", undefined))}
+                  onDisconnect={() => act(() => sendMessage("disconnectTracker", "anilist"))}
                 />
                 {anilist && !anilist.configured && (
                   <p class={clsx("rounded-md px-2.5 py-1.5 text-[11px]", t.infoBox)}>
@@ -1458,7 +1445,7 @@ export function App() {
                   connected={mal?.connected ?? false}
                   busy={busy}
                   onConnect={() => connectProvider("mal")}
-                  onDisconnect={() => act(() => sendMessage("disconnectMal", undefined))}
+                  onDisconnect={() => act(() => sendMessage("disconnectTracker", "mal"))}
                 />
                 {mal && !mal.configured && (
                   <p class={clsx("rounded-md px-2.5 py-1.5 text-[11px]", t.infoBox)}>
@@ -1486,7 +1473,7 @@ export function App() {
                   connected={simkl?.connected ?? false}
                   busy={busy}
                   onConnect={() => connectProvider("simkl")}
-                  onDisconnect={() => act(() => sendMessage("disconnectSimkl", undefined))}
+                  onDisconnect={() => act(() => sendMessage("disconnectTracker", "simkl"))}
                 />
                 {simkl && !simkl.configured && (
                   <p class={clsx("rounded-md px-2.5 py-1.5 text-[11px]", t.infoBox)}>
