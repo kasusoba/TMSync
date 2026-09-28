@@ -28,7 +28,7 @@ import { getService } from "../trackers/service";
 import { ALL_TRACKERS, type Tracker } from "../trackers/types";
 import { withPicks } from "./plan";
 import { STALE_MS, type SyncPreview, jobAlive, readJob } from "./run";
-import type { ChunkOutcome, SyncPicks, SyncWrite } from "./types";
+import type { ChunkOutcome, SyncPicks, SyncWrite, WriteOutcome } from "./types";
 
 /** How old a preview may be when it is applied. An older one is planned from lists
  * that may have changed, so the user previews again (edge case 36). */
@@ -216,23 +216,44 @@ async function runApply(start: ApplyJob, queues: Map<Tracker, QueuedWrite[]>): P
         for (let i = 0; i < queue.length; i += applier.chunk) {
           if (await cancelled()) return setTracker(tracker, { state: "cancelled" });
           const chunk = queue.slice(i, i + applier.chunk);
-          const out: ChunkOutcome = await applier.run(chunk.map((q) => q.w)).catch((e) => ({
-            results: chunk.map(() => ({ ok: false, error: errorMessage(e) })),
-            stop: errorMessage(e),
-          }));
-          const t = get(tracker);
-          const tally = { done: t.done, changed: t.changed, failedCount: t.failedCount };
-          const failed = [...t.failed];
-          out.results.forEach((r, n) => {
-            if (r.ok && r.reason === "changed") tally.changed += 1;
-            else if (r.ok) tally.done += 1;
-            else {
-              tally.failedCount += 1;
-              if (failed.length < MAX_FAILED)
-                failed.push({ title: chunk[n]?.title ?? "", error: r.error ?? "Failed." });
-            }
-          });
-          await setTracker(tracker, { ...tally, failed });
+          // Count each write once: as the tracker reports it (one entry at a time,
+          // so the counts move while a slow chunk runs), or at the chunk's end.
+          const counted = new Set<number>();
+          const count = (at: number[], results: (WriteOutcome | undefined)[]) => {
+            const t = get(tracker);
+            const tally = { done: t.done, changed: t.changed, failedCount: t.failedCount };
+            const failed = [...t.failed];
+            at.forEach((n, k) => {
+              const r = results[k];
+              if (!r || counted.has(n)) return;
+              counted.add(n);
+              if (r.ok && r.reason === "changed") tally.changed += 1;
+              else if (r.ok) tally.done += 1;
+              else {
+                tally.failedCount += 1;
+                if (failed.length < MAX_FAILED)
+                  failed.push({ title: chunk[n]?.title ?? "", error: r.error ?? "Failed." });
+              }
+            });
+            return setTracker(tracker, { ...tally, failed });
+          };
+          const out: ChunkOutcome = await applier
+            .run(
+              chunk.map((q) => q.w),
+              (at, r) =>
+                void count(
+                  at,
+                  at.map(() => r),
+                ),
+            )
+            .catch((e) => ({
+              results: chunk.map(() => ({ ok: false, error: errorMessage(e) })),
+              stop: errorMessage(e),
+            }));
+          await count(
+            out.results.map((_, n) => n),
+            out.results,
+          );
           if (out.stop) return setTracker(tracker, { state: "stopped", error: out.stop });
         }
         await setTracker(tracker, { state: "done" });

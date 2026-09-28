@@ -8,6 +8,7 @@ import { errorMessage } from "../../errors";
 import { mergeCour } from "../../sync/merge";
 import { byTarget, outcomes, sleep } from "../../sync/pace";
 import type { ChunkOutcome, SyncWrite, TargetRef } from "../../sync/types";
+import type { ApplyReport } from "../service";
 import {
   AniListHttpError,
   AniListNotConnectedError,
@@ -50,7 +51,10 @@ async function call<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-export async function applyAniList(writes: SyncWrite[]): Promise<ChunkOutcome> {
+export async function applyAniList(
+  writes: SyncWrite[],
+  report?: ApplyReport,
+): Promise<ChunkOutcome> {
   const results = outcomes(writes.length, { ok: true });
   const groups = byTarget(writes);
   const ids = groups.flatMap((g) => {
@@ -72,6 +76,7 @@ export async function applyAniList(writes: SyncWrite[]): Promise<ChunkOutcome> {
   for (const g of groups) {
     const set = (r: (typeof results)[number]) => {
       for (const i of g.at) results[i] = r;
+      report?.(g.at, r);
     };
     if (stop) {
       set({ ok: false, reason: "failed", error: "Not sent." });
@@ -94,7 +99,11 @@ export async function applyAniList(writes: SyncWrite[]): Promise<ChunkOutcome> {
       else if (action.kind === "save") {
         const { progress, status, repeat, score } = action;
         await call(() => syncSaveEntry(id, { progress, status, repeat, scoreRaw: score }));
-      } else set({ ok: true, reason: "changed" });
+      } else {
+        set({ ok: true, reason: "changed" });
+        continue;
+      }
+      set({ ok: true });
     } catch (e) {
       stop = stopFor(e);
       set({ ok: false, reason: "failed", error: errorMessage(e) });

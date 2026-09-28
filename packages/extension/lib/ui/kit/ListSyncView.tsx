@@ -179,7 +179,7 @@ export function ListSyncView({
   return (
     <div class="space-y-5">
       <p class={clsx("max-w-2xl text-[12px] leading-relaxed", t.sub)}>
-        Make your trackers agree. TMSync reads each connected list and works out what the others are
+        Keep your lists in step. TMSync reads each connected list and works out what the others are
         missing: watched episodes, list status, and ratings. By default it only adds. Pick a main
         list for a kind to make the others copy it instead, removals included. Preview first:
         nothing is written until you apply the plan.
@@ -282,33 +282,47 @@ export function ListSyncView({
               <Icon name="refresh" class="text-[12px]" />{" "}
               {busy ? "Reading your lists…" : "Preview sync"}
             </Btn>
-            {preview && !busy && (
-              <span class={clsx("text-[11px]", t.faint)}>
-                Read {new Date(preview.at).toLocaleTimeString()}
-              </span>
-            )}
           </div>
         </section>
       </div>
 
       {error && <p class={clsx("rounded-md px-2.5 py-1.5 text-[11px]", t.badBox)}>{error}</p>}
-      {busy && progress && progress.length > 0 && <TrackerCards t={t} reads={progress} />}
-      {preview && !busy && (
-        <PreviewResult
-          t={t}
-          preview={preview}
-          ignore={settings.ignore}
-          onIgnore={onIgnore}
-          onRestore={onRestore}
-          onClearIgnored={onClearIgnored}
-          picks={picks}
-          apply={apply}
-          applying={applying}
-          blocked={blocked}
-          onApply={onApply}
-          onCancelApply={onCancelApply}
-          onPick={onPick}
-        />
+
+      {/* The result, set apart from the settings above it. */}
+      {((busy && progress && progress.length > 0) || (preview && !busy)) && (
+        <section class={clsx("space-y-4 border-t pt-5", t.divider)}>
+          <h3
+            class={clsx(
+              "flex items-baseline gap-2 text-[11px] font-semibold uppercase tracking-wider",
+              t.faint,
+            )}
+          >
+            {busy ? "Reading your lists" : "Preview"}
+            {preview && !busy && (
+              <span class="font-normal normal-case tracking-normal">
+                read {new Date(preview.at).toLocaleTimeString()}
+              </span>
+            )}
+          </h3>
+          {busy && progress && <TrackerCards t={t} reads={progress} />}
+          {preview && !busy && (
+            <PreviewResult
+              t={t}
+              preview={preview}
+              ignore={settings.ignore}
+              onIgnore={onIgnore}
+              onRestore={onRestore}
+              onClearIgnored={onClearIgnored}
+              picks={picks}
+              apply={apply}
+              applying={applying}
+              blocked={blocked}
+              onApply={onApply}
+              onCancelApply={onCancelApply}
+              onPick={onPick}
+            />
+          )}
+        </section>
       )}
     </div>
   );
@@ -351,7 +365,7 @@ const BLOCK_LABEL: Record<ApplyBlock, string> = {
   spent: "This preview was applied. Preview again to see what is left.",
   stale:
     "This preview is more than 10 minutes old. Preview again before you apply, so the plan matches your lists.",
-  nothing: "Nothing to apply: your trackers agree.",
+  nothing: "Nothing to apply: your lists already match.",
 };
 
 /**
@@ -388,7 +402,7 @@ function ApplyBar({
           The plan is ready: {plural(writes, "change")} across your trackers.
         </span>
         <Btn t={t} tone="primary" onClick={() => setConfirm(true)}>
-          Apply…
+          Apply changes
         </Btn>
       </div>
     );
@@ -665,7 +679,7 @@ function PreviewResult({
     { id: "notices", label: "Left as is", n: plan.notices.filter((n) => !kept.has(n.key)).length },
     {
       id: "conflicts",
-      label: "Trackers disagree",
+      label: "Conflicts",
       n: plan.conflicts.filter((c) => !kept.has(c.key)).length,
     },
     { id: "skipped", label: "Skipped", n: plan.skips.filter((s) => s.reason !== "ignored").length },
@@ -813,7 +827,7 @@ function PreviewResult({
       {tab === "conflicts" && (
         <ConflictTable t={t} trackers={trackers} conflicts={conflicts} onPick={onPick} />
       )}
-      {tab === "conflicts" && !conflicts.length && <Empty t={t} text="Your trackers agree." />}
+      {tab === "conflicts" && !conflicts.length && <Empty t={t} text="No conflicts." />}
 
       {tab === "skipped" && <SkipGroups t={t} skips={skips} />}
       {tab === "skipped" && !skips.length && <Empty t={t} text="Nothing was skipped." />}
@@ -832,8 +846,8 @@ function PreviewResult({
  */
 function Th({ t, children }: { t: Tokens; children?: ComponentChildren }) {
   return (
-    <th class={clsx("sticky top-0 z-10 p-0 font-medium", t.cardSolid)}>
-      <div class={clsx("border-b px-3 py-2", t.divider)}>{children}</div>
+    <th class={clsx("sticky top-0 z-10 p-0 align-bottom font-medium", t.cardSolid)}>
+      <div class={clsx("flex h-9 items-center border-b px-3", t.divider)}>{children}</div>
     </th>
   );
 }

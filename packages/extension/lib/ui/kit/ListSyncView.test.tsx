@@ -120,13 +120,13 @@ describe("ListSyncView", () => {
 
 describe("ListSyncView apply", () => {
   it("offers Apply on a fresh preview", () => {
-    expect(show(DEFAULT_SYNC_SETTINGS)).toContain("Apply…");
+    expect(show(DEFAULT_SYNC_SETTINGS)).toContain("Apply changes");
   });
 
   it("asks for a new preview when this one is old", () => {
     const text = show(DEFAULT_SYNC_SETTINGS, { blocked: "stale" });
     expect(text).toContain("more than 10 minutes old");
-    expect(text).not.toContain("Apply…");
+    expect(text).not.toContain("Apply changes");
   });
 
   it("shows each tracker's progress while applying", () => {

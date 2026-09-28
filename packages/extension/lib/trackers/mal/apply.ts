@@ -9,6 +9,7 @@ import { mergeCour } from "../../sync/merge";
 import { byTarget, outcomes, sleep, toTen } from "../../sync/pace";
 import type { ChunkOutcome, SyncWrite, TargetRef } from "../../sync/types";
 import type { CourStatus } from "../cour-plan";
+import type { ApplyReport } from "../service";
 import {
   type MalListFields,
   MalNotConnectedError,
@@ -63,12 +64,13 @@ function stopFor(e: unknown): string | undefined {
   return undefined;
 }
 
-export async function applyMal(writes: SyncWrite[]): Promise<ChunkOutcome> {
+export async function applyMal(writes: SyncWrite[], report?: ApplyReport): Promise<ChunkOutcome> {
   const results = outcomes(writes.length, { ok: true });
   let stop: string | undefined;
   for (const g of byTarget(writes)) {
     const set = (r: (typeof results)[number]) => {
       for (const i of g.at) results[i] = r;
+      report?.(g.at, r);
     };
     if (stop) {
       set({ ok: false, reason: "failed", error: "Not sent." });
@@ -94,7 +96,11 @@ export async function applyMal(writes: SyncWrite[]): Promise<ChunkOutcome> {
       } else if (action.kind === "save") {
         await sleep(GAP_MS);
         await syncListStatus(id, malFields(action));
-      } else set({ ok: true, reason: "changed" });
+      } else {
+        set({ ok: true, reason: "changed" });
+        continue;
+      }
+      set({ ok: true });
     } catch (e) {
       stop = stopFor(e);
       const gone = /has no anime/.test(errorMessage(e));

@@ -877,7 +877,8 @@ export function App() {
 
   // Tick often while a job runs (a job the browser stopped shows as stopped), and
   // now and then while a preview waits (it goes stale for apply).
-  const jobRunning = syncJob?.state === "running" || syncApply?.state === "running";
+  const previewSaved = syncJob?.state === "running";
+  const jobRunning = previewSaved || syncApply?.state === "running";
   const hasPreview = !!syncJob?.preview;
   useEffect(() => {
     if (!jobRunning && !hasPreview) return;
@@ -895,8 +896,9 @@ export function App() {
       )
     : null;
   // A job still "running" with no recent beat was stopped by the browser.
+  // (An apply that stopped says so in its own panel.)
   const stoppedAt =
-    jobRunning && !previewing
+    previewSaved && !previewing
       ? syncJob?.reads.filter((r) => r.state === "reading").map((r) => trackerLabel(r.tracker))
       : undefined;
   const syncProblem =
