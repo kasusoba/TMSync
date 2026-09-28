@@ -21,7 +21,7 @@ function recipe(match: Recipe["match"]): Recipe {
     match,
     mediaType: "auto",
     tracker: "trakt",
-    video: { selector: "video", frame: "auto", watchedThreshold: 0.8 },
+    video: { selector: "video", frame: "auto" },
     extract: { title: { source: "title" } },
   };
 }

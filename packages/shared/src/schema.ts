@@ -166,9 +166,9 @@ export const Recipe = z.object({
     .object({
       selector: z.string().default("video"),
       frame: z.enum(["auto", "top", "iframe"]).default("auto"),
-      // per-site "treat as finished here" point for firing stop on sites with long
-      // credits; NOT the watched decision (Trakt applies its own 80% on /scrobble/stop)
-      watchedThreshold: z.number().min(0).max(1).default(0.8),
+      // No `watchedThreshold`: the finished point is the extension's WATCHED_THRESHOLD,
+      // not recipe data. An old recipe that still carries the key parses, and Zod
+      // drops it.
     })
     .default({}),
   // Omitted on MANUAL recipes: sites with no readable title (local-file players,

@@ -27,8 +27,6 @@ export interface ScrobbleRequest {
    * the native one is DERIVED via the anime-map crosswalk. Omitted ⇒ [tracker]
    * (native-only, unchanged behaviour). */
   trackers?: Tracker[];
-  /** 0–1; the per-recipe "treat as finished here" point (AniList owns the watched decision). */
-  watchedThreshold?: number;
 }
 
 /** Per-derived-tracker outcome for the badge (multi-track). `skipped` = a silent
@@ -169,8 +167,6 @@ export interface TabMedia {
   videoSelector: string;
   /** Where the player lives: which frame should drive scrobbling. */
   frame: "auto" | "top" | "iframe";
-  /** 0–1; a pause at/after this fraction is committed as a stop. */
-  watchedThreshold: number;
 }
 
 export interface TraktStatus {

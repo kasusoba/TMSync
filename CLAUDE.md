@@ -50,7 +50,7 @@ The source of truth is `packages/shared/src/schema.ts` (Zod). The author's refer
 - **Declarative only.** A `Field` says *where* a value is (`source`: `url`, `meta`, `jsonld`, `dom`, `title`) and *how to clean it* (`regex`, `group`, `transforms`), never *how to compute it* with code.
 - `match.urlPattern` is the PATH only. `match.hostnames` is the host scope and the origins we request permission for. `match.domFingerprint` is a selector that must exist (the clone-resilient key).
 - A recipe names its trackers in `trackers`. Read them through `recipeTrackers(recipe)`, never `recipe.trackers` directly. The legacy single `tracker` field defaults to `"trakt"`.
-- `video.watchedThreshold` is a per-site "finished here" point for sites with long credits. For Trakt and Simkl it only governs WHEN stop fires (they own the watched decision, their own 80% on stop). For AniList and MAL there is no scrobble API, so this threshold IS the watched decision.
+- The "finished here" point is the engine constant `WATCHED_THRESHOLD` (0.8, in `lib/tracker/types.ts`), never recipe data: a low value from a recipe would mark part-watched episodes as seen. For Trakt and Simkl it only governs WHEN stop fires (they own the watched decision, their own 80% on stop). For AniList and MAL there is no scrobble API, so this threshold IS the watched decision. Rule of thumb: a recipe field describes the SITE (where the title, episode, and video are); tracking behavior stays in the engine.
 - Every recipe is parsed through the Zod schema before use. Clients ignore recipes with a newer `schemaVersion` than they support. `docs/RECIPES.md` says when a change needs a bump.
 
 Engine contract: a single pure-ish `extract(recipe, { document, url }): ParsedMedia` in the bundle reads fields per `source`, applies `regex`/`group`/`transforms`, and returns `{ mediaType, title, year?, season?, episode?, ids? }`. It contains zero recipe-supplied executable code.
@@ -63,7 +63,7 @@ Engine contract: a single pure-ish `extract(recipe, { document, url }): ParsedMe
    - **Trakt:** resolve identity once via background → Trakt search (returns trakt/imdb/tmdb IDs; cache it). For shows pass season+episode **as scraped** (Western TV is already seasoned; do **not** build absolute-numbering translation).
    - **AniList / MAL (native):** resolve the page's own id, else the title, once via the background (cache it), and **pass the episode as scraped**: a dedicated anime site already numbers by cour.
    - **Derived trackers:** the other family goes through the `lib/animap/` crosswalk (seasoned ↔ cour); AniList and MAL bridge by id (`idMal`); Simkl takes the page's numbering as is.
-5. **Record progress via the adapter.** Trakt and Simkl use the **real-time scrobble** state machine below. AniList and MAL have no scrobble API: they write the list entry once `watchedThreshold` is crossed (see **Tracker adapters**). The rest of this section is the **Trakt** path:
+5. **Record progress via the adapter.** Trakt and Simkl use the **real-time scrobble** state machine below. AniList and MAL have no scrobble API: they write the list entry once `WATCHED_THRESHOLD` is crossed (see **Tracker adapters**). The rest of this section is the **Trakt** path:
    **Real-time scrobble** (start/pause/stop, not a custom threshold loop):
    - video `play` → `POST /scrobble/start` (current progress %) → sets "Currently Watching" on the profile.
    - genuine `pause` → `POST /scrobble/pause` → saves position, feeds Continue Watching.
@@ -93,14 +93,14 @@ interface TrackerAdapter {
 }
 ```
 
-**The two paradigms are genuinely different, so do not force them into one code path.** Trakt and Simkl are the scrobble paradigm (real-time `start`/`pause`/`stop`, and the tracker owns the watched decision at 80% on stop). AniList and MAL are the cour/list paradigm (one list write per episode at `watchedThreshold`, and we own the watched decision) and share one pure planner (`lib/tracker/cour-plan.ts`). The side-by-side comparison is in `docs/ARCHITECTURE.md` section 5, and each tracker's API facts are in `docs/TRACKERS.md`.
+**The two paradigms are genuinely different, so do not force them into one code path.** Trakt and Simkl are the scrobble paradigm (real-time `start`/`pause`/`stop`, and the tracker owns the watched decision at 80% on stop). AniList and MAL are the cour/list paradigm (one list write per episode at `WATCHED_THRESHOLD`, and we own the watched decision) and share one pure planner (`lib/tracker/cour-plan.ts`). The side-by-side comparison is in `docs/ARCHITECTURE.md` section 5, and each tracker's API facts are in `docs/TRACKERS.md`.
 
 **Simkl specifics:** it is native only when it is the only enabled tracker (it can take any page), and it is recorded last in a fan-out. Its daily quota is per user and shared with the user's other Simkl apps (500 requests on a free account), so it never polls, never searches, and returns `null` for `watchedState`. A start/pause inside the 20 s lock is dropped; a stop waits for the lock so the watch is never lost.
 
 **MAL recording follows the AniList rules below** (read-before-write, never lower progress, "Rewatching?" confirm, `ep > num_episodes` guardrail). MAL answers 403 for request bursts ("DoS detected"); surface it and never retry in a loop.
 
 **AniList recording rules (the analogue of the Trakt scrobble rules):**
-- No `start`/`pause` chatter — AniList has nothing to receive it. Only **one write per episode**, when `watchedThreshold` is crossed. Debounce so seeking/replaying never double-writes.
+- No `start`/`pause` chatter — AniList has nothing to receive it. Only **one write per episode**, when `WATCHED_THRESHOLD` is crossed. Debounce so seeking/replaying never double-writes.
 - **Read-before-write — the entry is the source of truth.** Before each write, fetch the viewer's `MediaList { status progress repeat }` and compute the transition from it (NOT a local counter — a local counter can lower remote progress if the user advanced the entry on the AniList site). **Never lower `progress`.**
 - **Status state machine (we own it).** not-on-list / `PLANNING` / `PAUSED` / `DROPPED` + a watch → `CURRENT`, `progress = max(remote, ep)`. Final episode → `COMPLETED`. We never *set* PLANNING/PAUSED/DROPPED ourselves.
 - **A `COMPLETED` cour is never silently mutated.** Re-watching any episode of a completed cour does **not** write. It surfaces a **"Rewatching?" confirmation** in the badge first (upfront, on any episode, not just the last). On confirm → status `REPEATING`, tracking resumes; the final episode re-`COMPLETED`s it and **increments `repeat`**. A confirm before the episode passes its threshold (the prompt shows before play) starts the rewatch at the episode before it, so the episode counts only at its own stop (`planRewatchConfirm`). This is the one place AniList is interactive (the rest is passive, like Trakt) because auto-incrementing repeats on a stray replay would be wrong.

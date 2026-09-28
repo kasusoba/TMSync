@@ -14,6 +14,16 @@ import type { CourEntry } from "./cour-plan";
 export type Tracker = "trakt" | "anilist" | "mal" | "simkl";
 
 /**
+ * The fraction of a video after which TMSync treats it as finished (0–1).
+ *
+ * One engine constant, not recipe data. It matches Trakt's own 80% rule on
+ * `/scrobble/stop`, so the stop we send there is always one Trakt counts. For the
+ * cour trackers (AniList, MAL) it IS the watched decision. A lower value would
+ * mark a part-watched episode as seen, so it must not come from a recipe.
+ */
+export const WATCHED_THRESHOLD = 0.8;
+
+/**
  * How a tracker numbers episodes. Trackers in one family share numbering, so moving
  * an item between them only changes the id. Moving it between families needs the
  * anime-map crosswalk (`lib/animap/`), which maps one family to the other.

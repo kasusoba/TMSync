@@ -94,12 +94,13 @@ import {
   trackerLabel,
 } from "@/lib/tracker";
 import { planCourWrite } from "@/lib/tracker/cour-plan";
-import type {
-  CourSearchOption,
-  CourTracker,
-  RatingLevel,
-  TrackedItem,
-  Tracker,
+import {
+  type CourSearchOption,
+  type CourTracker,
+  type RatingLevel,
+  type TrackedItem,
+  type Tracker,
+  WATCHED_THRESHOLD,
 } from "@/lib/tracker/types";
 import { connect, disconnect, getRedirectUri, isConnected } from "@/lib/trakt/auth";
 import {
@@ -140,7 +141,7 @@ import {
 import { browser } from "wxt/browser";
 
 /**
- * Whether the tab's episode already played past its watched threshold, read from
+ * Whether the tab's episode already played past `WATCHED_THRESHOLD`, read from
  * the persisted session. Only the progress counts: a session also ends on an
  * early leave (tab close, navigation, video removed), so `ended` alone does not
  * mean watched. No session for this media (the prompt before play) means not
@@ -150,7 +151,7 @@ async function episodeWatched(tabId: number | undefined, media: ParsedMedia): Pr
   if (tabId === undefined) return false;
   const session = (await tabSessions.getValue())[tabId];
   if (!session || !sameMedia(session.media, media)) return false;
-  return session.progress >= session.watchedThreshold * 100;
+  return session.progress >= WATCHED_THRESHOLD * 100;
 }
 
 /** Same watched item: title, numbering, and strongest id. */
@@ -723,7 +724,6 @@ export default defineBackground(() => {
       trackers: data.trackers,
       videoSelector: data.videoSelector,
       frame: data.frame,
-      watchedThreshold: data.watchedThreshold,
       // Keep progress across a re-publish of the same item (recheck). Start fresh
       // for another item or after a finished one, else the next episode inherits the
       // last one's progress (a stray stop on tab close).
@@ -744,7 +744,6 @@ export default defineBackground(() => {
           trackers: session.trackers,
           videoSelector: session.videoSelector,
           frame: session.frame,
-          watchedThreshold: session.watchedThreshold,
         }
       : null;
   });
@@ -897,7 +896,6 @@ export default defineBackground(() => {
         progress: session.progress,
         tracker: session.tracker,
         trackers: session.trackers,
-        watchedThreshold: session.watchedThreshold,
       });
     } catch {
       // not connected / network — nothing to reconcile
@@ -984,7 +982,6 @@ async function recordNative(
     data.media,
     data.progress,
     data.action,
-    data.watchedThreshold ?? 0.8,
   );
   return {
     ok: result.ok,
@@ -1265,13 +1262,7 @@ async function recordDerivedTrackers(
     item: TrackedItem,
     media: ParsedMedia,
   ): Promise<DerivedOutcome> => {
-    const r = await getAdapter(target).recordProgress(
-      item,
-      media,
-      data.progress,
-      data.action,
-      data.watchedThreshold ?? 0.8,
-    );
+    const r = await getAdapter(target).recordProgress(item, media, data.progress, data.action);
     return {
       tracker: target,
       ok: r.ok,

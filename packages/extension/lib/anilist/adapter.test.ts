@@ -39,7 +39,7 @@ describe("anilistAdapter.recordProgress connection gate", () => {
   // state surfaces on the first play/pause event.
   it("returns not_connected on play when AniList is not connected", async () => {
     isConnected.mockResolvedValue(false);
-    expect(await anilistAdapter.recordProgress(item, media, 0.1, "start", 0.8)).toEqual({
+    expect(await anilistAdapter.recordProgress(item, media, 0.1, "start")).toEqual({
       ok: false,
       reason: "not_connected",
     });
@@ -47,7 +47,7 @@ describe("anilistAdapter.recordProgress connection gate", () => {
 
   it("returns not_connected on pause when AniList is not connected", async () => {
     isConnected.mockResolvedValue(false);
-    expect(await anilistAdapter.recordProgress(item, media, 0.5, "pause", 0.8)).toEqual({
+    expect(await anilistAdapter.recordProgress(item, media, 0.5, "pause")).toEqual({
       ok: false,
       reason: "not_connected",
     });
@@ -55,10 +55,10 @@ describe("anilistAdapter.recordProgress connection gate", () => {
 
   it("is a silent no-op on play/pause when connected (no write before the threshold)", async () => {
     isConnected.mockResolvedValue(true);
-    expect(await anilistAdapter.recordProgress(item, media, 0.1, "start", 0.8)).toEqual({
+    expect(await anilistAdapter.recordProgress(item, media, 0.1, "start")).toEqual({
       ok: true,
     });
-    expect(await anilistAdapter.recordProgress(item, media, 0.5, "pause", 0.8)).toEqual({
+    expect(await anilistAdapter.recordProgress(item, media, 0.5, "pause")).toEqual({
       ok: true,
     });
   });
@@ -75,7 +75,7 @@ describe("anilistAdapter.recordProgress failed entry read", () => {
   // cour wrote CURRENT with a lower progress.
   it("fails and writes nothing when the entry can't be read", async () => {
     getListEntry.mockRejectedValue(new Error("AniList 429"));
-    expect(await anilistAdapter.recordProgress(item, media, 90, "stop", 0.8)).toEqual({
+    expect(await anilistAdapter.recordProgress(item, media, 90, "stop")).toEqual({
       ok: false,
       reason: "http",
       httpError: "AniList 429",
@@ -85,7 +85,7 @@ describe("anilistAdapter.recordProgress failed entry read", () => {
 
   it("writes when the user has no entry", async () => {
     getListEntry.mockResolvedValue(null);
-    expect(await anilistAdapter.recordProgress(item, media, 90, "stop", 0.8)).toMatchObject({
+    expect(await anilistAdapter.recordProgress(item, media, 90, "stop")).toMatchObject({
       ok: true,
       action: "scrobble",
     });

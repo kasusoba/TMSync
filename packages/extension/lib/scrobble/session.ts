@@ -346,7 +346,6 @@ export class SessionManager {
   private localMedia: ParsedMedia | null = null;
   private videoSelector = "video";
   private frame: PlayerFrame = "auto";
-  private watchedThreshold = 0.8;
   /** The PRIMARY/native tracker (its numbering is what the page speaks). */
   private tracker: Tracker = "trakt";
   /** MULTI-TRACK: the full toggled set. Derived tracker(s) are written via the
@@ -624,7 +623,6 @@ export class SessionManager {
         media.episode === undefined);
     this.videoSelector = recipe.video.selector;
     this.frame = recipe.video.frame;
-    this.watchedThreshold = recipe.video.watchedThreshold;
     // Route by TYPE: a movie on an anilist (anime) site still goes to Trakt.
     this.tracker = routeTracker(recipe.tracker, media.mediaType);
     // MULTI-TRACK: the full toggled set — the background derives the non-native
@@ -656,7 +654,6 @@ export class SessionManager {
       trackers: this.trackers,
       videoSelector: recipe.video.selector,
       frame: recipe.video.frame,
-      watchedThreshold: recipe.video.watchedThreshold,
     });
 
     // Seed the badge immediately with the scraped title, then refine it with what
@@ -742,7 +739,6 @@ export class SessionManager {
   ): Promise<void> {
     this.videoSelector = recipe.video.selector;
     this.frame = recipe.video.frame;
-    this.watchedThreshold = recipe.video.watchedThreshold;
     this.tracker = recipe.tracker;
     this.trackers = recipeTrackers(recipe);
 
@@ -779,7 +775,6 @@ export class SessionManager {
       trackers: this.trackers,
       videoSelector: this.videoSelector,
       frame: this.frame,
-      watchedThreshold: this.watchedThreshold,
     });
     // The pick is locked to a Trakt entry via a correction, so resolveMedia hits;
     // either way the title is set, so seed the badge and let play scrobble it.
@@ -822,7 +817,6 @@ export class SessionManager {
       const tab = await sendMessage("getTabMedia", undefined);
       if (tab) {
         this.videoSelector = tab.videoSelector;
-        this.watchedThreshold = tab.watchedThreshold;
         // Cross-frame: the player iframe must record to the SAME tracker(s) the
         // matcher frame routed to — otherwise an iframe anime recipe scrobbles to
         // Trakt (no season → "missing episode #") instead of AniList.
@@ -995,42 +989,36 @@ export class SessionManager {
 
     const tracker = this.tracker;
     const trackers = this.trackers;
-    const watchedThreshold = this.watchedThreshold;
-    const controller = new ScrobbleController(
-      video,
-      (action, progress) => {
-        this.lastAction = action;
-        void sendMessage("scrobble", {
-          action,
-          media,
-          progress,
-          tracker,
-          trackers,
-          watchedThreshold,
-        }).then((reply) => {
-          if (action === "stop") {
-            const early = this.earlyFollowUp;
-            this.earlyFollowUp = null;
-            const merged =
-              early && mediaKey(early.media) === mediaKey(media)
-                ? mergeFollowUp(reply, early.outcomes)
-                : reply;
-            this.lastStop = { reply: merged, media, tracker };
-            this.reportStop(this.lastStop);
-            return;
-          }
-          // MULTI-TRACK: the badge names whichever tracker the reply's top-level
-          // fields describe (the native one, or the first enabled if native is off).
-          void sendMessage(
-            "reportScrobble",
-            statusFromReply(action, reply, media, reply.primaryTracker ?? tracker),
-          );
-        });
-        if (action === "stop") void sendMessage("endSession", { media, progress });
-        else void sendMessage("updateProgress", progress);
-      },
-      this.watchedThreshold,
-    );
+    const controller = new ScrobbleController(video, (action, progress) => {
+      this.lastAction = action;
+      void sendMessage("scrobble", {
+        action,
+        media,
+        progress,
+        tracker,
+        trackers,
+      }).then((reply) => {
+        if (action === "stop") {
+          const early = this.earlyFollowUp;
+          this.earlyFollowUp = null;
+          const merged =
+            early && mediaKey(early.media) === mediaKey(media)
+              ? mergeFollowUp(reply, early.outcomes)
+              : reply;
+          this.lastStop = { reply: merged, media, tracker };
+          this.reportStop(this.lastStop);
+          return;
+        }
+        // MULTI-TRACK: the badge names whichever tracker the reply's top-level
+        // fields describe (the native one, or the first enabled if native is off).
+        void sendMessage(
+          "reportScrobble",
+          statusFromReply(action, reply, media, reply.primaryTracker ?? tracker),
+        );
+      });
+      if (action === "stop") void sendMessage("endSession", { media, progress });
+      else void sendMessage("updateProgress", progress);
+    });
     this.controller = controller;
 
     const on = (target: EventTarget, type: string, fn: () => void) =>

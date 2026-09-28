@@ -29,7 +29,7 @@ official docs, the date is given.
   is written only on stop.
 - **Pause limits:** a pause under 1.0% is rejected ("progress should be at least 1.0% to pause"),
   and so is one that comes too late ("use stop to scrobble"). TMSync skips sub-1% pauses and turns a
-  pause at or after `watchedThreshold` into a stop.
+  pause at or after `WATCHED_THRESHOLD` (80%) into a stop.
 - **Ratings:** `POST /sync/ratings`, 1 to 10. A season or episode is addressed by number, nested
   under the show's Trakt id, so the show id plus scraped numbers is enough.
 - **Comments are public.** They show on the profile and the item page. A private per-item note is

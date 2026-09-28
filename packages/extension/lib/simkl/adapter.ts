@@ -59,7 +59,6 @@ export const simklAdapter: TrackerAdapter = {
     media: ParsedMedia,
     progress: number,
     phase: RecordPhase,
-    _watchedThreshold: number,
   ): Promise<RecordResult> {
     if (item.tracker !== "simkl") return { ok: false, reason: "unresolved" };
     if (!(await isConnected())) return { ok: false, reason: "not_connected" };

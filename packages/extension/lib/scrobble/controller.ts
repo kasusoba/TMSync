@@ -1,3 +1,4 @@
+import { WATCHED_THRESHOLD } from "@/lib/tracker/types";
 import type { ScrobbleAction } from "@/lib/trakt/types";
 import { clampProgress } from "@/lib/trakt/util";
 
@@ -17,12 +18,11 @@ export type SendScrobble = (action: ScrobbleAction, progress: number) => void;
  * - One `start` per session; debounce play/pause bursts (seeking, ad breaks).
  * - Idempotent: never emit the same action twice in a row.
  * - `ended` → stop(~100). Leaving before `ended` → stop(last progress).
- * - Crossing `watchedThreshold` while playing (`progressTick`) commits a stop —
+ * - Crossing `WATCHED_THRESHOLD` while playing (`progressTick`) commits a stop —
  *   no pause/ended needed (long-credits sites, players that never fire `ended`).
- * - A pause at/after `watchedThreshold` also becomes a `stop`: Trakt rejects a
+ * - A pause at/after `WATCHED_THRESHOLD` also becomes a `stop`: Trakt rejects a
  *   pause that late ("use stop to scrobble") and it means the user finished.
- *   Trakt still owns the ≥80% watched decision on the stop; the threshold only
- *   picks the "treat as finished here" point (per CLAUDE.md `video.watchedThreshold`).
+ *   The threshold equals Trakt's own 80%, so every stop we send there counts.
  */
 export class ScrobbleController {
   private started = false;
@@ -34,8 +34,6 @@ export class ScrobbleController {
   constructor(
     private readonly video: VideoLike,
     private readonly send: SendScrobble,
-    /** 0–1; a pause at/after this fraction is sent as a stop. Default 0.8. */
-    private readonly watchedThreshold = 0.8,
     private readonly debounceMs = 800,
   ) {}
 
@@ -69,7 +67,7 @@ export class ScrobbleController {
    */
   progressTick(): void {
     if (!this.started || this.stopped) return;
-    if (this.progress() >= this.watchedThreshold * 100) this.emitStop(this.progress());
+    if (this.progress() >= WATCHED_THRESHOLD * 100) this.emitStop(this.progress());
   }
 
   /** Leaving before `ended` — tab close, SPA nav, or video element removed. */
@@ -95,7 +93,7 @@ export class ScrobbleController {
     if (action === "pause" && !this.started) return; // nothing started to pause
     // A pause past the "finished here" point → stop (commit to history, dodge the
     // 422 Trakt returns for a late pause).
-    if (action === "pause" && this.progress() >= this.watchedThreshold * 100) {
+    if (action === "pause" && this.progress() >= WATCHED_THRESHOLD * 100) {
       this.emitStop(this.progress());
       return;
     }

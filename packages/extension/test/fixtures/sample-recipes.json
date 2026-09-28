@@ -11,8 +11,7 @@
     "mediaType": "auto",
     "video": {
       "selector": "#video-player video",
-      "frame": "auto",
-      "watchedThreshold": 0.8
+      "frame": "auto"
     },
     "extract": {
       "title": {
@@ -42,8 +41,7 @@
     "mediaType": "auto",
     "video": {
       "selector": ".player-shell video",
-      "frame": "auto",
-      "watchedThreshold": 0.85
+      "frame": "auto"
     },
     "extract": {
       "title": {
