@@ -23,12 +23,14 @@
 import type { Animap } from "../trackers/animap/index";
 import type { CourStatus } from "../trackers/cour-plan";
 import { TRACKER_INFO, type Tracker, trackerFamily, trackerLabel } from "../trackers/types";
+import { newest } from "./read";
 import { type ScoreScale, onScale } from "./score";
 import type {
   EntryState,
   EpisodeRef,
   ListEntry,
   ListSyncSettings,
+  RatingRef,
   SyncConflict,
   SyncIds,
   SyncItem,
@@ -84,6 +86,10 @@ export function stateOf(e: ListEntry): EntryState {
   const episodes = Object.values(e.seasons).reduce((n, eps) => n + eps.length, 0);
   return { status: e.status ?? null, episodes, rating: e.rating };
 }
+
+/** Whether a tracker keeps a rewatch count (AniList `repeat`, MAL
+ * `num_times_rewatched`). Simkl reads as 0 and has nothing to write it to. Pure. */
+const keepsRepeat = (tk: Tracker) => trackerFamily(tk) === "cour";
 
 /** COMPLETED and REPEATING both mean "finished at least once". */
 const finished = (s: CourStatus | null | undefined) => s === "COMPLETED" || s === "REPEATING";
@@ -369,7 +375,9 @@ export function planSync(input: PlanInput): SyncPlan {
     const sources = mainEntry ? [mainEntry] : members;
 
     if (kind === "movie") {
-      const watched = sources.some((m) => m.shape === "movie" && m.watched);
+      const seen = sources.filter((m) => m.shape === "movie" && m.watched);
+      const watched = seen.length > 0;
+      const at = newest(...seen.map((m) => m.updatedAt));
       if (main && !watched) {
         for (const m of members) {
           if (m.tracker !== main && m.shape === "movie" && m.watched) {
@@ -387,13 +395,21 @@ export function planSync(input: PlanInput): SyncPlan {
       for (const tk of targets) {
         const mine = own(tk);
         if (watched && !(mine?.shape === "movie" && mine.watched)) {
-          writes.push({ tracker: tk, op: "movie", target: ref(tk), was: mine && stateOf(mine) });
+          writes.push({
+            tracker: tk,
+            op: "movie",
+            target: ref(tk),
+            was: mine && stateOf(mine),
+            ...(at !== undefined ? { at } : {}),
+          });
         }
       }
     } else {
       const union = new Map<string, EpisodeRef>();
+      let at: number | undefined;
       for (const m of sources) {
         if (m.shape !== "seasons") continue;
+        if (Object.values(m.seasons).some((eps) => eps.length)) at = newest(at, m.updatedAt);
         for (const [s, eps] of Object.entries(m.seasons)) {
           for (const n of eps) union.set(`${s}:${n}`, { season: Number(s), number: n });
         }
@@ -410,6 +426,7 @@ export function planSync(input: PlanInput): SyncPlan {
             target: ref(tk),
             add: sortEps(add),
             was: mine && stateOf(mine),
+            ...(at !== undefined ? { at } : {}),
           });
       }
       // Episodes a copy has that the main list does not: left as they are.
@@ -453,12 +470,11 @@ export function planSync(input: PlanInput): SyncPlan {
     fillRatings(
       key,
       first.title,
+      kind,
       rated,
-      targets.filter((tk) => own(tk)?.rating == null || !own(tk)),
-      (tk) => ({
-        level,
-        target: ref(tk),
-      }),
+      targets,
+      new Set(targets.filter((tk) => own(tk)?.rating != null)),
+      (tk) => ({ level, target: ref(tk) }),
       writes,
     );
 
@@ -505,6 +521,11 @@ export function planSync(input: PlanInput): SyncPlan {
     const seasonedMax = Math.max(0, ...srcSeasoned.map((p) => Math.max(0, ...p.local)));
     const progress = Math.max(courMax, seasonedMax);
     const repeat = Math.max(0, ...srcCour.map((e) => e.repeat));
+    // The date backfilled watches get: when the sources last changed.
+    const srcAt = newest(
+      ...srcCour.filter((e) => courCount(e) > 0).map((e) => e.updatedAt),
+      ...srcSeasoned.filter((p) => p.local.size > 0).map((p) => p.entry.updatedAt),
+    );
 
     // Status: finished by progress, else the most recent entry.
     const withStatus = srcCour
@@ -525,6 +546,7 @@ export function planSync(input: PlanInput): SyncPlan {
       conflicts.push({
         key,
         title,
+        kind: "anime",
         field: "status",
         values: withStatus.map((e) => ({ tracker: e.tracker, value: e.status, at: e.updatedAt })),
         chosen: { tracker: latest.tracker, value: norm(latest.status) },
@@ -535,10 +557,7 @@ export function planSync(input: PlanInput): SyncPlan {
     const idsFor: SyncIds = { anilist: g.anilist, mal: g.mal };
     const own = (tk: Tracker) => cour.find((e) => e.tracker === tk);
     const part = (tk: Tracker) => seasoned.find((p) => p.entry.tracker === tk);
-    const ratingRefs = new Map<
-      Tracker,
-      { level: "movie" | "show" | "season" | "entry"; season?: number; target: TargetRef }
-    >();
+    const ratingRefs = new Map<Tracker, RatingRef>();
 
     const rt = g.anilist !== undefined ? animap.ratingTarget(g.anilist) : null;
 
@@ -610,9 +629,11 @@ export function planSync(input: PlanInput): SyncPlan {
     fillRatings(
       key,
       title,
+      "anime",
       rated,
-      [...ratingRefs.keys()].filter((tk) => !hasRating.has(tk)),
-      (tk) => ratingRefs.get(tk) as NonNullable<ReturnType<typeof ratingRefs.get>>,
+      [...ratingRefs.keys()],
+      hasRating,
+      (tk) => ratingRefs.get(tk) as RatingRef,
       writes,
     );
 
@@ -665,10 +686,10 @@ export function planSync(input: PlanInput): SyncPlan {
         if (progress > 0 || desired) skips.push({ key, title, tracker: tk, reason: "no_id" });
         return;
       }
-      ratingRefs.set(tk, { level: "entry", target });
       if (entry && finished(entry.status)) {
+        ratingRefs.set(tk, { level: "entry", target });
         // Never move a completed entry. A higher rewatch count is still news.
-        if (repeat > entry.repeat) {
+        if (keepsRepeat(tk) && repeat > entry.repeat) {
           writes.push({
             tracker: tk,
             op: "entry",
@@ -690,6 +711,9 @@ export function planSync(input: PlanInput): SyncPlan {
         });
         return;
       }
+      // A rating goes only where there is (or will be) an entry: rating an
+      // unlisted item would add it to the list.
+      if (entry || progress > 0 || desired) ratingRefs.set(tk, { level: "entry", target });
       const from = entry?.progress ?? 0;
       const to = Math.max(from, progress);
       let status = desired;
@@ -705,7 +729,9 @@ export function planSync(input: PlanInput): SyncPlan {
       if (to !== from) w.progress = { from, to };
       if (status && status !== (entry?.status ?? null))
         w.status = { from: entry?.status ?? null, to: status };
-      if (repeat > (entry?.repeat ?? 0)) w.repeat = { from: entry?.repeat ?? 0, to: repeat };
+      if (keepsRepeat(tk) && repeat > (entry?.repeat ?? 0))
+        w.repeat = { from: entry?.repeat ?? 0, to: repeat };
+      if (w.progress && srcAt !== undefined) w.at = srcAt;
       if (w.progress || w.status || w.repeat) writes.push(w);
     }
 
@@ -739,7 +765,13 @@ export function planSync(input: PlanInput): SyncPlan {
       };
       if (first.value.tmdbKind === "movie") {
         if (wanted.size && !(p?.entry.shape === "movie" && p.entry.watched)) {
-          writes.push({ tracker: tk, op: "movie", target, was: p && stateOf(p.entry) });
+          writes.push({
+            tracker: tk,
+            op: "movie",
+            target,
+            was: p && stateOf(p.entry),
+            ...(srcAt !== undefined ? { at: srcAt } : {}),
+          });
         }
       } else {
         const add: EpisodeRef[] = [];
@@ -752,7 +784,14 @@ export function planSync(input: PlanInput): SyncPlan {
         // "had" counts this cour's episodes, not the whole show's.
         const was: EntryState | undefined = p ? { episodes: p.local.size } : undefined;
         if (add.length)
-          writes.push({ tracker: tk, op: "episodes", target, add: sortEps(add), was });
+          writes.push({
+            tracker: tk,
+            op: "episodes",
+            target,
+            add: sortEps(add),
+            was,
+            ...(srcAt !== undefined ? { at: srcAt } : {}),
+          });
       }
       if (rt) {
         ratingRefs.set(tk, {
@@ -765,24 +804,25 @@ export function planSync(input: PlanInput): SyncPlan {
   }
 
   /**
-   * Fill the empty ratings of `targets`. All sources must agree on the target's
-   * scale; when they do not, it is a conflict and nothing is written.
+   * Fill the empty ratings among `all` (the trackers that can hold this rating;
+   * `filled` already have one). All sources must agree on the target's scale;
+   * when they do not, it is a conflict and nothing is written. The conflict
+   * carries where each tracker keeps the rating, so the user can pick one score
+   * for all of them (`withPicks`).
    */
   function fillRatings(
     key: string,
     title: string,
+    kind: SyncKind,
     rated: { tracker: Tracker; value: number; at?: number }[],
-    targets: Tracker[],
-    where: (tk: Tracker) => {
-      level: "movie" | "show" | "season" | "entry";
-      season?: number;
-      target: TargetRef;
-    },
+    all: Tracker[],
+    filled: Set<Tracker>,
+    where: (tk: Tracker) => RatingRef,
     writes: SyncWrite[],
   ): void {
     if (!rated.length) return;
     let conflicted = false;
-    for (const tk of targets) {
+    for (const tk of all.filter((x) => !filled.has(x))) {
       const values = new Set(rated.map((r) => onScale(r.value, scale(tk))));
       if (values.size > 1) {
         conflicted = true;
@@ -806,9 +846,11 @@ export function planSync(input: PlanInput): SyncPlan {
       conflicts.push({
         key,
         title,
+        kind,
         field: "rating",
         values: [...rated].sort((a, b) => (b.at ?? 0) - (a.at ?? 0)),
         chosen: null,
+        refs: all.map((tk) => ({ tracker: tk, ...where(tk) })),
       });
     }
   }
@@ -873,4 +915,40 @@ export function summarize(plan: SyncPlan, trackers: Tracker[]): SyncTotals[] {
     }
   }
   return [...totals.values()];
+}
+
+/**
+ * The plan with the user's picks in rating disagreements. A pick (0 to 100, by
+ * group key) replaces the planned rating writes of that item: every tracker that
+ * can hold the rating and does not already have the picked score (on its own
+ * scale) gets it, its own rating included. Without a pick, a disagreement writes
+ * nothing to the trackers that disagree. Pure.
+ */
+export function withPicks(
+  plan: SyncPlan,
+  picks: Record<string, number>,
+  scales: Partial<Record<Tracker, ScoreScale>> = {},
+): SyncPlan {
+  const scale = (tk: Tracker): ScoreScale => scales[tk] ?? "ten";
+  const items = [...plan.items];
+  const conflicts = plan.conflicts.map((c) => {
+    const pick = picks[c.key];
+    if (c.field !== "rating" || pick === undefined || !c.refs) return c;
+    const writes: SyncWrite[] = [];
+    for (const { tracker, ...ref } of c.refs) {
+      const score = onScale(pick, scale(tracker));
+      const cur = c.values.find((v) => v.tracker === tracker)?.value;
+      if (typeof cur === "number" && onScale(cur, scale(tracker)) === score) continue;
+      writes.push({ tracker, op: "rating", ...ref, score, picked: true });
+    }
+    const at = items.findIndex((i) => i.key === c.key);
+    const found = at >= 0 ? items[at] : undefined;
+    const all = [...(found?.writes ?? []).filter((w) => w.op !== "rating"), ...writes];
+    const item = { key: c.key, kind: c.kind, title: c.title, year: found?.year, writes: all };
+    if (found && all.length) items[at] = item;
+    else if (found) items.splice(at, 1);
+    else if (all.length) items.push(item);
+    return { ...c, picked: pick };
+  });
+  return { ...plan, items, conflicts };
 }

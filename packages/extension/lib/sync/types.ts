@@ -153,9 +153,12 @@ export type SyncWrite =
       add: EpisodeRef[];
       /** Missing = the tracker does not have the item yet. */
       was?: EntryState;
+      /** When the source last changed (ms), the date the watches get. Missing =
+       * unknown, and the tracker uses the air date. */
+      at?: number;
     }
   /** Mark a movie watched (Trakt, Simkl). */
-  | { tracker: Tracker; op: "movie"; target: TargetRef; was?: EntryState }
+  | { tracker: Tracker; op: "movie"; target: TargetRef; was?: EntryState; at?: number }
   /** Create or update a list entry (AniList, MAL, Simkl anime). */
   | {
       tracker: Tracker;
@@ -166,19 +169,25 @@ export type SyncWrite =
       progress?: Change<number>;
       status?: Change<CourStatus | null>;
       repeat?: Change<number>;
+      /** The date new watches get, where the tracker keeps one (Simkl). */
+      at?: number;
     }
   /** Remove the entry from the tracker's list (a main list does not have it).
    * Only list entries: Trakt watch history is never removed. */
   | { tracker: Tracker; op: "remove"; target: TargetRef; was: EntryState }
   /** Fill an empty rating. `score` is 0 to 100. */
-  | {
-      tracker: Tracker;
-      op: "rating";
-      target: TargetRef;
-      level: "movie" | "show" | "season" | "entry";
-      season?: number;
-      score: number;
-    };
+  | ({ tracker: Tracker; op: "rating"; score: number } & RatingRef & {
+        /** The user picked this score in a disagreement, so it replaces the
+         * tracker's own rating (else sync only fills an empty one). */
+        picked?: boolean;
+      });
+
+/** Where one tracker keeps the rating of an item. */
+export interface RatingRef {
+  target: TargetRef;
+  level: "movie" | "show" | "season" | "entry";
+  season?: number;
+}
 
 /** One item that changes, with every write it needs. */
 export interface SyncItem {
@@ -223,12 +232,18 @@ export interface SyncSkip {
 export interface SyncConflict {
   key: string;
   title: string;
+  kind: SyncKind;
   field: "status" | "rating";
   /** Each tracker's value (a status, or a score 0 to 100), newest first. */
   values: { tracker: Tracker; value: string | number; at?: number }[];
   /** What sync will use, when it picks one (status: the most recent). Null = it
    * writes nothing for this field until the user picks. */
   chosen: { tracker: Tracker; value: string | number } | null;
+  /** Rating only: where each tracker taking part keeps this rating, so a score
+   * the user picks can be written to all of them. */
+  refs?: ({ tracker: Tracker } & RatingRef)[];
+  /** Rating only: the score the user picked (0 to 100), see `withPicks`. */
+  picked?: number;
 }
 
 /**
@@ -268,4 +283,24 @@ export interface SyncTotals {
   updated: number;
   ratings: number;
   removed: number;
+}
+
+/** What became of one write when sync applied it. */
+export interface WriteOutcome {
+  ok: boolean;
+  /**
+   * `not_found`: the tracker could not match the item. `changed`: the entry
+   * changed since the preview, so the write no longer applied and was left out
+   * (never a failure: the next preview plans from what is there now).
+   */
+  reason?: "not_found" | "changed" | "failed";
+  error?: string;
+}
+
+/** The outcome of one chunk of a tracker's writes, one result per write in order.
+ * `stop` = do not call this tracker again in this run, and why (it is limiting
+ * requests, or it was disconnected). The writes after the stop were not sent. */
+export interface ChunkOutcome {
+  results: WriteOutcome[];
+  stop?: string;
 }

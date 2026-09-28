@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Animap, type AnimapRow } from "../trackers/animap/index";
 import type { Tracker } from "../trackers/types";
-import { planSync, summarize, takesKind } from "./plan";
+import { planSync, summarize, takesKind, withPicks } from "./plan";
 import { onScale } from "./score";
 import {
   DEFAULT_SYNC_SETTINGS,
@@ -197,6 +197,23 @@ function expectConverges(entries: ListEntry[], opts: Parameters<typeof plan>[1] 
   return first;
 }
 
+describe("dates on backfilled watches", () => {
+  it("gives new watches the date the source last changed", () => {
+    const p = plan([
+      traktShow(1399, { 1: [1, 2] }, { updatedAt: 1_600_000_000_000 }),
+      simklShow({ tmdb: 1399 }, {}),
+    ]);
+    expect(writesFor(p, "simkl")).toEqual([
+      expect.objectContaining({ op: "episodes", at: 1_600_000_000_000 }),
+    ]);
+  });
+
+  it("leaves the date out when the source has none (the air date is used)", () => {
+    const p = plan([traktShow(1399, { 1: [1] }), simklShow({ tmdb: 1399 }, {})]);
+    expect(writesFor(p, "simkl")[0]).not.toHaveProperty("at");
+  });
+});
+
 describe("movies and non-anime TV", () => {
   it("unions watched episodes both ways between Trakt and Simkl", () => {
     const p = plan([
@@ -284,6 +301,41 @@ describe("ratings", () => {
     );
     expect(writesFor(p, "simkl").filter((w) => w.op === "rating")).toEqual([]);
     expect(p.conflicts).toEqual([expect.objectContaining({ field: "rating", chosen: null })]);
+  });
+
+  it("writes a picked score to every tracker that differs, and then agrees", () => {
+    const entries = [
+      courEntry("anilist", { anilist: 30, mal: 300 }, { rating: 60 }),
+      courEntry("mal", { anilist: 30, mal: 300 }, { rating: 90 }),
+      courEntry("simkl", { anilist: 30, mal: 300 }, { id: 9 }),
+    ];
+    const scales = { anilist: "POINT_100" } as const;
+    const first = withPicks(plan(entries), { "anilist:30": 90 }, scales);
+    const ratings = first.items.flatMap((i) => i.writes).filter((w) => w.op === "rating");
+    // The show is one cour, so Trakt holds the same rating on the show.
+    expect(ratings).toEqual([
+      expect.objectContaining({ tracker: "trakt", level: "show", score: 90, picked: true }),
+      expect.objectContaining({ tracker: "anilist", score: 90, picked: true }),
+      expect.objectContaining({ tracker: "simkl", score: 90, picked: true }),
+    ]);
+    expect(first.conflicts).toEqual([expect.objectContaining({ field: "rating", picked: 90 })]);
+    const second = withPicks(plan(apply(entries, first)), { "anilist:30": 90 }, scales);
+    expect(second.items).toEqual([]);
+    expect(second.conflicts).toEqual([]);
+  });
+
+  it("leaves a plan without picks as it is", () => {
+    const p = plan([
+      courEntry("anilist", { anilist: 30, mal: 300 }, { rating: 60 }),
+      courEntry("mal", { anilist: 30, mal: 300 }, { rating: 90 }),
+    ]);
+    expect(withPicks(p, {})).toEqual(p);
+  });
+
+  it("does not rate a cour entry that is not on the list and will not be", () => {
+    // Trakt rated the show but watched nothing: rating it on AniList would add it.
+    const p = plan([traktShow(50, {}, { rating: 70 })], { trackers: ["trakt", "anilist"] });
+    expect(writesFor(p, "anilist")).toEqual([]);
   });
 
   it("maps a one-cour show's score to the Trakt show rating", () => {
@@ -423,6 +475,21 @@ describe("status and progress", () => {
       }),
     ]);
     expect(writesFor(p, "anilist")).toEqual([]);
+  });
+
+  it("sends a rewatch count only to trackers that keep one", () => {
+    const p = expectConverges([
+      courEntry(
+        "anilist",
+        { anilist: 30, mal: 300 },
+        { status: "COMPLETED", progress: 12, repeat: 2 },
+      ),
+      courEntry("simkl", { anilist: 30, mal: 300 }, { id: 9, status: "COMPLETED", progress: 12 }),
+    ]);
+    expect(writesFor(p, "simkl")).toEqual([]);
+    expect(writesFor(p, "mal")).toEqual([
+      expect.objectContaining({ op: "entry", repeat: { from: 0, to: 2 } }),
+    ]);
   });
 
   it("never moves a completed entry", () => {
