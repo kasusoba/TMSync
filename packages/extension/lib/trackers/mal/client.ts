@@ -40,7 +40,11 @@ type FormValue = string | number | boolean;
  */
 async function malFetch<T>(
   path: string,
-  opts: { method?: "GET" | "PATCH"; form?: Record<string, FormValue>; auth?: boolean } = {},
+  opts: {
+    method?: "GET" | "PATCH" | "DELETE";
+    form?: Record<string, FormValue>;
+    auth?: boolean;
+  } = {},
 ): Promise<T | null> {
   if (!(await hasMalAccess())) throw new MalNotConnectedError();
   let token = await getValidAccessToken();
@@ -396,4 +400,35 @@ export async function readMalList(): Promise<unknown[]> {
     if (!page.paging?.next) break;
   }
   return out;
+}
+
+// --- list sync writes (plans/list-sync.md, phase 2) ---
+
+/** Write list-status fields for list sync. Throws on any failure (a 403 as
+ * `MalRateLimitError`), so the caller can stop MAL instead of trying the rest. */
+export async function syncListStatus(id: number, fields: MalListFields): Promise<void> {
+  const form: Record<string, FormValue> = {};
+  for (const [k, v] of Object.entries(fields)) if (v !== undefined) form[k] = v;
+  const saved = await malFetch(`/anime/${id}/my_list_status`, {
+    method: "PATCH",
+    form,
+    auth: true,
+  });
+  if (saved === null) throw new Error(`MyAnimeList has no anime ${id}`);
+  await forgetEntry(id);
+}
+
+/** Remove an anime from the user's list. Done when it is already gone (404). */
+export async function deleteListStatus(id: number): Promise<void> {
+  await malFetch(`/anime/${id}/my_list_status`, { method: "DELETE", auth: true });
+  await forgetEntry(id);
+}
+
+/** Drop a cached list-status read after a write. */
+async function forgetEntry(id: number): Promise<void> {
+  const cache = await malEntryCache.getValue();
+  if (id in cache) {
+    delete cache[id];
+    await malEntryCache.setValue(cache);
+  }
 }

@@ -1,6 +1,7 @@
 import type { BadgeStatus } from "@/messaging";
 import type { LinkTemplates, ParsedMedia, Recipe } from "@tmsync/shared";
 import { storage } from "wxt/utils/storage";
+import type { ApplyJob } from "./sync/apply";
 import type { SyncJob } from "./sync/run";
 import { DEFAULT_SYNC_SETTINGS, type ListSyncSettings } from "./sync/types";
 import type { AniListIdentity, AniListTokens } from "./trackers/anilist/types";
@@ -451,6 +452,24 @@ export const listSyncSettings = storage.defineItem<ListSyncSettings>("sync:list_
  * background saves it step by step; the options page watches it. */
 export const listSyncJob = storage.defineItem<SyncJob | null>("local:list_sync_job", {
   fallback: null,
+});
+
+/** The last list sync apply job: each tracker's progress while it writes, then
+ * what was written. The background saves it after each chunk. */
+export const listSyncApply = storage.defineItem<ApplyJob | null>("local:list_sync_apply", {
+  fallback: null,
+});
+
+/** When the user asked to stop an apply (ms). Its own item, so the running job's
+ * saves never overwrite it. */
+export const listSyncCancelAt = storage.defineItem<number>("local:list_sync_cancel_at", {
+  fallback: 0,
+});
+
+/** The scores the user picked where trackers disagree on a rating, by group key
+ * (0 to 100). See `withPicks`. */
+export const listSyncPicks = storage.defineItem<Record<string, number>>("local:list_sync_picks", {
+  fallback: {},
 });
 
 /**

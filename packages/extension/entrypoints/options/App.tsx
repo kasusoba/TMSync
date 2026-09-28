@@ -16,7 +16,9 @@ import {
   badgePrefs,
   corrections,
   customRecipes,
+  listSyncApply,
   listSyncJob,
+  listSyncPicks,
   listSyncSettings,
   malConnectIntent,
   malCorrections,
@@ -26,6 +28,7 @@ import {
   quickLinksEnabled,
   remoteRecipes,
 } from "@/lib/storage";
+import { type ApplyJob, applyBlock, applyQueues, cancelApply, readApply } from "@/lib/sync/apply";
 import { syncKindsFor } from "@/lib/sync/plan";
 import { type SyncJob, jobAlive, readJob } from "@/lib/sync/run";
 import { DEFAULT_SYNC_SETTINGS, type ListSyncSettings, type SyncKind } from "@/lib/sync/types";
@@ -734,6 +737,8 @@ export function App() {
   // List sync (plans/list-sync.md): the user's choices, and the last preview.
   const [syncSettings, setSyncSettings] = useState<ListSyncSettings>(DEFAULT_SYNC_SETTINGS);
   const [syncJob, setSyncJob] = useState<SyncJob | null>(null);
+  const [syncApply, setSyncApply] = useState<ApplyJob | null>(null);
+  const [syncPicks, setSyncPicks] = useState<Record<string, number>>({});
   const [syncError, setSyncError] = useState<string | undefined>();
   /** Re-render while a job runs, so a job the browser stopped shows as stopped. */
   const [now, setNow] = useState(Date.now());
@@ -852,16 +857,37 @@ export function App() {
     void listSyncSettings.getValue().then(setSyncSettings);
     // readJob drops a preview saved by an older build (a different shape).
     void listSyncJob.getValue().then((job) => setSyncJob(readJob(job)));
-    return listSyncJob.watch((job) => setSyncJob(readJob(job)));
+    void listSyncApply.getValue().then((job) => setSyncApply(readApply(job)));
+    void listSyncPicks.getValue().then(setSyncPicks);
+    const unwatch = [
+      listSyncJob.watch((job) => setSyncJob(readJob(job))),
+      listSyncApply.watch((job) => setSyncApply(readApply(job))),
+      listSyncPicks.watch((picks) => setSyncPicks(picks ?? {})),
+    ];
+    return () => {
+      for (const u of unwatch) u();
+    };
   }, []);
 
-  const jobRunning = syncJob?.state === "running";
+  // Tick often while a job runs (a job the browser stopped shows as stopped), and
+  // now and then while a preview waits (it goes stale for apply).
+  const jobRunning = syncJob?.state === "running" || syncApply?.state === "running";
+  const hasPreview = !!syncJob?.preview;
   useEffect(() => {
-    if (!jobRunning) return;
-    const id = setInterval(() => setNow(Date.now()), 5000);
+    if (!jobRunning && !hasPreview) return;
+    const id = setInterval(() => setNow(Date.now()), jobRunning ? 5000 : 30_000);
     return () => clearInterval(id);
-  }, [jobRunning]);
+  }, [jobRunning, hasPreview]);
   const previewing = jobAlive(syncJob, now);
+  const applying = jobAlive(syncApply, now);
+  const syncBlocked = syncJob?.preview
+    ? applyBlock(
+        syncJob.preview,
+        syncApply,
+        applyQueues(syncJob.preview, syncSettings.ignore, syncPicks),
+        now,
+      )
+    : null;
   // A job still "running" with no recent beat was stopped by the browser.
   const stoppedAt =
     jobRunning && !previewing
@@ -900,7 +926,7 @@ export function App() {
   };
 
   // Start a preview job: the background reads every list and plans, and reports
-  // through `listSyncJob`. Nothing is written to a tracker (phase 1).
+  // through `listSyncJob`. Nothing is written to a tracker until Apply.
   const previewListSync = async () => {
     setSyncError(undefined);
     setNow(Date.now());
@@ -915,6 +941,29 @@ export function App() {
           : actionError(e),
       );
     }
+  };
+
+  // Apply the preview's plan: the background writes it and reports through
+  // `listSyncApply`. It refuses a preview that is old or already applied.
+  const applyListSync = async () => {
+    setSyncError(undefined);
+    setNow(Date.now());
+    try {
+      const res = await sendMessage("listSyncApply", undefined);
+      if (!res.started && res.reason !== "running")
+        setSyncError("Sync couldn’t apply this preview. Preview again, then apply.");
+    } catch (e) {
+      setSyncError(actionError(e));
+    }
+  };
+
+  // A score picked in a rating disagreement (undefined = leave it alone).
+  const pickRating = (key: string, score: number | undefined) => {
+    const next = { ...syncPicks };
+    if (score === undefined) delete next[key];
+    else next[key] = score;
+    setSyncPicks(next);
+    void listSyncPicks.setValue(next).catch((e) => setSyncError(actionError(e)));
   };
 
   // Keep one item out of sync, or bring it back (the pane hides kept-out items).
@@ -1526,6 +1575,15 @@ export function App() {
                   onIgnore={ignoreSyncItem}
                   onRestore={restoreSyncItem}
                   onClearIgnored={() => void saveSyncSettings({ ...syncSettings, ignore: [] })}
+                  picks={syncPicks}
+                  apply={syncApply}
+                  applying={applying}
+                  blocked={syncBlocked}
+                  onApply={applyListSync}
+                  onCancelApply={() =>
+                    void cancelApply().catch((e) => setSyncError(actionError(e)))
+                  }
+                  onPick={pickRating}
                 />
               </>
             )}

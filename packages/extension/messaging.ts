@@ -1,4 +1,5 @@
 import type { ManualContext } from "@/lib/storage";
+import type { ApplyBlock } from "@/lib/sync/apply";
 import type { AccountStatus } from "@/lib/trackers/service";
 import type { ResolvedIdentity, TraktIds, TraktSearchOption } from "@/lib/trackers/trakt/types";
 import type {
@@ -242,6 +243,10 @@ export interface ProtocolMap {
    * in the `listSyncJob` storage item. Read only, it writes nothing to a tracker.
    * `started: false` = a preview is already running. */
   listSyncStart(): { started: boolean };
+  /** List sync phase 2: write the last preview's plan to the trackers. Returns at
+   * once; progress lands in the `listSyncApply` storage item. `started: false`
+   * says why (`ApplyBlock`): an old preview is re-previewed first, never applied. */
+  listSyncApply(): { started: boolean; reason?: ApplyBlock };
   /** Register the content script for an origin the user just granted access to. */
   registerSite(origin: string): { ok: boolean; error?: string };
   unregisterSite(origin: string): { ok: boolean };

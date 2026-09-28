@@ -838,6 +838,15 @@ export function App() {
             <Tile label="Only one tracker connected" t={t}>
               <ListSyncTile variant={variant} state="too-few" />
             </Tile>
+            <Tile label="Preview too old to apply" t={t}>
+              <ListSyncTile variant={variant} state="stale" />
+            </Tile>
+            <Tile label="Applying · Stop keeps what was written" t={t}>
+              <ListSyncTile variant={variant} state="applying" />
+            </Tile>
+            <Tile label="Applied · MyAnimeList stopped at its limit" t={t}>
+              <ListSyncTile variant={variant} state="applied" />
+            </Tile>
           </div>
         </section>
 

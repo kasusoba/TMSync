@@ -1,5 +1,6 @@
 /** List sync states for the gallery, with mock lists run through the REAL planner,
  * so the tiles show what the pane renders, not a hand-written imitation. */
+import { APPLY_JOB_VERSION, type ApplyJob, applyBlock, applyQueues } from "@/lib/sync/apply";
 import { planSync, summarize, syncKindsFor } from "@/lib/sync/plan";
 import type { SyncPreview } from "@/lib/sync/run";
 import { DEFAULT_SYNC_SETTINGS, type ListEntry, type ListSyncSettings } from "@/lib/sync/types";
@@ -130,6 +131,7 @@ function preview(settings: ListSyncSettings, trackers: Tracker[]): SyncPreview {
     ),
     totals: summarize(plan, trackers),
     plan,
+    scales: { anilist: "POINT_100" },
   };
 }
 
@@ -148,7 +150,16 @@ export function ListSyncTile({
   state,
 }: {
   variant: Variant;
-  state: "idle" | "preview" | "no-simkl-anime" | "main-anilist" | "too-few" | "reading";
+  state:
+    | "idle"
+    | "preview"
+    | "no-simkl-anime"
+    | "main-anilist"
+    | "too-few"
+    | "reading"
+    | "stale"
+    | "applying"
+    | "applied";
 }) {
   const t = tokens(variant);
   const settings: ListSyncSettings =
@@ -158,7 +169,12 @@ export function ListSyncTile({
         ? { ...DEFAULT_SYNC_SETTINGS, main: { anime: "anilist" } }
         : DEFAULT_SYNC_SETTINGS;
   const p =
-    state === "preview" || state === "no-simkl-anime" || state === "main-anilist"
+    state === "preview" ||
+    state === "no-simkl-anime" ||
+    state === "main-anilist" ||
+    state === "stale" ||
+    state === "applying" ||
+    state === "applied"
       ? preview(settings, ALL_TRACKERS)
       : state === "too-few"
         ? {
@@ -168,6 +184,10 @@ export function ListSyncTile({
             plan: { items: [], skips: [], conflicts: [], notices: [] },
           }
         : null;
+  const job = p && (state === "applying" || state === "applied") ? applyJob(p.at, state) : null;
+  // The gallery's "now": just after the preview, or long after it for "stale".
+  const now = (p?.at ?? 0) + (state === "stale" ? 11 * 60_000 : 60_000);
+  const blocked = p ? applyBlock(p, job, applyQueues(p, settings.ignore, {}), now) : null;
   return (
     <div class={clsx("w-full rounded-xl p-5", t.page)}>
       <ListSyncView
@@ -193,7 +213,65 @@ export function ListSyncTile({
         onIgnore={noop}
         onRestore={noop}
         onClearIgnored={noop}
+        apply={job}
+        applying={state === "applying"}
+        blocked={blocked}
       />
     </div>
   );
+}
+
+/** A mock apply of the preview at `planAt`: part way, or finished with MAL stopped. */
+function applyJob(planAt: number, state: "applying" | "applied"): ApplyJob {
+  const done = state === "applied";
+  return {
+    v: APPLY_JOB_VERSION,
+    state: done ? "done" : "running",
+    startedAt: planAt + 30_000,
+    beatAt: planAt + 50_000,
+    planAt,
+    trackers: [
+      {
+        tracker: "trakt",
+        state: "done",
+        total: 14,
+        done: 13,
+        changed: 0,
+        failedCount: 1,
+        failed: [{ title: "Attack on Titan", error: "Trakt could not match it." }],
+      },
+      {
+        tracker: "anilist",
+        state: done ? "done" : "running",
+        total: 6,
+        done: done ? 5 : 2,
+        changed: done ? 1 : 0,
+        failedCount: 0,
+        failed: [],
+      },
+      {
+        tracker: "mal",
+        state: done ? "stopped" : "running",
+        total: 8,
+        done: done ? 4 : 1,
+        changed: 0,
+        failedCount: done ? 1 : 0,
+        failed: done
+          ? [{ title: "Akira", error: "MyAnimeList is limiting requests, try again later" }]
+          : [],
+        error: done
+          ? "MyAnimeList is limiting requests. Preview again later to finish."
+          : undefined,
+      },
+      {
+        tracker: "simkl",
+        state: done ? "done" : "waiting",
+        total: 9,
+        done: done ? 9 : 0,
+        changed: 0,
+        failedCount: 0,
+        failed: [],
+      },
+    ],
+  };
 }

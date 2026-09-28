@@ -1,6 +1,7 @@
 /**
- * List sync, background side (plans/list-sync.md). Phase 1 reads and plans only:
- * nothing here writes to a tracker.
+ * List sync, background side (plans/list-sync.md): the preview. It reads and
+ * plans only; nothing here writes to a tracker (`apply.ts` does, from the plan
+ * saved here).
  *
  * A preview runs as a JOB whose state lives in storage (`listSyncJob`), not as one
  * long message. Reading four lists can take longer than the browser lets a worker
@@ -11,8 +12,15 @@
  */
 import { browser } from "wxt/browser";
 import { errorMessage } from "../errors";
-import { listSyncJob, listSyncSettings } from "../storage";
-import { loadAnimap } from "../trackers/animap/load";
+import {
+  animapOverrides,
+  animeMap,
+  listSyncApply,
+  listSyncJob,
+  listSyncSettings,
+} from "../storage";
+import { Animap } from "../trackers/animap/index";
+import { withOverrides } from "../trackers/animap/overrides";
 import { getAdapter } from "../trackers/index";
 import { getService } from "../trackers/service";
 import { ALL_TRACKERS, type Tracker } from "../trackers/types";
@@ -42,6 +50,8 @@ export interface SyncPreview {
   noCrosswalk?: boolean;
   totals: SyncTotals[];
   plan: SyncPlan;
+  /** Each tracker's score scale, to turn a picked score into its writes. */
+  scales: Partial<Record<Tracker, ScoreScale>>;
 }
 
 /**
@@ -49,7 +59,7 @@ export interface SyncPreview {
  * `SyncPlan` changes shape: a job saved by an older build is then dropped on read,
  * instead of rendering (and crashing on) fields it does not have.
  */
-export const SYNC_JOB_VERSION = 3;
+export const SYNC_JOB_VERSION = 4;
 
 /** A preview job, as saved in storage. */
 export interface SyncJob {
@@ -80,7 +90,10 @@ export function readJob(raw: unknown): SyncJob | null {
 }
 
 /** Whether a saved job is still really running. Pure. */
-export function jobAlive(job: SyncJob | null, now: number): boolean {
+export function jobAlive(
+  job: { state: string; beatAt: number } | null | undefined,
+  now: number,
+): boolean {
   return job?.state === "running" && now - job.beatAt < STALE_MS;
 }
 
@@ -90,6 +103,8 @@ export function jobAlive(job: SyncJob | null, now: number): boolean {
  */
 export async function startPreview(): Promise<{ started: boolean }> {
   if (jobAlive(readJob(await listSyncJob.getValue()), Date.now())) return { started: false };
+  // A preview during an apply would plan from lists that are half written.
+  if (jobAlive(await listSyncApply.getValue(), Date.now())) return { started: false };
   const now = Date.now();
   await listSyncJob.setValue({
     v: SYNC_JOB_VERSION,
@@ -152,8 +167,13 @@ async function runPreview(): Promise<void> {
     await save({ planning: true });
     const reads = job.reads;
     const trackers = reads.filter((r) => r.state === "read").map((r) => r.tracker);
-    const animap = await loadAnimap();
-    const base = { at: Date.now(), reads, noCrosswalk: animap.size === 0 };
+    // The crosswalk with the user's fix-match pins over it, as scrobbling uses it.
+    const [cached, overrides] = await Promise.all([
+      animeMap.getValue(),
+      animapOverrides.getValue(),
+    ]);
+    const animap = new Animap(withOverrides(cached?.rows ?? [], overrides));
+    const base = { at: Date.now(), reads, noCrosswalk: !cached?.rows.length, scales };
     const empty: SyncPlan = { items: [], skips: [], conflicts: [], notices: [] };
     const preview: SyncPreview =
       trackers.length < 2

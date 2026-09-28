@@ -524,3 +524,15 @@ export async function readTraktList(want: {
   ]);
   return { shows, movies, showRatings, seasonRatings, movieRatings };
 }
+
+// --- list sync writes (plans/list-sync.md, phase 2) ---
+
+/** A Trakt sync POST: status, the JSON body when it worked, and a short error. */
+export async function syncPost(
+  path: "/sync/history" | "/sync/ratings",
+  body: unknown,
+): Promise<{ status: number; data?: unknown; error?: string }> {
+  const res = await api(path, { method: "POST", body: JSON.stringify(body) }, true);
+  if (!res.ok) return { status: res.status, error: await errorDetail(res) };
+  return { status: res.status, data: await res.json().catch(() => undefined) };
+}

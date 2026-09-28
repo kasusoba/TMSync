@@ -5,6 +5,7 @@
  * entries and anime as `cour` entries.
  */
 import { z } from "zod";
+import { simklRatings } from "../../storage";
 import { ms, newest, num, parseEach } from "../../sync/read";
 import type { ListEntry, SyncIds, SyncKind } from "../../sync/types";
 import type { CourStatus } from "../cour-plan";
@@ -131,5 +132,21 @@ export async function readSimklEntries(kinds: SyncKind[]): Promise<ListEntry[]> 
   if (kinds.includes("tv") || kinds.includes("anime")) types.push("shows");
   if (kinds.includes("anime")) types.push("anime");
   if (kinds.includes("movie")) types.push("movies");
-  return simklEntries(await readSimklList(types));
+  const entries = simklEntries(await readSimklList(types));
+  await refreshMirror(entries).catch(() => {});
+  return entries;
+}
+
+/**
+ * Bring the local rating mirror up to date: reading a rating back one at a time
+ * costs quota, so the mirror is how the rating panel knows it, and a full list
+ * read has them all. Keyed `simkl:<id>` (see simkl/review.ts).
+ */
+async function refreshMirror(entries: ListEntry[]): Promise<void> {
+  const all = { ...(await simklRatings.getValue()) };
+  for (const e of entries) {
+    if (e.rating !== null) all[`simkl:${e.id}`] = Math.round(e.rating / 10);
+    else delete all[`simkl:${e.id}`];
+  }
+  await simklRatings.setValue(all);
 }

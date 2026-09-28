@@ -3,6 +3,7 @@ import { malConnectIntent, malCorrections, malMissCache, malResolutionCache } fr
 import { bindPins, courSearch, setKey } from "../cour-pins";
 import type { CourTrackerService } from "../service";
 import { hasMalAccess, isMalGrant } from "./access";
+import { MAL_CHUNK, applyMal } from "./apply";
 import { connect, disconnect, getRedirectUri, isConnected } from "./auth";
 import { getAnime, malCacheKey, searchMal } from "./client";
 import { MAL } from "./config";
@@ -15,6 +16,7 @@ const MAL_INTENT_MS = 2 * 60 * 1000;
 
 export const malService: CourTrackerService = {
   readList: async () => ({ entries: await readMalEntries() }),
+  applyList: { chunk: MAL_CHUNK, run: applyMal },
   status: async () => ({
     connected: await isConnected(),
     redirectUri: getRedirectUri(),

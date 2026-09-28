@@ -58,7 +58,10 @@ const entries: ListEntry[] = [
   },
 ];
 
-function show(settings: ListSyncSettings): string {
+function show(
+  settings: ListSyncSettings,
+  extra: Partial<Parameters<typeof ListSyncView>[0]> = {},
+): string {
   const trackers: Tracker[] = ["trakt", "anilist", "mal", "simkl"];
   const plan = planSync({
     entries,
@@ -71,6 +74,7 @@ function show(settings: ListSyncSettings): string {
     reads: ALL_TRACKERS.map((tracker) => ({ tracker, state: "read", count: 1 })),
     totals: summarize(plan, trackers),
     plan,
+    scales: {},
   };
   const root = document.createElement("div");
   render(
@@ -91,6 +95,7 @@ function show(settings: ListSyncSettings): string {
       onIgnore={() => {}}
       onRestore={() => {}}
       onClearIgnored={() => {}}
+      {...extra}
     />,
     root,
   );
@@ -110,6 +115,45 @@ describe("ListSyncView", () => {
     // The Changes tab says what each tracker had: Simkl gets Severance as new.
     expect(text).toContain("+2 episodes · new");
     expect(text).toContain("Left as is");
+  });
+});
+
+describe("ListSyncView apply", () => {
+  it("offers Apply on a fresh preview", () => {
+    expect(show(DEFAULT_SYNC_SETTINGS)).toContain("Apply…");
+  });
+
+  it("asks for a new preview when this one is old", () => {
+    const text = show(DEFAULT_SYNC_SETTINGS, { blocked: "stale" });
+    expect(text).toContain("more than 10 minutes old");
+    expect(text).not.toContain("Apply…");
+  });
+
+  it("shows each tracker's progress while applying", () => {
+    const text = show(DEFAULT_SYNC_SETTINGS, {
+      applying: true,
+      apply: {
+        v: 1,
+        state: "running",
+        startedAt: 1,
+        beatAt: 1,
+        planAt: 0,
+        trackers: [
+          {
+            tracker: "mal",
+            state: "running",
+            total: 4,
+            done: 1,
+            changed: 1,
+            failedCount: 0,
+            failed: [],
+          },
+        ],
+      },
+    });
+    expect(text).toContain("Applying…");
+    expect(text).toContain("1 of 4 written · 1 changed since the preview");
+    expect(text).toContain("Stop");
   });
 });
 

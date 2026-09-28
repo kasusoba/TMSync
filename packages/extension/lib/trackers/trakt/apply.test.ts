@@ -1,0 +1,65 @@
+import { describe, expect, it } from "vitest";
+import type { SyncWrite } from "../../sync/types";
+import { historyBody, ratingsBody, traktIds } from "./apply";
+
+const show = { id: 11, ids: { tmdb: 1399, imdb: "tt0944947" }, mediaType: "show" as const };
+const movie = { ids: { tmdb: 603 }, mediaType: "movie" as const };
+
+describe("Trakt bodies", () => {
+  it("names an item by its Trakt id and every other id", () => {
+    expect(traktIds(show)).toEqual({ trakt: 11, tmdb: 1399, imdb: "tt0944947" });
+  });
+
+  it("dates a watch by the source, else the air date", () => {
+    const writes: SyncWrite[] = [
+      {
+        tracker: "trakt",
+        op: "episodes",
+        target: show,
+        add: [
+          { season: 1, number: 1 },
+          { season: 1, number: 2 },
+          { season: 2, number: 1 },
+        ],
+        at: Date.UTC(2024, 0, 2),
+      },
+      { tracker: "trakt", op: "movie", target: movie },
+    ];
+    const { body, at } = historyBody(writes);
+    expect(at).toEqual([0, 1]);
+    expect(body.shows).toEqual([
+      {
+        ids: { trakt: 11, tmdb: 1399, imdb: "tt0944947" },
+        seasons: [
+          {
+            number: 1,
+            episodes: [
+              { number: 1, watched_at: "2024-01-02T00:00:00.000Z" },
+              { number: 2, watched_at: "2024-01-02T00:00:00.000Z" },
+            ],
+          },
+          { number: 2, episodes: [{ number: 1, watched_at: "2024-01-02T00:00:00.000Z" }] },
+        ],
+      },
+    ]);
+    expect(body.movies).toEqual([{ ids: { tmdb: 603 }, watched_at: "released" }]);
+  });
+
+  it("leaves out episodes with no season (Trakt needs one)", () => {
+    const w: SyncWrite = { tracker: "trakt", op: "episodes", target: show, add: [{ number: 3 }] };
+    expect(historyBody([w]).at).toEqual([]);
+  });
+
+  it("nests a season rating in its show, on the 1 to 10 scale", () => {
+    const writes: SyncWrite[] = [
+      { tracker: "trakt", op: "rating", level: "season", season: 3, target: show, score: 84 },
+      { tracker: "trakt", op: "rating", level: "movie", target: movie, score: 70 },
+    ];
+    expect(ratingsBody(writes).body).toEqual({
+      movies: [{ ids: { tmdb: 603 }, rating: 7 }],
+      shows: [
+        { ids: { trakt: 11, tmdb: 1399, imdb: "tt0944947" }, seasons: [{ number: 3, rating: 8 }] },
+      ],
+    });
+  });
+});

@@ -2,6 +2,7 @@ import { TRAKT } from "@/config";
 import { errorMessage } from "@/lib/errors";
 import { onMessage, sendMessage } from "@/messaging";
 import type { TrackerService } from "../service";
+import { TRAKT_CHUNK, applyTrakt } from "./apply";
 import { connect, disconnect, getRedirectUri, isConnected } from "./auth";
 import {
   TraktNotConnectedError,
@@ -17,6 +18,7 @@ import { pickedIdentity } from "./util";
 
 export const traktService: TrackerService = {
   readList: async (kinds) => ({ entries: await readTraktEntries(kinds) }),
+  applyList: { chunk: TRAKT_CHUNK, run: applyTrakt },
   status: async () => ({
     connected: await isConnected(),
     redirectUri: getRedirectUri(),

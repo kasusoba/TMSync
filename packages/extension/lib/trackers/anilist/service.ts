@@ -1,6 +1,7 @@
 import { anilistCorrections, anilistResolutionCache } from "../../storage";
 import { bindPins, courSearch, setKey } from "../cour-pins";
 import type { CourTrackerService } from "../service";
+import { ANILIST_CHUNK, applyAniList } from "./apply";
 import { connect, disconnect, getRedirectUri, isConnected } from "./auth";
 import { anilistCacheKey, legacyAnilistKey, resolveById, searchAniList } from "./client";
 import { ANILIST } from "./config";
@@ -16,6 +17,7 @@ import type { AniListIdentity } from "./types";
 
 export const anilistService: CourTrackerService = {
   readList: readAniListEntries,
+  applyList: { chunk: ANILIST_CHUNK, run: applyAniList },
   status: async () => ({
     connected: await isConnected(),
     redirectUri: getRedirectUri(),

@@ -1,12 +1,14 @@
 /**
  * The List sync pane (plans/list-sync.md), presentational: the options page and the
- * gallery feed it. Phase 1 previews only: it shows what each tracker is missing,
- * and nothing is written.
+ * gallery feed it. A preview shows what each tracker is missing; Apply writes it,
+ * after a confirm that says what will be removed first.
  *
  * Built for a wide pane: the changes are a table with one column per tracker, so a
  * long plan reads row by row. Tabs split changes, disagreements, skips, and the
  * items the user keeps out (which can be brought back from there).
  */
+import type { ApplyBlock, ApplyJob, ApplyTracker } from "@/lib/sync/apply";
+import { summarize, withPicks } from "@/lib/sync/plan";
 import type { SyncPreview, TrackerRead } from "@/lib/sync/run";
 import type {
   EntryState,
@@ -16,6 +18,8 @@ import type {
   SyncItem,
   SyncKind,
   SyncNotice,
+  SyncPlan,
+  SyncTotals,
   SyncWrite,
 } from "@/lib/sync/types";
 import type { CourStatus } from "@/lib/trackers/cour-plan";
@@ -87,7 +91,7 @@ export function describeWrite(w: SyncWrite): string {
     case "remove":
       return `remove · was ${describeState(w.was)}`;
     case "rating":
-      return `rate ${Math.round(w.score) / 10}/10${w.level === "season" ? ` (season ${w.season})` : ""}`;
+      return `rate ${Math.round(w.score) / 10}/10${w.level === "season" ? ` (season ${w.season})` : ""}${w.picked ? " · your pick" : ""}`;
     case "entry": {
       const parts: string[] = [w.create ? "add" : "update"];
       if (w.progress) parts.push(`${w.progress.from} → ${w.progress.to} eps`);
@@ -130,6 +134,13 @@ export function ListSyncView({
   onIgnore,
   onRestore,
   onClearIgnored,
+  picks = {},
+  apply = null,
+  applying = false,
+  blocked = null,
+  onApply = () => {},
+  onCancelApply = () => {},
+  onPick = () => {},
 }: {
   t: Tokens;
   rows: KindRow[];
@@ -140,6 +151,18 @@ export function ListSyncView({
   progress?: TrackerRead[];
   busy: boolean;
   error?: string;
+  /** The scores the user picked where trackers disagree on a rating, by key. */
+  picks?: Record<string, number>;
+  /** The last apply: its progress while it runs, then its summary. */
+  apply?: ApplyJob | null;
+  /** An apply is running now. */
+  applying?: boolean;
+  /** Why the preview can't be applied now (null = it can). */
+  blocked?: ApplyBlock | null;
+  onApply?: () => void;
+  onCancelApply?: () => void;
+  /** Pick a score for a rating disagreement (undefined = leave it alone). */
+  onPick?: (key: string, score: number | undefined) => void;
   onPreview: () => void;
   onKind: (tracker: Tracker, kind: SyncKind, on: boolean) => void;
   onSetting: (key: "includePrivate" | "includeAdult", on: boolean) => void;
@@ -154,8 +177,8 @@ export function ListSyncView({
       <p class={clsx("max-w-2xl text-[12px] leading-relaxed", t.sub)}>
         Make your trackers agree. TMSync reads each connected list and works out what the others are
         missing: watched episodes, list status, and ratings. By default it only adds. Pick a main
-        list for a kind to make the others copy it instead, removals included. This version shows
-        the plan only. Nothing is written to your trackers yet.
+        list for a kind to make the others copy it instead, removals included. Preview first:
+        nothing is written until you apply the plan.
       </p>
 
       <div class="grid gap-3 lg:grid-cols-[3fr_2fr]">
@@ -251,7 +274,7 @@ export function ListSyncView({
             onClick={() => onSetting("includeAdult", !settings.includeAdult)}
           />
           <div class="mt-auto flex items-center gap-3 pt-1">
-            <Btn t={t} tone="primary" disabled={busy} onClick={onPreview}>
+            <Btn t={t} tone="primary" disabled={busy || applying} onClick={onPreview}>
               <Icon name="refresh" class="text-[12px]" />{" "}
               {busy ? "Reading your lists…" : "Preview sync"}
             </Btn>
@@ -274,6 +297,13 @@ export function ListSyncView({
           onIgnore={onIgnore}
           onRestore={onRestore}
           onClearIgnored={onClearIgnored}
+          picks={picks}
+          apply={apply}
+          applying={applying}
+          blocked={blocked}
+          onApply={onApply}
+          onCancelApply={onCancelApply}
+          onPick={onPick}
         />
       )}
     </div>
@@ -298,26 +328,235 @@ function SettingRow({
   );
 }
 
+/** What a tracker gets, in short parts: "+12 episodes", "3 ratings". */
+function totalParts(x: SyncTotals, removals = true): string[] {
+  return [
+    x.episodes && `+${plural(x.episodes, "episode")}`,
+    x.movies && `+${plural(x.movies, "movie")}`,
+    x.created && plural(x.created, "new entry", "new entries"),
+    x.updated && `${x.updated} updated`,
+    x.ratings && plural(x.ratings, "rating"),
+    removals && x.removed && `${x.removed} removed`,
+  ].filter((p): p is string => !!p);
+}
+
+const BLOCK_LABEL: Record<ApplyBlock, string> = {
+  running: "An apply is running.",
+  previewing: "A preview is running.",
+  no_plan: "Preview first.",
+  spent: "This preview was applied. Preview again to see what is left.",
+  stale:
+    "This preview is more than 10 minutes old. Preview again before you apply, so the plan matches your lists.",
+  nothing: "Nothing to apply: your trackers agree.",
+};
+
+/**
+ * Apply, with a confirm that repeats what will happen. Removals come first and
+ * stand out: they are the one change that takes something away.
+ */
+function ApplyBar({
+  t,
+  plan,
+  kept,
+  totals,
+  blocked,
+  onApply,
+}: {
+  t: Tokens;
+  plan: SyncPlan;
+  kept: Set<string>;
+  totals: SyncTotals[];
+  blocked: ApplyBlock | null;
+  onApply: () => void;
+}) {
+  const [confirm, setConfirm] = useState(false);
+  if (blocked) {
+    return (
+      <p class={clsx("rounded-md px-2.5 py-1.5 text-[11px]", t.infoBox)}>{BLOCK_LABEL[blocked]}</p>
+    );
+  }
+  const writes = plan.items.filter((i) => !kept.has(i.key)).flatMap((i) => i.writes).length;
+  const removals = totals.filter((x) => x.removed);
+  if (!confirm) {
+    return (
+      <div class={clsx("flex items-center gap-3 rounded-lg p-3", t.card)}>
+        <span class={clsx("flex-1 text-[12px]", t.sub)}>
+          The plan is ready: {plural(writes, "change")} across your trackers.
+        </span>
+        <Btn t={t} tone="primary" onClick={() => setConfirm(true)}>
+          Apply…
+        </Btn>
+      </div>
+    );
+  }
+  return (
+    <div class={clsx("space-y-2.5 rounded-lg p-3", t.card)}>
+      <p class={clsx("text-[13px] font-semibold", t.heading)}>Apply this plan?</p>
+      {removals.length > 0 && (
+        <p class={clsx("rounded-md px-2.5 py-1.5 text-[12px] leading-relaxed", t.badBox)}>
+          Removes{" "}
+          {removals
+            .map((x) => `${plural(x.removed, "entry", "entries")} from ${trackerLabel(x.tracker)}`)
+            .join(", ")}
+          . A removed entry loses its progress, status, and rating there.
+        </p>
+      )}
+      <ul class={clsx("space-y-0.5 text-[12px]", t.sub)}>
+        {totals.map((x) => {
+          const parts = totalParts(x, false);
+          return parts.length ? (
+            <li key={x.tracker} class="flex items-center gap-2">
+              <TrackerMark tracker={x.tracker} />
+              <span class={t.heading}>{trackerLabel(x.tracker)}</span>
+              <span>{parts.join(" · ")}</span>
+            </li>
+          ) : null;
+        })}
+      </ul>
+      <p class={clsx("text-[11px] leading-relaxed", t.sub)}>
+        Each write stands on its own, so you can stop at any time and keep what was written. New
+        watches on Trakt and Simkl get the date the other list last changed, or the air date when
+        that is unknown.
+      </p>
+      <div class="flex gap-2">
+        <Btn
+          t={t}
+          tone="primary"
+          onClick={() => {
+            setConfirm(false);
+            onApply();
+          }}
+        >
+          Apply
+        </Btn>
+        <Btn t={t} tone="ghost" onClick={() => setConfirm(false)}>
+          Back
+        </Btn>
+      </div>
+    </div>
+  );
+}
+
+const APPLY_STATE: Record<ApplyTracker["state"], string> = {
+  waiting: "Waiting",
+  running: "Writing…",
+  done: "Done",
+  stopped: "Stopped",
+  cancelled: "Stopped",
+};
+
+/** An apply: each tracker's progress while it runs, then what was written. */
+function ApplyProgress({
+  t,
+  job,
+  running,
+  onCancel,
+}: { t: Tokens; job: ApplyJob; running: boolean; onCancel: () => void }) {
+  const [open, setOpen] = useState(false);
+  // "running" in storage with no recent beat: the browser stopped the worker.
+  const dead = job.state === "running" && !running;
+  const failed = job.trackers.flatMap((x) => x.failed.map((f) => ({ ...f, tracker: x.tracker })));
+  const failedCount = job.trackers.reduce((n, x) => n + x.failedCount, 0);
+  const clean =
+    job.state === "done" && !failedCount && job.trackers.every((x) => x.state === "done");
+  const title = running
+    ? "Applying…"
+    : dead
+      ? "The apply stopped"
+      : job.state === "cancelled"
+        ? "You stopped the apply"
+        : job.state === "failed"
+          ? "The apply failed"
+          : "Applied";
+  return (
+    <div class="space-y-3">
+      <div class="flex items-center gap-3">
+        <span class={clsx("flex-1 text-[13px] font-semibold", t.heading)}>{title}</span>
+        {running && (
+          <Btn t={t} tone="ghost" onClick={onCancel}>
+            Stop
+          </Btn>
+        )}
+      </div>
+      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {job.trackers.map((x) => {
+          const sent = x.done + x.changed + x.failedCount;
+          return (
+            <div key={x.tracker} class={clsx("space-y-2 rounded-lg p-3", t.card)}>
+              <div class="flex items-center gap-2">
+                <TrackerMark tracker={x.tracker} />
+                <span class={clsx("flex-1 text-[13px] font-semibold", t.heading)}>
+                  {trackerLabel(x.tracker)}
+                </span>
+                <span class={clsx("text-[11px]", t.faint)}>{APPLY_STATE[x.state]}</span>
+              </div>
+              <div class={clsx("h-1 overflow-hidden rounded-full", t.chip)}>
+                <div
+                  class={clsx("h-full", t.primary)}
+                  style={{ width: `${x.total ? Math.round((sent / x.total) * 100) : 100}%` }}
+                />
+              </div>
+              <p class={clsx("text-[12px] leading-relaxed", t.sub)}>
+                {[
+                  `${x.done} of ${x.total} written`,
+                  x.changed && `${x.changed} changed since the preview`,
+                  x.failedCount && `${x.failedCount} failed`,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+              {x.error && <p class={clsx("text-[11px]", t.sub)}>{x.error}</p>}
+            </div>
+          );
+        })}
+      </div>
+      {job.error && (
+        <p class={clsx("rounded-md px-2.5 py-1.5 text-[11px]", t.badBox)}>{job.error}</p>
+      )}
+      {failed.length > 0 && (
+        <div class={clsx("rounded-lg px-3 py-2 text-[12px]", t.card)}>
+          <button
+            type="button"
+            class="flex w-full items-center gap-2 text-left"
+            onClick={() => setOpen(!open)}
+          >
+            <Icon name={open ? "down" : "chevron"} class={clsx("text-[12px]", t.faint)} />
+            <span class={clsx("flex-1", t.heading)}>What failed</span>
+            <span class={t.sub}>{failedCount}</span>
+          </button>
+          {open && (
+            <ul class="mt-1.5 space-y-0.5 pl-5">
+              {failed.map((f, i) => (
+                <li key={`${f.tracker}:${i}`} class={t.sub}>
+                  {f.title} · {trackerLabel(f.tracker)} · {f.error}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+      {!running && (
+        <p class={clsx("text-[11px] leading-relaxed", t.sub)}>
+          {clean
+            ? "Preview again to check: it should find nothing left to change."
+            : "Preview again, then apply, to finish. Sync plans from what each tracker has now, so nothing is written twice."}
+        </p>
+      )}
+    </div>
+  );
+}
+
 /** One card per tracker: its read state, and (after a preview) what it would get. */
 function TrackerCards({
   t,
   reads,
-  preview,
-}: { t: Tokens; reads: TrackerRead[]; preview?: SyncPreview }) {
+  totals,
+}: { t: Tokens; reads: TrackerRead[]; totals?: SyncTotals[] }) {
   return (
     <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       {reads.map((r) => {
-        const x = preview?.totals.find((tt) => tt.tracker === r.tracker);
-        const parts = x
-          ? [
-              x.episodes && `+${plural(x.episodes, "episode")}`,
-              x.movies && `+${plural(x.movies, "movie")}`,
-              x.created && plural(x.created, "new entry", "new entries"),
-              x.updated && `${x.updated} updated`,
-              x.ratings && plural(x.ratings, "rating"),
-              x.removed && `${x.removed} removed`,
-            ].filter(Boolean)
-          : [];
+        const x = totals?.find((tt) => tt.tracker === r.tracker);
+        const parts = x ? totalParts(x) : [];
         return (
           <div key={r.tracker} class={clsx("rounded-lg p-3", t.card)}>
             <div class="flex items-center gap-2">
@@ -357,6 +596,13 @@ function PreviewResult({
   onIgnore,
   onRestore,
   onClearIgnored,
+  picks,
+  apply,
+  applying,
+  blocked,
+  onApply,
+  onCancelApply,
+  onPick,
 }: {
   t: Tokens;
   preview: SyncPreview;
@@ -364,6 +610,13 @@ function PreviewResult({
   onIgnore: (key: string) => void;
   onRestore: (key: string) => void;
   onClearIgnored: () => void;
+  picks: Record<string, number>;
+  apply: ApplyJob | null;
+  applying: boolean;
+  blocked: ApplyBlock | null;
+  onApply: () => void;
+  onCancelApply: () => void;
+  onPick: (key: string, score: number | undefined) => void;
 }) {
   const [tab, setTab] = useState<Tab>("changes");
   const [q, setQ] = useState("");
@@ -372,9 +625,16 @@ function PreviewResult({
   /** The item just kept out, for the one-click undo. */
   const [undo, setUndo] = useState<{ key: string; title: string } | null>(null);
 
-  const { plan } = preview;
+  // The plan as it will be applied: the user's rating picks in, kept-out items out.
+  const plan = withPicks(preview.plan, picks, preview.scales);
   const kept = new Set(ignore);
   const trackers = preview.reads.filter((r) => r.state === "read").map((r) => r.tracker);
+  const totals = summarize(
+    { ...plan, items: plan.items.filter((i) => !kept.has(i.key)) },
+    trackers,
+  );
+  // This preview's apply, if it had one (a new preview starts clean).
+  const ran = apply?.planAt === preview.at ? apply : null;
   const match = (title: string, k?: SyncKind) =>
     title.toLowerCase().includes(q.trim().toLowerCase()) && (kind === "all" || k === kind);
 
@@ -410,7 +670,22 @@ function PreviewResult({
 
   return (
     <div class="space-y-4">
-      <TrackerCards t={t} reads={preview.reads} preview={preview} />
+      <TrackerCards t={t} reads={preview.reads} totals={totals} />
+
+      {ran ? (
+        <ApplyProgress t={t} job={ran} running={applying} onCancel={onCancelApply} />
+      ) : (
+        !preview.reason && (
+          <ApplyBar
+            t={t}
+            plan={plan}
+            kept={kept}
+            totals={totals}
+            blocked={blocked}
+            onApply={onApply}
+          />
+        )
+      )}
 
       {preview.noCrosswalk && (
         <p class={clsx("rounded-md px-2.5 py-1.5 text-[11px]", t.infoBox)}>
@@ -531,7 +806,9 @@ function PreviewResult({
         <Empty t={t} text="Every copy matches its main list, or there is no main list." />
       )}
 
-      {tab === "conflicts" && <ConflictTable t={t} trackers={trackers} conflicts={conflicts} />}
+      {tab === "conflicts" && (
+        <ConflictTable t={t} trackers={trackers} conflicts={conflicts} onPick={onPick} />
+      )}
       {tab === "conflicts" && !conflicts.length && <Empty t={t} text="Your trackers agree." />}
 
       {tab === "skipped" && <SkipGroups t={t} skips={skips} />}
@@ -699,13 +976,19 @@ function ConflictTable({
   t,
   trackers,
   conflicts,
-}: { t: Tokens; trackers: Tracker[]; conflicts: SyncConflict[] }) {
+  onPick,
+}: {
+  t: Tokens;
+  trackers: Tracker[];
+  conflicts: SyncConflict[];
+  onPick: (key: string, score: number | undefined) => void;
+}) {
   if (!conflicts.length) return null;
   return (
     <div class="space-y-2">
       <p class={clsx("text-[11px] leading-relaxed", t.sub)}>
         For status, the most recent change wins. Different ratings are left alone until you pick
-        one.
+        one: the score you pick goes to every tracker, and replaces the ratings that differ.
       </p>
       <div class={clsx("overflow-x-clip rounded-lg", t.card)}>
         <table class="w-full table-fixed text-[12px]">
@@ -744,8 +1027,14 @@ function ConflictTable({
                     </td>
                   );
                 })}
-                <td class={clsx("px-3 py-2", t.heading)}>
-                  {c.chosen ? conflictValue(c, c.chosen.value) : "Left alone"}
+                <td class={clsx("px-3 py-1.5", t.heading)}>
+                  {c.field === "rating" && c.refs?.length ? (
+                    <RatingPick t={t} c={c} onPick={onPick} />
+                  ) : c.chosen ? (
+                    conflictValue(c, c.chosen.value)
+                  ) : (
+                    "Left alone"
+                  )}
                 </td>
               </tr>
             ))}
@@ -753,6 +1042,37 @@ function ConflictTable({
         </table>
       </div>
     </div>
+  );
+}
+
+/** Pick one of the scores the trackers have, or leave the rating alone. */
+function RatingPick({
+  t,
+  c,
+  onPick,
+}: { t: Tokens; c: SyncConflict; onPick: (key: string, score: number | undefined) => void }) {
+  // The scores on offer, on the 1 to 10 scale most trackers use, highest first.
+  const scores = [...new Set(c.values.map((v) => Math.round(Number(v.value) / 10) * 10))].sort(
+    (a, b) => b - a,
+  );
+  if (c.picked !== undefined && !scores.includes(c.picked)) scores.unshift(c.picked);
+  return (
+    <select
+      value={c.picked ?? ""}
+      onChange={(e) => {
+        const v = (e.target as HTMLSelectElement).value;
+        onPick(c.key, v ? Number(v) : undefined);
+      }}
+      class={clsx("rounded-md px-1 py-1 text-[11px]", t.input)}
+      title="The rating every tracker gets"
+    >
+      <option value="">Leave alone</option>
+      {scores.map((s) => (
+        <option key={s} value={s}>
+          {Math.round(s) / 10}/10
+        </option>
+      ))}
+    </select>
   );
 }
 

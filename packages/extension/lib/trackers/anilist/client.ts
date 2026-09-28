@@ -73,6 +73,8 @@ export class AniListHttpError extends Error {
   constructor(
     readonly status: number,
     detail: string,
+    /** Seconds to wait before the next request, from a 429's `Retry-After`. */
+    readonly retryAfter?: number,
   ) {
     super(`AniList ${status}${detail ? `: ${detail}` : ""}`);
     this.name = "AniListHttpError";
@@ -98,7 +100,12 @@ async function gql<T>(query: string, variables: Record<string, unknown>, auth = 
     } catch {
       // ignore unreadable body
     }
-    throw new AniListHttpError(res.status, detail);
+    const wait = Number(res.headers.get("Retry-After"));
+    throw new AniListHttpError(
+      res.status,
+      detail,
+      Number.isFinite(wait) && wait > 0 ? wait : undefined,
+    );
   }
   const body = (await res.json()) as GraphQLResponse<T>;
   if (body.errors?.length) throw new Error(body.errors.map((e) => e.message).join("; "));
@@ -425,4 +432,74 @@ export async function readAniListList(): Promise<{
     if (!data.MediaListCollection.hasNextChunk) break;
   }
   return { entries, scoreFormat: viewer.Viewer.mediaListOptions?.scoreFormat ?? null };
+}
+
+// --- list sync writes (plans/list-sync.md, phase 2) ---
+
+const FRESH_QUERY = `
+query ($userId: Int, $ids: [Int]) {
+  Page(perPage: 50) {
+    mediaList(userId: $userId, type: ANIME, mediaId_in: $ids) {
+      id mediaId status progress repeat
+      score(format: POINT_100)
+    }
+  }
+}`;
+
+/** An entry as it is now, for read before write. `score` 0 = not rated. */
+export interface FreshAniListEntry {
+  id: number;
+  mediaId: number;
+  status: MediaListStatus | null;
+  progress: number;
+  repeat: number;
+  score: number;
+}
+
+/** The viewer's entries for up to 50 media, in two requests (the viewer, then the
+ * entries). A media that is not on the list is missing from the map. */
+export async function readFreshEntries(
+  mediaIds: number[],
+): Promise<Map<number, FreshAniListEntry>> {
+  const viewer = await gql<{ Viewer: { id: number } }>(VIEWER_QUERY, {}, true);
+  const data = await gql<{
+    Page: { mediaList: Partial<FreshAniListEntry>[] | null } | null;
+  }>(FRESH_QUERY, { userId: viewer.Viewer.id, ids: mediaIds.slice(0, 50) }, true);
+  const out = new Map<number, FreshAniListEntry>();
+  for (const e of data.Page?.mediaList ?? []) {
+    if (e.id === undefined || e.mediaId === undefined) continue;
+    out.set(e.mediaId, {
+      id: e.id,
+      mediaId: e.mediaId,
+      status: e.status ?? null,
+      progress: e.progress ?? 0,
+      repeat: e.repeat ?? 0,
+      score: e.score ?? 0,
+    });
+  }
+  return out;
+}
+
+const SYNC_SAVE_QUERY = `
+mutation ($mediaId: Int, $progress: Int, $status: MediaListStatus, $repeat: Int, $scoreRaw: Int) {
+  SaveMediaListEntry(
+    mediaId: $mediaId, progress: $progress, status: $status, repeat: $repeat, scoreRaw: $scoreRaw
+  ) { id }
+}`;
+
+/** Save one entry for list sync. Omitted fields are left as they are. Throws on
+ * any failure, so the caller can tell a limit (429) from a bad item. */
+export async function syncSaveEntry(
+  mediaId: number,
+  fields: SaveEntryFields & { scoreRaw?: number },
+): Promise<void> {
+  await gql(SYNC_SAVE_QUERY, { mediaId, ...fields }, true);
+}
+
+const DELETE_QUERY = `
+mutation ($id: Int) { DeleteMediaListEntry(id: $id) { deleted } }`;
+
+/** Remove a list entry. `listId` is the LIST ENTRY id, not the media id. */
+export async function deleteListEntry(listId: number): Promise<void> {
+  await gql(DELETE_QUERY, { id: listId }, true);
 }

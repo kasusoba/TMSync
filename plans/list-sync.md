@@ -350,11 +350,69 @@ Rules that bit during phase 1:
 8. **Tests:** apply is where convergence matters for real. After apply, a new preview must
    show no changes (the planner test does this with a simulated apply; do it once live too).
 
-### Before merge
+### Before merge (still to do)
 
 Move the facts that stay true into `docs/ARCHITECTURE.md` (a list sync section) and
 `docs/TRACKERS.md` (the list read endpoints per tracker), delete this file, then PR and
 squash-merge. Suggested PR title: "Sync your lists across trackers".
+
+## Phase 2 status (built on `feat/list-sync`, not yet run on a real account)
+
+What is built:
+
+- **Apply runner** `lib/sync/apply.ts`: a job in `local:list_sync_apply`, like the preview.
+  Trackers run side by side, in chunks each tracker sizes (`TrackerService.applyList`), with
+  the counts saved after each chunk, beats, and Stop (`local:list_sync_cancel_at`, its own item
+  so the job's saves never overwrite it).
+- **No resume from a position.** To finish a stopped or cancelled apply, preview again and
+  apply that. The planner diffs against what each tracker has now, so written items drop out
+  and a Trakt or Simkl history write is never sent twice, not even the chunk in flight when the
+  worker stopped (edge case 34). So a preview is applied once (`spent`), and only within 10
+  minutes (`stale`, edge case 36). `applyBlock` is the one rule; Options shows the same answer.
+- **Writers**, one `apply.ts` per tracker:
+  - Trakt: one `/sync/history` and one `/sync/ratings` POST per 100 writes, 1.1 s apart.
+    `watched_at` is the source date, else `"released"`. 429 and 420 stop Trakt. The rating
+    cache is dropped after ratings.
+  - Simkl: `/sync/history/remove`, `/sync/history`, `/sync/ratings`, per 250 writes. Anime goes
+    under `shows[]` everywhere (Simkl's docs: `/sync/history/remove` ignores `anime[]`), with
+    cour ids and top-level `episodes`. An anime entry's status rides in the history item
+    (`status`), so there is no `/sync/add-to-list` call. An anime movie is sent as
+    `status: "completed"`. No `watched_at` when the date is unknown (Simkl has no "released").
+  - AniList: a fresh read of up to 25 entries (`Page.mediaList(mediaId_in)`), then one
+    `SaveMediaListEntry` (with `scoreRaw`) or `DeleteMediaListEntry` per entry. The fresh read
+    gives the list entry id, so the reader did not need it. 2.1 s apart; a 429 waits out
+    `Retry-After` once, a second stops AniList.
+  - MAL: `getMyListStatus` then PATCH or DELETE per entry, 1.5 s apart. A 403 stops MAL.
+- **Read before write** (`lib/sync/merge.ts`, pure): progress `max(fresh, planned)`, a finished
+  entry is never moved, a status goes in only if the entry still has the status the preview
+  saw, a rating fills an empty one unless the user picked it, and nothing is rated that is not
+  on the list.
+- **Rating picks**: the "Trackers disagree" tab has a score picker per rating conflict
+  (`local:list_sync_picks`). `withPicks` turns a pick into writes for every tracker that differs
+  (`picked: true`, which replaces its rating). Conflicts carry `refs` for this.
+- **Crosswalk pins** in the planner: `withOverrides` (`lib/trackers/animap/overrides.ts`) folds
+  `animapOverrides` into the Fribb rows. Only pins that name a TV season; a pin keyed
+  `${tmdb}:` does not say movie or show, so it is left out. "Not on AniList" for a season
+  drops it for MAL too (stricter than scrobbling, never looser).
+- **Dates**: `episodes` / `movie` / `entry` writes carry `at`, the newest `updatedAt` of the
+  sources that have watches.
+- **Simkl rating mirror** is refreshed from each full Simkl read (edge case 27).
+- **Planner fixes found while building**: Simkl keeps no rewatch count, so it gets no `repeat`
+  write (it planned one on every run, never converging). A cour tracker gets a rating only
+  where it has, or will get, an entry (rating an unlisted item adds it).
+- **UI**: Apply bar with a confirm (removals first, in the bad-box tone), per-tracker progress
+  with Stop, a summary with what failed, sticky table headers (`cardSolid` token). Gallery:
+  stale, applying, applied (MAL stopped).
+
+Still open for phase 2:
+
+- **Run it once live** on the owner's accounts, then preview again: it must show no changes
+  (convergence for real). Watch the Simkl quota line and MAL's 403.
+- Status conflicts cannot be flipped yet (decision 2 said the user can flip them; only ratings
+  have a picker).
+- `/sync/history` for a Simkl anime entry with top-level `episodes` is from the docs, not yet
+  seen live. Same for Trakt `watched_at: "released"` in a sync body.
+- Firefox: the runner's beat is the same as the preview's; long MAL runs are unverified there.
 
 ## To verify against the live APIs
 
