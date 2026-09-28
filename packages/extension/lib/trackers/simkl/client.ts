@@ -361,16 +361,22 @@ export type SimklListType = "shows" | "anime" | "movies";
 
 /**
  * Read the user's Simkl library, one request per type asked for (so one to three
- * calls of the user's daily quota). Shows come with their watched episodes;
- * anime and movies need only the summary (anime is a count per cour). Simkl asks
- * apps not to call this on a timer: a scheduled sync must check
- * `/sync/activities` first and pass `date_from`. A manual "Sync now" is the
- * initial full pull its sync guide describes.
+ * calls of the user's daily quota), one after another as Simkl's sync guide asks.
+ * Shows come with their watched episodes; anime and movies need only the summary
+ * (anime is a count per cour). A type in `since` reads only the items changed
+ * after that stamp (`date_from`, sent exactly as `/sync/activities` returned it).
+ * Simkl asks apps not to call this on a timer without checking
+ * `/sync/activities` first (see `sync/cache.ts`).
  */
-export async function readSimklList(types: SimklListType[]): Promise<Record<string, unknown[]>> {
+export async function readSimklList(
+  types: SimklListType[],
+  since: Partial<Record<SimklListType, string>> = {},
+): Promise<Record<string, unknown[]>> {
   const out: Record<string, unknown[]> = {};
   for (const type of types) {
-    const extra = type === "shows" ? "&extended=full&include_all_episodes=yes" : "";
+    let extra = type === "shows" ? "&extended=full&include_all_episodes=yes" : "";
+    const from = since[type];
+    if (from) extra += `&date_from=${encodeURIComponent(from)}`;
     const body = (await simklGet(`/sync/all-items/${type}`, extra)) as Record<string, unknown>;
     const items = body?.[type];
     out[type] = Array.isArray(items) ? items : [];
@@ -398,5 +404,13 @@ async function simklGet(path: string, query = ""): Promise<unknown> {
     }
   }
   if (!res.ok) throw new Error(`Simkl ${res.status}`);
-  return (await res.json()) ?? {};
+  // A delta with nothing in it can come back empty.
+  const text = await res.text();
+  return text ? (JSON.parse(text) ?? {}) : {};
+}
+
+/** Simkl's change stamps (`/sync/activities`), unparsed. One call of the daily
+ * quota, and the check Simkl asks for before any list read on a timer. */
+export function readSimklActivity(): Promise<unknown> {
+  return simklGet("/sync/activities");
 }

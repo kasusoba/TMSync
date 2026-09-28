@@ -525,6 +525,14 @@ export async function readTraktList(want: {
   return { shows, movies, showRatings, seasonRatings, movieRatings };
 }
 
+/** Trakt's change stamps (`/sync/last_activities`), unparsed. One GET, so a list
+ * sync can skip the full read when nothing moved (plans/list-sync-phase3.md). */
+export async function readTraktActivity(): Promise<unknown> {
+  const res = await api("/sync/last_activities", {}, true);
+  if (!res.ok) throw new Error(`Trakt /sync/last_activities returned ${res.status}`);
+  return res.json();
+}
+
 // --- list sync writes (plans/list-sync.md, phase 2) ---
 
 /** A Trakt sync POST: status, the JSON body when it worked, and a short error. */

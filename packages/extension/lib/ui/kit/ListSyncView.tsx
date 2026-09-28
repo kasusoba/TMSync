@@ -61,6 +61,12 @@ const NOTICE_LABEL: Record<SyncNotice["reason"], string> = {
   rating_kept: "A different rating. Sync only fills empty ratings.",
 };
 
+/** A short read, for a tracker that can tell what changed (`sync/cache.ts`). */
+const FROM_LABEL: Record<NonNullable<TrackerRead["from"]>, string> = {
+  saved: "No changes since the last read",
+  changes: "Read only what changed",
+};
+
 const READ_LABEL: Record<TrackerRead["state"], string> = {
   waiting: "Waiting",
   reading: "Reading…",
@@ -588,6 +594,7 @@ function TrackerCards({
                   : READ_LABEL[r.state]}
               </span>
             </div>
+            {r.from && <p class={clsx("mt-1 text-[11px]", t.faint)}>{FROM_LABEL[r.from]}</p>}
             {r.error && <p class={clsx("mt-1.5 text-[11px]", t.sub)}>{r.error}</p>}
             {x && (
               <p class={clsx("mt-1.5 text-[12px] leading-relaxed", t.sub)}>

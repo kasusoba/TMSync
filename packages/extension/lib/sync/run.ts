@@ -16,6 +16,7 @@ import {
   animapOverrides,
   animeMap,
   listSyncApply,
+  listSyncCache,
   listSyncJob,
   listSyncSettings,
 } from "../storage";
@@ -36,6 +37,9 @@ export interface TrackerRead {
   state: "waiting" | "reading" | "read" | "not_connected" | "off" | "failed";
   /** How many entries its list has. */
   count?: number;
+  /** How much was read (see `ListRead.from`): `saved` = nothing changed since the
+   * last read, `changes` = only what changed. Missing = a full read. */
+  from?: "saved" | "changes";
   error?: string;
 }
 
@@ -59,7 +63,7 @@ export interface SyncPreview {
  * `SyncPlan` changes shape: a job saved by an older build is then dropped on read,
  * instead of rendering (and crashing on) fields it does not have.
  */
-export const SYNC_JOB_VERSION = 5;
+export const SYNC_JOB_VERSION = 6;
 
 /** A preview job, as saved in storage. */
 export interface SyncJob {
@@ -152,12 +156,16 @@ async function runPreview(): Promise<void> {
         if (!connected) return setRead({ tracker, state: "not_connected" });
         await setRead({ tracker, state: "reading" });
         try {
+          const cache = listSyncCache(tracker);
+          const saved = await cache.getValue().catch(() => null);
           const list = await (
             getService(tracker).readList as NonNullable<ReturnType<typeof getService>["readList"]>
-          )(kinds);
+          )(kinds, saved);
           entries.push(...list.entries);
           if (list.scoreFormat) scales[tracker] = list.scoreFormat;
-          await setRead({ tracker, state: "read", count: list.entries.length });
+          // A list too big to save is read in full next time; drop the old one.
+          if (list.cache) await cache.setValue(list.cache).catch(() => cache.removeValue());
+          await setRead({ tracker, state: "read", count: list.entries.length, from: list.from });
         } catch (e) {
           await setRead({ tracker, state: "failed", error: errorMessage(e) });
         }

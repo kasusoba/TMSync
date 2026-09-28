@@ -2,6 +2,7 @@ import type { BadgeStatus } from "@/messaging";
 import type { LinkTemplates, ParsedMedia, Recipe } from "@tmsync/shared";
 import { storage } from "wxt/utils/storage";
 import type { ApplyJob } from "./sync/apply";
+import type { ListCache } from "./sync/cache";
 import type { SyncJob } from "./sync/run";
 import type { SyncPicks } from "./sync/types";
 import { DEFAULT_SYNC_SETTINGS, type ListSyncSettings } from "./sync/types";
@@ -466,6 +467,25 @@ export const listSyncApply = storage.defineItem<ApplyJob | null>("local:list_syn
 export const listSyncCancelAt = storage.defineItem<number>("local:list_sync_cancel_at", {
   fallback: 0,
 });
+
+/** Each tracker's list as saved at its last list sync read (`sync/cache.ts`). One
+ * item per tracker: the reads run side by side, and a big list saves on its own. */
+const LIST_SYNC_CACHE: Record<Tracker, ReturnType<typeof listCacheItem>> = {
+  trakt: listCacheItem("trakt"),
+  anilist: listCacheItem("anilist"),
+  mal: listCacheItem("mal"),
+  simkl: listCacheItem("simkl"),
+};
+
+function listCacheItem(tracker: Tracker) {
+  return storage.defineItem<ListCache | null>(`local:list_sync_cache_${tracker}`, {
+    fallback: null,
+  });
+}
+
+export function listSyncCache(tracker: Tracker) {
+  return LIST_SYNC_CACHE[tracker];
+}
 
 /** What the user picked where trackers disagree (a score 0 to 100, or a status),
  * by `pickKey`. See `withPicks`. */

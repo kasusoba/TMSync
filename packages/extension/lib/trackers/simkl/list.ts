@@ -6,10 +6,18 @@
  */
 import { z } from "zod";
 import { simklRatings } from "../../storage";
+import {
+  type ListCache,
+  type ListRead,
+  mergeById,
+  newCache,
+  readFrom,
+  savedParts,
+} from "../../sync/cache";
 import { ms, newest, num, parseEach } from "../../sync/read";
 import type { ListEntry, SyncIds, SyncKind } from "../../sync/types";
 import type { CourStatus } from "../cour-plan";
-import { type SimklListType, readSimklList } from "./client";
+import { type SimklListType, readSimklActivity, readSimklList } from "./client";
 
 const Id = z.union([z.string(), z.number()]).nullish();
 const Media = z.object({
@@ -125,22 +133,110 @@ export function simklEntries(raw: unknown): ListEntry[] {
   return out;
 }
 
-/** Read only the Simkl types the chosen kinds need. Anime Simkl files under
- * `shows` is still read when TV or anime is on. */
-export async function readSimklEntries(kinds: SyncKind[]): Promise<ListEntry[]> {
+/** Which Simkl type an entry was read from: shows read as `seasons`, anime as
+ * `cour`, movies as `movie`. */
+const simklPart = (e: ListEntry): SimklListType =>
+  e.shape === "seasons" ? "shows" : e.shape === "cour" ? "anime" : "movies";
+
+type SimklRead = "saved" | "empty" | "changes" | "full";
+
+/** The `/sync/activities` key of each type. */
+const ACTIVITY_KEY = { shows: "tv_shows", anime: "anime", movies: "movies" } as const;
+
+const Stamp = z
+  .object({ all: z.string().nullish(), removed_from_list: z.string().nullish() })
+  .nullish();
+
+/** Each type's stamps from `/sync/activities`: `all` moves on any change to that
+ * type, `removed` only when an item leaves the library. Pure. */
+export function simklStamps(
+  raw: unknown,
+): Partial<Record<SimklListType, { all?: string | null; removed?: string | null }>> {
+  const r = z.object({ tv_shows: Stamp, anime: Stamp, movies: Stamp }).partial().safeParse(raw);
+  if (!r.success) return {};
+  const out: ReturnType<typeof simklStamps> = {};
+  for (const type of ["shows", "anime", "movies"] as const) {
+    const a = r.data[ACTIVITY_KEY[type]];
+    if (a) out[type] = { all: a.all, removed: a.removed_from_list };
+  }
+  return out;
+}
+
+/** How to read each type, from the stamps now and the saved ones. Unmoved =
+ * `saved`. A null stamp = the type never had any activity, so it is `empty` and
+ * needs no read. Moved with nothing removed = `changes` (a `date_from`
+ * delta, which never reports removals). Anything else = `full`. Pure. */
+export function simklReadPlan(
+  types: SimklListType[],
+  now: ReturnType<typeof simklStamps>,
+  saved: Record<string, string> | null,
+): Record<SimklListType, SimklRead> {
+  const out = {} as Record<SimklListType, SimklRead>;
+  for (const type of types) {
+    const all = now[type]?.all;
+    const was = saved?.[type];
+    if (now[type] && all === null) out[type] = "empty";
+    else if (!all || !was) out[type] = "full";
+    else if (all === was) out[type] = "saved";
+    else
+      out[type] =
+        (now[type]?.removed ?? undefined) === saved?.[`${type}:removed`] ? "changes" : "full";
+  }
+  return out;
+}
+
+/**
+ * Read only the Simkl types the chosen kinds need. Anime Simkl files under
+ * `shows` is still read when TV or anime is on. `/sync/activities` comes first,
+ * as Simkl asks: with a saved list, an unmoved type is not read at all, and a
+ * moved one reads only its changes (see `sync/cache.ts`).
+ */
+export async function readSimklEntries(
+  kinds: SyncKind[],
+  saved?: ListCache | null,
+): Promise<ListRead> {
   const types: SimklListType[] = [];
   if (kinds.includes("tv") || kinds.includes("anime")) types.push("shows");
   if (kinds.includes("anime")) types.push("anime");
   if (kinds.includes("movie")) types.push("movies");
-  const entries = simklEntries(await readSimklList(types));
-  await refreshMirror(entries).catch(() => {});
-  return entries;
+
+  const now = await readSimklActivity().then(
+    simklStamps,
+    (): ReturnType<typeof simklStamps> => ({}),
+  );
+  const old = savedParts(saved, simklPart);
+  const how = simklReadPlan(types, now, old && saved ? saved.stamps : null);
+  const since: Partial<Record<SimklListType, string>> = {};
+  for (const type of types) if (how[type] === "changes") since[type] = saved?.stamps[type];
+  const toRead = types.filter((type) => how[type] === "changes" || how[type] === "full");
+  const fresh = toRead.length ? simklEntries(await readSimklList(toRead, since)) : [];
+
+  const entries = types.flatMap((type) => {
+    const got = fresh.filter((e) => simklPart(e) === type);
+    if (how[type] === "full") return got;
+    if (how[type] === "empty") return [];
+    const kept = old?.get(type) ?? [];
+    return how[type] === "saved" ? kept : mergeById(kept, got);
+  });
+  await refreshMirror(fresh).catch(() => {});
+
+  const stamps: Record<string, string | null | undefined> = {};
+  for (const type of types) {
+    stamps[type] = now[type]?.all;
+    stamps[`${type}:removed`] = now[type]?.removed;
+  }
+  const count = (h: string) => types.filter((type) => how[type] === h).length;
+  return {
+    entries,
+    cache: newCache(stamps, entries, Date.now()),
+    from: readFrom({ saved: count("saved"), changes: count("changes"), full: count("full") }),
+  };
 }
 
 /**
  * Bring the local rating mirror up to date: reading a rating back one at a time
- * costs quota, so the mirror is how the rating panel knows it, and a full list
- * read has them all. Keyed `simkl:<id>` (see simkl/review.ts).
+ * costs quota, so the mirror is how the rating panel knows it, and a list read
+ * has the ratings of every entry it returns. Keyed `simkl:<id>` (see simkl/review.ts).
  */
 async function refreshMirror(entries: ListEntry[]): Promise<void> {
   const all = { ...(await simklRatings.getValue()) };

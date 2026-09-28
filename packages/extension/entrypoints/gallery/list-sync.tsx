@@ -116,6 +116,8 @@ const entries: ListEntry[] = [
   },
 ];
 
+const FROM: Partial<Record<Tracker, "saved" | "changes">> = { trakt: "saved", simkl: "changes" };
+
 function preview(settings: ListSyncSettings, trackers: Tracker[]): SyncPreview {
   const plan = planSync({ entries, trackers, settings, animap, scales: { anilist: "POINT_100" } });
   return {
@@ -126,6 +128,8 @@ function preview(settings: ListSyncSettings, trackers: Tracker[]): SyncPreview {
             tracker,
             state: "read" as const,
             count: entries.filter((e) => e.tracker === tracker).length,
+            // Show both short reads: Trakt did not change, Simkl read its changes.
+            from: FROM[tracker],
           }
         : { tracker, state: "not_connected" as const },
     ),

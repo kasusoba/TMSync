@@ -10,6 +10,7 @@ import {
   customRecipes,
   enabledOrigins,
   episodeOverrides,
+  listSyncCache,
   manualContexts,
   manualSelections,
   newPendingSites,
@@ -162,8 +163,10 @@ export default defineBackground(() => {
   // Accounts: one set of handlers for every tracker, through its service.
   onMessage("getTrackerStatus", ({ data }) => getService(data).status());
 
+  // A saved list sync read belongs to one account; a new sign-in drops it.
   onMessage("connectTracker", async ({ data }) => {
     try {
+      await listSyncCache(data).removeValue();
       await getService(data).connect();
       return { ok: true };
     } catch (e) {
@@ -171,7 +174,10 @@ export default defineBackground(() => {
     }
   });
 
-  onMessage("disconnectTracker", ({ data }) => getService(data).disconnect());
+  onMessage("disconnectTracker", async ({ data }) => {
+    await listSyncCache(data).removeValue();
+    await getService(data).disconnect();
+  });
 
   // List sync: a preview job reads and plans; an apply job writes that plan.
   onMessage("listSyncStart", () => startPreview());

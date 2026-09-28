@@ -5,9 +5,10 @@
  * list status: completion is derived from episodes.
  */
 import { z } from "zod";
+import { type ListCache, type ListRead, newCache, readFrom, savedParts } from "../../sync/cache";
 import { ms, newest, num, parseEach } from "../../sync/read";
 import type { ListEntry, SeasonEpisodes, SyncIds, SyncKind } from "../../sync/types";
-import { type TraktListDump, readTraktList } from "./client";
+import { type TraktListDump, readTraktActivity, readTraktList } from "./client";
 
 const Ids = z.object({
   trakt: z.number(),
@@ -114,13 +115,49 @@ export function traktEntries(dump: TraktListDump): ListEntry[] {
   return [...shows.values(), ...movies.values()];
 }
 
-/** Read only what the chosen kinds need (anime can be a show or a movie). */
-export async function readTraktEntries(kinds: SyncKind[]): Promise<ListEntry[]> {
+/** The parts of a Trakt list: shows (watched episodes, show and season ratings)
+ * and movies (watched movies, movie ratings). */
+type TraktPart = "shows" | "movies";
+
+const traktPart = (e: ListEntry): TraktPart => (e.shape === "movie" ? "movies" : "shows");
+
+/** Trakt's newest activity stamp, or null when it cannot be read. `all` moves on
+ * any change to the account, so it may read when nothing in the list moved, but
+ * it never misses a change (Trakt does not say which field a removal moves). */
+export function traktStamp(raw: unknown): string | null {
+  const r = z.object({ all: z.string() }).safeParse(raw);
+  return r.success ? r.data.all : null;
+}
+
+/**
+ * Read only what the chosen kinds need (anime can be a show or a movie). With a
+ * saved list, ask Trakt's activity stamp first and reuse the parts it covers
+ * when the stamp did not move (see `sync/cache.ts`).
+ */
+export async function readTraktEntries(
+  kinds: SyncKind[],
+  saved?: ListCache | null,
+): Promise<ListRead> {
   const anime = kinds.includes("anime");
-  return traktEntries(
-    await readTraktList({
-      shows: anime || kinds.includes("tv"),
-      movies: anime || kinds.includes("movie"),
-    }),
-  );
+  const parts: TraktPart[] = [];
+  if (anime || kinds.includes("tv")) parts.push("shows");
+  if (anime || kinds.includes("movie")) parts.push("movies");
+
+  // The stamp comes before the read, so a change made during the read moves it
+  // past the saved one and the next read sees it.
+  const stamp = await readTraktActivity().then(traktStamp, () => null);
+  const old = savedParts(saved, traktPart);
+  const reuse = parts.filter((p) => stamp && old && saved?.stamps[p] === stamp);
+  const stale = parts.filter((p) => !reuse.includes(p));
+  const fresh = stale.length
+    ? traktEntries(
+        await readTraktList({ shows: stale.includes("shows"), movies: stale.includes("movies") }),
+      )
+    : [];
+  const entries = [...reuse.flatMap((p) => old?.get(p) ?? []), ...fresh];
+  return {
+    entries,
+    cache: newCache(Object.fromEntries(parts.map((p) => [p, stamp])), entries, Date.now()),
+    from: readFrom({ saved: reuse.length, changes: 0, full: stale.length }),
+  };
 }
