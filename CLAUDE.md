@@ -3,17 +3,11 @@
 Operating guide for Claude Code on this repo. Read before generating or editing code. These decisions are **settled**; do not relitigate or "improve" them without being asked.
 
 ## Project in one paragraph
-TMSync is a cross-browser (Chrome + Firefox) WebExtension that passively scrobbles what the user watches on arbitrary streaming sites (including gray-market ones with no API) to the right tracker: **movies and non-anime TV → Trakt and/or Simkl**, **anime series → AniList and/or MyAnimeList (MAL)** (and Trakt and Simkl too). It detects the media from the page using **declarative recipes** (data, not code), resolves it against the tracker(s) it routes to, and records progress. **Anime may be multi-tracked to Trakt, AniList, MAL, and Simkl at once** via a bundled TMDB↔AniList crosswalk (with MAL ids) (`docs/MULTI-TRACK.md`, `docs/TRACKERS-PLAN.md`); Simkl takes the page's own numbering and never uses the crosswalk. Non-anime goes only to Trakt and Simkl. Site definitions can be added on the fly via an in-page element picker. See `docs/TMSync-PRD.md` for the "what/why".
-
-> **Direction note (2026-06):** the owner deliberately reversed the original "Trakt only / no anime" scope to add AniList for anime. This is intentional, not drift. AniList lives behind the tracker-adapter seam (see **Tracker adapters**). Where this doc and the old constraints disagree, this doc wins.
-
-> **Direction note (2026-09):** the owner relaxed "non-anime stays Trakt-only" so movies and TV can be multi-tracked to Trakt and Simkl. MyAnimeList (a cour-family tracker, like AniList) and Simkl (the `any` family: it takes the page's own numbering) are built; the plan and handover live in `docs/TRACKERS-PLAN.md`. The crosswalk stays anime-only and out of `extract()`.
-
-> **Direction note (2026-07), superseding the 2026-06 "routed, never synced" model:** the owner reversed constraint #1's *never-synced* half to allow **multi-tracking anime to BOTH Trakt and AniList** (Mihon/Aniyomi-style), backed by the Fribb TMDB↔AniList crosswalk, validated against real coverage data, not theory. This also lifts constraint #2's general-site / offset-mapping / is-anime-classifier non-goal. Still **exactly two trackers** (since lifted: see constraint #1 and the 2026-09 note); **non-anime stays Trakt-only**; the crosswalk stays **out of `extract()`**. Design + phased build order now live in **`docs/MULTI-TRACK.md`** (which supersedes `docs/ANIME-PLAN.md`).
+TMSync is a cross-browser (Chrome + Firefox) WebExtension that passively scrobbles what the user watches on arbitrary streaming sites (including gray-market ones with no API) to the right tracker: **movies and non-anime TV → Trakt and/or Simkl**, **anime series → AniList and/or MyAnimeList (MAL)** (and Trakt and Simkl too). It detects the media from the page using **declarative recipes** (data, not code), resolves it against the tracker(s) it routes to, and records progress. **Anime may be multi-tracked to Trakt, AniList, MAL, and Simkl at once** via a TMDB↔AniList crosswalk (with MAL ids); Simkl takes the page's own numbering and never uses the crosswalk. Non-anime goes only to Trakt and Simkl. Site definitions can be added on the fly via an in-page element picker. `docs/ARCHITECTURE.md` explains how it works, `docs/RECIPES.md` covers recipes, and `docs/TRACKERS.md` covers each tracker's API.
 
 ## Hard constraints (never violate)
-1. **Pluggable tracker registry, multi-tracked.** Trackers are a **list you can grow**, currently **Trakt + AniList + MyAnimeList + Simkl** (`docs/TRACKERS-PLAN.md`), and adding more later is expected (2026-07: the old "exactly two, no third" hardline is **retired**). Each tracker is one implementation behind the adapter seam (see **Tracker adapters**); adding one = a new adapter + a picker toggle + (if it uses a different numbering) an anime-map entry, **without touching the other trackers or the shared `extract()` engine**. An item may be written to **every enabled tracker at once** (multi-track, `docs/MULTI-TRACK.md`); the picker exposes an **independent on/off toggle per tracker** (no "primary tab"). Which enabled tracker is **native** (its numbering matches the page → written directly) vs **derived** (mapped via the crosswalk) is **inferred at scrobble time**, not user-picked. Feasibility is per-item: a tracker that can't resolve an item (e.g. AniList on non-anime) is simply skipped. The old "one item → one tracker, never synced" rule is **retired**.
-2. **Multi-track via the anime-map crosswalk — quarantined outside `extract()`.** The Fribb TMDB↔AniList crosswalk resolves an item's identity + episode across the two numbering systems (one **native** tracker written directly, the **other derived** via the crosswalk — best-effort, refuse-on-ambiguous, skip-on-miss). This lifts the old "general-site anime / offset-mapping / is-anime-classifier" non-goal (reversed 2026-07, with coverage data). Hard rule that survives the reversal: **the crosswalk lives in `lib/animap/` + the adapters and NEVER leaks into the shared `extract()` engine.** Anime-map derivation is per-tracker and advance-only; it never lowers remote progress and never silently mis-writes a wrong cour (guardrails: `docs/MULTI-TRACK.md` §9, §12).
+1. **Pluggable tracker registry, multi-tracked.** Trackers are a **list you can grow**, currently **Trakt + AniList + MyAnimeList + Simkl**. Each tracker is one implementation behind the adapter seam (see **Tracker adapters**); adding one = a new adapter + a picker toggle + (if it uses a different numbering) an anime-map entry, **without touching the other trackers or the shared `extract()` engine** (checklist: `docs/TRACKERS.md`). An item may be written to **every enabled tracker at once** (multi-track, `docs/ARCHITECTURE.md`); the picker exposes an **independent on/off toggle per tracker** (no "primary tab"). Which enabled tracker is **native** (its numbering matches the page → written directly) vs **derived** (mapped via the crosswalk) is **inferred at scrobble time**, not user-picked. Feasibility is per-item: a tracker that can't resolve an item (e.g. AniList on non-anime) is simply skipped.
+2. **Anime multi-track via the anime-map crosswalk, quarantined outside `extract()`.** The Fribb TMDB↔AniList crosswalk resolves an item's identity + episode across the two numbering systems (one **native** tracker written directly, the others **derived** via the crosswalk: best-effort, refuse-on-ambiguous, skip-on-miss). The hard rule: **the crosswalk lives in `lib/animap/` + the adapters and NEVER leaks into the shared `extract()` engine.** Derivation is per-tracker and advance-only; it never lowers remote progress and never silently mis-writes a wrong cour (guardrails: `docs/ARCHITECTURE.md`, "Multi-tracking").
 3. **No remote code execution.** Never `eval`, `new Function`, inject remote `<script>`, or fetch-and-run JS. Recipes are **data** interpreted by the bundled engine. This is an MV3 + store-policy requirement, not a style choice. The recipe schema must stay expressive enough that no site ever needs a code escape hatch.
 4. **Background is a stateless, ephemeral MV3 service worker.** Never keep watch-session state, timers, or accumulated buffers in background memory. The content script owns session state. The background reads everything it needs from `storage` on each wake. Use `alarms` if scheduling is ever required.
 5. **No broad host permissions at install.** Use `optional_host_permissions: ["*://*/*"]` and request per-origin on a user gesture, then `chrome.scripting.registerContentScripts`. Never put `<all_urls>` in `host_permissions`. `activeTab` is insufficient (per-click, non-persistent).
@@ -30,9 +24,9 @@ TMSync is a cross-browser (Chrome + Firefox) WebExtension that passively scrobbl
 - **Element picker selectors:** `@medv/finder` to generate short, robust, unique selectors. Do not hand-roll selector heuristics.
 - **Validation:** Zod (recipe schema + any external payloads).
 - **Trakt:** OAuth via `browser.identity.launchWebAuthFlow` (or device-code flow). A thin typed `fetch` client — no heavy SDK. Cache search/resolve results.
-- **AniList:** OAuth via `browser.identity.launchWebAuthFlow`. **Originally planned as implicit grant, but AniList removed it** (its authorize endpoint returns `unsupported_grant_type` for `response_type=token`, verified 2026-06), so TMSync uses the **Authorization Code grant** — get a `code` on the redirect, exchange it at `/oauth/token` with the bundled client secret. This still needs **no backend** (constraint #7 holds — the secret is bundled exactly like Trakt's); the only change from the old plan is a bundled secret instead of none. ~1-year token validity. A thin typed GraphQL `fetch` client (one POST endpoint) — no SDK. Reads use `Media` (`id`, `idMal`, `title`, `synonyms`, `episodes`, `relations`); writes use `SaveMediaListEntry(mediaId, progress, status)`. Read the user's `mediaListOptions { scoreFormat }` to render scores. Cache resolutions. AniList has **no real-time scrobble endpoint** — see **Tracker adapters**.
+- **AniList:** OAuth via `browser.identity.launchWebAuthFlow`, **Authorization Code grant** (AniList has no implicit grant): get a `code` on the redirect, exchange it at `/oauth/token` with the bundled client secret. That needs **no backend** (constraint #7 holds; the secret is bundled exactly like Trakt's). A thin typed GraphQL `fetch` client (one POST endpoint), no SDK. Reads use `Media` (`id`, `idMal`, `title`, `synonyms`, `episodes`, `relations`); writes use `SaveMediaListEntry(mediaId, progress, status)`. Read the user's `mediaListOptions { scoreFormat }` to render scores. Cache resolutions. AniList has **no real-time scrobble endpoint**; see **Tracker adapters**.
 - **MyAnimeList:** OAuth authorization code + PKCE via `launchWebAuthFlow`. App type "other": no client secret, no backend (constraint #7). PKCE is `plain` only. Access tokens expire, so `lib/mal/auth.ts` refreshes on 401 or near expiry and clears the connection when refresh fails. A thin typed REST `fetch` client (`lib/mal/client.ts`), no SDK. MAL sends no CORS headers, so `myanimelist.net` + `api.myanimelist.net` are **optional** host permissions, requested on Connect (never in the install manifest). Resolution: a MAL id directly, an AniList id through AniList's `idMal` (1:1), else MAL title search (`pickBest`).
-- **Simkl:** AUTH V2 authorization code + PKCE (S256) via `launchWebAuthFlow`. Registered as "Mobile, desktop & browser apps": no client secret, no backend (constraint #7). Thin typed REST `fetch` client (`lib/simkl/`), no SDK. Every request carries `client_id`, `app-name`, `app-version` query params. api.simkl.com answers CORS, so no host permission. Full API notes: `docs/TRACKERS-PLAN.md` "Step 2".
+- **Simkl:** AUTH V2 authorization code + PKCE (S256) via `launchWebAuthFlow`. Registered as "Mobile, desktop & browser apps": no client secret, no backend (constraint #7). Thin typed REST `fetch` client (`lib/simkl/`), no SDK. Every request carries `client_id`, `app-name`, `app-version` query params. api.simkl.com answers CORS, so no host permission. Full API notes for every tracker: `docs/TRACKERS.md`.
 - **Monorepo:** pnpm workspaces.
 
 ## Repo layout
@@ -42,77 +36,33 @@ TMSync is a cross-browser (Chrome + Firefox) WebExtension that passively scrobbl
 │  ├─ extension/      # WXT app: entrypoints/, content/, background/, options/, engine/
 │  ├─ shared/         # recipe schema (Zod) + types + pure helpers (no DOM, no browser APIs)
 │  └─ server/         # Phase 2 only — do not create until asked
-├─ recipes/index.json # ONE tracker-agnostic recipe + quick-link list (Phase 1 source of truth,
-│                     #   PR-contributed). Recipes for every tracker coexist; each carries its own
-│                     #   `tracker` field and the engine routes per-recipe — no per-tracker files.
-├─ docs/              # design notes: TMSync-PRD, ARCHITECTURE, MULTI-TRACK, STORAGE-SYNC
+├─ recipes/index.json # ONE tracker-agnostic recipe + quick-link list (source of truth,
+│                     #   PR-contributed). Recipes for every tracker coexist; each names its own
+│                     #   `trackers` and the engine routes per-recipe. No per-tracker files.
+├─ docs/              # ARCHITECTURE, RECIPES, TRACKERS, RELEASING
 ├─ CONTRIBUTING.md
 ├─ README.md
 └─ CLAUDE.md
 ```
 
-## Recipe schema (source of truth lives in `packages/shared`)
-Declarative only. A `Field` says *where* a value is and *how to clean it* — never *how to compute it* with code.
+## Recipe schema
+The source of truth is `packages/shared/src/schema.ts` (Zod). The author's reference is `docs/RECIPES.md`. Do not copy the schema into other docs. The rules:
+- **Declarative only.** A `Field` says *where* a value is (`source`: `url`, `meta`, `jsonld`, `dom`, `title`) and *how to clean it* (`regex`, `group`, `transforms`), never *how to compute it* with code.
+- `match.urlPattern` is the PATH only. `match.hostnames` is the host scope and the origins we request permission for. `match.domFingerprint` is a selector that must exist (the clone-resilient key).
+- A recipe names its trackers in `trackers`. Read them through `recipeTrackers(recipe)`, never `recipe.trackers` directly. The legacy single `tracker` field defaults to `"trakt"`.
+- `video.watchedThreshold` is a per-site "finished here" point for sites with long credits. For Trakt and Simkl it only governs WHEN stop fires (they own the watched decision, their own 80% on stop). For AniList and MAL there is no scrobble API, so this threshold IS the watched decision.
+- Every recipe is parsed through the Zod schema before use. Clients ignore recipes with a newer `schemaVersion` than they support. `docs/RECIPES.md` says when a change needs a bump.
 
-```ts
-import { z } from "zod";
-
-export const SCHEMA_VERSION = 2; // v2 adds `tracker`; v1 recipes have no `tracker` → default "trakt" (back-compat)
-
-const Transform = z.enum(["trim", "lowercase", "uppercase", "toInt", "collapseSpaces"]);
-
-const Field = z.object({
-  source: z.enum(["url", "meta", "jsonld", "dom", "title"]),
-  // dom: CSS selector; meta: property/name (e.g. "og:title"); jsonld: dotted path (e.g. "partOfTVSeason.seasonNumber")
-  selector: z.string().optional(),
-  attr: z.string().optional(),          // dom only: read an attribute instead of textContent
-  regex: z.string().optional(),         // applied to the raw string
-  group: z.number().int().optional(),   // capture group index (default 1)
-  transforms: z.array(Transform).optional(),
-});
-
-const Recipe = z.object({
-  id: z.string(),
-  schemaVersion: z.number().int(),      // client ignores recipes with a newer schemaVersion than it supports
-  name: z.string(),                     // human-readable site name
-  match: z.object({
-    urlPattern: z.string(),             // regex tested against location.href; the PATH, no host
-    domFingerprint: z.string().optional(), // a selector that must exist; primary clone-resilient key
-    hostnames: z.array(z.string()).optional(), // the host SCOPE + the origins we request permission
-                                               //   for. A site that moves domain gains a hostname
-                                               //   here (docs/RECIPE-LIFECYCLE.md §4b). Absent ⇒
-                                               //   matches any host.
-  }),
-  mediaType: z.enum(["auto", "movie", "show"]).default("auto"),
-  tracker: z.enum(["trakt", "anilist", "mal", "simkl"]).default("trakt"), // which adapter records this site. (Legacy single field; new recipes use `trackers: TrackerId[]`, read via recipeTrackers().) anilist ⇒ anime
-                                                          // series only; the engine routes by this field.
-  video: z.object({
-    selector: z.string().default("video"),
-    frame: z.enum(["auto", "top", "iframe"]).default("auto"),
-    watchedThreshold: z.number().min(0).max(1).default(0.8), // per-site "treat as finished here" point for sites with long credits. For Trakt it only governs WHEN to fire stop — Trakt owns the actual watched decision (its own 80% on /scrobble/stop). For AniList there is no scrobble API, so this threshold IS the watched decision (crossing it ⇒ SaveMediaListEntry progress=N).
-  }).default({}),
-  extract: z.object({
-    title: Field,
-    year: Field.optional(),             // helps movie disambiguation
-    season: Field.optional(),           // shows
-    episode: Field.optional(),          // shows
-  }),
-});
-
-export type Recipe = z.infer<typeof Recipe>;
-export const RecipeSchema = Recipe;
-```
-
-Engine contract: a single pure-ish `extract(recipe, { document, url }): ParsedMedia` in the bundle reads fields per `source`, applies `regex`/`group`/`transforms`, and returns `{ mediaType, title, year?, season?, episode? }`. It contains zero recipe-supplied executable code.
+Engine contract: a single pure-ish `extract(recipe, { document, url }): ParsedMedia` in the bundle reads fields per `source`, applies `regex`/`group`/`transforms`, and returns `{ mediaType, title, year?, season?, episode?, ids? }`. It contains zero recipe-supplied executable code.
 
 ## Runtime flow
 1. Content script matches enabled recipes by `domFingerprint` + `urlPattern`.
 2. On match, find the `<video>` (respect `video.frame`; remember the player may be in a cross-origin iframe while metadata is in the top frame — coordinate via messaging).
 3. Run `extract()` → `ParsedMedia`. Show the badge.
-4. **Route by `recipeTrackers(recipe)`** → pick the adapter(s); for anime this may be **several** of Trakt, AniList, MAL, and Simkl (multi-track: the session fans out; `docs/MULTI-TRACK.md`). The engine and `extract()` are tracker-agnostic; everything tracker-specific (including the anime-map crosswalk) lives behind the adapter (see **Tracker adapters**).
+4. **Route by `recipeTrackers(recipe)`** → pick the adapter(s); for anime this may be **several** of Trakt, AniList, MAL, and Simkl (multi-track: the watch fans out; `docs/ARCHITECTURE.md`). The engine and `extract()` are tracker-agnostic; everything tracker-specific (including the anime-map crosswalk) lives behind the adapter (see **Tracker adapters**).
    - **Trakt:** resolve identity once via background → Trakt search (returns trakt/imdb/tmdb IDs; cache it). For shows pass season+episode **as scraped** (Western TV is already seasoned; do **not** build absolute-numbering translation).
    - **AniList / MAL (native):** resolve the page's own id, else the title, once via the background (cache it), and **pass the episode as scraped**: a dedicated anime site already numbers by cour.
-   - **Derived trackers:** the other family goes through the `lib/animap/` crosswalk (seasoned ↔ cour); AniList and MAL bridge by id (`idMal`); Simkl takes the page's numbering as is (`docs/MULTI-TRACK.md`).
+   - **Derived trackers:** the other family goes through the `lib/animap/` crosswalk (seasoned ↔ cour); AniList and MAL bridge by id (`idMal`); Simkl takes the page's numbering as is.
 5. **Record progress via the adapter.** Trakt and Simkl use the **real-time scrobble** state machine below. AniList and MAL have no scrobble API: they write the list entry once `watchedThreshold` is crossed (see **Tracker adapters**). The rest of this section is the **Trakt** path:
    **Real-time scrobble** (start/pause/stop, not a custom threshold loop):
    - video `play` → `POST /scrobble/start` (current progress %) → sets "Currently Watching" on the profile.
@@ -128,7 +78,7 @@ Engine contract: a single pure-ish `extract(recipe, { document, url }): ParsedMe
 - Idempotent per session: a re-fired event or resumed playback must never create a duplicate scrobble.
 
 ## Tracker adapters
-One seam, one implementation per tracker (Trakt, AniList, MAL, Simkl), selected per recipe by `recipeTrackers()`, which, for anime, may return **several** (multi-track; a watch session fans out to each resolved adapter, `docs/MULTI-TRACK.md`). The shared engine (`extract()`, video detection, session/state, badge) is **tracker-agnostic** and must stay that way. Everything tracker-specific lives behind the adapter interface: auth, identity resolution, progress recording, and the episode mapping (the `lib/animap/` crosswalk, native-vs-derived). Adding/enabling a tracker must not touch the other's path.
+One seam, one implementation per tracker (Trakt, AniList, MAL, Simkl), selected per recipe by `recipeTrackers()`, which, for anime, may return **several** (multi-track; a watch fans out to each resolved adapter). The shared engine (`extract()`, video detection, session/state, badge) is **tracker-agnostic** and must stay that way. Everything tracker-specific lives behind the adapter interface: auth, identity resolution, progress recording, and the episode mapping (the `lib/animap/` crosswalk, native-vs-derived). Adding/enabling a tracker must not touch the other's path.
 
 Sketch (final shape lives in code, not here):
 ```ts
@@ -138,22 +88,12 @@ interface TrackerAdapter {
   // rating + review — the existing Trakt rating/comment feature lives behind this seam too:
   ratingLevels(item: TrackedItem): RatingLevel[];                  // which levels this tracker rates → UI affordances
   rate(item: TrackedItem, level: RatingLevel, score: number): Promise<void>;
-  setNote(item: TrackedItem, text: string): Promise<void>;        // private note (Trakt VIP note / AniList MediaList.notes)
-  postPublic?(item: TrackedItem, body: string): Promise<void>;    // optional, DEFERRED — Trakt public comment / AniList public Review
+  setNote(item: TrackedItem, text: string): Promise<void>;        // the tracker's note (AniList MediaList.notes, MAL comments, Trakt comment)
+  postPublic?(item: TrackedItem, body: string): Promise<void>;    // optional, DEFERRED: AniList public Review, Trakt public comment
 }
 ```
 
-**The two paradigms are genuinely different, so do not force them into one code path.** Trakt and Simkl are the scrobble paradigm; AniList and MAL are the cour/list paradigm and share one pure planner (`lib/tracker/cour-plan.ts`):
-
-| | **Trakt** | **AniList** | **MyAnimeList** | **Simkl** |
-|---|---|---|---|---|
-| Progress API | real-time scrobble `start`/`pause`/`stop` | none, just `SaveMediaListEntry(mediaId, progress, status)` | none, just `PATCH /anime/{id}/my_list_status` (form-encoded) | real-time scrobble `start`/`pause`/`stop`, **one call per user per 20 s** |
-| Watched decision | **Trakt owns it** (≥80% on stop) | **we own it**: crossing `watchedThreshold` ⇒ write `progress=N`, `status: CURRENT`→`COMPLETED` | **we own it**, same cour planner; `watching`→`completed` | **Simkl owns it** (≥80% on stop) |
-| Auth | OAuth (web auth / device code) | **auth code grant**: bundled secret, no backend (implicit grant was removed by AniList) | auth code + PKCE (`plain` only), no client secret; tokens expire, so **refresh-token handling** | AUTH V2: auth code + PKCE (S256 only), no secret, check `state` + `iss` + granted `scope`; 7-day access token, non-rotating refresh token, revoke on Disconnect |
-| Identity | Trakt search → trakt/imdb/tmdb ids | GraphQL `Media` search → AniList id (`idMal` bridges to MAL) | MAL id; from AniList via `idMal` (1:1), else MAL search | **no search** (Simkl forbids it before a write): each write sends ids + title + year and Simkl matches; the Simkl id is cached from the response |
-| Episode numbering | pass season/episode as scraped | v1: pass as scraped (dedicated sites only) | as AniList (same cour family) | the page's own numbering (`any` family): season ⇒ `show`, bare episode ⇒ `anime`; never the crosswalk |
-| Rewatch | n/a | `REPEATING`, `repeat` += 1 on the final ep | `completed` + `is_rewatching`, `num_times_rewatched` += 1 | skipped in v1 (PRO/VIP only); Simkl drops a replay of a watched item |
-| Host access | install manifest | install manifest | **optional**, requested on Connect (no CORS headers) | none (api.simkl.com answers CORS) |
+**The two paradigms are genuinely different, so do not force them into one code path.** Trakt and Simkl are the scrobble paradigm (real-time `start`/`pause`/`stop`, and the tracker owns the watched decision at 80% on stop). AniList and MAL are the cour/list paradigm (one list write per episode at `watchedThreshold`, and we own the watched decision) and share one pure planner (`lib/tracker/cour-plan.ts`). The side-by-side comparison is in `docs/ARCHITECTURE.md` section 5, and each tracker's API facts are in `docs/TRACKERS.md`.
 
 **Simkl specifics:** it is native only when it is the only enabled tracker (it can take any page), and it is recorded last in a fan-out. Its daily quota is per user and shared with the user's other Simkl apps (500 requests on a free account), so it never polls, never searches, and returns `null` for `watchedState`. A start/pause inside the 20 s lock is dropped; a stop waits for the lock so the watch is never lost.
 
@@ -168,22 +108,13 @@ interface TrackerAdapter {
 - Respect AniList's modest per-minute rate limit; these writes are infrequent by design, so this is mostly about not retrying in a tight loop.
 - **Guardrail — fail visibly, never silently corrupt.** Before writing, if the scraped `progress` exceeds the resolved entry's `Media.episodes`, **refuse the write and surface a "this site's numbering doesn't match AniList" warning** instead. This catches the classic v1 mis-authoring (an `anilist` recipe pointed at a TMDB/absolute-numbered site → episode 50 written to a 12-ep cour, silently completing it). It won't catch every mismatch (e.g. ep 6 written to the wrong same-length cour), but it turns the worst, most common failure from silent corruption into a loud, fixable error.
 
-**Rating & reviews are adapter-driven — the levels differ, so the UI must not assume a fixed set.** TMSync already has the Trakt rating/comment feature; it moves behind the seam, and AniList implements its own shape:
+**Rating & reviews are adapter-driven, and the levels differ, so the UI must not assume a fixed set.** Trakt rates at show, season, or episode. AniList, MAL, and Simkl rate only the entry (the cour, or the whole movie or show). The comparison of scales and text fields is in `docs/TRACKERS.md`. The rating panel reads each tracker's `TRACKER_INFO.rates` (`levels` / `entry`) and `.note` (`public` / `private` / `none`), never the tracker name or its numbering family.
 
-| | **Trakt** | **AniList** | **MyAnimeList** | **Simkl** |
-|---|---|---|---|---|
-| Rate at | show / season / **episode** (multiple levels) | **entry = cour only** (no per-episode, no franchise-wide score) | entry = cour only | entry = the movie or show only |
-| Score scale | 1 to 10 | per user's `scoreFormat` (`POINT_100`/`POINT_10[_DECIMAL]`/`POINT_5`/`POINT_3`) | 1 to 10 integer (0 clears) | 1 to 10 integer (`/sync/ratings`, remove via `/sync/ratings/remove`) |
-| Private text | VIP note | `MediaList.notes` (per cour, via `SaveMediaListEntry`) | `my_list_status.comments` | none |
-| Public text | comment (≥5 words) | `Review`: separate `SaveReview` entity, public, ~2200-char min | none | none |
-
-The rating panel reads each tracker's `TRACKER_INFO.rates` (`levels` / `entry`) and `.note` (`public` / `private` / `none`), never the tracker name or its numbering family.
-
-- AniList score + private `notes` both write through `SaveMediaListEntry`, both attach to the **cour entry** — there is no episode-level user score and no object above the entries to rate.
+- AniList score + private `notes` both write through `SaveMediaListEntry`, both attach to the **cour entry**. There is no episode-level user score and no object above the entries to rate.
 - `ratingLevels(item)` lets the shared UI render only the affordances a tracker supports: Trakt shows show/season/episode stars; an AniList anime entry shows a single "rate this cour."
 - **v1 = score + private note.** AniList's public `Review` (heavyweight, long minimum) and Trakt public comments map to the optional `postPublic` and are **deferred**.
 
-**Episode mapping lives in the crosswalk, never in the engine (constraint #2).** Since the 2026-07 reversal, a TMDB/general site reaches the cour trackers through the Fribb crosswalk in `lib/animap/` (refuse-on-ambiguous, skip-on-miss, advance-only), and a dedicated anime site passes its episode as scraped. The numbering guardrail above stays the safety net on every cour write. None of this may appear in `extract()` or the shared engine. Other mapping sources, for reference only: `Anime-Lists/anime-lists` (`anime-list-master.xml`), `manami-project/anime-offline-database`, `MALSync/MAL-Sync-Backend`.
+**Episode mapping lives in the crosswalk, never in the engine (constraint #2).** A TMDB/general site reaches the cour trackers through the Fribb crosswalk in `lib/animap/` (refuse-on-ambiguous, skip-on-miss, advance-only), and a dedicated anime site passes its episode as scraped. The numbering guardrail above stays the safety net on every cour write. None of this may appear in `extract()` or the shared engine. Other mapping sources, for reference only: `Anime-Lists/anime-lists` (`anime-list-master.xml`), `manami-project/anime-offline-database`, `MALSync/MAL-Sync-Backend`.
 
 ## Conventions
 - TypeScript strict; no `any` at module boundaries. Share types from `packages/shared`.
@@ -257,12 +188,12 @@ The look and these rules are **settled**; don't relitigate spacing/colour/struct
 - Add a recipe-snapshot harness early: given saved DOM + a recipe, assert the parsed media. Most regressions are recipe rot; this catches them.
 
 ## Drift guards — do NOT do these
-- Adding a tracker IS allowed (the registry is pluggable — 2026-07). But it must go **behind the adapter seam** (a `TrackerAdapter`) + a picker toggle; never special-cased in the shared engine. (Letterboxd stays a CSV *export target*, not a tracker.)
-- Do not put the anime-map crosswalk (or any episode-mapping / is-anime logic) into the shared `extract()` engine. It lives in `lib/animap/` + the adapters. This is the ONE rule that survives the 2026-07 multi-track reversal.
+- Adding a tracker is allowed (the registry is pluggable). But it must go **behind the adapter seam** (a `TrackerAdapter`) + a picker toggle; never special-cased in the shared engine. (Letterboxd stays a CSV *export target*, not a tracker.)
+- Do not put the anime-map crosswalk (or any episode-mapping / is-anime logic) into the shared `extract()` engine. It lives in `lib/animap/` + the adapters. This is the hard rule for the crosswalk.
 - Do not resurrect a "primary tracker" tab/selector in the picker — trackers are **independent toggles**; native-vs-derived is inferred at runtime.
-- Non-anime (movies, Western TV) may be multi-tracked only to Trakt and Simkl, which take seasoned numbering and tmdb/imdb ids as scraped, so no crosswalk is involved. Simkl is the `any` family: it gets the page's own numbering and never goes through the crosswalk. Never send non-anime through the anime-map crosswalk or to a cour-family tracker (AniList, MAL). Relaxed 2026-09 by the owner (`docs/TRACKERS-PLAN.md`).
-- Do not silently mis-write a derived tracker: **refuse-on-ambiguous** + per-tracker `progress > episodes` guardrail; each tracker is advance-only and never lowers remote progress (`docs/MULTI-TRACK.md` §9, §12).
-- Keep the recipe library as ONE tracker-agnostic file (`recipes/index.json`): every recipe carries its own `tracker` field and the engine routes per-recipe. Do NOT reintroduce per-tracker recipe files/directories (the old `recipes/trakt/` + `recipes/anime/` split was retired 2026-07 — it baked tracker into the layout and doesn't scale as trackers are added).
+- Non-anime (movies, Western TV) may be multi-tracked only to Trakt and Simkl, which take seasoned numbering and tmdb/imdb ids as scraped, so no crosswalk is involved. Simkl is the `any` family: it gets the page's own numbering and never goes through the crosswalk. Never send non-anime through the anime-map crosswalk or to a cour-family tracker (AniList, MAL).
+- Do not silently mis-write a derived tracker: **refuse-on-ambiguous** + per-tracker `progress > episodes` guardrail; each tracker is advance-only and never lowers remote progress (`docs/ARCHITECTURE.md`, "Multi-tracking").
+- Keep the recipe library as ONE tracker-agnostic file (`recipes/index.json`): every recipe names its own trackers and the engine routes per-recipe. Do NOT introduce per-tracker recipe files/directories: they bake the tracker into the layout and don't scale as trackers are added.
 - Do not give AniList a fake scrobble loop — it has no scrobble API; one `SaveMediaListEntry` write per episode at threshold.
 - Do not create `packages/server` or any hosted DB/voting system in v1.
 - Do not store session state, timers, or buffers in the background service worker.
