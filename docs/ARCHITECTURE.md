@@ -297,17 +297,19 @@ step best done when a third tracker exists to shape it.)
 
 ## 7. List sync: `lib/sync/`
 
-List sync makes the user's lists agree across every connected tracker: watched episodes, list
-status, and ratings. It is manual. The user previews a plan in Options, then applies it. It runs in
-the background, and nothing of it touches `extract()` or the scrobble path.
+List sync makes the user's lists match across every connected tracker: watched episodes, list
+status, and ratings. The user previews a plan in Options, then applies it. Automatic sync
+(optional) runs the same jobs once a day and applies only the additions. It runs in the background,
+and nothing of it touches `extract()` or the scrobble path.
 
 **Four steps.**
 
-1. **Read.** Each tracker's service has `readList(kinds)`, which returns its whole list as
+1. **Read.** Each tracker's service has `readList(kinds, saved, timed)`, which returns its whole list as
    normalized `ListEntry` values in one of three shapes: `movie` (watched or not), `seasons` (a
    set of watched episodes per season: Trakt, Simkl shows), and `cour` (a count plus a status:
    AniList, MAL, Simkl anime). The readers live in `lib/trackers/<tracker>/list.ts`, each a pure
-   normalizer (Zod per item, a bad item is dropped) plus a fetch in its `client.ts`.
+   normalizer (Zod per item, a bad item is dropped) plus a fetch in its `client.ts`. A tracker with
+   a change check reuses its saved list (see "Change checks").
 2. **Plan.** `planSync` (`plan.ts`, pure) groups entries that are the same thing, by id only, never
    by title. Movies and non-anime TV move between Trakt and Simkl by tmdb, imdb, or tvdb. Anime is
    planned per cour. A seasoned list reaches a cour through the crosswalk, with the user's fix-match
@@ -327,6 +329,9 @@ the background, and nothing of it touches `extract()` or the scrobble path.
   Only it is a source; the others copy it, and a list entry it does not have is removed from them.
   Trakt watch history is never removed, since deleting plays cannot be undone. A copy that is
   further than the main list keeps its progress, and the plan says so as a notice.
+- **Remember removals (optional, off by default).** In a union, an entry or a rating removed from
+  one list since the last clean sync is removed from the others instead of added back (see "The
+  base"). Trakt watch history is still never removed; the plan says so as a notice.
 - **Kinds per tracker.** The user picks which kinds each tracker takes part in. A kind that is off
   is off both ways: not read as a source and not written as a target.
 - **Status.** When the progress finishes an entry, it is completed. Otherwise the most recently
@@ -367,13 +372,54 @@ the status the preview saw, and a rating fills an empty one unless the user pick
 large first sync does not put hundreds of watches on one day. When the date is unknown, Trakt uses
 the air date and Simkl uses the time of the write.
 
-**Stored choices.** The settings (`sync:list_sync_settings`: kinds, main lists, private, adult, and
-the ignore list) are small user prefs and go into the backup. Picks (`local:list_sync_picks`) stay
-on the device.
+**Change checks (`cache.ts`).** Trakt (`/sync/last_activities`) and Simkl (`/sync/activities`)
+can say whether a list changed. Each saves the list it read with the stamps from BEFORE the read
+(`local:list_sync_cache_<tracker>`), so a change during the read is seen next time. A part whose
+stamp did not move is reused, not read. Trakt uses the `all` stamp, per part (shows, movies): its
+docs do not say which field a removal moves, so it may read when only a comment changed, but it
+never misses a change. Simkl checks each type (`tv_shows`, `anime`, `movies`): unmoved = no read, a
+null stamp = never used, so empty. Moved with `removed_from_list` unmoved = a `date_from` delta laid
+over the saved list by Simkl id. Moved with a removal = that type in full, since a delta never
+reports removals. AniList and MAL have no change check: their reads are small, have no quota, and a
+"newest update" query misses a deleted entry. A saved list is dropped when its account connects or
+disconnects. The tracker cards say "No changes since the last read" or "Read only what changed".
 
-**Limits.** Pure union brings back what the user removed on one tracker, because another still has
-it. The main list is the fix today. A snapshot of the last sync (a three-way merge) is the later fix
-for union mode. The ignore list sits in one `sync` item (8 KB, about 400 keys).
+**Automatic sync (`auto.ts`, optional, off by default).** One switch in the pane. While it is on, a
+`browser.alarms` alarm (`tmsync-list-sync`, daily) runs the preview job, then an apply job of the
+ADDITIONS only (`additionsOnly`): watched episodes and movies, new entries, progress up, a higher
+rewatch count, empty rating fills, and the status progress brings (watching, or completed at the
+last episode). Removals (of entries and ratings), status changes without progress, a new entry with
+a disputed status, and every conflict wait for the user. The toolbar badge counts the held items
+the user has not seen; opening the pane marks them seen. A tab's own badge text is cleared with
+`null`, not `""`, or it would hide the count. A run within 20 hours of the last one is skipped,
+since alarms can fire again on a browser start. A running manual job skips the run, and the
+automatic jobs block manual ones the same way. On a timer, Simkl is left out when its change check
+fails: Simkl suspends apps that read without it. The result is `local:list_sync_auto`.
+
+**The base (`base.ts`, `base-store.ts`).** For remembered removals, the planner needs each list as
+it was after the last clean sync. The base keeps only each entry's id keys and whether it was rated
+(and Trakt's rated seasons), so it stays small. A preview saves the lists it read as pending
+(`local:list_sync_base_next`). They become the base (`local:list_sync_base`) when there is nothing
+to write, or when the apply of that preview takes every write, with the writes laid over
+(`afterWrites`). A failed or skipped write, a stopped tracker, or an automatic run that held a
+removal back leaves the old base: otherwise a write that did not happen would look like a removal
+next time. The base is kept up to date even with the switch off, so it works at once when turned
+on. It is dropped when the settings that give it meaning change (`settingsSig`: kinds, main lists,
+private, adult) and per tracker when an account connects or disconnects. The planner reads an item
+as removed from a list only when that list had it at the base and no entry of it now shares any id
+with it, so a crosswalk change is never a removal. If a list that has it now did not have it at the
+base (it was added since), the add wins and the item is added back. Clearing a rating is an
+`unrate` write.
+
+**Stored choices.** The settings (`sync:list_sync_settings`: kinds, main lists, private, adult,
+automatic sync, remember removals, and the ignore list) are small user prefs and go into the
+backup. Picks (`local:list_sync_picks`) stay on the device.
+
+**Limits.** Without remembered removals, a union brings back what the user removed on one tracker,
+because another still has it. An automatic run that holds a removal does not move the base, so
+additions it applied meanwhile are not in the base yet: if one of them is then removed on another
+list, the add wins until a clean run. Un-watched episodes are never carried over (that would lower
+progress). The ignore list sits in one `sync` item (8 KB, about 400 keys).
 
 ---
 
@@ -410,8 +456,9 @@ travels.
   resolution caches, `simkl_matches`, `simkl_scrobble_at`, `simkl_held_stops`, rating and note
   mirrors (the tracker is the source of truth), `remote_recipes`, `enabled_origins`, `anime_map`
   and `animap_overrides`, `anilist_corrections`, `mal_corrections`, `quicklink_slugs`, and the
-  list sync jobs and picks (`list_sync_job`, `list_sync_apply`, `list_sync_cancel_at`,
-  `list_sync_picks`).
+  list sync state (`list_sync_job`, `list_sync_apply`, `list_sync_cancel_at`, `list_sync_picks`,
+  `list_sync_cache_<tracker>`, `list_sync_base`, `list_sync_base_next`, `list_sync_auto`,
+  `list_sync_auto_seen`).
 - **`session:`** (ephemeral, per tab): `tab_sessions` (the crash-reconcile source of truth),
   `tab_frame_origins`, `tab_status`, `manual_contexts`, `episode_overrides`.
 

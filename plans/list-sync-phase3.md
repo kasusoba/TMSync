@@ -1,16 +1,13 @@
 # Plan: list sync, phase 3 (automatic sync and remembered removals)
 
-Status: phase 1 (change checks + saved lists) is built on this branch, not yet tested live. The
-five decisions are settled (below). Next: test phase 1 live, then phase 2 (the daily alarm).
-PR #39 (list sync phases 1 and 2) is merged to `main` (2026-09-28, no release cut yet). **The
-owner's priority is the daily run (A).** A working plan, not a doc. It lives only on `feat/list-sync-auto`. Before the
-PR merges, the facts that stay true move into `docs/ARCHITECTURE.md` (section 7) and
-`docs/TRACKERS.md` ("List sync: reads and writes"), and this file is deleted.
+Status: ALL THREE PHASES BUILT on `feat/list-sync-auto` (2026-09-28), not yet tested live. The
+lasting facts are folded into `docs/ARCHITECTURE.md` section 7 and `docs/TRACKERS.md` ("List sync:
+reads and writes"). Before the PR merges: run the live checks at the end of this file, then delete
+this file. A working plan, not a doc.
 
-Phases 1 and 2 (preview and apply) are done and were tested live on the owner's four accounts
-(2026-09-28). How they work is in `docs/ARCHITECTURE.md` section 7. The old working plan, with all
-47 edge cases and the settled decisions, was squashed away with PR #39. Get it back from GitHub's PR
-ref: `git fetch origin pull/39/head:pr39 && git show aee1d23^:plans/list-sync.md`.
+- Phase 1, change checks + saved lists: `370fe83`.
+- Phase 2, daily automatic sync: `2f4fd5a`.
+- Phase 3, remembered removals: `fbede9f`.
 
 ## Goal
 
@@ -174,3 +171,26 @@ plain read cache for the trackers that did not change.
 2. Simkl: an empty delta body parses (handled: empty text reads as `{}`).
 3. Size: the saved Trakt list on the owner's account (`chrome.storage.local.getBytesInUse`).
 4. Trakt: a second preview right after a first shows "No changes since the last read".
+
+## Phases 2 and 3 as built
+
+- Automatic sync: `lib/sync/auto.ts` (`additionsOnly`, `runAuto`, `syncAutoAlarm`,
+  `showAutoBadge`). `beginPreview` / `beginApply` are the awaitable jobs; the messages still return
+  at once. `readList` got a `timed` flag (Simkl refuses a full read on a timer).
+- Remembered removals: `lib/sync/base.ts` (pure), `lib/sync/base-store.ts` (storage),
+  `planSync({ base })`, the `unrate` write in all four writers (`merge.ts` for AniList and MAL).
+- Deviation from the plan: the base stores id keys + rated flags, not whole `ListEntry` values, so
+  no range compaction and no `unlimitedStorage` are needed.
+- Deviation: when a list added an item since the base while another removed it, the add wins
+  (it is added back). No new conflict type.
+
+### More to check live (phases 2 and 3)
+
+5. Turn auto sync on: the alarm fires a minute later, the pane shows "Last automatic sync", and the
+   toolbar shows a count only if something waits. Opening the pane clears the count.
+6. Firefox: the alarm and the toolbar count (`browserAction`, `setBadgeText` with a tab `null`).
+7. Remember removals: with a clean sync done, remove an anime from AniList, preview: MAL and
+   Simkl anime get "remove", Trakt gets a "history kept" notice. Clear a rating on one list,
+   preview: the others get "remove rating".
+8. Unrate on each tracker actually clears: Trakt and Simkl `/sync/ratings/remove`, AniList and
+   MAL score 0.
