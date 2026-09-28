@@ -1,3 +1,4 @@
+import type { AccountStatus } from "@/lib/trackers/service";
 import type { ResolvedIdentity, TraktIds, TraktSearchOption } from "@/lib/trackers/trakt/types";
 import type {
   CourSearchOption,
@@ -165,12 +166,6 @@ export interface TabMedia {
   frame: "auto" | "top" | "iframe";
 }
 
-export interface TraktStatus {
-  connected: boolean;
-  /** The redirect URI to register in the Trakt app (shown in the popup). */
-  redirectUri: string;
-}
-
 /** Per-tracker resolution readout for the current item (multi-track): what each
  * enabled tracker matched, or why it didn't — powers the rate/correct UI so it can
  * show real destinations and gate actions (e.g. don't offer to rate on AniList when
@@ -198,17 +193,7 @@ export interface ReviewTarget {
   trackers?: Tracker[];
 }
 
-/** An OAuth provider's account status (AniList, MAL: independent connections). */
-export interface ProviderStatus {
-  connected: boolean;
-  /** The redirect URI to register in the provider's app (shown in the options page). */
-  redirectUri: string;
-  /** Whether a client id is configured at all (so the UI can explain if not). */
-  configured: boolean;
-}
-
-/** AniList account status. */
-export type AniListStatus = ProviderStatus;
+export type { AccountStatus } from "@/lib/trackers/service";
 
 /**
  * Typed content↔background↔popup contract. Background handlers are stateless and
@@ -216,21 +201,11 @@ export type AniListStatus = ProviderStatus;
  */
 export interface ProtocolMap {
   ping(): "pong";
-  getTraktStatus(): TraktStatus;
-  connectTrakt(): { ok: boolean; error?: string };
-  disconnectTrakt(): void;
-  /** AniList account (independent of Trakt — an item routes to one, never both). */
-  getAniListStatus(): AniListStatus;
-  connectAniList(): { ok: boolean; error?: string };
-  disconnectAniList(): void;
-  /** MyAnimeList account. The UI requests MAL host access before `connectMal`. */
-  getMalStatus(): ProviderStatus;
-  connectMal(): { ok: boolean; error?: string };
-  disconnectMal(): void;
-  /** Simkl account. api.simkl.com answers CORS, so no host access is needed. */
-  getSimklStatus(): ProviderStatus;
-  connectSimkl(): { ok: boolean; error?: string };
-  disconnectSimkl(): void;
+  /** A tracker account. MAL needs host access, which the UI requests on the
+   * Connect click before `connectTracker` (the background has no gesture). */
+  getTrackerStatus(tracker: Tracker): AccountStatus;
+  connectTracker(tracker: Tracker): { ok: boolean; error?: string };
+  disconnectTracker(tracker: Tracker): void;
   scrobble(req: ScrobbleRequest): ScrobbleReply;
   /** Resolve scraped media to its tracker identity WITHOUT recording — lets the
    * badge show the matched title before the user presses play (transparency). */
