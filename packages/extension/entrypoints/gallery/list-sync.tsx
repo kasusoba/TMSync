@@ -163,7 +163,8 @@ export function ListSyncTile({
     | "reading"
     | "stale"
     | "applying"
-    | "applied";
+    | "applied"
+    | "auto";
 }) {
   const t = tokens(variant);
   const settings: ListSyncSettings =
@@ -171,7 +172,9 @@ export function ListSyncTile({
       ? { ...DEFAULT_SYNC_SETTINGS, kinds: { simkl: ["movie", "tv"] }, ignore: ["movie:tmdb:1"] }
       : state === "main-anilist"
         ? { ...DEFAULT_SYNC_SETTINGS, main: { anime: "anilist" } }
-        : DEFAULT_SYNC_SETTINGS;
+        : state === "auto"
+          ? { ...DEFAULT_SYNC_SETTINGS, auto: true }
+          : DEFAULT_SYNC_SETTINGS;
   const p =
     state === "preview" ||
     state === "no-simkl-anime" ||
@@ -180,15 +183,20 @@ export function ListSyncTile({
     state === "applying" ||
     state === "applied"
       ? preview(settings, ALL_TRACKERS)
-      : state === "too-few"
-        ? {
-            ...preview(settings, ["trakt"]),
-            reason: "too_few" as const,
-            totals: [],
-            plan: { items: [], skips: [], conflicts: [], notices: [] },
-          }
-        : null;
-  const job = p && (state === "applying" || state === "applied") ? applyJob(p.at, state) : null;
+      : state === "auto"
+        ? { ...preview(settings, ALL_TRACKERS), auto: true }
+        : state === "too-few"
+          ? {
+              ...preview(settings, ["trakt"]),
+              reason: "too_few" as const,
+              totals: [],
+              plan: { items: [], skips: [], conflicts: [], notices: [] },
+            }
+          : null;
+  const job =
+    p && (state === "applying" || state === "applied" || state === "auto")
+      ? applyJob(p.at, state)
+      : null;
   // The gallery's "now": just after the preview, or long after it for "stale".
   const now = (p?.at ?? 0) + (state === "stale" ? 11 * 60_000 : 60_000);
   const blocked = p ? applyBlock(p, job, applyQueues(p, settings.ignore, {}), now) : null;
@@ -220,15 +228,29 @@ export function ListSyncTile({
         apply={job}
         applying={state === "applying"}
         blocked={blocked}
+        autoRun={
+          state === "auto" && p
+            ? {
+                at: p.at,
+                state: "done",
+                added: 31,
+                failed: 1,
+                held: ["anilist:1", "mal:5", "movie:tmdb:1"],
+                notes: ["MyAnimeList: not connected"],
+              }
+            : null
+        }
       />
     </div>
   );
 }
 
-/** A mock apply of the preview at `planAt`: part way, or finished with MAL stopped. */
-function applyJob(planAt: number, state: "applying" | "applied"): ApplyJob {
-  const done = state === "applied";
+/** A mock apply of the preview at `planAt`: part way, or finished with MAL stopped
+ * (`auto`: the same, as the automatic run). */
+function applyJob(planAt: number, state: "applying" | "applied" | "auto"): ApplyJob {
+  const done = state !== "applying";
   return {
+    ...(state === "auto" ? { auto: true } : {}),
     v: APPLY_JOB_VERSION,
     state: done ? "done" : "running",
     startedAt: planAt + 30_000,

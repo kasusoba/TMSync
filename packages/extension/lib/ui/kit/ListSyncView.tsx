@@ -8,6 +8,7 @@
  * items the user keeps out (which can be brought back from there).
  */
 import type { ApplyBlock, ApplyJob, ApplyTracker } from "@/lib/sync/apply";
+import type { AutoRun } from "@/lib/sync/auto";
 import { summarize, withPicks } from "@/lib/sync/plan";
 import type { SyncPreview, TrackerRead } from "@/lib/sync/run";
 import type {
@@ -150,6 +151,7 @@ export function ListSyncView({
   onApply = () => {},
   onCancelApply = () => {},
   onPick = () => {},
+  autoRun = null,
 }: {
   t: Tokens;
   rows: KindRow[];
@@ -175,7 +177,9 @@ export function ListSyncView({
   onPick?: (key: string, value: SyncPick | undefined) => void;
   onPreview: () => void;
   onKind: (tracker: Tracker, kind: SyncKind, on: boolean) => void;
-  onSetting: (key: "includePrivate" | "includeAdult", on: boolean) => void;
+  onSetting: (key: "includePrivate" | "includeAdult" | "auto", on: boolean) => void;
+  /** The last automatic run (null = none yet). */
+  autoRun?: AutoRun | null;
   /** Set (or clear, with undefined) the main list of a kind. */
   onMain: (kind: SyncKind, tracker: Tracker | undefined) => void;
   onIgnore: (key: string) => void;
@@ -283,6 +287,14 @@ export function ListSyncView({
             on={settings.includeAdult}
             onClick={() => onSetting("includeAdult", !settings.includeAdult)}
           />
+          <SettingRow
+            t={t}
+            label="Sync automatically once a day"
+            hint="Adds only: episodes, movies, new entries, progress, and empty ratings. Removals and conflicts wait for you, and the toolbar icon counts them."
+            on={!!settings.auto}
+            onClick={() => onSetting("auto", !settings.auto)}
+          />
+          {settings.auto && autoRun && <AutoLine t={t} run={autoRun} />}
           <div class="mt-auto flex items-center gap-3 pt-1">
             <Btn t={t} tone="primary" disabled={busy || applying} onClick={onPreview}>
               <Icon name="refresh" class="text-[12px]" />{" "}
@@ -303,7 +315,7 @@ export function ListSyncView({
               t.faint,
             )}
           >
-            {busy ? "Reading your lists" : "Preview"}
+            {busy ? "Reading your lists" : preview?.auto ? "Automatic sync" : "Preview"}
             {preview && !busy && (
               <span class="font-normal normal-case tracking-normal">
                 read {new Date(preview.at).toLocaleTimeString()}
@@ -330,6 +342,39 @@ export function ListSyncView({
           )}
         </section>
       )}
+    </div>
+  );
+}
+
+/** What the last automatic run did, in a line or two. */
+function AutoLine({ t, run }: { t: Tokens; run: AutoRun }) {
+  const when = new Date(run.at).toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+  const what =
+    run.state === "skipped"
+      ? `skipped. ${run.error ?? run.notes[0] ?? ""}`
+      : run.state === "failed"
+        ? `failed. ${run.error ?? ""}`
+        : [
+            run.added ? `added ${plural(run.added, "change")}` : "nothing to add",
+            run.failed ? `${run.failed} failed` : "",
+            run.held.length ? `${run.held.length} wait for review (preview to see them)` : "",
+          ]
+            .filter(Boolean)
+            .join(", ");
+  const notes = run.state === "skipped" ? [] : run.notes;
+  return (
+    <div class={clsx("text-[11px] leading-relaxed", t.sub)}>
+      <p>
+        Last automatic sync, {when}: {what.trim()}
+      </p>
+      {notes.map((n) => (
+        <p key={n} class={t.faint}>
+          {n}
+        </p>
+      ))}
     </div>
   );
 }
@@ -561,9 +606,11 @@ function ApplyProgress({
       )}
       {!running && (
         <p class={clsx("text-[11px] leading-relaxed", t.sub)}>
-          {clean
-            ? "Preview again to check: it should find nothing left to change."
-            : "Preview again, then apply, to finish. Sync plans from what each tracker has now, so nothing is written twice."}
+          {job.auto
+            ? "The automatic sync applied only the additions. Preview again to review the rest (removals, status changes, and conflicts)."
+            : clean
+              ? "Preview again to check: it should find nothing left to change."
+              : "Preview again, then apply, to finish. Sync plans from what each tracker has now, so nothing is written twice."}
         </p>
       )}
     </div>

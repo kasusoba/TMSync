@@ -56,6 +56,8 @@ export interface SyncPreview {
   plan: SyncPlan;
   /** Each tracker's score scale, to turn a picked score into its writes. */
   scales: Partial<Record<Tracker, ScoreScale>>;
+  /** The automatic daily run made it (`auto.ts`), and applied its additions. */
+  auto?: boolean;
 }
 
 /**
@@ -63,7 +65,7 @@ export interface SyncPreview {
  * `SyncPlan` changes shape: a job saved by an older build is then dropped on read,
  * instead of rendering (and crashing on) fields it does not have.
  */
-export const SYNC_JOB_VERSION = 6;
+export const SYNC_JOB_VERSION = 7;
 
 /** A preview job, as saved in storage. */
 export interface SyncJob {
@@ -106,9 +108,19 @@ export function jobAlive(
  * `listSyncJob`. Writes nothing to a tracker.
  */
 export async function startPreview(): Promise<{ started: boolean }> {
-  if (jobAlive(readJob(await listSyncJob.getValue()), Date.now())) return { started: false };
+  return { started: (await beginPreview(false)) !== null };
+}
+
+/**
+ * Start a preview job unless a preview or an apply is running. Resolves to the
+ * running job (which ends with the preview, or a failure), or null when it could
+ * not start. `auto` = the automatic run started it: it is on a timer, which some
+ * trackers treat differently (Simkl never reads in full on a timer).
+ */
+export async function beginPreview(auto: boolean): Promise<Promise<SyncJob> | null> {
+  if (jobAlive(readJob(await listSyncJob.getValue()), Date.now())) return null;
   // A preview during an apply would plan from lists that are half written.
-  if (jobAlive(await listSyncApply.getValue(), Date.now())) return { started: false };
+  if (jobAlive(await listSyncApply.getValue(), Date.now())) return null;
   const now = Date.now();
   await listSyncJob.setValue({
     v: SYNC_JOB_VERSION,
@@ -117,11 +129,10 @@ export async function startPreview(): Promise<{ started: boolean }> {
     beatAt: now,
     reads: [],
   });
-  void runPreview();
-  return { started: true };
+  return runPreview(auto);
 }
 
-async function runPreview(): Promise<void> {
+async function runPreview(auto: boolean): Promise<SyncJob> {
   // Save progress under one queue, so two steps never overwrite each other.
   let job = (await listSyncJob.getValue()) as SyncJob;
   let saving: Promise<void> = Promise.resolve();
@@ -160,7 +171,7 @@ async function runPreview(): Promise<void> {
           const saved = await cache.getValue().catch(() => null);
           const list = await (
             getService(tracker).readList as NonNullable<ReturnType<typeof getService>["readList"]>
-          )(kinds, saved);
+          )(kinds, saved, auto);
           entries.push(...list.entries);
           if (list.scoreFormat) scales[tracker] = list.scoreFormat;
           // A list too big to save is read in full next time; drop the old one.
@@ -181,7 +192,13 @@ async function runPreview(): Promise<void> {
       animapOverrides.getValue(),
     ]);
     const animap = new Animap(withOverrides(cached?.rows ?? [], overrides));
-    const base = { at: Date.now(), reads, noCrosswalk: !cached?.rows.length, scales };
+    const base = {
+      at: Date.now(),
+      reads,
+      noCrosswalk: !cached?.rows.length,
+      scales,
+      ...(auto ? { auto } : {}),
+    };
     const empty: SyncPlan = { items: [], skips: [], conflicts: [], notices: [] };
     const preview: SyncPreview =
       trackers.length < 2
@@ -199,16 +216,16 @@ async function runPreview(): Promise<void> {
     // A plan too big for local storage fails to save; say so instead of hanging.
     const saved = await listSyncJob.getValue();
     if (saved?.state === "running") {
-      await listSyncJob
-        .setValue({
-          ...job,
-          state: "failed",
-          preview: undefined,
-          error: "The plan was too large to save.",
-        })
-        .catch(() => {});
+      job = {
+        ...job,
+        state: "failed",
+        preview: undefined,
+        error: "The plan was too large to save.",
+      };
+      await listSyncJob.setValue(job).catch(() => {});
     }
   }
+  return job;
 }
 
 function byTracker(a: TrackerRead, b: TrackerRead): number {

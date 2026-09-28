@@ -66,10 +66,11 @@ export interface TrackerService {
    * never writes. `kinds` are the kinds this tracker takes part in, so it can skip
    * reads nobody needs. `saved` is the list this tracker saved at its last read,
    * for a tracker with a cheap change check to reuse (`sync/cache.ts`); it
-   * returns the list to save next in `cache`. Optional: a tracker without it
-   * takes no part in list sync.
+   * returns the list to save next in `cache`. `timed` = the automatic daily run
+   * asks, not the user (Simkl never reads in full on a timer without its change
+   * check). Optional: a tracker without it takes no part in list sync.
    */
-  readList?(kinds: SyncKind[], saved: ListCache | null): Promise<ListRead>;
+  readList?(kinds: SyncKind[], saved: ListCache | null, timed: boolean): Promise<ListRead>;
   /**
    * Write this tracker's part of a list sync plan (plans/list-sync.md, phase 2).
    * The runner sends the writes `chunk` at a time and saves its place after each,

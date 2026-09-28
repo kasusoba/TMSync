@@ -2,6 +2,7 @@ import type { BadgeStatus } from "@/messaging";
 import type { LinkTemplates, ParsedMedia, Recipe } from "@tmsync/shared";
 import { storage } from "wxt/utils/storage";
 import type { ApplyJob } from "./sync/apply";
+import type { AutoRun } from "./sync/auto";
 import type { ListCache } from "./sync/cache";
 import type { SyncJob } from "./sync/run";
 import type { SyncPicks } from "./sync/types";
@@ -486,6 +487,17 @@ function listCacheItem(tracker: Tracker) {
 export function listSyncCache(tracker: Tracker) {
   return LIST_SYNC_CACHE[tracker];
 }
+
+/** The last automatic list sync run (`sync/auto.ts`). */
+export const listSyncAuto = storage.defineItem<AutoRun | null>("local:list_sync_auto", {
+  fallback: null,
+});
+
+/** The held items of the automatic run the user has seen in the pane, so the
+ * toolbar badge counts only new ones. */
+export const listSyncAutoSeen = storage.defineItem<string[]>("local:list_sync_auto_seen", {
+  fallback: [],
+});
 
 /** What the user picked where trackers disagree (a score 0 to 100, or a status),
  * by `pickKey`. See `withPicks`. */

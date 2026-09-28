@@ -17,6 +17,8 @@ import {
   corrections,
   customRecipes,
   listSyncApply,
+  listSyncAuto,
+  listSyncAutoSeen,
   listSyncJob,
   listSyncPicks,
   listSyncSettings,
@@ -29,6 +31,7 @@ import {
   remoteRecipes,
 } from "@/lib/storage";
 import { type ApplyJob, applyBlock, applyQueues, cancelApply, readApply } from "@/lib/sync/apply";
+import type { AutoRun } from "@/lib/sync/auto";
 import { syncKindsFor } from "@/lib/sync/plan";
 import { type SyncJob, jobAlive, readJob } from "@/lib/sync/run";
 import {
@@ -745,6 +748,7 @@ export function App() {
   const [syncJob, setSyncJob] = useState<SyncJob | null>(null);
   const [syncApply, setSyncApply] = useState<ApplyJob | null>(null);
   const [syncPicks, setSyncPicks] = useState<SyncPicks>({});
+  const [autoRun, setAutoRun] = useState<AutoRun | null>(null);
   const [syncError, setSyncError] = useState<string | undefined>();
   /** Re-render while a job runs, so a job the browser stopped shows as stopped. */
   const [now, setNow] = useState(Date.now());
@@ -865,7 +869,9 @@ export function App() {
     void listSyncJob.getValue().then((job) => setSyncJob(readJob(job)));
     void listSyncApply.getValue().then((job) => setSyncApply(readApply(job)));
     void listSyncPicks.getValue().then(setSyncPicks);
+    void listSyncAuto.getValue().then(setAutoRun);
     const unwatch = [
+      listSyncAuto.watch((run) => setAutoRun(run ?? null)),
       listSyncJob.watch((job) => setSyncJob(readJob(job))),
       listSyncApply.watch((job) => setSyncApply(readApply(job))),
       listSyncPicks.watch((picks) => setSyncPicks(picks ?? {})),
@@ -874,6 +880,13 @@ export function App() {
       for (const u of unwatch) u();
     };
   }, []);
+
+  // Opening the pane shows the last automatic run, so its held items are seen: the
+  // toolbar badge then counts only the ones a later run adds.
+  useEffect(() => {
+    if (active === "listsync" && autoRun?.held.length)
+      void listSyncAutoSeen.setValue(autoRun.held).catch(() => {});
+  }, [active, autoRun]);
 
   // Tick often while a job runs (a job the browser stopped shows as stopped), and
   // now and then while a preview waits (it goes stale for apply).
@@ -1593,6 +1606,7 @@ export function App() {
                     void cancelApply().catch((e) => setSyncError(actionError(e)))
                   }
                   onPick={pickConflict}
+                  autoRun={autoRun}
                 />
               </>
             )}

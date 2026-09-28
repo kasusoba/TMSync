@@ -189,21 +189,26 @@ export function simklReadPlan(
  * Read only the Simkl types the chosen kinds need. Anime Simkl files under
  * `shows` is still read when TV or anime is on. `/sync/activities` comes first,
  * as Simkl asks: with a saved list, an unmoved type is not read at all, and a
- * moved one reads only its changes (see `sync/cache.ts`).
+ * moved one reads only its changes (see `sync/cache.ts`). On a timer (`timed`),
+ * a failed check stops the read: Simkl suspends apps that poll without it.
  */
 export async function readSimklEntries(
   kinds: SyncKind[],
   saved?: ListCache | null,
+  timed = false,
 ): Promise<ListRead> {
   const types: SimklListType[] = [];
   if (kinds.includes("tv") || kinds.includes("anime")) types.push("shows");
   if (kinds.includes("anime")) types.push("anime");
   if (kinds.includes("movie")) types.push("movies");
 
-  const now = await readSimklActivity().then(
-    simklStamps,
-    (): ReturnType<typeof simklStamps> => ({}),
-  );
+  const now = await readSimklActivity().then(simklStamps, (e): ReturnType<typeof simklStamps> => {
+    if (timed) throw e;
+    return {};
+  });
+  if (timed && types.some((type) => !now[type])) {
+    throw new Error("Simkl’s change check failed, so the automatic sync left Simkl out.");
+  }
   const old = savedParts(saved, simklPart);
   const how = simklReadPlan(types, now, old && saved ? saved.stamps : null);
   const since: Partial<Record<SimklListType, string>> = {};

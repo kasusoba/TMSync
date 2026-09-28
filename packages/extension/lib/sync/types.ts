@@ -95,6 +95,8 @@ export interface ListSyncSettings {
    * history). The copies' progress still never goes down. Missing = union.
    */
   main?: Partial<Record<SyncKind, Tracker>>;
+  /** Sync once a day on its own, additions only (`auto.ts`). Off by default. */
+  auto?: boolean;
 }
 
 export const DEFAULT_SYNC_SETTINGS: ListSyncSettings = {

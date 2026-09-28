@@ -10,7 +10,10 @@ import {
   customRecipes,
   enabledOrigins,
   episodeOverrides,
+  listSyncAuto,
+  listSyncAutoSeen,
   listSyncCache,
+  listSyncSettings,
   manualContexts,
   manualSelections,
   newPendingSites,
@@ -21,6 +24,7 @@ import {
   tabStatus,
 } from "@/lib/storage";
 import { startApply } from "@/lib/sync/apply";
+import { AUTO_ALARM, runAuto, showAutoBadge, syncAutoAlarm } from "@/lib/sync/auto";
 import { startPreview } from "@/lib/sync/run";
 import {
   ALL_TRACKERS,
@@ -142,9 +146,21 @@ export default defineBackground(() => {
   void fetchAnimeMap();
   browser.alarms.create("tmsync-recipes", { periodInMinutes: 720 });
   browser.alarms.create("tmsync-anime-map", { periodInMinutes: 1440 });
+  // Automatic list sync: an alarm only while the user has it on, and the toolbar
+  // count of what waits for review. Both follow storage, so the options page just
+  // saves the setting.
+  void syncAutoAlarm();
+  void showAutoBadge();
+  listSyncSettings.watch(() => {
+    void syncAutoAlarm();
+    void showAutoBadge();
+  });
+  listSyncAuto.watch(() => void showAutoBadge());
+  listSyncAutoSeen.watch(() => void showAutoBadge());
   browser.alarms.onAlarm.addListener((alarm) => {
     if (alarm.name === "tmsync-recipes") void fetchRemoteRecipes(true);
     if (alarm.name === "tmsync-anime-map") void fetchAnimeMap(true);
+    if (alarm.name === AUTO_ALARM) void runAuto();
     for (const service of allServices()) void service.alarms?.[alarm.name]?.();
   });
 
@@ -1083,6 +1099,7 @@ async function recordDerivedTrackers(
 
 // MV3 (Chrome + Firefox 109+) expose `action`; Firefox MV2 uses `browserAction`.
 const tabAction = browser.action ?? browser.browserAction;
+const NO_TAB_TEXT = null as unknown as string;
 
 // Cache the brand icon bitmaps (per size) so we only fetch/decode them once.
 // Literal paths — WXT types getURL to the known public files only.
@@ -1133,7 +1150,10 @@ async function drawIcon(size: number, dot: string | null): Promise<ImageData> {
 function setActionBadge(tabId: number, status: BadgeStatus | null): void {
   const dot = statusDotColor(status);
   // All tabAction calls below can race a tab close → "No tab with id"; ignore it.
-  void tabAction.setBadgeText({ tabId, text: "" }).catch(() => {}); // retire the old text glyph
+  // Clear the tab's own text (null, not ""): an empty tab text would hide the
+  // global one, the automatic list sync count. Chrome and Firefox both document
+  // null as "back to the global text"; the typings only say string.
+  void tabAction.setBadgeText({ tabId, text: NO_TAB_TEXT }).catch(() => {}); // retire the old text glyph
   void (async () => {
     try {
       const [i16, i32] = await Promise.all([drawIcon(16, dot), drawIcon(32, dot)]);
@@ -1145,7 +1165,7 @@ function setActionBadge(tabId: number, status: BadgeStatus | null): void {
       await setIcon({ tabId, imageData: { 16: i16, 32: i32 } });
     } catch {
       // No OffscreenCanvas (older Firefox) — fall back to a coloured badge dot.
-      void tabAction.setBadgeText({ tabId, text: dot ? "●" : "" }).catch(() => {});
+      void tabAction.setBadgeText({ tabId, text: dot ? "●" : NO_TAB_TEXT }).catch(() => {});
       if (dot) void tabAction.setBadgeBackgroundColor({ tabId, color: dot }).catch(() => {});
     }
   })();

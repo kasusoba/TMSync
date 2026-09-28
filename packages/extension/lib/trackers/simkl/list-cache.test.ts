@@ -103,6 +103,14 @@ describe("readSimklEntries", () => {
     expect(third.cache?.stamps.anime).toBe("a2");
   });
 
+  it("never reads on a timer when the activity check fails", async () => {
+    readSimklActivity.mockRejectedValue(new Error("Simkl 500"));
+    await expect(readSimklEntries(["movie"], null, true)).rejects.toThrow();
+    readSimklActivity.mockResolvedValue({ bad: true });
+    await expect(readSimklEntries(["movie"], null, true)).rejects.toThrow(/change check/);
+    expect(readSimklList).not.toHaveBeenCalled();
+  });
+
   it("reads in full when the activity check fails, and saves no stamps", async () => {
     readSimklActivity.mockRejectedValue(new Error("Simkl 500"));
     readSimklList.mockResolvedValue({ movies: [movie(9)] });

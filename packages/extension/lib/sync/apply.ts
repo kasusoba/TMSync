@@ -66,6 +66,8 @@ export interface ApplyJob {
   beatAt: number;
   /** The preview this applied (its `at`): a preview is applied once. */
   planAt: number;
+  /** The automatic daily run applied it (its additions only). */
+  auto?: boolean;
   trackers: ApplyTracker[];
   error?: string;
 }
@@ -152,7 +154,20 @@ export async function startApply(): Promise<{ started: boolean; reason?: ApplyBl
   const queues = preview ? applyQueues(preview, settings.ignore, picks) : new Map();
   const reason = applyBlock(preview, last, queues, now);
   if (reason || !preview) return { started: false, reason: reason ?? "no_plan" };
+  void beginApply(preview, queues, false);
+  return { started: true };
+}
 
+/**
+ * Save a new apply job for `preview` and run it. Resolves to the finished job.
+ * The caller checks first that nothing blocks it (`applyBlock`).
+ */
+export async function beginApply(
+  preview: SyncPreview,
+  queues: Map<Tracker, QueuedWrite[]>,
+  auto: boolean,
+): Promise<ApplyJob> {
+  const now = Date.now();
   const trackers: ApplyTracker[] = ALL_TRACKERS.filter((tk) => queues.get(tk)?.length).map(
     (tracker) => ({
       tracker,
@@ -171,10 +186,10 @@ export async function startApply(): Promise<{ started: boolean; reason?: ApplyBl
     beatAt: now,
     planAt: preview.at,
     trackers,
+    ...(auto ? { auto } : {}),
   };
   await listSyncApply.setValue(start);
-  void runApply(start, queues);
-  return { started: true };
+  return runApply(start, queues);
 }
 
 /** Ask a running apply to stop after the chunk in flight. What was written stays:
@@ -183,7 +198,7 @@ export async function cancelApply(): Promise<void> {
   await listSyncCancelAt.setValue(Date.now());
 }
 
-async function runApply(start: ApplyJob, queues: Map<Tracker, QueuedWrite[]>): Promise<void> {
+async function runApply(start: ApplyJob, queues: Map<Tracker, QueuedWrite[]>): Promise<ApplyJob> {
   let job = start;
   let saving: Promise<void> = Promise.resolve();
   const save = (patch: Partial<ApplyJob>) => {
@@ -266,4 +281,5 @@ async function runApply(start: ApplyJob, queues: Map<Tracker, QueuedWrite[]>): P
     clearInterval(beat);
     await saving;
   }
+  return job;
 }

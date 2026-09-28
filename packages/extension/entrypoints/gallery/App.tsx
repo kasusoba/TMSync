@@ -847,6 +847,9 @@ export function App() {
             <Tile label="Applied · MyAnimeList stopped at its limit" t={t}>
               <ListSyncTile variant={variant} state="applied" />
             </Tile>
+            <Tile label="Automatic sync · additions applied, the rest waits" t={t}>
+              <ListSyncTile variant={variant} state="auto" />
+            </Tile>
           </div>
         </section>
 
