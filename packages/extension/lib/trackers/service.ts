@@ -1,5 +1,5 @@
 import type { ParsedMedia } from "@tmsync/shared";
-import type { ListEntry } from "../sync/types";
+import type { ListEntry, SyncKind } from "../sync/types";
 import { anilistService } from "./anilist/service";
 import type { BoundCourPins } from "./cour-pins";
 import { malService } from "./mal/service";
@@ -59,10 +59,11 @@ export interface TrackerService {
   pinPick?(media: ParsedMedia, pick: SearchOption): Promise<void>;
   /**
    * Read the user's whole list for list sync (plans/list-sync.md). Read only: it
-   * never writes. `scoreFormat` is the user's score scale where it is theirs to
-   * pick (AniList). Optional: a tracker without it takes no part in list sync.
+   * never writes. `kinds` are the kinds this tracker takes part in, so it can skip
+   * reads nobody needs. `scoreFormat` is the user's score scale where it is theirs
+   * to pick (AniList). Optional: a tracker without it takes no part in list sync.
    */
-  readList?(): Promise<{ entries: ListEntry[]; scoreFormat?: ScoreFormat | null }>;
+  readList?(kinds: SyncKind[]): Promise<{ entries: ListEntry[]; scoreFormat?: ScoreFormat | null }>;
   /** Alarm handlers by alarm name (the tracker creates the alarms itself). */
   alarms?: Record<string, () => Promise<void>>;
   /** Listeners and this tracker's own message handlers (features only it has), set

@@ -507,14 +507,20 @@ export interface TraktListDump {
   movieRatings: unknown[];
 }
 
-/** Read the user's watched shows and movies, and their ratings. Five GETs. */
-export async function readTraktList(): Promise<TraktListDump> {
+/** Read the user's watched shows and movies, and their ratings: up to five GETs,
+ * fewer when shows or movies are not wanted. */
+export async function readTraktList(want: {
+  shows: boolean;
+  movies: boolean;
+}): Promise<TraktListDump> {
+  const get = (on: boolean, path: string) =>
+    on ? getAllPages<unknown>(path) : Promise.resolve<unknown[]>([]);
   const [shows, movies, showRatings, seasonRatings, movieRatings] = await Promise.all([
-    getAllPages<unknown>("/sync/watched/shows"),
-    getAllPages<unknown>("/sync/watched/movies"),
-    getAllPages<unknown>("/sync/ratings/shows"),
-    getAllPages<unknown>("/sync/ratings/seasons"),
-    getAllPages<unknown>("/sync/ratings/movies"),
+    get(want.shows, "/sync/watched/shows"),
+    get(want.movies, "/sync/watched/movies"),
+    get(want.shows, "/sync/ratings/shows"),
+    get(want.shows, "/sync/ratings/seasons"),
+    get(want.movies, "/sync/ratings/movies"),
   ]);
   return { shows, movies, showRatings, seasonRatings, movieRatings };
 }

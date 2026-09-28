@@ -16,7 +16,7 @@ import type { ReviewLevel } from "./types";
 import { pickedIdentity } from "./util";
 
 export const traktService: TrackerService = {
-  readList: async () => ({ entries: await readTraktEntries() }),
+  readList: async (kinds) => ({ entries: await readTraktEntries(kinds) }),
   status: async () => ({
     connected: await isConnected(),
     redirectUri: getRedirectUri(),

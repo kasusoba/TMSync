@@ -6,9 +6,9 @@
  */
 import { z } from "zod";
 import { ms, newest, num, parseEach } from "../../sync/read";
-import type { ListEntry, SyncIds } from "../../sync/types";
+import type { ListEntry, SyncIds, SyncKind } from "../../sync/types";
 import type { CourStatus } from "../cour-plan";
-import { readSimklList } from "./client";
+import { type SimklListType, readSimklList } from "./client";
 
 const Id = z.union([z.string(), z.number()]).nullish();
 const Media = z.object({
@@ -124,6 +124,12 @@ export function simklEntries(raw: unknown): ListEntry[] {
   return out;
 }
 
-export async function readSimklEntries(): Promise<ListEntry[]> {
-  return simklEntries(await readSimklList());
+/** Read only the Simkl types the chosen kinds need. Anime Simkl files under
+ * `shows` is still read when TV or anime is on. */
+export async function readSimklEntries(kinds: SyncKind[]): Promise<ListEntry[]> {
+  const types: SimklListType[] = [];
+  if (kinds.includes("tv") || kinds.includes("anime")) types.push("shows");
+  if (kinds.includes("anime")) types.push("anime");
+  if (kinds.includes("movie")) types.push("movies");
+  return simklEntries(await readSimklList(types));
 }

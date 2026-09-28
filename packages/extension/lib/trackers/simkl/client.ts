@@ -356,19 +356,35 @@ export async function scrobble(
 
 // --- list sync (reads the whole list; plans/list-sync.md) ---
 
+/** The Simkl library types list sync reads. */
+export type SimklListType = "shows" | "anime" | "movies";
+
 /**
- * Read the user's whole Simkl library in ONE request (shows with their watched
- * episodes, anime, movies, ratings, statuses). This costs one call of the user's
- * daily quota. Simkl asks apps not to call it on a timer: a scheduled sync must
- * check `/sync/activities` first and pass `date_from`. A manual "Sync now" is the
+ * Read the user's Simkl library, one request per type asked for (so one to three
+ * calls of the user's daily quota). Shows come with their watched episodes;
+ * anime and movies need only the summary (anime is a count per cour). Simkl asks
+ * apps not to call this on a timer: a scheduled sync must check
+ * `/sync/activities` first and pass `date_from`. A manual "Sync now" is the
  * initial full pull its sync guide describes.
  */
-export async function readSimklList(): Promise<unknown> {
+export async function readSimklList(types: SimklListType[]): Promise<Record<string, unknown[]>> {
+  const out: Record<string, unknown[]> = {};
+  for (const type of types) {
+    const extra = type === "shows" ? "&extended=full&include_all_episodes=yes" : "";
+    const body = (await simklGet(`/sync/all-items/${type}`, extra)) as Record<string, unknown>;
+    const items = body?.[type];
+    out[type] = Array.isArray(items) ? items : [];
+  }
+  return out;
+}
+
+/** GET from the Simkl API with the user's token. A 401 retries once with a
+ * refreshed token, and a second 401 drops the grant. */
+async function simklGet(path: string, query = ""): Promise<unknown> {
   const token = await getValidAccessToken();
   if (!token) throw new SimklNotConnectedError();
-  const query = `${appParams()}&extended=full&include_all_episodes=yes`;
   const send = (bearer: string) =>
-    fetch(`${SIMKL.apiBase}/sync/all-items?${query}`, {
+    fetch(`${SIMKL.apiBase}${path}?${appParams()}${query}`, {
       headers: { Accept: "application/json", Authorization: `Bearer ${bearer}` },
     });
   let res = await send(token);

@@ -1,5 +1,4 @@
 import type { ManualContext } from "@/lib/storage";
-import type { SyncPreview } from "@/lib/sync/run";
 import type { AccountStatus } from "@/lib/trackers/service";
 import type { ResolvedIdentity, TraktIds, TraktSearchOption } from "@/lib/trackers/trakt/types";
 import type {
@@ -238,9 +237,11 @@ export interface ProtocolMap {
    * and reviews (rewatches included). Client-side only — the CSV is returned to
    * the page to download; nothing is sent anywhere new (constraint #6). */
   exportLetterboxd(): { ok: boolean; csv?: string; count?: number; error?: string };
-  /** List sync (plans/list-sync.md): read every connected tracker's list and plan
-   * what each is missing. Read only, it writes nothing. */
-  listSyncPreview(): { ok: boolean; preview?: SyncPreview; error?: string };
+  /** List sync (plans/list-sync.md): start reading every connected tracker's list
+   * and planning what each is missing. Returns at once; progress and the plan land
+   * in the `listSyncJob` storage item. Read only, it writes nothing to a tracker.
+   * `started: false` = a preview is already running. */
+  listSyncStart(): { started: boolean };
   /** Register the content script for an origin the user just granted access to. */
   registerSite(origin: string): { ok: boolean; error?: string };
   unregisterSite(origin: string): { ok: boolean };

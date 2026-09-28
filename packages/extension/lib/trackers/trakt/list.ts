@@ -6,7 +6,7 @@
  */
 import { z } from "zod";
 import { ms, newest, num, parseEach } from "../../sync/read";
-import type { ListEntry, SeasonEpisodes, SyncIds } from "../../sync/types";
+import type { ListEntry, SeasonEpisodes, SyncIds, SyncKind } from "../../sync/types";
 import { type TraktListDump, readTraktList } from "./client";
 
 const Ids = z.object({
@@ -114,6 +114,13 @@ export function traktEntries(dump: TraktListDump): ListEntry[] {
   return [...shows.values(), ...movies.values()];
 }
 
-export async function readTraktEntries(): Promise<ListEntry[]> {
-  return traktEntries(await readTraktList());
+/** Read only what the chosen kinds need (anime can be a show or a movie). */
+export async function readTraktEntries(kinds: SyncKind[]): Promise<ListEntry[]> {
+  const anime = kinds.includes("anime");
+  return traktEntries(
+    await readTraktList({
+      shows: anime || kinds.includes("tv"),
+      movies: anime || kinds.includes("movie"),
+    }),
+  );
 }

@@ -6,7 +6,7 @@ import { readSimklEntries } from "./list";
 import { simklDeleteNote, simklGetReview, simklRate, simklSaveNote, simklUnrate } from "./review";
 
 export const simklService: TrackerService = {
-  readList: async () => ({ entries: await readSimklEntries() }),
+  readList: async (kinds) => ({ entries: await readSimklEntries(kinds) }),
   status: async () => ({
     connected: await isConnected(),
     redirectUri: getRedirectUri(),

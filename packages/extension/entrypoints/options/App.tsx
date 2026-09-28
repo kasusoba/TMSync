@@ -16,6 +16,7 @@ import {
   badgePrefs,
   corrections,
   customRecipes,
+  listSyncJob,
   listSyncSettings,
   malConnectIntent,
   malCorrections,
@@ -26,7 +27,7 @@ import {
   remoteRecipes,
 } from "@/lib/storage";
 import { syncKindsFor } from "@/lib/sync/plan";
-import type { SyncPreview } from "@/lib/sync/run";
+import { type SyncJob, jobAlive } from "@/lib/sync/run";
 import { DEFAULT_SYNC_SETTINGS, type ListSyncSettings, type SyncKind } from "@/lib/sync/types";
 import type { AniListIdentity } from "@/lib/trackers/anilist/types";
 import type { AnimapOverrides } from "@/lib/trackers/animap/derive";
@@ -732,9 +733,10 @@ export function App() {
   const [badge, setBadge] = useState<BadgePrefs>({ mode: "full", position: null });
   // List sync (plans/list-sync.md): the user's choices, and the last preview.
   const [syncSettings, setSyncSettings] = useState<ListSyncSettings>(DEFAULT_SYNC_SETTINGS);
-  const [syncPreview, setSyncPreview] = useState<SyncPreview | null>(null);
-  const [previewing, setPreviewing] = useState(false);
+  const [syncJob, setSyncJob] = useState<SyncJob | null>(null);
   const [syncError, setSyncError] = useState<string | undefined>();
+  /** Re-render while a job runs, so a job the browser stopped shows as stopped. */
+  const [now, setNow] = useState(Date.now());
   const has = (s: string) => s.toLowerCase().includes(q.toLowerCase());
 
   const refresh = async () => {
@@ -848,7 +850,38 @@ export function App() {
 
   useEffect(() => {
     void listSyncSettings.getValue().then(setSyncSettings);
+    void listSyncJob.getValue().then(setSyncJob);
+    return listSyncJob.watch((job) => setSyncJob(job));
   }, []);
+
+  const jobRunning = syncJob?.state === "running";
+  useEffect(() => {
+    if (!jobRunning) return;
+    const id = setInterval(() => setNow(Date.now()), 5000);
+    return () => clearInterval(id);
+  }, [jobRunning]);
+  const previewing = jobAlive(syncJob, now);
+  // A job still "running" with no recent beat was stopped by the browser.
+  const stoppedAt =
+    jobRunning && !previewing
+      ? syncJob?.reads.filter((r) => r.state === "reading").map((r) => trackerLabel(r.tracker))
+      : undefined;
+  const syncProblem =
+    syncError ??
+    (syncJob?.state === "failed" ? syncJob.error : undefined) ??
+    (stoppedAt
+      ? `The background stopped${stoppedAt.length ? ` while reading ${stoppedAt.join(", ")}` : ""}. Try again.`
+      : undefined);
+  // The preview on screen, without the items the user has since kept out.
+  const shownPreview = syncJob?.preview
+    ? {
+        ...syncJob.preview,
+        plan: {
+          ...syncJob.preview.plan,
+          items: syncJob.preview.plan.items.filter((i) => !syncSettings.ignore.includes(i.key)),
+        },
+      }
+    : null;
 
   const saveSyncSettings = async (next: ListSyncSettings) => {
     setSyncSettings(next);
@@ -865,28 +898,27 @@ export function App() {
     void saveSyncSettings({ ...syncSettings, kinds: { ...syncSettings.kinds, [tk]: next } });
   };
 
-  // Read every list and plan. Nothing is written (phase 1).
+  // Start a preview job: the background reads every list and plans, and reports
+  // through `listSyncJob`. Nothing is written to a tracker (phase 1).
   const previewListSync = async () => {
-    setPreviewing(true);
     setSyncError(undefined);
+    setNow(Date.now());
     try {
-      const out = await sendMessage("listSyncPreview", undefined);
-      if (out.ok && out.preview) setSyncPreview(out.preview);
-      else setSyncError(out.error ?? "Couldn’t read your lists.");
+      await sendMessage("listSyncStart", undefined);
     } catch (e) {
-      setSyncError(actionError(e));
-    } finally {
-      setPreviewing(false);
+      // "No response" at once = the background running is an older build with no
+      // list sync (the extension was rebuilt but not reloaded).
+      setSyncError(
+        /no response/i.test(String(e))
+          ? "The background didn’t answer. Reload TMSync on the extensions page and try again."
+          : actionError(e),
+      );
     }
   };
 
-  // Keep one item out of sync, and drop it from the preview on screen.
-  const ignoreSyncItem = (key: string) => {
+  // Keep one item out of sync (the preview on screen drops it at once).
+  const ignoreSyncItem = (key: string) =>
     void saveSyncSettings({ ...syncSettings, ignore: [...new Set([...syncSettings.ignore, key])] });
-    setSyncPreview((p) =>
-      p ? { ...p, plan: { ...p.plan, items: p.plan.items.filter((i) => i.key !== key) } } : p,
-    );
-  };
 
   const updateBadge = async (patch: Partial<BadgePrefs>) => {
     const next = { ...badge, ...patch };
@@ -1476,9 +1508,10 @@ export function App() {
                     on: syncSettings.kinds[tk] ?? syncKindsFor(tk),
                   }))}
                   settings={syncSettings}
-                  preview={syncPreview}
+                  preview={shownPreview}
+                  progress={previewing ? syncJob?.reads : undefined}
                   busy={previewing}
-                  error={syncError}
+                  error={syncProblem}
                   onPreview={previewListSync}
                   onKind={setSyncKind}
                   onSetting={(key, on) => void saveSyncSettings({ ...syncSettings, [key]: on })}

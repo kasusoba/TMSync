@@ -1,6 +1,7 @@
 import type { BadgeStatus } from "@/messaging";
 import type { LinkTemplates, ParsedMedia, Recipe } from "@tmsync/shared";
 import { storage } from "wxt/utils/storage";
+import type { SyncJob } from "./sync/run";
 import { DEFAULT_SYNC_SETTINGS, type ListSyncSettings } from "./sync/types";
 import type { AniListIdentity, AniListTokens } from "./trackers/anilist/types";
 import type { AnimapOverrides } from "./trackers/animap/derive";
@@ -444,6 +445,12 @@ export const badgePrefs = storage.defineItem<BadgePrefs>("sync:badge_prefs", {
  * private and adult entries, and the items the user keeps out. */
 export const listSyncSettings = storage.defineItem<ListSyncSettings>("sync:list_sync_settings", {
   fallback: DEFAULT_SYNC_SETTINGS,
+});
+
+/** The last list sync preview job: its progress while it runs, then the plan. The
+ * background saves it step by step; the options page watches it. */
+export const listSyncJob = storage.defineItem<SyncJob | null>("local:list_sync_job", {
+  fallback: null,
 });
 
 /**

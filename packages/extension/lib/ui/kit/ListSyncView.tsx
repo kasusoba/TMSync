@@ -33,6 +33,8 @@ const SKIP_LABEL: Record<SkipReason, string> = {
 };
 
 const READ_LABEL: Record<TrackerRead["state"], string> = {
+  waiting: "Waiting",
+  reading: "Reading…",
   read: "Read",
   not_connected: "Not connected",
   off: "Off",
@@ -74,6 +76,7 @@ export function ListSyncView({
   rows,
   settings,
   preview,
+  progress,
   busy,
   error,
   onPreview,
@@ -86,6 +89,8 @@ export function ListSyncView({
   rows: KindRow[];
   settings: ListSyncSettings;
   preview: SyncPreview | null;
+  /** Each tracker's state while a preview runs. */
+  progress?: TrackerRead[];
   busy: boolean;
   error?: string;
   onPreview: () => void;
@@ -167,7 +172,8 @@ export function ListSyncView({
       </div>
 
       {error && <p class={clsx("rounded-md px-2.5 py-1.5 text-[11px]", t.badBox)}>{error}</p>}
-      {preview && <PreviewResult t={t} preview={preview} onIgnore={onIgnore} />}
+      {busy && progress && progress.length > 0 && <ReadList t={t} reads={progress} />}
+      {preview && !busy && <PreviewResult t={t} preview={preview} onIgnore={onIgnore} />}
     </div>
   );
 }
@@ -207,23 +213,7 @@ function PreviewResult({
     <div class="space-y-4">
       <section class="space-y-2">
         <h3 class={clsx("text-[11px] font-semibold uppercase tracking-wider", t.faint)}>Lists</h3>
-        <div class={clsx("divide-y rounded-lg", t.card, t.divider)}>
-          {preview.reads.map((r) => (
-            <div
-              key={r.tracker}
-              class={clsx("flex items-center gap-3 px-3 py-2 text-[12px]", t.divider)}
-            >
-              <TrackerMark tracker={r.tracker} />
-              <span class={clsx("flex-1", t.heading)}>{trackerLabel(r.tracker)}</span>
-              <span class={t.sub}>
-                {r.state === "read"
-                  ? plural(r.count ?? 0, "entry", "entries")
-                  : READ_LABEL[r.state]}
-                {r.error ? ` · ${r.error}` : ""}
-              </span>
-            </div>
-          ))}
-        </div>
+        <ReadList t={t} reads={preview.reads} />
         {preview.noCrosswalk && (
           <p class={clsx("rounded-md px-2.5 py-1.5 text-[11px]", t.infoBox)}>
             The anime crosswalk isn’t downloaded yet, so anime can’t move between Trakt and AniList
@@ -328,6 +318,26 @@ function PreviewResult({
           </div>
         </section>
       )}
+    </div>
+  );
+}
+
+function ReadList({ t, reads }: { t: Tokens; reads: TrackerRead[] }) {
+  return (
+    <div class={clsx("divide-y rounded-lg", t.card, t.divider)}>
+      {reads.map((r) => (
+        <div
+          key={r.tracker}
+          class={clsx("flex items-center gap-3 px-3 py-2 text-[12px]", t.divider)}
+        >
+          <TrackerMark tracker={r.tracker} />
+          <span class={clsx("flex-1", t.heading)}>{trackerLabel(r.tracker)}</span>
+          <span class={t.sub}>
+            {r.state === "read" ? plural(r.count ?? 0, "entry", "entries") : READ_LABEL[r.state]}
+            {r.error ? ` · ${r.error}` : ""}
+          </span>
+        </div>
+      ))}
     </div>
   );
 }

@@ -156,6 +156,16 @@ export function ListSyncTile({
         settings={settings}
         preview={p}
         busy={state === "reading"}
+        progress={
+          state === "reading"
+            ? [
+                { tracker: "trakt", state: "read", count: 412 },
+                { tracker: "anilist", state: "read", count: 236 },
+                { tracker: "mal", state: "reading" },
+                { tracker: "simkl", state: "waiting" },
+              ]
+            : undefined
+        }
         onPreview={noop}
         onKind={noop}
         onSetting={noop}

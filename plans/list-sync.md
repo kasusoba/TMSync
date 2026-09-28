@@ -230,17 +230,20 @@ What is built:
   H, and a convergence test (apply the plan, plan again, expect no writes).
 - `lib/trackers/<tracker>/list.ts`: one reader per tracker, each a pure normalizer (Zod, a bad
   item is dropped) plus a fetch in that tracker's `client.ts`.
-- `lib/sync/run.ts` and the `listSyncPreview` message: read, plan, return. No writes.
+- `lib/sync/run.ts`: the preview is a job. `listSyncStart` returns at once, the job saves
+  each step to `local:list_sync_job` with a beat every 10 s, and Options watches it. A running
+  job with no beat for 30 s was stopped by the browser, and the pane says where. (A first try
+  ran the whole read inside one message, and a stopped worker gives the page no answer.)
 - Options: a "List sync" pane (`ListSyncView`), with the per-tracker kind switches, the private
   and adult switches, the preview, and "keep out of sync" per item. Gallery states added.
 - The choices are in `sync:list_sync_settings` and in the backup file.
 
 What the reads cost, per preview:
 
-- Trakt: 5 GETs (`/sync/watched/shows`, `/sync/watched/movies`, `/sync/ratings/{shows,seasons,movies}`).
+- Trakt: up to 5 GETs (`/sync/watched/shows`, `/sync/watched/movies`, `/sync/ratings/{shows,seasons,movies}`), fewer when shows or movies are off.
 - AniList: 1 + one per 500 entries (`Viewer`, `MediaListCollection` in chunks, custom lists skipped).
 - MAL: one per 1000 entries (`/users/@me/animelist`), one after the other.
-- Simkl: 1 (`/sync/all-items?extended=full&include_all_episodes=yes`), so 1 of the daily quota.
+- Simkl: 1 to 3 of the daily quota, one per type the chosen kinds need (`/sync/all-items/shows` with episodes, `/anime` and `/movies` as summaries). One request for all three was slow on a big library.
 
 Found while building:
 
