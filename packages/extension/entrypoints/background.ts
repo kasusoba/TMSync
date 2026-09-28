@@ -7,7 +7,6 @@ import {
   type QuickLinkSite,
   animapOverrides,
   animeMap,
-  corrections,
   customRecipes,
   enabledOrigins,
   episodeOverrides,
@@ -16,7 +15,6 @@ import {
   newPendingSites,
   quickLinks,
   remoteRecipes,
-  resolutionCache,
   tabFrameOrigins,
   tabSessions,
   tabStatus,
@@ -39,14 +37,7 @@ import type { Animap } from "@/lib/trackers/animap/index";
 import { loadAnimap, parseAnimeMap } from "@/lib/trackers/animap/load";
 import { planCourWrite } from "@/lib/trackers/cour-plan";
 import { type ReviewHandler, allServices, getService } from "@/lib/trackers/service";
-import {
-  TraktNotConnectedError,
-  exportLetterboxd,
-  idsForSlug,
-  resolve,
-  search,
-} from "@/lib/trackers/trakt/client";
-import { resolutionCacheKey } from "@/lib/trackers/trakt/util";
+import { saveCorrection as saveTraktCorrection } from "@/lib/trackers/trakt/client";
 import { type TrackedItem, type Tracker, WATCHED_THRESHOLD } from "@/lib/trackers/types";
 import {
   type BadgeStatus,
@@ -179,18 +170,6 @@ export default defineBackground(() => {
 
   onMessage("disconnectTracker", ({ data }) => getService(data).disconnect());
 
-  onMessage("exportLetterboxd", async () => {
-    try {
-      const { csv, count } = await exportLetterboxd();
-      return { ok: true, csv, count };
-    } catch (e) {
-      return {
-        ok: false,
-        error: e instanceof TraktNotConnectedError ? "Not connected to Trakt" : errorMessage(e),
-      };
-    }
-  });
-
   // A frame reports a video event; route to the recipe's tracker adapter, resolve
   // identity (cached) and record progress. The scrobble trackers (Trakt, Simkl) and
   // the list trackers (AniList, MAL, one threshold write) differ entirely. That
@@ -278,17 +257,10 @@ export default defineBackground(() => {
   });
 
   onMessage("setManualMedia", async ({ data, sender }) => {
-    // Lock resolution to the exact entry the user picked via a correction — so
-    // re-searching the title can't drift to a remake/wrong year later.
-    const key = resolutionCacheKey(data.media);
-    const corr = await corrections.getValue();
-    corr[key] = data.identity;
-    await corrections.setValue(corr);
-    const cache = await resolutionCache.getValue();
-    if (cache[key]) {
-      delete cache[key];
-      await resolutionCache.setValue(cache);
-    }
+    // Lock resolution to the exact entry the user picked, so re-searching the title
+    // can't drift to a remake or a wrong year later. The manual picker searches
+    // Trakt, so the pick is a Trakt correction (the one Trakt tie left here).
+    await saveTraktCorrection(data.media, data.identity);
     // Remember the pick so the same file/title auto-resolves next time.
     const all = await manualSelections.getValue();
     all[`${data.recipeId}::${data.pageKey}`] = data.media;
@@ -358,39 +330,6 @@ export default defineBackground(() => {
     const tabId = data?.tabId ?? sender.tab?.id;
     if (tabId === undefined) return null;
     return (await manualContexts.getValue())[tabId] ?? null;
-  });
-
-  onMessage("traktIdsForSlug", async ({ data }) => {
-    try {
-      return await idsForSlug(data.type, data.slug);
-    } catch {
-      return null;
-    }
-  });
-
-  // --- corrections ---
-  onMessage("searchTrakt", async ({ data }) => {
-    try {
-      return await search(data.query, data.type);
-    } catch {
-      return [];
-    }
-  });
-
-  onMessage("saveCorrection", async ({ data, sender }) => {
-    const key = resolutionCacheKey(data.media);
-    const corr = await corrections.getValue();
-    corr[key] = data.identity;
-    await corrections.setValue(corr);
-    // Drop any stale auto-resolution so the correction takes effect.
-    const cache = await resolutionCache.getValue();
-    if (cache[key]) {
-      delete cache[key];
-      await resolutionCache.setValue(cache);
-    }
-    // Re-resolve the current session in the tab (replaces the wrong scrobble).
-    const tabId = data.tabId ?? sender.tab?.id;
-    if (tabId !== undefined) void sendMessage("recheck", undefined, tabId);
   });
 
   onMessage("searchCour", async ({ data }) => {

@@ -187,7 +187,8 @@ a fixed set:
    the extension on update until the user accepts. Put it in `optional_host_permissions` and request
    it on Connect. Skip this if the API answers CORS.
 5. **Service.** Add `review.ts` and a `service.ts` with a `TrackerService`: account status, connect,
-   disconnect, the rating and note calls, and any alarms or wake listeners. A cour tracker also
+   disconnect, the rating and note calls, any alarms or wake listeners, and message handlers for
+   features only this tracker has. A cour tracker also
    brings its fix-match `pins` (the type requires them). Register it in `SERVICES`
    (`lib/trackers/service.ts`). The background needs no edit.
 6. **UI.** Add a mark (`marks.data.ts`, `kit.tsx`, the `TRACKER_MARK` entry), an Account row in
