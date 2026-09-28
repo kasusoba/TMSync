@@ -24,13 +24,14 @@ import {
   tabStatus,
 } from "@/lib/storage";
 import { hasMalAccess, requestMalAccess } from "@/lib/trackers/mal/access";
-import type { Tracker } from "@/lib/trackers/types";
+import { type Tracker, trackerLabel } from "@/lib/trackers/types";
+import { type Accounts, loadAccounts } from "@/lib/ui/accounts";
 import { PopupView } from "@/lib/ui/kit/PopupView";
 import type { QuickLinkValue } from "@/lib/ui/kit/QuickLinkEditor";
 import { tokens } from "@/lib/ui/kit/kit";
 import { NowPlaying } from "@/lib/ui/scrobble-panels";
 import type { BadgeStatus } from "@/messaging";
-import { type AccountStatus, sendMessage } from "@/messaging";
+import { sendMessage } from "@/messaging";
 import { type ParsedMedia, hostText, matchesUrl } from "@tmsync/shared";
 import { useEffect, useState } from "preact/hooks";
 import { browser } from "wxt/browser";
@@ -164,10 +165,7 @@ async function collectFrames(tabId: number): Promise<RawFrame[]> {
 }
 
 export function App() {
-  const [status, setStatus] = useState<AccountStatus | null>(null);
-  const [anilist, setAnilist] = useState<AccountStatus | null>(null);
-  const [mal, setMal] = useState<AccountStatus | null>(null);
-  const [simkl, setSimkl] = useState<AccountStatus | null>(null);
+  const [accounts, setAccounts] = useState<Accounts>({});
   const [topOrigin, setTopOrigin] = useState<string | null>(null);
   const [origins, setOrigins] = useState<string[]>([]); // top + every iframe origin on the page
   const [enabled, setEnabled] = useState<string[]>([]);
@@ -215,12 +213,9 @@ export function App() {
 
   const refresh = async () => {
     const tabId = await activeTabId();
-    const [s, al, ml, sk, url, found, sites, links, badge, custom, remote, pending, fresh] =
+    const [acc, url, found, sites, links, badge, custom, remote, pending, fresh] =
       await Promise.all([
-        sendMessage("getTrackerStatus", "trakt"),
-        sendMessage("getTrackerStatus", "anilist"),
-        sendMessage("getTrackerStatus", "mal"),
-        sendMessage("getTrackerStatus", "simkl"),
+        loadAccounts(),
         activeTabUrl(),
         tabId !== null ? collectOrigins(tabId) : Promise.resolve<string[]>([]),
         sendMessage("listEnabledSites", undefined),
@@ -241,10 +236,7 @@ export function App() {
     // runs everywhere, so treat this page's origins as enabled — the popup shows the
     // active state, and won't offer a per-site Enable (which would double-inject).
     const broad = await browser.permissions.contains({ origins: ["*://*/*"] });
-    setStatus(s);
-    setAnilist(al);
-    setMal(ml);
-    setSimkl(sk);
+    setAccounts(acc);
     setTopOrigin(origin);
     setOrigins(allOrigins);
     setEnabled(
@@ -292,73 +284,34 @@ export function App() {
     void refresh();
   }, []);
 
-  // The background may finish a MAL sign-in on its own (see connectMal).
+  // The background may finish a MAL sign-in on its own (see connectTracker).
   // biome-ignore lint/correctness/useExhaustiveDependencies: subscribe once
   useEffect(() => malTokens.watch(() => void refresh()), []);
 
-  const connect = async () => {
-    setBusy(true);
+  const connectTracker = async (tracker: Tracker) => {
     setNote(null);
-    const res = await sendMessage("connectTracker", "trakt");
-    if (!res.ok) setNote(res.error ?? "Connection failed");
-    await refresh();
-    setBusy(false);
-  };
-
-  const disconnect = async () => {
-    setBusy(true);
-    await sendMessage("disconnectTracker", "trakt");
-    await refresh();
-    setBusy(false);
-  };
-
-  const connectAniList = async () => {
-    setBusy(true);
-    setNote(null);
-    const res = await sendMessage("connectTracker", "anilist");
-    if (!res.ok) setNote(res.error ?? "AniList connection failed");
-    await refresh();
-    setBusy(false);
-  };
-
-  const disconnectAniList = async () => {
-    setBusy(true);
-    await sendMessage("disconnectTracker", "anilist");
-    await refresh();
-    setBusy(false);
-  };
-
-  const connectMal = async () => {
-    // Everything here starts while the click still counts as a gesture. On Firefox
-    // the permission prompt closes the popup, so after a FIRST grant the background
-    // signs in (it watches for the grant and reads the intent). With access already
-    // granted, no prompt shows and the popup connects as usual.
-    void malConnectIntent.setValue(Date.now());
-    const had = hasMalAccess().catch(() => false);
-    const granted = await requestMalAccess().catch(() => false);
-    setNote(null);
-    if (!granted) {
+    if (tracker === "mal") {
+      // Everything here starts while the click still counts as a gesture. On Firefox
+      // the permission prompt closes the popup, so after a FIRST grant the background
+      // signs in (it watches for the grant and reads the intent). With access already
+      // granted, no prompt shows and the popup connects as usual.
+      void malConnectIntent.setValue(Date.now());
+      const had = hasMalAccess().catch(() => false);
+      const granted = await requestMalAccess().catch(() => false);
+      if (!granted) {
+        void malConnectIntent.setValue(0);
+        setNote("MyAnimeList needs access to myanimelist.net to connect.");
+        return;
+      }
+      if (!(await had)) {
+        setNote("Finish signing in to MyAnimeList in the window that opened.");
+        return;
+      }
       void malConnectIntent.setValue(0);
-      setNote("MyAnimeList needs access to myanimelist.net to connect.");
-      return;
     }
-    if (!(await had)) {
-      setNote("Finish signing in to MyAnimeList in the window that opened.");
-      return;
-    }
-    void malConnectIntent.setValue(0);
     setBusy(true);
-    const res = await sendMessage("connectTracker", "mal");
-    if (!res.ok) setNote(res.error ?? "MyAnimeList connection failed");
-    await refresh();
-    setBusy(false);
-  };
-
-  const connectSimkl = async () => {
-    setNote(null);
-    setBusy(true);
-    const res = await sendMessage("connectTracker", "simkl");
-    if (!res.ok) setNote(res.error ?? "Simkl connection failed");
+    const res = await sendMessage("connectTracker", tracker);
+    if (!res.ok) setNote(res.error ?? `${trackerLabel(tracker)} connection failed`);
     await refresh();
     setBusy(false);
   };
@@ -514,11 +467,7 @@ export function App() {
   return (
     <PopupView
       variant="dark"
-      connected={status?.connected ?? false}
-      redirectUri={status?.redirectUri}
-      anilistConnected={anilist?.connected ?? false}
-      malConnected={mal?.connected ?? false}
-      simklConnected={simkl?.connected ?? false}
+      connected={Object.values(accounts).some((a) => a?.connected)}
       busy={busy}
       note={note}
       origins={origins.map((origin) => ({
@@ -526,12 +475,7 @@ export function App() {
         isTop: origin === topOrigin,
         enabled: enabled.includes(origin),
       }))}
-      onConnect={connect}
-      onDisconnect={disconnect}
-      onConnectAniList={connectAniList}
-      onConnectMal={connectMal}
-      onConnectSimkl={connectSimkl}
-      onDisconnectAniList={disconnectAniList}
+      onConnectTracker={connectTracker}
       onEnable={enableOrigin}
       newSites={newSites.length}
       onReviewNewSites={reviewNewSites}

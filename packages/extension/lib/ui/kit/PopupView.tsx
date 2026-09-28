@@ -1,5 +1,6 @@
 import type { FrameNode } from "@/lib/diagnostics/frame-tree";
 import {
+  ALL_TRACKERS,
   QUICK_LINK_TRACKERS,
   type QuickLinkTracker,
   type Tracker,
@@ -10,19 +11,7 @@ import clsx from "clsx";
 import { useState } from "preact/hooks";
 import { FrameInspector } from "./FrameInspector";
 import { QuickLinkEditor, type QuickLinkValue } from "./QuickLinkEditor";
-import {
-  AniListMark,
-  Btn,
-  Icon,
-  IconBtn,
-  MalMark,
-  Section,
-  SimklMark,
-  type Tokens,
-  TraktMark,
-  type Variant,
-  tokens,
-} from "./kit";
+import { Btn, Icon, IconBtn, Section, type Tokens, TrackerMark, type Variant, tokens } from "./kit";
 
 export interface OriginRow {
   origin: string;
@@ -32,23 +21,13 @@ export interface OriginRow {
 
 export interface PopupViewProps {
   variant: Variant;
+  /** At least one tracker account is connected (else the popup asks you to connect). */
   connected: boolean;
-  redirectUri?: string;
-  /** AniList account (the second provider — independent of Trakt). */
-  anilistConnected?: boolean;
-  /** MyAnimeList account (another independent provider). */
-  malConnected?: boolean;
-  simklConnected?: boolean;
   /** null = no eligible page in the active tab. */
   origins: OriginRow[] | null;
   busy?: boolean;
   note?: string | null;
-  onConnect?: () => void;
-  onDisconnect?: () => void;
-  onConnectAniList?: () => void;
-  onDisconnectAniList?: () => void;
-  onConnectMal?: () => void;
-  onConnectSimkl?: () => void;
+  onConnectTracker?: (tracker: Tracker) => void;
   onEnable?: (origin: string) => void;
   /** Sites a sync or import added that still need access. Only these nudge: a
    * site left off on purpose never shows here. */
@@ -171,7 +150,7 @@ export function PopupView(p: PopupViewProps) {
             },
           ]
         : [];
-  const noAccount = !p.connected && !p.anilistConnected && !p.malConnected && !p.simklConnected;
+  const noAccount = !p.connected;
   const [watchOpen, setWatchOpen] = useState(false);
 
   return (
@@ -188,18 +167,19 @@ export function PopupView(p: PopupViewProps) {
         <div class={clsx("space-y-2 rounded-xl px-3 py-2.5", t.infoBox)}>
           <p class="text-[12px] leading-snug">Connect a tracker to start scrobbling.</p>
           <div class="grid grid-cols-2 gap-2">
-            <Btn t={t} tone="primary" disabled={p.busy} onClick={p.onConnect}>
-              <TraktMark class="size-4" /> Connect Trakt
-            </Btn>
-            <Btn t={t} tone="ghost" disabled={p.busy} onClick={p.onConnectAniList}>
-              <AniListMark class="size-4" /> AniList
-            </Btn>
-            <Btn t={t} tone="ghost" disabled={p.busy} onClick={p.onConnectMal}>
-              <MalMark class="size-4" /> MyAnimeList
-            </Btn>
-            <Btn t={t} tone="ghost" disabled={p.busy} onClick={p.onConnectSimkl}>
-              <SimklMark class="size-4" /> Simkl
-            </Btn>
+            {/* The first tracker is the main action, the rest are secondary. */}
+            {ALL_TRACKERS.map((tk, i) => (
+              <Btn
+                key={tk}
+                t={t}
+                tone={i === 0 ? "primary" : "ghost"}
+                disabled={p.busy}
+                onClick={() => p.onConnectTracker?.(tk)}
+              >
+                <TrackerMark tracker={tk} class="size-4" />{" "}
+                {i === 0 ? `Connect ${trackerLabel(tk)}` : trackerLabel(tk)}
+              </Btn>
+            ))}
           </div>
         </div>
       )}
