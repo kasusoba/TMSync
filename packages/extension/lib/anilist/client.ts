@@ -1,10 +1,10 @@
 import type { ParsedMedia } from "@tmsync/shared";
 import { anilistCorrections, anilistResolutionCache } from "../storage";
 import { freshHit, stamp } from "../tracker/identity-cache";
-import type { CourSearchOption } from "../tracker/types";
+import type { CourSearchOption, ScoreFormat } from "../tracker/types";
 import { getValidAccessToken } from "./auth";
 import { ANILIST } from "./config";
-import type { AniListEntry, AniListIdentity, MediaListStatus, ScoreFormat } from "./types";
+import type { AniListEntry, AniListIdentity, MediaListStatus } from "./types";
 
 export class AniListNotConnectedError extends Error {
   constructor() {

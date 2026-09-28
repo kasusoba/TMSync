@@ -1,4 +1,5 @@
 import { type ParsedMedia, primaryId } from "@tmsync/shared";
+import { clampProgress } from "../tracker/types";
 import type {
   RatingSyncBody,
   ResolvedIdentity,
@@ -6,16 +7,6 @@ import type {
   ScrobbleBody,
   TraktTokens,
 } from "./types";
-
-/**
- * Trakt `progress` is a 0–100 float. Coerce non-finite to 0, clamp, and round to
- * 2 decimals — high-precision floats are a known cause of 422 on /scrobble/*.
- */
-export function clampProgress(n: number): number {
-  if (!Number.isFinite(n)) return 0;
-  const clamped = Math.min(100, Math.max(0, n));
-  return Math.round(clamped * 100) / 100;
-}
 
 /**
  * Build a /scrobble body from a resolved identity + the scraped media. Returns

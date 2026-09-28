@@ -1,14 +1,14 @@
 import { TRAKT } from "@/config";
 import { corrections, remoteRatings, resolutionCache, traktIdsBySlug } from "@/lib/storage";
 import type { ParsedMedia } from "@tmsync/shared";
-import { getValidAccessToken, refreshTokens } from "./auth";
 import {
   type LetterboxdComment,
   type TraktHistoryMovie,
   type TraktRatedMovie,
   buildLetterboxdRows,
   toLetterboxdCsv,
-} from "./letterboxd";
+} from "../portability/letterboxd";
+import { getValidAccessToken, refreshTokens } from "./auth";
 import type {
   RatingSyncBody,
   ResolvedIdentity,
@@ -445,7 +445,7 @@ async function getAllPages<T>(path: string, limit = 100): Promise<T[]> {
 /**
  * Build a Letterboxd-import CSV from the user's Trakt movies. Reads *history*
  * (one record per play) so rewatches survive, plus ratings and comments. Pure
- * shaping lives in @tmsync/shared; here we just fetch + normalise.
+ * shaping lives in lib/portability/letterboxd.ts; here we just fetch + normalise.
  */
 export async function exportLetterboxd(): Promise<{ csv: string; count: number }> {
   const [history, ratings, rawComments] = await Promise.all([

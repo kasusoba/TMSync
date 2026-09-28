@@ -1,6 +1,4 @@
-import { WATCHED_THRESHOLD } from "@/lib/tracker/types";
-import type { ScrobbleAction } from "@/lib/trakt/types";
-import { clampProgress } from "@/lib/trakt/util";
+import { type RecordPhase, WATCHED_THRESHOLD, clampProgress } from "@/lib/tracker/types";
 
 /** Minimal view of the media element the controller needs (eases testing). */
 export interface VideoLike {
@@ -9,7 +7,7 @@ export interface VideoLike {
   ended: boolean;
 }
 
-export type SendScrobble = (action: ScrobbleAction, progress: number) => void;
+export type SendScrobble = (action: RecordPhase, progress: number) => void;
 
 /**
  * Watch-session state machine (content-side, constraint #4 owns state here).
@@ -27,8 +25,8 @@ export type SendScrobble = (action: ScrobbleAction, progress: number) => void;
 export class ScrobbleController {
   private started = false;
   private stopped = false;
-  private lastAction: ScrobbleAction | null = null;
-  private pending: ScrobbleAction | null = null;
+  private lastAction: RecordPhase | null = null;
+  private pending: RecordPhase | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
@@ -77,7 +75,7 @@ export class ScrobbleController {
     if (this.started) this.emitStop(this.progress());
   }
 
-  private schedule(action: ScrobbleAction): void {
+  private schedule(action: RecordPhase): void {
     if (this.stopped) return;
     this.pending = action;
     this.clearTimer();
@@ -108,7 +106,7 @@ export class ScrobbleController {
     this.stopped = true;
   }
 
-  private dispatch(action: ScrobbleAction, progress: number): void {
+  private dispatch(action: RecordPhase, progress: number): void {
     this.lastAction = action;
     this.send(action, progress);
   }

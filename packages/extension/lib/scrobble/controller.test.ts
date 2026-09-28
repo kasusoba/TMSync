@@ -1,9 +1,9 @@
-import type { ScrobbleAction } from "@/lib/trakt/types";
+import type { RecordPhase } from "@/lib/tracker/types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ScrobbleController, type VideoLike } from "./controller";
 
 interface Event {
-  action: ScrobbleAction;
+  action: RecordPhase;
   progress: number;
 }
 

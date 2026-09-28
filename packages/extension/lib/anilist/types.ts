@@ -18,13 +18,6 @@ export interface AniListTokens {
   obtained_at: number;
 }
 
-/**
- * AniList's per-user score scale (`Viewer.mediaListOptions.scoreFormat`). We read
- * it to render the score affordance; writes use `scoreRaw` (0–100) so they're
- * format-agnostic.
- */
-export type ScoreFormat = "POINT_100" | "POINT_10_DECIMAL" | "POINT_10" | "POINT_5" | "POINT_3";
-
 /** AniList list-entry status: the cour-family status, in AniList's own words. */
 export type MediaListStatus = CourStatus;
 

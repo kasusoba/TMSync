@@ -1,10 +1,10 @@
 import type { IdNamespace, ParsedMedia } from "@tmsync/shared";
-import type { ScoreFormat } from "../anilist/types";
 import type {
   ExternalIds,
   RatingLevel,
   RecordPhase,
   RecordResult,
+  ScoreFormat,
   TrackedItem,
   Tracker,
   WatchedState,
