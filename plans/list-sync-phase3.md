@@ -117,6 +117,11 @@ its list without reading it: see C.
 
 ## Phases
 
+Why the checks come before the alarm: Simkl asks apps that sync on a timer to check
+`/sync/activities` first and read only the delta (`date_from`). A daily full read would break that
+rule. So the smallest daily run is: checks (B), then the alarm (A). The snapshot can start as a
+plain read cache for the trackers that did not change.
+
 1. Cheap checks + the snapshot as a read cache (B, C without the merge). Manual sync gets faster.
 2. The daily alarm with additions-only apply and the badge (A).
 3. The three-way merge (C) behind a setting, then on by default once it has run clean for a while.
