@@ -240,7 +240,7 @@ The crosswalk stays in `lib/trackers/animap/`. `extract()` is not touched.
 3. **Later:** a daily run with cheap change checks (Trakt `/sync/last_activities`, Simkl
    `/sync/activities`, AniList `updatedAt`), and the three-way merge if chosen.
 
-## Phase 1 status (built on `feat/list-sync`, not yet run on a real account)
+## Phase 1 status (built on `feat/list-sync`, previewed on the owner's real accounts)
 
 What is built:
 
@@ -282,6 +282,79 @@ Found while building:
   planner yet. Phase 2 should apply them before the Fribb rows, as scrobbling does.
 - **Anime titles that Simkl files under `shows`** (not `anime`) are handled like Trakt: by
   their tmdb id through the crosswalk.
+
+## Handover for phase 2 (2026-09-28)
+
+Phase 1 is done and works on the owner's real accounts (Trakt, AniList, MAL, Simkl). The branch
+is `feat/list-sync`, 7 commits ahead of `main`, **not pushed**, no PR yet. Every commit passes
+`pnpm lint`, `tsc`, `pnpm test`, and `pnpm build`. Start phase 2 on the same branch.
+
+### Where things are
+
+| What | File |
+|---|---|
+| Types (entries, settings, writes, plan, notices) | `lib/sync/types.ts` |
+| The pure planner (union, main list, notices) | `lib/sync/plan.ts` (+ `plan.test.ts`) |
+| Score scales and "same on the target's scale" | `lib/sync/score.ts` |
+| The preview job (storage-backed, beats, versioned) | `lib/sync/run.ts` (+ `run.test.ts`) |
+| Readers, one per tracker (pure normalizer + fetch) | `lib/trackers/<tracker>/list.ts`, fetch in its `client.ts` |
+| The seam | `TrackerService.readList(kinds)` in `lib/trackers/service.ts` |
+| Crosswalk lookups for sync | `Animap.has / anilistForMal / malForAnilist / anilistIds / ratingTarget` |
+| Storage | `sync:list_sync_settings`, `local:list_sync_job` (`lib/storage.ts`) |
+| Messages | `listSyncStart` (background returns at once; progress via storage) |
+| The pane | `lib/ui/kit/ListSyncView.tsx` (+ render test), wired in `entrypoints/options/App.tsx` |
+| Gallery states | `entrypoints/gallery/list-sync.tsx` |
+| Backup | `lib/portability/backup.ts` carries `listSync` (kinds, main, private, adult, ignore) |
+
+Rules that bit during phase 1:
+
+- **Bump `SYNC_JOB_VERSION`** (`run.ts`) whenever `SyncJob`, `SyncPreview`, `SyncPlan`, or
+  `SyncWrite` changes shape. A saved preview from an older build blanked the pane once.
+- **Reload the extension after a build.** A stale background gave an instant "No response".
+- The planner describes INTENT (`SyncWrite`). Turning it into API calls is phase 2's job.
+
+### Phase 2: apply
+
+1. **An "Apply" button** on the preview, with a confirm that repeats the totals, removals
+   first. Apply runs the plan the user saw: re-read and re-plan if the preview is older than a
+   few minutes (edge case 36), and show the new plan if it changed.
+2. **`applyBatch()` per tracker** on `TrackerService` (next to `readList`), taking that
+   tracker's `SyncWrite`s:
+   - **Trakt:** `POST /sync/history` (episodes, movies; batch many items per call) and
+     `POST /sync/ratings`. Never removes (`removesEntries` is false for it). Check
+     `not_found` in each reply.
+   - **Simkl:** `POST /sync/history` (episodes; `anime` key for a cour target with
+     `target.anime`), `POST /sync/ratings`, `POST /sync/add-to-list` (status),
+     `POST /sync/history/remove` (removal; it also clears the rating). 1 POST per second,
+     batch everything, check `not_found`. Not the scrobble endpoints, so no 20 s lock.
+   - **AniList:** `SaveMediaListEntry(mediaId, progress, status, repeat, scoreRaw)`, one per
+     entry. **Removal needs `DeleteMediaListEntry(id)` with the LIST ENTRY id, not the media
+     id.** The reader does not read it yet: add `id` to the `MediaListCollection` entries
+     query and carry it on the entry (`EntryBase` or the cour shape).
+   - **MAL:** `PATCH /anime/{id}/my_list_status` per entry, and
+     `DELETE /anime/{id}/my_list_status` for a removal. Space calls 1 to 2 s; on 403 stop MAL
+     and report "resume later", never retry in a loop.
+3. **Read before each cour write** (AniList, MAL): `progress = max(fresh remote, planned)`,
+   and skip if the entry became COMPLETED (edge case 35). Same rule as scrobbling.
+4. **Dates on backfilled watches** (decision 4): the source's date when known, else Trakt's
+   `released`. The planner does not carry dates yet: add them to the `episodes`/`movie`
+   writes (the entries already have `updatedAt`; per-episode dates need Trakt history or
+   Simkl `episode_watched_at=yes`).
+5. **The runner:** a job like the preview (`run.ts`): chunks, the position saved after each
+   chunk, beats, cancel, and a summary. On resume, re-read the tracker whose chunk was in
+   flight before sending again (a history write sent twice is a duplicate play, edge case 34).
+6. **Rating conflicts:** let the user pick a value in the "Trackers disagree" tab (today they
+   are left alone).
+7. **Crosswalk overrides:** apply `animapOverrides` (the user's fix-match pins) before the
+   Fribb rows in the planner, as scrobbling does. Not done in phase 1.
+8. **Tests:** apply is where convergence matters for real. After apply, a new preview must
+   show no changes (the planner test does this with a simulated apply; do it once live too).
+
+### Before merge
+
+Move the facts that stay true into `docs/ARCHITECTURE.md` (a list sync section) and
+`docs/TRACKERS.md` (the list read endpoints per tracker), delete this file, then PR and
+squash-merge. Suggested PR title: "Sync your lists across trackers".
 
 ## To verify against the live APIs
 
