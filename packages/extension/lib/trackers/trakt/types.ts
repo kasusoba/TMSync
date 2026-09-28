@@ -17,6 +17,7 @@ export interface TraktIds {
   slug?: string;
   imdb?: string;
   tmdb?: number;
+  tvdb?: number;
 }
 
 export interface TraktMovie {
@@ -57,6 +58,8 @@ export interface TraktSearchOption {
   traktId: number;
   title: string;
   year?: number;
+  /** The external ids Trakt knows, so a pick can reach the other trackers by id. */
+  ids?: { tmdb?: number; imdb?: string; tvdb?: number };
 }
 
 /**

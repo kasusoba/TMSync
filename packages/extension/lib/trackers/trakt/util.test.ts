@@ -1,10 +1,12 @@
 import type { ParsedMedia } from "@tmsync/shared";
 import { describe, expect, it } from "vitest";
-import type { ResolvedIdentity, TraktTokens } from "./types";
+import type { ResolvedIdentity, TraktSearchOption, TraktTokens } from "./types";
 import {
   buildRatingBody,
   buildScrobbleBody,
   isTokenExpired,
+  pickedIdentity,
+  pickedMedia,
   resolutionCacheKey,
   reviewKey,
 } from "./util";
@@ -154,5 +156,59 @@ describe("isTokenExpired", () => {
 
   it("is true after expiry", () => {
     expect(isTokenExpired(tokens, 11_500)).toBe(true);
+  });
+});
+
+describe("pickedMedia", () => {
+  const show: TraktSearchOption = {
+    type: "show",
+    traktId: 1,
+    title: "Frieren",
+    year: 2023,
+    ids: { tmdb: 209867, imdb: "tt22248376", tvdb: 424536 },
+  };
+
+  it("carries the ids Trakt knows, so the crosswalk and Simkl can match by id", () => {
+    expect(pickedMedia(show, 1, 5)).toEqual({
+      mediaType: "show",
+      title: "Frieren",
+      year: 2023,
+      season: 1,
+      episode: 5,
+      ids: { tmdb: 209867, imdb: "tt22248376", tvdb: 424536 },
+    });
+  });
+
+  it("keys the Trakt correction on the id, the same key resolve reads", () => {
+    expect(resolutionCacheKey(pickedMedia(show, 1, 5))).toBe("show:tmdb:209867");
+  });
+
+  it("builds a movie without numbering and skips missing ids", () => {
+    const movie: TraktSearchOption = {
+      type: "movie",
+      traktId: 2,
+      title: "Dune",
+      year: 2021,
+      ids: { imdb: "tt1160419" },
+    };
+    expect(pickedMedia(movie)).toEqual({
+      mediaType: "movie",
+      title: "Dune",
+      year: 2021,
+      ids: { imdb: "tt1160419" },
+    });
+  });
+
+  it("leaves ids out when Trakt gave none", () => {
+    const bare: TraktSearchOption = { type: "movie", traktId: 3, title: "X" };
+    expect(pickedMedia(bare)).not.toHaveProperty("ids");
+  });
+});
+
+describe("pickedIdentity", () => {
+  it("maps a search result to the Trakt identity", () => {
+    expect(
+      pickedIdentity({ type: "show", traktId: 7, title: "T", year: 2020, ids: { tmdb: 1 } }),
+    ).toEqual({ mediaType: "show", traktId: 7, title: "T", year: 2020 });
   });
 });

@@ -179,7 +179,14 @@ export async function search(query: string, type?: "movie" | "show"): Promise<Tr
   for (const r of results) {
     const obj = r.type === "movie" ? r.movie : r.type === "show" ? r.show : undefined;
     if (obj && (r.type === "movie" || r.type === "show")) {
-      options.push({ type: r.type, traktId: obj.ids.trakt, title: obj.title, year: obj.year });
+      const { tmdb, imdb, tvdb } = obj.ids;
+      options.push({
+        type: r.type,
+        traktId: obj.ids.trakt,
+        title: obj.title,
+        year: obj.year,
+        ids: { tmdb, imdb, tvdb },
+      });
     }
   }
   return options;

@@ -1,5 +1,6 @@
 import { actionError } from "@/lib/errors";
-import type { ResolvedIdentity, ReviewLevel, TraktSearchOption } from "@/lib/trackers/trakt/types";
+import type { ReviewLevel, TraktSearchOption } from "@/lib/trackers/trakt/types";
+import { pickedIdentity, pickedMedia } from "@/lib/trackers/trakt/util";
 import {
   type CourSearchOption,
   type CourTracker,
@@ -739,7 +740,7 @@ export function Correction({
     try {
       await sendMessage("saveCorrection", {
         media,
-        identity: { mediaType: o.type, traktId: o.traktId, title: o.title, year: o.year },
+        identity: pickedIdentity(o),
         tabId,
       });
       setSaved(optionLabel(o));
@@ -1011,21 +1012,11 @@ export function ManualPick({
     }
     setBusy(true);
     setErr(null);
-    const media: ParsedMedia =
-      type === "movie"
-        ? { mediaType: "movie", title: o.title, year: o.year }
-        : { mediaType: "show", title: o.title, year: o.year, season: s, episode: e };
-    const identity: ResolvedIdentity = {
-      mediaType: o.type,
-      traktId: o.traktId,
-      title: o.title,
-      year: o.year,
-    };
     const out = await sendMessage("setManualMedia", {
       recipeId: ctx.recipeId,
       pageKey: ctx.pageKey,
-      media,
-      identity,
+      media: pickedMedia(o, s, e),
+      identity: pickedIdentity(o),
       tabId,
     });
     setBusy(false);
