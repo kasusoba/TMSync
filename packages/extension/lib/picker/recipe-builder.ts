@@ -3,7 +3,7 @@ import {
   type Tracker,
   isPassthrough,
   isSeasonless,
-} from "@/lib/tracker/types";
+} from "@/lib/trackers/types";
 import {
   type EngineContext,
   type ExtractResult,

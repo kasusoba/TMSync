@@ -1,6 +1,6 @@
 import { quickLinkSlugs } from "@/lib/storage";
-import { routeTracker } from "@/lib/tracker";
-import { type Tracker, isSeasonless, trackerLabel } from "@/lib/tracker/types";
+import { routeTracker } from "@/lib/trackers";
+import { type Tracker, isSeasonless, trackerLabel } from "@/lib/trackers/types";
 import {
   type BadgeState,
   type BadgeStatus,

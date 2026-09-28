@@ -26,7 +26,7 @@ export const WATCHED_THRESHOLD = 0.8;
 /**
  * How a tracker numbers episodes. Trackers in one family share numbering, so moving
  * an item between them only changes the id. Moving it between families needs the
- * anime-map crosswalk (`lib/animap/`), which maps one family to the other.
+ * anime-map crosswalk (`lib/trackers/animap/`), which maps one family to the other.
  *  - `seasoned`: season + episode, keyed by TMDB/IMDB/TVDB ids (Trakt).
  *  - `cour`: one entry per cour, linear episodes, no seasons (AniList, MAL).
  *  - `any`: takes either numbering and maps it server-side (Simkl). It gets the

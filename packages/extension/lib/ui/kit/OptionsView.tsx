@@ -1,4 +1,4 @@
-import type { Tracker } from "@/lib/tracker/types";
+import type { Tracker } from "@/lib/trackers/types";
 import clsx from "clsx";
 import { useState } from "preact/hooks";
 import {

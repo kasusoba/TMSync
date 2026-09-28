@@ -1,20 +1,9 @@
 import type { ParsedMedia } from "@tmsync/shared";
-import { errorMessage } from "../errors";
-import type { TrackerAdapter } from "../tracker/adapter";
-import {
-  type CourEntry,
-  type CourPlan,
-  planCourWrite,
-  planRewatchConfirm,
-} from "../tracker/cour-plan";
-import { WATCHED_THRESHOLD } from "../tracker/types";
-import type {
-  RatingLevel,
-  RecordPhase,
-  RecordResult,
-  TrackedItem,
-  WatchedState,
-} from "../tracker/types";
+import { errorMessage } from "../../errors";
+import type { TrackerAdapter } from "../adapter";
+import { type CourEntry, type CourPlan, planCourWrite, planRewatchConfirm } from "../cour-plan";
+import { WATCHED_THRESHOLD } from "../types";
+import type { RatingLevel, RecordPhase, RecordResult, TrackedItem, WatchedState } from "../types";
 import { isConnected } from "./auth";
 import {
   ENTRY_FRESH_MS,

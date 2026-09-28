@@ -1,6 +1,6 @@
 import type { ParsedMedia } from "@tmsync/shared";
-import { errorMessage } from "../errors";
-import { notes, ratings, remoteRatings } from "../storage";
+import { errorMessage } from "../../errors";
+import { notes, ratings, remoteRatings } from "../../storage";
 import {
   commentItem,
   deleteComment,

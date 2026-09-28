@@ -1,6 +1,6 @@
 import type { ParsedMedia } from "@tmsync/shared";
-import { errorMessage } from "../errors";
-import { simklRatings } from "../storage";
+import { errorMessage } from "../../errors";
+import { simklRatings } from "../../storage";
 import { getMatch, simklIds, simklKey, simklKind, simklPost } from "./client";
 
 /**

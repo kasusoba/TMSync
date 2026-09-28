@@ -92,7 +92,7 @@ improvements. A few things make a code PR easy to accept:
   - Watch history goes only to the user's own tracker accounts.
   - Anything tracker-specific, including anime episode mapping, lives behind the tracker-adapter
     seam, never in the shared `extract()` engine.
-- **Adding a tracker?** That is the intended way to grow TMSync: a new `lib/<tracker>/` adapter
+- **Adding a tracker?** That is the intended way to grow TMSync: a new `lib/trackers/<tracker>/` adapter
   and a picker toggle, without touching the other trackers or `extract()`.
   [`docs/TRACKERS.md`](./docs/TRACKERS.md) has the API facts for each tracker and a checklist for
   adding one.

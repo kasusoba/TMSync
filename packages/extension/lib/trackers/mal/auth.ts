@@ -5,8 +5,8 @@ import {
   launchAuthFlow,
   postTokenForm,
   singleFlight,
-} from "../oauth";
-import { malTokens } from "../storage";
+} from "../../oauth";
+import { malTokens } from "../../storage";
 import { hasMalAccess } from "./access";
 import { MAL } from "./config";
 import type { MalTokens } from "./types";

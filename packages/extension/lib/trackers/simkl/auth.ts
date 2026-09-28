@@ -5,8 +5,8 @@ import {
   launchAuthFlow,
   postTokenForm,
   singleFlight,
-} from "../oauth";
-import { simklTokens } from "../storage";
+} from "../../oauth";
+import { simklTokens } from "../../storage";
 import { SIMKL } from "./config";
 import type { SimklTokens } from "./types";
 

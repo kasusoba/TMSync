@@ -4,7 +4,7 @@ import {
   type QuickLinkTracker,
   type Tracker,
   trackerLabel,
-} from "@/lib/tracker/types";
+} from "@/lib/trackers/types";
 import type { LinkTemplates } from "@tmsync/shared";
 import clsx from "clsx";
 import { useState } from "preact/hooks";

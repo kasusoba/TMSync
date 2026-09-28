@@ -1,9 +1,5 @@
 import { RECIPES } from "@/config";
-import type { AniListIdentity } from "@/lib/anilist/types";
-import type { AnimapOverrides } from "@/lib/animap/derive";
 import { actionError } from "@/lib/errors";
-import { requestMalAccess } from "@/lib/mal/access";
-import type { MalIdentity } from "@/lib/mal/types";
 import { defaultRecipeName } from "@/lib/picker/recipe-builder";
 import { applyBackup, buildBackup, parseBackup } from "@/lib/portability/backup";
 import { type Contribution, contribute } from "@/lib/portability/contribute";
@@ -28,8 +24,12 @@ import {
   quickLinksEnabled,
   remoteRecipes,
 } from "@/lib/storage";
-import { type QuickLinkTracker, type Tracker, trackerLabel } from "@/lib/tracker/types";
-import type { ResolvedIdentity } from "@/lib/trakt/types";
+import type { AniListIdentity } from "@/lib/trackers/anilist/types";
+import type { AnimapOverrides } from "@/lib/trackers/animap/derive";
+import { requestMalAccess } from "@/lib/trackers/mal/access";
+import type { MalIdentity } from "@/lib/trackers/mal/types";
+import type { ResolvedIdentity } from "@/lib/trackers/trakt/types";
+import { type QuickLinkTracker, type Tracker, trackerLabel } from "@/lib/trackers/types";
 import { BadgeModeToggle } from "@/lib/ui/kit/PopupView";
 import { TrackerTab } from "@/lib/ui/kit/TrackerTab";
 import {

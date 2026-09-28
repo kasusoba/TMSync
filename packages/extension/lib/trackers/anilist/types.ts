@@ -1,6 +1,6 @@
 /** AniList API types — only the fields TMSync uses. */
 
-import type { CourEntry, CourStatus } from "../tracker/cour-plan";
+import type { CourEntry, CourStatus } from "../cour-plan";
 
 /**
  * Authorization-code token set (AniList dropped implicit grant). The access token

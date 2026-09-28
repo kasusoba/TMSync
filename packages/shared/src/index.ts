@@ -46,6 +46,6 @@ export {
   withLinkHost,
 } from "./links";
 export type { AniListPageMedia, PlaceholderDoc, SiteLinks, TraktPageMedia } from "./links";
-// Letterboxd CSV export lives in the extension's Trakt adapter (packages/extension/
-// lib/trakt/letterboxd.ts) — it's Trakt-shaped domain logic, not part of the
+// Letterboxd CSV export lives in the extension (packages/extension/
+// lib/portability/letterboxd.ts) — it's Trakt-shaped domain logic, not part of the
 // tracker-agnostic shared engine.

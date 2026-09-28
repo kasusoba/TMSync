@@ -1,4 +1,4 @@
-import { type Tracker, trackerLabel } from "@/lib/tracker/types";
+import { type Tracker, trackerLabel } from "@/lib/trackers/types";
 import clsx from "clsx";
 import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";

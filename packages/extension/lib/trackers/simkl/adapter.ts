@@ -1,13 +1,7 @@
 import type { ParsedMedia } from "@tmsync/shared";
-import { errorMessage } from "../errors";
-import type { TrackerAdapter } from "../tracker/adapter";
-import type {
-  RatingLevel,
-  RecordPhase,
-  RecordResult,
-  TrackedItem,
-  WatchedState,
-} from "../tracker/types";
+import { errorMessage } from "../../errors";
+import type { TrackerAdapter } from "../adapter";
+import type { RatingLevel, RecordPhase, RecordResult, TrackedItem, WatchedState } from "../types";
 import { isConnected } from "./auth";
 import {
   SimklNotConnectedError,

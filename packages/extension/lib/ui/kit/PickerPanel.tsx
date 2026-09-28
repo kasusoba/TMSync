@@ -1,6 +1,6 @@
 import type { NumberPart } from "@/lib/picker/recipe-builder";
 import type { Chip, PickSource } from "@/lib/picker/sources";
-import { type Tracker, isSeasonless, trackerLabel } from "@/lib/tracker/types";
+import { type Tracker, isSeasonless, trackerLabel } from "@/lib/trackers/types";
 import clsx from "clsx";
 import {
   AniListMark,

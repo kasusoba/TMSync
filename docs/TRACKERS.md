@@ -74,7 +74,7 @@ and `/api/v2`).
 - **Tokens:** the docs say one hour for the access token, but their own example has `expires_in` of
   about 28 days, so trust `expires_in`. A refresh (`grant_type=refresh_token`) returns a new refresh
   token, valid for one month. A user who does not open TMSync for a month has to reconnect. An
-  expired token gives 401 `invalid_token`. This is why `lib/mal/auth.ts` refreshes on 401 or near
+  expired token gives 401 `invalid_token`. This is why `lib/trackers/mal/auth.ts` refreshes on 401 or near
   expiry, and clears the connection when the refresh fails.
 - **Reads:** `X-MAL-CLIENT-ID: <client id>` works without login for search and details.
   `GET /v2/anime?q=&limit=` searches (limit up to 100), and `GET /v2/anime/{id}?fields=...` gives
@@ -110,7 +110,7 @@ retired.
   TMSync redirects.
 - **Tokens:** the access token lasts 7 days. The refresh token lasts 180 days, slides, and is
   non-rotating (the same value comes back). A refresh invalidates the previous access token, so keep
-  a single refresher (single-flight, like `lib/mal/auth.ts`). Revoke on Disconnect (it always
+  a single refresher (single-flight, like `lib/trackers/mal/auth.ts`). Revoke on Disconnect (it always
   returns 200).
 - **Every request** needs the query params `client_id`, `app-name`, and `app-version`. Browser code
   cannot set `User-Agent`, so skip it. Send a JSON `Content-Type` only on POST.
@@ -175,19 +175,19 @@ Work through this list, and grep for `=== "anilist"` and `=== "trakt"` to find b
 a fixed set:
 
 1. **Types.** Add the id to the `Tracker` union and `TrackerId` in `packages/shared`, and give it a
-   `TRACKER_INFO` entry in `lib/tracker/types.ts`: `label`, `family` (`seasoned`, `cour`, or `any`),
+   `TRACKER_INFO` entry in `lib/trackers/types.ts`: `label`, `family` (`seasoned`, `cour`, or `any`),
    `rates`, `note`, and how a wrong match is fixed. Bump `SCHEMA_VERSION` (see
    [`RECIPES.md`](./RECIPES.md#versioning)), since an older build cannot parse the new value.
-2. **Adapter.** Add `lib/<tracker>/` with a `TrackerAdapter`: `resolve`, `recordProgress`,
+2. **Adapter.** Add `lib/trackers/<tracker>/` with a `TrackerAdapter`: `resolve`, `recordProgress`,
    `ratingLevels`, `watchedState`, and `resolvableNamespaces`, strongest id first. Register it in
-   `ADAPTERS` (`lib/tracker/index.ts`). A tracker in the cour family reuses the pure planner in
-   `lib/tracker/cour-plan.ts`. Put it last in `ALL_TRACKERS` if it could claim every namespace.
+   `ADAPTERS` (`lib/trackers/index.ts`). A tracker in the cour family reuses the pure planner in
+   `lib/trackers/cour-plan.ts`. Put it last in `ALL_TRACKERS` if it could claim every namespace.
 3. **Auth and config.** Add `auth.ts` and `config.ts` with connect and disconnect messages, and a
    client ID in `.env.example`, the release workflow's secret check, and `wxt.config.ts` if needed.
 4. **Host access.** Never add a host to the install manifest. A required host makes Chrome disable
    the extension on update until the user accepts. Put it in `optional_host_permissions` and request
    it on Connect. Skip this if the API answers CORS.
-5. **Reviews.** Add `lib/<tracker>/review.ts` and a `REVIEW` registry entry in the background.
+5. **Reviews.** Add `lib/trackers/<tracker>/review.ts` and a `REVIEW` registry entry in the background.
 6. **UI.** Add a mark (`marks.data.ts`, `kit.tsx`, the `TRACKER_MARK` entry), an Account row in
    Options, a connect button in the popup, and a picker toggle entry in `PickerPanel.tsx`. Provider
    rows are hand-wired per provider, not a loop. Add the new states to the gallery.

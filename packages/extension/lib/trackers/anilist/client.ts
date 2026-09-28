@@ -1,7 +1,7 @@
 import type { ParsedMedia } from "@tmsync/shared";
-import { anilistCorrections, anilistResolutionCache } from "../storage";
-import { freshHit, stamp } from "../tracker/identity-cache";
-import type { CourSearchOption, ScoreFormat } from "../tracker/types";
+import { anilistCorrections, anilistResolutionCache } from "../../storage";
+import { freshHit, stamp } from "../identity-cache";
+import type { CourSearchOption, ScoreFormat } from "../types";
 import { getValidAccessToken } from "./auth";
 import { ANILIST } from "./config";
 import type { AniListEntry, AniListIdentity, MediaListStatus } from "./types";

@@ -1,3 +1,4 @@
+import type { ResolvedIdentity, TraktIds, TraktSearchOption } from "@/lib/trackers/trakt/types";
 import type {
   CourSearchOption,
   CourTracker,
@@ -6,8 +7,7 @@ import type {
   ScoreFormat,
   Tracker,
   WatchedState,
-} from "@/lib/tracker/types";
-import type { ResolvedIdentity, TraktIds, TraktSearchOption } from "@/lib/trakt/types";
+} from "@/lib/trackers/types";
 import type { ParsedMedia } from "@tmsync/shared";
 import { defineExtensionMessaging } from "@webext-core/messaging";
 

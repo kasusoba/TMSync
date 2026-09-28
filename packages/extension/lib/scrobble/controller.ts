@@ -1,4 +1,4 @@
-import { type RecordPhase, WATCHED_THRESHOLD, clampProgress } from "@/lib/tracker/types";
+import { type RecordPhase, WATCHED_THRESHOLD, clampProgress } from "@/lib/trackers/types";
 
 /** Minimal view of the media element the controller needs (eases testing). */
 export interface VideoLike {

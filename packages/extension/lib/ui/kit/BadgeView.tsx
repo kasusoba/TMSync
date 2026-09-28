@@ -1,4 +1,4 @@
-import { type Tracker, trackerLabel, trackerRates } from "@/lib/tracker/types";
+import { type Tracker, trackerLabel, trackerRates } from "@/lib/trackers/types";
 import type { TrackerOutcome } from "@/messaging";
 import clsx from "clsx";
 import { Btn, Icon, IconBtn, Stars, TrackerMark, type Variant, outcomeTip, tokens } from "./kit";

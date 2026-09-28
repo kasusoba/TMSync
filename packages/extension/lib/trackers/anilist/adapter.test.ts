@@ -1,6 +1,6 @@
 import type { ParsedMedia } from "@tmsync/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { TrackedItem } from "../tracker/types";
+import type { TrackedItem } from "../types";
 
 // Mock the auth seam so we can toggle connection without real tokens/storage.
 const { isConnected } = vi.hoisted(() => ({ isConnected: vi.fn() }));

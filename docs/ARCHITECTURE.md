@@ -148,13 +148,13 @@ The heart of the "recipes are data, not code" guarantee. Everything here is pure
 
 ## 5. Tracker adapters: the seam that keeps the trackers apart
 
-`lib/tracker/adapter.ts` defines the contract; `lib/tracker/index.ts` is the routing single source
+`lib/trackers/adapter.ts` defines the contract; `lib/trackers/index.ts` is the routing single source
 of truth (`getAdapter`, `routeTracker`, `inferNativeTracker`). Four implementations behind it.
 `TRACKER_INFO` holds each tracker's metadata (label, numbering **family**; see below). It also says what each
 tracker rates (`levels` or the whole `entry`) and what note it keeps (`public`, `private`,
 `none`); the rating panel reads those, not tracker names.
 
-| | **Trakt** (`lib/trakt/`) | **AniList** (`lib/anilist/`) | **MyAnimeList** (`lib/mal/`) | **Simkl** (`lib/simkl/`) |
+| | **Trakt** (`lib/trackers/trakt/`) | **AniList** (`lib/trackers/anilist/`) | **MyAnimeList** (`lib/trackers/mal/`) | **Simkl** (`lib/trackers/simkl/`) |
 |---|---|---|---|---|
 | Progress | real-time scrobble `start`/`pause`/`stop` | none, one `SaveMediaListEntry` per episode at threshold | none, one `PATCH my_list_status` per episode at threshold | real-time scrobble, one call per 20 s |
 | Watched decision | Trakt owns it (≥80% on stop) | *we* own it (crossing `WATCHED_THRESHOLD`, 80%) | *we* own it (same planner) | Simkl owns it (≥80% on stop) |
@@ -168,7 +168,7 @@ so faking a scrobble loop for it would be wrong. It reads the viewer's existing 
 every write* (the entry is the source of truth), never lowers `progress`, and treats a `COMPLETED`
 season as sacred: re-watching prompts a "Rewatching?" confirmation in the badge before it touches
 anything. That decision logic is pure, tested, and shared by AniList and MAL in
-`lib/tracker/cour-plan.ts` (`planCourWrite`); each adapter maps the plan to its own fields.
+`lib/trackers/cour-plan.ts` (`planCourWrite`); each adapter maps the plan to its own fields.
 
 ### Multi-tracking: native and derived
 
@@ -197,7 +197,7 @@ only when it is the only one enabled, and it is recorded last in a fan-out.
 Identity resolution for each adapter is one ladder: a native id, then an id mapped through the
 crosswalk, then a title search, then the user-correction picker.
 
-**The crosswalk (`lib/animap/`).** It is built from Fribb's `anime-lists`, trimmed to
+**The crosswalk (`lib/trackers/animap/`).** It is built from Fribb's `anime-lists`, trimmed to
 `{ anilist_id, mal_id, tmdb_id, tmdb_kind, tmdb_season, episode_offset, type }` and served as
 `recipes/anime-map.json`. It is fetched from the CDN and cached in `local:anime_map`, refreshed
 daily, not bundled, because its rows are about 300 KB and upstream changes weekly. Two indices are
@@ -215,7 +215,7 @@ built at load: `byTmdb` for pages that speak TMDB, and `byAnilist` for dedicated
 User corrections to the map (`animap_overrides`, including MAL pins) win over Fribb: precedence is
 local override, then Fribb, then miss. The crosswalk's limit is coverage, not math. When it was
 first measured, about one in five Fribb entries had both an AniList and a TMDB id, and among those
-about 97% resolved mechanically. **Hard rule:** the crosswalk lives in `lib/animap/` and the
+about 97% resolved mechanically. **Hard rule:** the crosswalk lives in `lib/trackers/animap/` and the
 adapters, is background-side only, and the shared engine never imports it.
 
 **Fan-out.** The content script sends the full toggled tracker set with each scrobble. The
@@ -241,9 +241,9 @@ reviews are deferred everywhere.
 would need an absolute-to-season step that does not exist. TMSync refuses rather than guesses.
 
 **Rating, notes & exports** are co-located with each tracker, not inlined in the background: Trakt
-rating/notes in `lib/trakt/review.ts`, AniList in `lib/anilist/review.ts`, MAL in
-`lib/mal/review.ts`, Simkl in `lib/simkl/review.ts`, and Trakt's Letterboxd
-CSV export in `lib/trakt/letterboxd.ts`. The background's `rateItem`/`saveNote`/etc. handlers are
+rating/notes in `lib/trackers/trakt/review.ts`, AniList in `lib/trackers/anilist/review.ts`, MAL in
+`lib/trackers/mal/review.ts`, Simkl in `lib/trackers/simkl/review.ts`, and Trakt's Letterboxd
+CSV export in `lib/portability/letterboxd.ts`. The background's `rateItem`/`saveNote`/etc. handlers are
 thin dispatchers over the `REVIEW` registry. (The `TrackerAdapter` interface itself covers
 resolve/record/ratingLevels/watchedState; folding rate/note *writes* into the interface is a future
 step best done when a third tracker exists to shape it.)
@@ -392,11 +392,11 @@ regex/number/title chip builders, `buildRecipe` (assembles + Zod-validates), and
 | Change how a site is matched | `packages/shared/src/match.ts` |
 | Touch play/pause/stop timing | `lib/scrobble/controller.ts` |
 | Touch iframe/SPA/late-metadata handling | `lib/scrobble/session.ts` |
-| Add or change a tracker | `lib/tracker/adapter.ts` + a new `lib/<tracker>/` folder |
-| Debug Trakt resolution/scrobble | `lib/trakt/client.ts`, `lib/trakt/auth.ts` |
-| Debug AniList / MAL writes | `lib/anilist/client.ts`, `lib/mal/client.ts`, `lib/tracker/cour-plan.ts` |
-| Change rating / notes behaviour | `lib/trakt/review.ts`, `lib/anilist/review.ts`, `lib/mal/review.ts` |
-| Debug anime double-tracking | `lib/animap/` + `recordDerivedTrackers` in `background.ts` |
+| Add or change a tracker | `lib/trackers/adapter.ts` + a new `lib/trackers/<tracker>/` folder |
+| Debug Trakt resolution/scrobble | `lib/trackers/trakt/client.ts`, `lib/trackers/trakt/auth.ts` |
+| Debug AniList / MAL writes | `lib/trackers/anilist/client.ts`, `lib/trackers/mal/client.ts`, `lib/trackers/cour-plan.ts` |
+| Change rating / notes behaviour | `lib/trackers/trakt/review.ts`, `lib/trackers/anilist/review.ts`, `lib/trackers/mal/review.ts` |
+| Debug anime double-tracking | `lib/trackers/animap/` + `recordDerivedTrackers` in `background.ts` |
 | Change the badge / picker / popup UI | `lib/ui/kit/` (+ `entrypoints/gallery/` to preview) |
 | Change stored data or add a cache | `lib/storage.ts` |
 | Add a message between parts | `packages/extension/messaging.ts` |

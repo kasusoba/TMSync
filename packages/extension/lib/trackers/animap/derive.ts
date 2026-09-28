@@ -5,7 +5,7 @@ import {
   type TrackedItem,
   type Tracker,
   trackerFamily,
-} from "../tracker/types";
+} from "../types";
 import type { Animap } from "./index";
 
 /** Exact ids of the derived tracker's entry, from the crosswalk or a user pin. The

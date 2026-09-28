@@ -1,5 +1,5 @@
 import type { ParsedMedia } from "@tmsync/shared";
-import type { TrackerAdapter } from "../tracker/adapter";
+import type { TrackerAdapter } from "../adapter";
 import type {
   RatingLevel,
   RecordPhase,
@@ -7,7 +7,7 @@ import type {
   TrackedItem,
   WatchedEpisode,
   WatchedState,
-} from "../tracker/types";
+} from "../types";
 import { isConnected } from "./auth";
 import {
   TraktNotConnectedError,

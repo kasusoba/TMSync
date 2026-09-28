@@ -1,5 +1,5 @@
 import { type ParsedMedia, primaryId } from "@tmsync/shared";
-import { clampProgress } from "../tracker/types";
+import { clampProgress } from "../types";
 import type {
   RatingSyncBody,
   ResolvedIdentity,

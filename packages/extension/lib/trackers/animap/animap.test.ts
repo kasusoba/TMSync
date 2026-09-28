@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import published from "../../../../recipes/anime-map.json";
+import published from "../../../../../recipes/anime-map.json";
 import { Animap, type AnimapRow, EMPTY_ANIMAP } from "./index";
 import { parseAnimeMap } from "./load";
 

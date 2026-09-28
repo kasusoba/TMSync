@@ -1,6 +1,6 @@
 import type { ParsedMedia } from "@tmsync/shared";
 import { describe, expect, it } from "vitest";
-import type { TrackedItem } from "../tracker/types";
+import type { TrackedItem } from "../types";
 import { type AnimapOverrides, EMPTY_OVERRIDES, deriveMedia, deriveMediaWith } from "./derive";
 import { Animap, type AnimapRow } from "./index";
 

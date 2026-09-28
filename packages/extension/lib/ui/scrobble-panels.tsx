@@ -1,4 +1,5 @@
 import { actionError } from "@/lib/errors";
+import type { ResolvedIdentity, ReviewLevel, TraktSearchOption } from "@/lib/trackers/trakt/types";
 import {
   type CourSearchOption,
   type CourTracker,
@@ -12,8 +13,7 @@ import {
   trackerLabel,
   trackerNote,
   trackerRates,
-} from "@/lib/tracker/types";
-import type { ResolvedIdentity, ReviewLevel, TraktSearchOption } from "@/lib/trakt/types";
+} from "@/lib/trackers/types";
 import {
   type BadgeState,
   type BadgeStatus,
