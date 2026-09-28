@@ -1,8 +1,9 @@
 # Plan: list sync, phase 3 (automatic sync and remembered removals)
 
-Status: not started. PR #39 (phases 1 and 2) is merged to `main` (2026-09-28, no release cut
-yet). **The owner's priority is the daily run (A).** Start the next session by asking the five
-decisions below, then build in the order under "Phases". A working plan, not a doc. It lives only on `feat/list-sync-auto`. Before the
+Status: phase 1 (change checks + saved lists) is built on this branch, not yet tested live. The
+five decisions are settled (below). Next: test phase 1 live, then phase 2 (the daily alarm).
+PR #39 (list sync phases 1 and 2) is merged to `main` (2026-09-28, no release cut yet). **The
+owner's priority is the daily run (A).** A working plan, not a doc. It lives only on `feat/list-sync-auto`. Before the
 PR merges, the facts that stay true move into `docs/ARCHITECTURE.md` (section 7) and
 `docs/TRACKERS.md` ("List sync: reads and writes"), and this file is deleted.
 
@@ -39,15 +40,16 @@ reload the extension after a build; the planner describes intent, the writers ma
 
 ### A. The daily run
 
-- A `browser.alarms` alarm (constraint #4: no timers in memory), for example every 24 h, set when
-  the user turns auto sync on and cleared when off. The handler runs: cheap checks, then a preview
-  job, then an apply job, all the existing jobs.
-- **What it may apply on its own** (decision needed, see below). Proposal: only what cannot lose
-  anything. Additions (episodes, movies, new entries, progress up) and empty-rating fills go in.
-  Removals, conflicts, and status changes wait for the user.
-- **Telling the user.** Proposal: the toolbar badge text (`browser.action.setBadgeText`, no new
+- A `browser.alarms` alarm (constraint #4: no timers in memory), every 24 h, set when the user
+  turns auto sync on (off by default) and cleared when off. The handler runs: cheap checks, then a
+  preview job, then an apply job, all the existing jobs.
+- **What it applies on its own** (decision 1): additions only. Episodes, movies, new entries,
+  progress up, and empty-rating fills go in. Removals, conflicts, and status changes wait for the
+  user.
+- **Telling the user** (decision 4): the toolbar badge text (`browser.action.setBadgeText`, no new
   permission) shows how many changes wait for review, and the pane shows the last automatic run.
-  `notifications` would be a new install permission with a warning, so avoid it.
+- On a timer, if Simkl's activity call fails, skip Simkl for that run. Never fall back to a full
+  read (a manual read may).
 - A running manual job blocks the automatic one, and the other way round (`jobAlive`).
 - A preview older than 10 minutes cannot be applied (`applyBlock`), so the automatic run must plan
   and apply in one go.
@@ -86,16 +88,25 @@ its list without reading it: see C.
 - A snapshot is only valid after a CLEAN apply (every tracker done, no failures). Otherwise keep the
   old one, or a failed write looks like a removal next time.
 
-## Decisions needed (ask the owner)
+## Decisions (settled with the owner, 2026-09-28)
 
-1. **What an automatic run applies**: additions only (proposal), or everything except removals, or
-   everything?
-2. **How often**, and whether the user can pick (daily, every 12 h, weekly).
-3. **Three-way merge scope**: entries only, or also un-watched episodes and removed ratings? (An
-   episode un-watched on Trakt would then be un-watched on Simkl, and lowered on AniList and MAL,
-   which breaks "progress never goes down". Proposal: entries and ratings only.)
-4. **Badge or notification** for "changes wait for review".
-5. Is `unlimitedStorage` acceptable if the snapshot needs it?
+0. **Auto sync is optional and off by default.** One switch in the List sync pane. The alarm
+   exists only while the switch is on; turning it off clears the alarm.
+1. **An automatic run applies additions only**: new entries, watched episodes and movies,
+   progress up, and a rating on a tracker that has none. Removals, conflicts, and status changes
+   wait for the user. Nobody watches an unattended run, so it only makes changes that cannot lose
+   anything.
+2. **Once a day, no frequency setting.** Scrobbling already records watches live, so the run only
+   catches edits made on the tracker sites. The manual Sync button covers "now". Simkl cost per
+   run: 1 activity call plus 0 to 3 reads.
+3. **Remembered removals cover entries and ratings only.** Un-watched episodes are not carried
+   over: that would lower progress on AniList and MAL.
+4. **The toolbar badge** (`browser.action.setBadgeText`, no new permission) shows how many changes
+   wait for review. No notifications.
+5. **No `unlimitedStorage` for now.** Measure the saved lists on the owner's account first, then
+   store episode sets as ranges if needed. Ask for the permission only if that is still too big
+   (Chrome allows it as optional; Firefox is unverified). The saved lists also serve manual sync,
+   so every user has them, not only those with auto sync on.
 
 ## Edge cases to plan for
 
@@ -123,5 +134,43 @@ rule. So the smallest daily run is: checks (B), then the alarm (A). The snapshot
 plain read cache for the trackers that did not change.
 
 1. Cheap checks + the snapshot as a read cache (B, C without the merge). Manual sync gets faster.
+   **Built** (see "Phase 1 as built").
 2. The daily alarm with additions-only apply and the badge (A).
 3. The three-way merge (C) behind a setting, then on by default once it has run clean for a while.
+
+## Phase 1 as built
+
+- `lib/sync/cache.ts`: `ListCache` (stamps + entries, versioned by `LIST_CACHE_VERSION`), `ListRead`
+  (what `readList` returns now), and pure helpers. Saved per tracker in
+  `local:list_sync_cache_<tracker>`. The runner passes the saved list to `readList(kinds, saved)`
+  and saves the returned `cache`. A save that fails (too big) removes the old one.
+- Dropped on connect and disconnect (background `connectTracker` / `disconnectTracker`), so a
+  different account never reuses it. No account id call needed. Backups do not carry it.
+- The stamp is always read BEFORE the list, so a change during the read moves it past the saved
+  stamp and the next read sees it.
+- **Trakt**: `/sync/last_activities` `all`, per part (shows, movies). Trakt's docs do not say which
+  field a history or rating removal moves, so `all` is used: it may read when nothing in the list
+  moved (a comment, a watchlist change), but never misses a change.
+- **Simkl**: `/sync/activities`, per type (`tv_shows`, `anime`, `movies`). Unmoved = no read. A
+  null stamp = the type never had activity, so it is empty and not read. Moved with
+  `removed_from_list` unmoved = `date_from` delta (the saved stamp, sent as Simkl returned it),
+  merged by Simkl id. `removed_from_list` moved = full read of that type (a delta never reports
+  removals; Simkl suggests an `ids_only` refetch and diff, a possible later saving). If the activity
+  call fails, everything is read in full and no stamps are saved.
+- **AniList and MAL have no check, by choice.** Neither has an activity endpoint. The "newest
+  `updatedAt`" query in the table above misses a deleted entry, and a light read that catches
+  deletions costs about as much as the full read (AniList: one collection query; MAL: pages of
+  1000). Neither has a quota. So they always read.
+- The tracker cards say "No changes since the last read" or "Read only what changed".
+  `SYNC_JOB_VERSION` is 6 (`TrackerRead.from`).
+- Sources (2026-09-28): api.simkl.org/guides/sync and /api-reference/simkl/get-activities (the
+  Apiary docs are frozen), docs.trakt.tv/reference/getsynclastactivities.
+
+### To check live
+
+1. Simkl delta: does a `shows` item in a `date_from` delta carry ALL its watched episodes (with
+   `extended=full&include_all_episodes=yes`)? The merge replaces the saved item, so a partial item
+   would drop episodes. Test: mark one episode on simkl.com, preview, compare the episode count.
+2. Simkl: an empty delta body parses (handled: empty text reads as `{}`).
+3. Size: the saved Trakt list on the owner's account (`chrome.storage.local.getBytesInUse`).
+4. Trakt: a second preview right after a first shows "No changes since the last read".
