@@ -130,6 +130,26 @@ export async function resolve(media: ParsedMedia): Promise<ResolvedIdentity | nu
 }
 
 /**
+ * Pin the scraped media to the Trakt entry the user picked. A correction is
+ * authoritative in `resolve`, and dropping the auto-resolution makes it take
+ * effect now.
+ */
+export async function saveCorrection(
+  media: ParsedMedia,
+  identity: ResolvedIdentity,
+): Promise<void> {
+  const key = resolutionCacheKey(media);
+  const corr = await corrections.getValue();
+  corr[key] = identity;
+  await corrections.setValue(corr);
+  const cache = await resolutionCache.getValue();
+  if (cache[key]) {
+    delete cache[key];
+    await resolutionCache.setValue(cache);
+  }
+}
+
+/**
  * TMDB/IMDB ids for a show/movie by its Trakt URL slug — the analogue of the
  * `#external-link-tmdb` DOM element the classic site exposes but app.trakt.tv's
  * SvelteKit UI doesn't render (see trakt.content.tsx's parseAppTraktPage).

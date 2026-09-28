@@ -247,9 +247,12 @@ CSV export in `lib/portability/letterboxd.ts`.
 
 **Background services.** Each tracker also has a `service.ts`: its account (status, connect,
 disconnect), its rating and note calls, a cour tracker's fix-match pins, and any alarm or
-listener it needs on each worker wake. The registry is `lib/trackers/service.ts`. The
-background's account, `rateItem`/`saveNote`/etc., and fix-match handlers are thin dispatchers over
-it, so the background never names a tracker for these. (The `TrackerAdapter` interface itself covers
+listener it needs on each worker wake. Features only one tracker has register their own message
+handlers there too (Trakt: the fix-match search, trakt.tv slug ids, the Letterboxd export). The
+registry is `lib/trackers/service.ts`. The background's account, `rateItem`/`saveNote`/etc., and
+fix-match handlers are thin dispatchers over it, so the background never names a tracker for
+these. One tie is left: the manual media picker searches Trakt, so its pick is saved as a Trakt
+correction. (The `TrackerAdapter` interface itself covers
 resolve/record/ratingLevels/watchedState; folding rate/note *writes* into the interface is a future
 step best done when a third tracker exists to shape it.)
 

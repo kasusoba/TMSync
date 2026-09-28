@@ -47,7 +47,8 @@ export interface TrackerService {
   review: ReviewHandler;
   /** Alarm handlers by alarm name (the tracker creates the alarms itself). */
   alarms?: Record<string, () => Promise<void>>;
-  /** Listeners to set up on each service worker wake. */
+  /** Listeners and this tracker's own message handlers (features only it has), set
+   * up on each service worker wake. */
   onWake?(): void;
 }
 
