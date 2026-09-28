@@ -22,8 +22,8 @@ Each thing you watch is routed to the trackers that fit it:
 
 | You watch | It goes to |
 |---|---|
-| Movies and live-action TV | Trakt and/or Simkl |
-| Anime series | Any of Trakt, AniList, MyAnimeList, and Simkl, all at once if you like |
+| Live-action movies and TV | Trakt and/or Simkl |
+| Anime series and anime movies | Any of Trakt, AniList, MyAnimeList, and Simkl, all at once if you like |
 
 You choose which trackers are on for each site. If you know MAL-Sync for anime, this is the same
 idea, made general across trackers.
