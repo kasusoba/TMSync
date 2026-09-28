@@ -815,23 +815,28 @@ export function App() {
         </Group>
 
         {/* LIST SYNC */}
-        <Group id="listsync" title="List sync (options pane)" t={t}>
-          <Tile label="Before a preview" t={t}>
-            <ListSyncTile variant={variant} state="idle" />
-          </Tile>
-          <Tile label="Reading the lists" t={t}>
-            <ListSyncTile variant={variant} state="reading" />
-          </Tile>
-          <Tile label="Preview · all four trackers" t={t}>
-            <ListSyncTile variant={variant} state="preview" />
-          </Tile>
-          <Tile label="Preview · Simkl without anime, one item kept out" t={t}>
-            <ListSyncTile variant={variant} state="no-simkl-anime" />
-          </Tile>
-          <Tile label="Only one tracker connected" t={t}>
-            <ListSyncTile variant={variant} state="too-few" />
-          </Tile>
-        </Group>
+        <section id="listsync" class="scroll-mt-20 space-y-4">
+          <h2 class={clsx("text-sm font-semibold", t.heading)}>
+            List sync (options pane, full width)
+          </h2>
+          <div class="grid gap-6">
+            <Tile label="Before a preview" t={t}>
+              <ListSyncTile variant={variant} state="idle" />
+            </Tile>
+            <Tile label="Reading the lists" t={t}>
+              <ListSyncTile variant={variant} state="reading" />
+            </Tile>
+            <Tile label="Preview · all four trackers" t={t}>
+              <ListSyncTile variant={variant} state="preview" />
+            </Tile>
+            <Tile label="Preview · Simkl without anime, one item kept out" t={t}>
+              <ListSyncTile variant={variant} state="no-simkl-anime" />
+            </Tile>
+            <Tile label="Only one tracker connected" t={t}>
+              <ListSyncTile variant={variant} state="too-few" />
+            </Tile>
+          </div>
+        </section>
 
         {/* OPTIONS */}
         <section id="options" class="scroll-mt-20 space-y-4">

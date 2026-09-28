@@ -149,7 +149,7 @@ export function ListSyncTile({
           }
         : null;
   return (
-    <div class={clsx("w-full max-w-xl rounded-xl p-5", t.page)}>
+    <div class={clsx("w-full rounded-xl p-5", t.page)}>
       <ListSyncView
         t={t}
         rows={rows(settings)}
@@ -170,6 +170,7 @@ export function ListSyncTile({
         onKind={noop}
         onSetting={noop}
         onIgnore={noop}
+        onRestore={noop}
         onClearIgnored={noop}
       />
     </div>

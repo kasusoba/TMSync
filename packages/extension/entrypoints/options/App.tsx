@@ -872,16 +872,6 @@ export function App() {
     (stoppedAt
       ? `The background stopped${stoppedAt.length ? ` while reading ${stoppedAt.join(", ")}` : ""}. Try again.`
       : undefined);
-  // The preview on screen, without the items the user has since kept out.
-  const shownPreview = syncJob?.preview
-    ? {
-        ...syncJob.preview,
-        plan: {
-          ...syncJob.preview.plan,
-          items: syncJob.preview.plan.items.filter((i) => !syncSettings.ignore.includes(i.key)),
-        },
-      }
-    : null;
 
   const saveSyncSettings = async (next: ListSyncSettings) => {
     setSyncSettings(next);
@@ -916,9 +906,14 @@ export function App() {
     }
   };
 
-  // Keep one item out of sync (the preview on screen drops it at once).
+  // Keep one item out of sync, or bring it back (the pane hides kept-out items).
   const ignoreSyncItem = (key: string) =>
     void saveSyncSettings({ ...syncSettings, ignore: [...new Set([...syncSettings.ignore, key])] });
+  const restoreSyncItem = (key: string) =>
+    void saveSyncSettings({
+      ...syncSettings,
+      ignore: syncSettings.ignore.filter((k) => k !== key),
+    });
 
   const updateBadge = async (patch: Partial<BadgePrefs>) => {
     const next = { ...badge, ...patch };
@@ -1470,7 +1465,8 @@ export function App() {
         </nav>
 
         <main class="min-w-0 flex-1 p-6">
-          <div class="mx-auto max-w-xl space-y-3">
+          {/* List sync is a wide table; the other panes read best narrow. */}
+          <div class={clsx("mx-auto space-y-3", active === "listsync" ? "max-w-6xl" : "max-w-xl")}>
             {actError && (
               <p class={clsx("rounded-md px-2.5 py-1.5 text-[11px]", t.infoBox)}>{actError}</p>
             )}
@@ -1508,7 +1504,7 @@ export function App() {
                     on: syncSettings.kinds[tk] ?? syncKindsFor(tk),
                   }))}
                   settings={syncSettings}
-                  preview={shownPreview}
+                  preview={syncJob?.preview ?? null}
                   progress={previewing ? syncJob?.reads : undefined}
                   busy={previewing}
                   error={syncProblem}
@@ -1516,6 +1512,7 @@ export function App() {
                   onKind={setSyncKind}
                   onSetting={(key, on) => void saveSyncSettings({ ...syncSettings, [key]: on })}
                   onIgnore={ignoreSyncItem}
+                  onRestore={restoreSyncItem}
                   onClearIgnored={() => void saveSyncSettings({ ...syncSettings, ignore: [] })}
                 />
               </>
