@@ -1,10 +1,13 @@
 import { actionError } from "@/lib/errors";
+import type { ManualContext } from "@/lib/storage";
+import { pickMedia } from "@/lib/trackers/search";
 import type { ReviewLevel, TraktSearchOption } from "@/lib/trackers/trakt/types";
-import { pickedIdentity, pickedMedia } from "@/lib/trackers/trakt/util";
+import { pickedIdentity } from "@/lib/trackers/trakt/util";
 import {
   type CourSearchOption,
   type CourTracker,
   type RatingLevel,
+  type SearchOption,
   type Tracker,
   type WatchedEpisode,
   type WatchedState,
@@ -91,6 +94,22 @@ const stopKeys = {
   onKeyUp: (e: KeyboardEvent) => e.stopPropagation(),
   onKeyPress: (e: KeyboardEvent) => e.stopPropagation(),
 };
+
+/** Why a tracker's row has no match, in the panel's words. */
+function unresolvedText(tk: Tracker, reason: string | undefined): string {
+  switch (reason) {
+    case "not_connected":
+      return "not connected";
+    case "no_match":
+      return `not on ${trackerLabel(tk)}`;
+    case "ambiguous":
+      return "ambiguous mapping";
+    case "map_loading":
+      return "anime map still downloading";
+    default:
+      return "not found";
+  }
+}
 
 /** Whether the rating panel sends this tracker a note (Simkl keeps none). */
 const takesNote = (tk: Tracker) => trackerNote(tk) !== "none";
@@ -190,13 +209,7 @@ export function TrackingRows({
               ? "…"
               : res.resolved
                 ? `→ ${res.title ?? "matched"}`
-                : res.reason === "no_match"
-                  ? `not on ${trackerLabel(tk)}`
-                  : res.reason === "ambiguous"
-                    ? "ambiguous mapping"
-                    : res.reason === "map_loading"
-                      ? "anime map still downloading"
-                      : "not found";
+                : unresolvedText(tk, res.reason);
           // When resolved, the tracker's own page for this item — click to open it
           // in a new tab (episode/movie/entry). Absent until we have an id.
           const url =
@@ -576,13 +589,7 @@ export function RateNote({
                   ? levelOk(tk)
                     ? `→ ${res.title ?? "matched"}`
                     : "whole entry only · tap for “show”"
-                  : res.reason === "no_match"
-                    ? `not on ${trackerLabel(tk)}`
-                    : res.reason === "ambiguous"
-                      ? "ambiguous mapping"
-                      : res.reason === "map_loading"
-                        ? "anime map still downloading"
-                        : "not found";
+                  : unresolvedText(tk, res.reason);
             return (
               <button
                 type="button"
@@ -964,7 +971,10 @@ export function CourCorrection({
 
 /**
  * Manual-mode picker: on sites with no readable title, the user tells TMSync
- * what's playing. Search Trakt, choose movie/show, give season+episode for a show.
+ * what's playing. It searches one of the site's connected trackers that can
+ * search (a switch when there are several), so manual mode never needs a tracker
+ * the user doesn't use. A show asks for its episode (and a season on a seasoned
+ * tracker; cour numbering is linear).
  */
 export function ManualPick({
   t,
@@ -977,36 +987,55 @@ export function ManualPick({
   onClose: () => void;
   onDone: () => void;
 }) {
-  const [ctx, setCtx] = useState<{ recipeId: string; pageKey: string } | null>(null);
+  const [ctx, setCtx] = useState<ManualContext | null>(null);
+  const [searchers, setSearchers] = useState<{ usable: Tracker[]; searchable: Tracker[] } | null>(
+    null,
+  );
+  const [tracker, setTracker] = useState<Tracker | null>(null);
   const [type, setType] = useState<"movie" | "show">("movie");
   const [query, setQuery] = useState("");
   const [season, setSeason] = useState("");
   const [episode, setEpisode] = useState("");
-  const [results, setResults] = useState<TraktSearchOption[]>([]);
+  const [results, setResults] = useState<SearchOption[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    void sendMessage("getManualContext", { tabId }).then(setCtx);
+    void (async () => {
+      const c = await sendMessage("getManualContext", { tabId });
+      setCtx(c);
+      const s = await sendMessage("manualSearchers", { trackers: c?.trackers ?? [] });
+      setSearchers(s);
+      setTracker(s.usable[0] ?? null);
+    })();
   }, [tabId]);
 
+  const seasoned = tracker !== null && !isSeasonless(tracker);
+  const name = tracker ? trackerLabel(tracker) : "";
+
+  const choose = (tk: Tracker) => {
+    setTracker(tk);
+    setResults([]);
+    setErr(null);
+  };
+
   const runSearch = async () => {
-    if (!query.trim()) return;
+    if (!query.trim() || !tracker) return;
     setBusy(true);
     setErr(null);
-    setResults(await sendMessage("searchTrakt", { query, type }));
+    setResults(await sendMessage("searchTracker", { tracker, query, type }));
     setBusy(false);
   };
 
-  const pick = async (o: TraktSearchOption) => {
+  const pick = async (o: SearchOption) => {
     if (!ctx) return;
     let s: number | undefined;
     let e: number | undefined;
-    if (type === "show") {
-      s = Number.parseInt(season, 10);
+    if (o.mediaType === "show") {
+      s = seasoned ? Number.parseInt(season, 10) : undefined;
       e = Number.parseInt(episode, 10);
-      if (!Number.isFinite(s) || !Number.isFinite(e)) {
-        setErr("Enter the season and episode numbers.");
+      if ((seasoned && !Number.isFinite(s)) || !Number.isFinite(e)) {
+        setErr(seasoned ? "Enter the season and episode numbers." : "Enter the episode number.");
         return;
       }
     }
@@ -1015,8 +1044,8 @@ export function ManualPick({
     const out = await sendMessage("setManualMedia", {
       recipeId: ctx.recipeId,
       pageKey: ctx.pageKey,
-      media: pickedMedia(o, s, e),
-      identity: pickedIdentity(o),
+      media: pickMedia(o, s, e),
+      pick: o,
       tabId,
     });
     setBusy(false);
@@ -1024,16 +1053,51 @@ export function ManualPick({
     else setErr("Couldn’t save the pick.");
   };
 
+  if (searchers && !tracker) {
+    const names = searchers.searchable.map(trackerLabel).join(", ");
+    return (
+      <div class={panelClass(t)}>
+        <PanelHeader t={t} title="What are you watching?" onClose={onClose} />
+        <p class={clsx("text-[12px]", t.sub)}>
+          Picking a title here needs a tracker that can search ({names}). Turn one on for this site,
+          and connect it.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div class={panelClass(t)}>
       <PanelHeader t={t} title="What are you watching?" onClose={onClose} />
+
+      {searchers && searchers.usable.length > 1 && (
+        <div class="mb-2 flex gap-1">
+          {searchers.usable.map((tk) => (
+            <button
+              type="button"
+              key={tk}
+              onClick={() => choose(tk)}
+              class={clsx(
+                "flex flex-1 items-center justify-center gap-1.5 rounded-md py-1 text-[11px] transition-colors",
+                tracker === tk ? "bg-ikura text-white" : t.ghost,
+              )}
+            >
+              <TrackerMark tracker={tk} class="size-3.5" />
+              {trackerLabel(tk)}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div class="mb-3 flex gap-1">
         {(["movie", "show"] as const).map((tt) => (
           <button
             type="button"
             key={tt}
-            onClick={() => setType(tt)}
+            onClick={() => {
+              setType(tt);
+              setResults([]);
+            }}
             class={clsx(
               "flex-1 rounded-md py-1 text-[11px] capitalize transition-colors",
               type === tt ? "bg-ikura text-white" : t.ghost,
@@ -1047,7 +1111,7 @@ export function ManualPick({
       {type === "show" && (
         <div class="mb-3 flex gap-2">
           {[
-            { label: "Season", value: season, set: setSeason },
+            ...(seasoned ? [{ label: "Season", value: season, set: setSeason }] : []),
             { label: "Episode", value: episode, set: setEpisode },
           ].map((f) => (
             <label key={f.label} class="flex-1">
@@ -1080,11 +1144,11 @@ export function ManualPick({
             }}
             onKeyUp={(ev) => ev.stopPropagation()}
             onKeyPress={(ev) => ev.stopPropagation()}
-            placeholder={`Search ${type}s on Trakt…`}
+            placeholder={`Search ${type}s on ${name}…`}
             class="w-full bg-transparent py-1.5 text-[13px] outline-none"
           />
         </div>
-        <Btn t={t} tone="primary" disabled={busy} onClick={runSearch}>
+        <Btn t={t} tone="primary" disabled={busy || !tracker} onClick={runSearch}>
           Search
         </Btn>
       </div>
@@ -1098,7 +1162,7 @@ export function ManualPick({
           results.map((o) => (
             <button
               type="button"
-              key={`${o.type}-${o.traktId}`}
+              key={`${o.tracker}-${o.mediaType}-${o.id}`}
               onClick={() => pick(o)}
               disabled={busy}
               class={clsx(
@@ -1108,7 +1172,9 @@ export function ManualPick({
                 "hover:ring-2 hover:ring-ikura",
               )}
             >
-              {optionLabel(o)}
+              {o.title}
+              {o.year ? ` (${o.year})` : ""}
+              {` · ${(o.format ?? o.mediaType).toLowerCase()}`}
             </button>
           ))
         )}
@@ -1233,7 +1299,6 @@ function watchedSummary(w: WatchedState): string | null {
 export function NowPlaying({
   status,
   media,
-  tracker,
   trackers,
   tabId,
   t,
@@ -1241,8 +1306,6 @@ export function NowPlaying({
 }: {
   status: BadgeStatus;
   media: ParsedMedia | null;
-  /** Primary tracker (drives the quick prompt / watched line). */
-  tracker: Tracker;
   /** Enabled tracker set (the rate/note composer fans out across it). */
   trackers: Tracker[];
   tabId: number;

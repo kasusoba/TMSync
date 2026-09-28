@@ -305,6 +305,19 @@ export function App() {
 
         {/* PICKER */}
         <Group id="picker" title="Picker" t={t}>
+          <Tile label="Set up · no tracker connected yet" t={t}>
+            <PickerPanel
+              variant={variant}
+              mode="setup"
+              name="Popcorn Movies"
+              fields={[]}
+              mediaType="auto"
+              trackers={[]}
+              iframe={false}
+              preview={{ ok: true, text: "" }}
+              noTracker
+            />
+          </Tile>
           <Tile label="Set up · auto-detected, good preview" t={t}>
             <PickerPanel
               variant={variant}
@@ -750,10 +763,29 @@ export function App() {
               type="movie"
               query="dune part two"
               results={["Dune: Part Two (2024) · movie", "Dune (2021) · movie"]}
+              trackers={["trakt"]}
+              tracker="trakt"
             />
           </Tile>
           <Tile label="Manual mode · pick a show + S/E" t={t}>
-            <ManualPickPanel variant={variant} type="show" query="the bear" results={[]} />
+            <ManualPickPanel
+              variant={variant}
+              type="show"
+              query="the bear"
+              results={[]}
+              trackers={["trakt"]}
+              tracker="trakt"
+            />
+          </Tile>
+          <Tile label="Manual mode · several trackers, cour picked (episode only)" t={t}>
+            <ManualPickPanel
+              variant={variant}
+              type="show"
+              query="frieren"
+              results={["Frieren: Beyond Journey's End (2023) · tv"]}
+              trackers={["anilist", "mal"]}
+              tracker="mal"
+            />
           </Tile>
           <Tile label="Episode chooser · prompt (S/E-less URL)" t={t}>
             <EpisodePrompt variant={variant} />

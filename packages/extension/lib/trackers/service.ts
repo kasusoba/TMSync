@@ -4,7 +4,7 @@ import type { BoundCourPins } from "./cour-pins";
 import { malService } from "./mal/service";
 import { simklService } from "./simkl/service";
 import { traktService } from "./trakt/service";
-import type { CourTracker, RatingLevel, Tracker } from "./types";
+import type { CourTracker, RatingLevel, SearchOption, Tracker } from "./types";
 
 type Ok = Promise<{ ok: boolean; error?: string }>;
 
@@ -45,6 +45,17 @@ export interface TrackerService {
   connect(): Promise<void>;
   disconnect(): Promise<void>;
   review: ReviewHandler;
+  /**
+   * Free-text search of this tracker, for manual mode (a site with no readable
+   * title). Optional: Simkl has none, since its shared daily quota rules out
+   * searching.
+   */
+  search?(query: string, type: "movie" | "show"): Promise<SearchOption[]>;
+  /**
+   * Lock this tracker's match to a manual pick, when the pick's ids alone could
+   * drift (Trakt keeps a correction). Optional: a cour pick names its entry by id.
+   */
+  pinPick?(media: ParsedMedia, pick: SearchOption): Promise<void>;
   /** Alarm handlers by alarm name (the tracker creates the alarms itself). */
   alarms?: Record<string, () => Promise<void>>;
   /** Listeners and this tracker's own message handlers (features only it has), set

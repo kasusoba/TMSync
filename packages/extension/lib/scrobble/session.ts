@@ -1,5 +1,5 @@
 import { quickLinkSlugs } from "@/lib/storage";
-import { routeTracker } from "@/lib/trackers";
+import { inferNativeTracker } from "@/lib/trackers";
 import { type Tracker, isSeasonless, trackerLabel } from "@/lib/trackers/types";
 import {
   type BadgeState,
@@ -623,11 +623,12 @@ export class SessionManager {
         media.episode === undefined);
     this.videoSelector = recipe.video.selector;
     this.frame = recipe.video.frame;
-    // Route by TYPE: a movie on an anilist (anime) site still goes to Trakt.
-    this.tracker = routeTracker(recipe.tracker, media.mediaType);
     // MULTI-TRACK: the full toggled set — the background derives the non-native
     // one(s) via the crosswalk. Single-tracker recipes yield [tracker] (unchanged).
     this.trackers = recipeTrackers(recipe);
+    // A first guess at the primary tracker, from the page alone. The background
+    // knows which trackers are connected and names the real one in `resolveMedia`.
+    this.tracker = inferNativeTracker(media, this.trackers);
 
     // A cour tracker resolves by TITLE here: a scraped tmdbId can't stand in for it. On
     // an SPA the URL's tmdbId is present immediately but the title (`.title span`)
@@ -650,7 +651,6 @@ export class SessionManager {
 
     await sendMessage("publishMedia", {
       media,
-      tracker: this.tracker,
       trackers: this.trackers,
       videoSelector: recipe.video.selector,
       frame: recipe.video.frame,
@@ -659,10 +659,14 @@ export class SessionManager {
     // Seed the badge immediately with the scraped title, then refine it with what
     // the tracker actually matched — so the user can verify (and fix) the target
     // BEFORE pressing play, not only after the first scrobble fires.
+    await sendMessage("reportScrobble", {
+      state: "idle",
+      title: label(media, isSeasonless(this.tracker)),
+    });
+    const resolved = await sendMessage("resolveMedia", { media, trackers: this.trackers });
+    this.tracker = resolved.tracker;
     const trackerName = trackerLabel(this.tracker);
     const seasonless = isSeasonless(this.tracker); // per-cour trackers have no seasons
-    await sendMessage("reportScrobble", { state: "idle", title: label(media, seasonless) });
-    const resolved = await sendMessage("resolveMedia", { media, tracker: this.tracker });
     if (!(resolved.resolved && resolved.title)) {
       await sendMessage("reportScrobble", {
         state: "error",
@@ -739,12 +743,16 @@ export class SessionManager {
   ): Promise<void> {
     this.videoSelector = recipe.video.selector;
     this.frame = recipe.video.frame;
-    this.tracker = recipe.tracker;
     this.trackers = recipeTrackers(recipe);
+    this.tracker = this.trackers[0] ?? recipe.tracker;
 
     const pageKey =
       (recipe.manualKey ? readField(recipe.manualKey, engineCtx) : null) ?? document.title.trim();
-    await sendMessage("publishManualContext", { recipeId: recipe.id, pageKey });
+    await sendMessage("publishManualContext", {
+      recipeId: recipe.id,
+      pageKey,
+      trackers: this.trackers,
+    });
 
     const media = await sendMessage("getManualMedia", { recipeId: recipe.id, pageKey });
     if (!media) {
@@ -763,22 +771,21 @@ export class SessionManager {
 
     this.manualAwaiting = false;
     this.localMedia = media;
-    // A manually-picked movie still routes to Trakt (constraint #1).
-    this.tracker = routeTracker(recipe.tracker, media.mediaType);
+    this.tracker = inferNativeTracker(media, this.trackers);
     const key = `manual:${pageKey}:${mediaKey(media)}`;
     if (key === this.lastPublishedKey) return;
     this.lastPublishedKey = key;
 
     await sendMessage("publishMedia", {
       media,
-      tracker: this.tracker,
       trackers: this.trackers,
       videoSelector: this.videoSelector,
       frame: this.frame,
     });
-    // The pick is locked to a Trakt entry via a correction, so resolveMedia hits;
-    // either way the title is set, so seed the badge and let play scrobble it.
-    const resolved = await sendMessage("resolveMedia", { media, tracker: this.tracker });
+    // The pick carries the picked entry's ids, so resolveMedia hits; either way the
+    // title is set, so seed the badge and let play scrobble it.
+    const resolved = await sendMessage("resolveMedia", { media, trackers: this.trackers });
+    this.tracker = resolved.tracker;
     const seasonless = isSeasonless(this.tracker);
     await sendMessage("reportScrobble", {
       state: "idle",

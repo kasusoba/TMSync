@@ -3,7 +3,8 @@ import { actionError } from "@/lib/errors";
 import { loadRecipes, recipeTarget } from "@/lib/recipes";
 import { newRecipeId, slugifyHost } from "@/lib/recipes/id";
 import { customRecipes } from "@/lib/storage";
-import { isSeasonless } from "@/lib/trackers/types";
+import { ALL_TRACKERS, isSeasonless } from "@/lib/trackers/types";
+import { loadAccounts } from "@/lib/ui/accounts";
 import { useKeyShield } from "@/lib/ui/key-shield";
 import { PickerPanel } from "@/lib/ui/kit/PickerPanel";
 import { sendMessage } from "@/messaging";
@@ -136,6 +137,9 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
   // Set once we've loaded the user's OWN saved recipe for this site — we then
   // edit it in place (keep its id) instead of creating a duplicate.
   const [editingId, setEditingId] = useState<string | null>(null);
+  // No tracker connected: a new site would have nowhere to record, so the panel
+  // asks to connect one first. null until the accounts load.
+  const [noTracker, setNoTracker] = useState<boolean | null>(null);
   // Name of a LIBRARY recipe that already covers this page (when the user has no
   // override yet) — saving here creates a local override that wins over it.
   const [libraryCovers, setLibraryCovers] = useState<string | null>(null);
@@ -158,8 +162,15 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
         setDraft(recipeToDraft(own));
         setName(own.name);
         setEditingId(own.id);
+        setNoTracker(false);
         return; // editing own recipe — no need for the library note
       }
+      // A new site starts with the trackers the user connected (none turned on for
+      // a tracker they don't use).
+      const accounts = await loadAccounts();
+      const connected = ALL_TRACKERS.filter((tk) => accounts[tk]?.connected);
+      setDraft((d) => ({ ...d, trackers: connected }));
+      setNoTracker(connected.length === 0);
       // A recipe exists for this site but not this URL — note it instead of editing it.
       const siteRecipe = custom.find((r) => recipeMatchesHost(r, location.hostname));
       if (siteRecipe) setSiteRecipeName(siteRecipe.name);
@@ -395,6 +406,8 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
         <PickerPanel
           variant="dark"
           mode={editingId ? "edit" : "setup"}
+          noTracker={!!noTracker}
+          onOpenSettings={() => void sendMessage("openOptions", undefined)}
           name={name}
           urlPattern={draft.match.urlPattern}
           patternMatchesPage={(() => {
@@ -484,9 +497,7 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
               const trackers = on
                 ? d.trackers.filter((x) => x !== tracker)
                 : [...d.trackers, tracker];
-              // Enabling a cour tracker (AniList, MAL) implies an anime series with a
-              // real title: it's never a manual (no-title) recipe.
-              return { ...d, trackers, manual: isSeasonless(tracker) && !on ? false : d.manual };
+              return { ...d, trackers };
             })
           }
           onIframeChange={(v) =>

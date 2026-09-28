@@ -1,5 +1,5 @@
 import { anilistCorrections, anilistResolutionCache } from "../../storage";
-import { bindPins, setKey } from "../cour-pins";
+import { bindPins, courSearch, setKey } from "../cour-pins";
 import type { CourTrackerService } from "../service";
 import { connect, disconnect, getRedirectUri, isConnected } from "./auth";
 import { anilistCacheKey, legacyAnilistKey, resolveById, searchAniList } from "./client";
@@ -31,6 +31,7 @@ export const anilistService: CourTrackerService = {
     saveNote: (m, _level, text) => anilistSaveNote(m, text),
     deleteNote: (m) => anilistDeleteNote(m),
   },
+  search: courSearch("anilist", searchAniList),
   pins: bindPins<AniListIdentity>({
     search: searchAniList,
     // The identity, not the seam item: a title pin keeps `idMal`, so MAL can follow it.

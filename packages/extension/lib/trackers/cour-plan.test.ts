@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { type CourEntry, type CourPlanInput, planCourWrite, planRewatchConfirm } from "./cour-plan";
+import {
+  type CourEntry,
+  type CourPlanInput,
+  courEpisode,
+  planCourWrite,
+  planRewatchConfirm,
+} from "./cour-plan";
 
 const base: CourPlanInput = {
   phase: "stop",
@@ -188,5 +194,16 @@ describe("planRewatchConfirm", () => {
       progress: 3,
       status: "REPEATING",
     });
+  });
+});
+
+describe("courEpisode", () => {
+  it("counts an anime movie as its single episode", () => {
+    expect(courEpisode({ mediaType: "movie", title: "Your Name" })).toBe(1);
+  });
+
+  it("keeps a series episode as scraped", () => {
+    expect(courEpisode({ mediaType: "show", title: "Frieren", episode: 7 })).toBe(7);
+    expect(courEpisode({ mediaType: "show", title: "Frieren" })).toBeUndefined();
   });
 });

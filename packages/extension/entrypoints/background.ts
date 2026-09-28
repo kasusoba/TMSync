@@ -20,11 +20,13 @@ import {
   tabStatus,
 } from "@/lib/storage";
 import {
+  ALL_TRACKERS,
+  connectedTrackers,
   getAdapter,
   inferNativeTracker,
   isPassthrough,
   isSeasonless,
-  routeTracker,
+  speaksPage,
   trackerFamily,
   trackerLabel,
 } from "@/lib/trackers";
@@ -37,7 +39,6 @@ import type { Animap } from "@/lib/trackers/animap/index";
 import { loadAnimap, parseAnimeMap } from "@/lib/trackers/animap/load";
 import { planCourWrite } from "@/lib/trackers/cour-plan";
 import { type ReviewHandler, allServices, getService } from "@/lib/trackers/service";
-import { saveCorrection as saveTraktCorrection } from "@/lib/trackers/trakt/client";
 import { type TrackedItem, type Tracker, WATCHED_THRESHOLD } from "@/lib/trackers/types";
 import {
   type BadgeStatus,
@@ -200,15 +201,24 @@ export default defineBackground(() => {
   });
 
   // Pre-resolution for the badge: resolve identity (cached) without recording so
-  // the user sees the matched tracker title before play. Trakt and AniList read
-  // without a login, so this works even before Connect. MAL needs its site access,
-  // and Simkl never searches, so they may show no match until connected or written.
+  // the user sees the matched tracker title before play. It asks the primary
+  // tracker among the CONNECTED ones, so a tracker the user never connected is not
+  // called. With none connected, Trakt and AniList still read without a login, so
+  // the badge shows a match before Connect. MAL needs its site access, and Simkl
+  // never searches, so they may show no match until connected or written.
   onMessage("resolveMedia", async ({ data }) => {
-    const adapter = getAdapter(routeTracker(data.tracker, data.media.mediaType));
+    const tracker = inferNativeTracker(data.media, await connectedTrackers(data.trackers));
+    const adapter = getAdapter(tracker);
     try {
-      const item = await adapter.resolve(data.media);
-      if (!item) return { resolved: false };
+      const { item } = await resolveNative(
+        tracker,
+        data.media,
+        await animapOverrides.getValue(),
+        await loadAnimap(),
+      );
+      if (!item) return { tracker, resolved: false };
       return {
+        tracker,
         resolved: true,
         id: item.id,
         title: item.title,
@@ -220,8 +230,8 @@ export default defineBackground(() => {
       // fails here. Say "connect", not "not found".
       const connected = await adapter.isConnected().catch(() => true);
       return connected
-        ? { resolved: false }
-        : { resolved: false, reason: "not_connected" as const };
+        ? { tracker, resolved: false }
+        : { tracker, resolved: false, reason: "not_connected" as const };
     }
   });
 
@@ -229,15 +239,28 @@ export default defineBackground(() => {
   onMessage("resolveAll", async ({ data }) => {
     const { trackers } = data;
     if (!trackers.length) return [];
+    // Only the connected trackers are asked. The others get a "not connected" row,
+    // in the recipe's order, so the panel still lists every enabled tracker.
+    const connected = await connectedTrackers(trackers);
+    const offline = (tracker: Tracker): TrackerResolution => ({
+      tracker,
+      resolved: false,
+      reason: "not_connected",
+    });
     try {
-      return await resolveAcross(
+      const rows = await resolveAcross(
         data.media,
-        trackers,
+        connected,
         await animapOverrides.getValue(),
         await loadAnimap(),
       );
+      return trackers.map((tk) => rows.find((r) => r.tracker === tk) ?? offline(tk));
     } catch {
-      return trackers.map((tracker) => ({ tracker, resolved: false, reason: "http" }));
+      return trackers.map((tracker) =>
+        connected.includes(tracker)
+          ? { tracker, resolved: false, reason: "http" }
+          : offline(tracker),
+      );
     }
   });
 
@@ -258,9 +281,9 @@ export default defineBackground(() => {
 
   onMessage("setManualMedia", async ({ data, sender }) => {
     // Lock resolution to the exact entry the user picked, so re-searching the title
-    // can't drift to a remake or a wrong year later. The manual picker searches
-    // Trakt, so the pick is a Trakt correction (the one Trakt tie left here).
-    await saveTraktCorrection(data.media, data.identity);
+    // can't drift to a remake or a wrong year later. The pick's own ids do this for
+    // most trackers; one that needs more keeps its own lock (`pinPick`).
+    await getService(data.pick.tracker).pinPick?.(data.media, data.pick);
     // Remember the pick so the same file/title auto-resolves next time.
     const all = await manualSelections.getValue();
     all[`${data.recipeId}::${data.pageKey}`] = data.media;
@@ -321,7 +344,14 @@ export default defineBackground(() => {
       }
       return;
     }
-    if (all[tabId]?.recipeId === data.recipeId && all[tabId]?.pageKey === data.pageKey) return;
+    const prev = all[tabId];
+    if (
+      prev?.recipeId === data.recipeId &&
+      prev.pageKey === data.pageKey &&
+      prev.trackers?.join() === data.trackers.join()
+    ) {
+      return;
+    }
     all[tabId] = data;
     await manualContexts.setValue(all);
   });
@@ -330,6 +360,22 @@ export default defineBackground(() => {
     const tabId = data?.tabId ?? sender.tab?.id;
     if (tabId === undefined) return null;
     return (await manualContexts.getValue())[tabId] ?? null;
+  });
+
+  onMessage("openOptions", () => browser.runtime.openOptionsPage());
+
+  onMessage("manualSearchers", async ({ data }) => {
+    const searchable = ALL_TRACKERS.filter((tk) => !!getService(tk).search);
+    const usable = (await connectedTrackers(data.trackers)).filter((tk) => searchable.includes(tk));
+    return { usable, searchable };
+  });
+
+  onMessage("searchTracker", async ({ data }) => {
+    try {
+      return (await getService(data.tracker).search?.(data.query, data.type)) ?? [];
+    } catch {
+      return [];
+    }
   });
 
   onMessage("searchCour", async ({ data }) => {
@@ -465,12 +511,17 @@ export default defineBackground(() => {
   onMessage("publishMedia", async ({ data, sender }) => {
     const tabId = sender.tab?.id;
     if (tabId === undefined) return;
+    // The primary tracker is decided here, where the connections are known: the
+    // native one among the connected trackers (see `connectedTrackers`).
+    const { trackers } = data;
+    if (!trackers.length) return;
+    const tracker = inferNativeTracker(data.media, await connectedTrackers(trackers));
     const all = await tabSessions.getValue();
     const prev = all[tabId];
     all[tabId] = {
       media: data.media,
-      tracker: data.tracker,
-      trackers: data.trackers,
+      tracker,
+      trackers,
       videoSelector: data.videoSelector,
       frame: data.frame,
       // Keep progress across a re-publish of the same item (recheck). Start fresh
@@ -503,9 +554,15 @@ export default defineBackground(() => {
     const session = (await tabSessions.getValue())[tabId];
     if (!session) return null;
     try {
-      const tracker = routeTracker(session.tracker, session.media.mediaType);
+      const enabled = session.trackers?.length ? session.trackers : [session.tracker];
+      const tracker = inferNativeTracker(session.media, await connectedTrackers(enabled));
       const adapter = getAdapter(tracker);
-      const item = await adapter.resolve(session.media);
+      const { item } = await resolveNative(
+        tracker,
+        session.media,
+        await animapOverrides.getValue(),
+        await loadAnimap(),
+      );
       if (!item) return null;
       return await adapter.watchedState(item);
     } catch {
@@ -521,7 +578,9 @@ export default defineBackground(() => {
     if (tabId === undefined) return [];
     const session = (await tabSessions.getValue())[tabId];
     if (!session) return [];
-    const enabled = session.trackers?.length ? session.trackers : [session.tracker];
+    const enabled = await connectedTrackers(
+      session.trackers?.length ? session.trackers : [session.tracker],
+    );
     const out: WatchStanding[] = [];
     for (const tracker of enabled.filter(isSeasonless)) {
       try {
@@ -673,19 +732,37 @@ async function recordScrobble(
   // MULTI-TRACK: the enabled set + which tracker speaks the page's numbering
   // natively (recorded directly). Every OTHER enabled tracker is derived via the
   // crosswalk. `trackers` is authoritative; fall back to the legacy single field.
-  const enabled = data.trackers?.length ? data.trackers : [data.tracker];
+  // Only the CONNECTED trackers are called: one the user never connected is
+  // reported as such and never used as the anchor for the others.
+  const toggled = data.trackers?.length ? data.trackers : [data.tracker];
+  const enabled = await connectedTrackers(toggled);
+  const offline: DerivedOutcome[] = toggled
+    .filter((tk) => !enabled.includes(tk))
+    .map((tracker) => ({ tracker, ok: false, skipped: true, reason: "not_connected" }));
   // The native tracker is always an ENABLED one (inferNativeTracker picks from
   // `enabled`). So an AniList-only recipe on a TMDB/seasoned site records AniList
   // directly with the scraped episode instead of forcing it through the crosswalk.
+  // With a tmdb id on the page, an anchor that doesn't speak its numbering goes
+  // through the crosswalk instead (see `resolveNative`).
   const native = inferNativeTracker(data.media, enabled);
-  let nativeItem: TrackedItem | null = null;
+  const overrides = await animapOverrides.getValue();
+  const animap = await loadAnimap();
+  let anchor: NativeResolution = { item: null, media: data.media };
   let nativeError: string | undefined;
   try {
-    nativeItem = await getAdapter(native).resolve(data.media);
+    anchor = await resolveNative(native, data.media, overrides, animap);
   } catch (e) {
     nativeError = errorMessage(e);
   }
-  const nativeReply = await recordNative(native, nativeItem, nativeError, data);
+  const nativeItem = anchor.item;
+  const nativeReply = anchor.ambiguous
+    ? {
+        ok: false,
+        resolved: false,
+        reason: "numbering_mismatch" as const,
+        primaryTracker: native,
+      }
+    : await recordNative(native, nativeItem, nativeError, { ...data, media: anchor.media });
 
   // Derive + record every OTHER enabled tracker via the crosswalk (+ overrides).
   // The native item is the anchor: a reverse (cour → seasoned) derive bridges from
@@ -695,8 +772,6 @@ async function recordScrobble(
     .filter((t) => t !== native)
     .sort((a, b) => Number(isPassthrough(a)) - Number(isPassthrough(b)));
   const late = onLate && data.action === "stop" ? await trackersThatWait(others) : [];
-  const overrides = await animapOverrides.getValue();
-  const animap = await loadAnimap();
   const derived = await recordDerivedTrackers(
     nativeItem,
     others.filter((t) => !late.includes(t)),
@@ -708,7 +783,41 @@ async function recordScrobble(
     onLate(recordDerivedTrackers(nativeItem, late, data, overrides, animap));
     derived.push(...late.map((tracker) => ({ tracker, ok: true, deferred: true })));
   }
+  derived.push(...offline);
   return { ...nativeReply, derived: derived.length ? derived : undefined };
+}
+
+/** The anchor's entry and the media it records (the page's, or the crosswalk's). */
+interface NativeResolution {
+  item: TrackedItem | null;
+  media: ParsedMedia;
+  /** The crosswalk can't pin one entry: refuse, never guess. */
+  ambiguous?: true;
+}
+
+/**
+ * Resolve the anchor tracker. It takes the page as scraped when it speaks the
+ * page's numbering. When it doesn't (a cour tracker on a TMDB page because the
+ * seasoned tracker is not connected), the crosswalk maps it like a derived
+ * tracker, so it gets the exact cour and its own episode. A crosswalk miss falls
+ * back to the page as scraped (a title match, the guardrail still applies); an
+ * ambiguous row is refused.
+ */
+async function resolveNative(
+  native: Tracker,
+  media: ParsedMedia,
+  overrides: AnimapOverrides,
+  animap: Animap,
+): Promise<NativeResolution> {
+  if (!speaksPage(native, media)) {
+    const d = deriveMediaWith(native, media, null, overrides, animap);
+    if (d.kind === "ambiguous") return { item: null, media, ambiguous: true };
+    if (d.kind === "resolved") {
+      const target = d.ids ? { ...d.media, ids: { ...d.media.ids, ...d.ids } } : d.media;
+      return { item: await resolveDerived(native, d), media: target };
+    }
+  }
+  return { item: await getAdapter(native).resolve(media), media };
 }
 
 /** Record the native tracker directly and shape the badge's primary reply. */
@@ -807,9 +916,9 @@ async function resolveAcross(
   animap: Animap,
 ): Promise<TrackerResolution[]> {
   const native = inferNativeTracker(media, trackers); // always one of `trackers`
-  const nativeItem = await getAdapter(native)
-    .resolve(media)
-    .catch(() => null);
+  const nativeItem = (
+    await resolveNative(native, media, overrides, animap).catch(() => ({ item: null }))
+  ).item;
   const out: TrackerResolution[] = [];
   for (const tk of trackers) {
     if (tk === native) {
@@ -857,29 +966,29 @@ async function reviewTarget(
 > {
   const tracker = data.tracker;
   const review = getService(tracker).review;
-  const enabled = data.trackers?.length ? data.trackers : [tracker];
+  const enabled = await connectedTrackers(data.trackers?.length ? data.trackers : [tracker]);
   const native = inferNativeTracker(data.media, enabled);
-  if (tracker === native) return { review, media: data.media };
+  if (tracker === native && speaksPage(native, data.media)) return { review, media: data.media };
   // The native item bridges a reverse derive, a same-family sibling (AniList ⇄
   // MAL) takes its ids straight from it, and a passthrough tracker (Simkl) adds them.
+  // An anchor that doesn't speak the page (see `resolveNative`) maps itself
+  // through the crosswalk, with no item to bridge from.
   const bridges =
-    needsCourBridge(native, tracker) ||
-    trackerFamily(native) === trackerFamily(tracker) ||
-    trackerFamily(tracker) === "any";
+    tracker !== native &&
+    (needsCourBridge(native, tracker) ||
+      trackerFamily(native) === trackerFamily(tracker) ||
+      trackerFamily(tracker) === "any");
+  const overrides = await animapOverrides.getValue();
+  const animap = await loadAnimap();
   const nativeItem = bridges
-    ? await getAdapter(native)
-        .resolve(data.media)
-        .catch(() => null)
+    ? (await resolveNative(native, data.media, overrides, animap).catch(() => ({ item: null })))
+        .item
     : null;
-  const d = deriveMediaWith(
-    tracker,
-    data.media,
-    nativeItem,
-    await animapOverrides.getValue(),
-    await loadAnimap(),
-  );
+  const d = deriveMediaWith(tracker, data.media, nativeItem, overrides, animap);
   const name = trackerLabel(tracker);
   if (d.kind === "ambiguous") return { ok: false, error: `can't tell which ${name} entry this is` };
+  // The anchor falls back to the page as scraped, as it does when it records.
+  if (d.kind === "miss" && tracker === native) return { review, media: data.media };
   if (d.kind === "miss") return { ok: false, error: `not found on ${name}` };
   const media = d.ids ? { ...d.media, ids: { ...d.media.ids, ...d.ids } } : d.media;
   return { review, media, ids: d.ids };

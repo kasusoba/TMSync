@@ -1,4 +1,4 @@
-import { type Tracker, trackerLabel, trackerRates } from "@/lib/trackers/types";
+import { type Tracker, isSeasonless, trackerLabel, trackerRates } from "@/lib/trackers/types";
 import type { TrackerOutcome } from "@/messaging";
 import clsx from "clsx";
 import { Btn, Icon, IconBtn, Stars, TrackerMark, type Variant, outcomeTip, tokens } from "./kit";
@@ -410,17 +410,23 @@ export function EpisodePickPanel({ variant, title }: { variant: Variant; title?:
   );
 }
 
-/** Manual-mode picker: choose what's playing on a site with no readable title. */
+/** Manual-mode picker: choose what's playing on a site with no readable title.
+ * `trackers` are the connected ones that can search (a switch when several);
+ * `tracker` is the one being searched. A cour tracker asks for no season. */
 export function ManualPickPanel({
   variant,
   type = "movie",
   query,
   results,
+  trackers,
+  tracker,
 }: {
   variant: Variant;
   type?: "movie" | "show";
   query: string;
   results: string[];
+  trackers: Tracker[];
+  tracker: Tracker;
 }) {
   const t = tokens(variant);
   return (
@@ -429,6 +435,24 @@ export function ManualPickPanel({
         <strong class={clsx("text-[13px]", t.heading)}>What are you watching?</strong>
         <IconBtn t={t} name="x" title="Close" />
       </header>
+
+      {trackers.length > 1 && (
+        <div class="mb-2 flex gap-1">
+          {trackers.map((tk) => (
+            <button
+              key={tk}
+              type="button"
+              class={clsx(
+                "flex flex-1 items-center justify-center gap-1.5 rounded-md py-1 text-[11px] transition-colors",
+                tracker === tk ? "bg-ikura text-white" : t.ghost,
+              )}
+            >
+              <TrackerMark tracker={tk} class="size-3.5" />
+              {trackerLabel(tk)}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div class="mb-3 flex gap-1">
         {(["movie", "show"] as const).map((tt) => (
@@ -447,7 +471,7 @@ export function ManualPickPanel({
 
       {type === "show" && (
         <div class="mb-3 flex gap-2">
-          {["Season", "Episode"].map((l) => (
+          {(isSeasonless(tracker) ? ["Episode"] : ["Season", "Episode"]).map((l) => (
             <label key={l} class="flex-1">
               <span class={clsx("mb-1 block text-[11px]", t.faint)}>{l}</span>
               <input
@@ -467,7 +491,7 @@ export function ManualPickPanel({
           <Icon name="search" class={clsx("text-[14px]", t.faint)} />
           <input
             value={query}
-            placeholder={`Search ${type}s on Trakt…`}
+            placeholder={`Search ${type}s on ${trackerLabel(tracker)}…`}
             class="w-full bg-transparent py-1.5 text-[13px] outline-none"
           />
         </div>

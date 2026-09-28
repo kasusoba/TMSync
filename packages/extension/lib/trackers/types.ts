@@ -5,7 +5,7 @@
  * tracker-specific lives behind `TrackerAdapter` + the metadata below.
  */
 
-import type { IdNamespace } from "@tmsync/shared";
+import type { IdNamespace, ParsedMedia } from "@tmsync/shared";
 import type { CourEntry } from "./cour-plan";
 
 /** The trackers — a growing list (multi-track, constraint #1). Add a member here,
@@ -178,7 +178,7 @@ export type TrackedItem =
     }
   | {
       tracker: "anilist";
-      /** AniList series entries are always shows here (anime movies route to Trakt). */
+      /** A cour entry. An anime movie is an entry with one episode, so it is a show here too. */
       mediaType: "show";
       /** AniList `Media` id. */
       id: number;
@@ -191,7 +191,7 @@ export type TrackedItem =
     }
   | {
       tracker: "mal";
-      /** Cour entries; anime movies route to Trakt, like AniList. */
+      /** A cour entry; an anime movie is an entry with one episode, as on AniList. */
       mediaType: "show";
       /** MAL anime id. */
       id: number;
@@ -221,6 +221,24 @@ export interface CourSearchOption {
   title: string;
   year?: number;
   episodes: number | null;
+  format?: string;
+}
+
+/**
+ * A search result from any tracker that can search (manual mode's picker). It
+ * carries the ids the entry is known by, so a pick resolves that exact entry on
+ * the tracker it came from and reaches the others by id or through the crosswalk.
+ */
+export interface SearchOption {
+  tracker: Tracker;
+  /** The entry's id on `tracker`. */
+  id: number;
+  mediaType: "movie" | "show";
+  title: string;
+  year?: number;
+  /** The ids the pick is known by (tmdb/imdb/tvdb for Trakt, its own id for a cour tracker). */
+  ids: NonNullable<ParsedMedia["ids"]>;
+  /** The entry's format as the tracker names it (a cour tracker's "TV", "MOVIE"). */
   format?: string;
 }
 

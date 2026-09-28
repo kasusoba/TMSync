@@ -1,3 +1,4 @@
+import type { ManualContext } from "@/lib/storage";
 import type { AccountStatus } from "@/lib/trackers/service";
 import type { ResolvedIdentity, TraktIds, TraktSearchOption } from "@/lib/trackers/trakt/types";
 import type {
@@ -6,6 +7,7 @@ import type {
   RatingLevel,
   RecordPhase,
   ScoreFormat,
+  SearchOption,
   Tracker,
   WatchedState,
 } from "@/lib/trackers/types";
@@ -157,7 +159,8 @@ export interface BadgeStatus {
 
 export interface TabMedia {
   media: ParsedMedia;
-  /** The PRIMARY/native tracker this tab's item routes to. */
+  /** The PRIMARY/native tracker this tab's item routes to: the native one among
+   * the CONNECTED trackers, decided by the background on `publishMedia`. */
   tracker: Tracker;
   /** MULTI-TRACK: the full toggled set (native + derived). Omitted ⇒ [tracker]. */
   trackers?: Tracker[];
@@ -208,8 +211,12 @@ export interface ProtocolMap {
   disconnectTracker(tracker: Tracker): void;
   scrobble(req: ScrobbleRequest): ScrobbleReply;
   /** Resolve scraped media to its tracker identity WITHOUT recording — lets the
-   * badge show the matched title before the user presses play (transparency). */
-  resolveMedia(q: { media: ParsedMedia; tracker: Tracker }): {
+   * badge show the matched title before the user presses play (transparency).
+   * `trackers` is the recipe's enabled set; the background asks the primary one
+   * among those the user connected and names it in `tracker`. */
+  resolveMedia(q: { media: ParsedMedia; trackers: Tracker[] }): {
+    /** The tracker that was asked. */
+    tracker: Tracker;
     resolved: boolean;
     /** Why it didn't resolve, when the tracker needs a connection first. */
     reason?: "not_connected";
@@ -248,7 +255,9 @@ export interface ProtocolMap {
 
   // --- per-tab session coordination (top frame ↔ player iframe ↔ background) ---
   /** The recipe-matching frame publishes the media so a cross-origin player iframe can pick it up. */
-  publishMedia(data: TabMedia): void;
+  /** The top frame publishes what the tab plays. The background picks the primary
+   * tracker (`TabMedia.tracker`) from the connected ones. */
+  publishMedia(data: Omit<TabMedia, "tracker" | "trackers"> & { trackers: Tracker[] }): void;
   /** The media the top frame published for a tab. A content script omits `tabId`
    * (its own tab is inferred from the sender); the popup passes the active tabId. */
   getTabMedia(q?: { tabId?: number }): TabMedia | null;
@@ -276,14 +285,14 @@ export interface ProtocolMap {
   // --- manual mode (sites with no readable title) ---
   /** The remembered manual pick for (recipeId, pageKey), or null. */
   getManualMedia(q: { recipeId: string; pageKey: string }): ParsedMedia | null;
-  /** Set what's playing on a manual site: saves a correction (so it resolves to
-   * the exact picked Trakt entry) + remembers it by (recipeId, pageKey), then
-   * re-resolves the tab so scrobbling starts. */
+  /** Set what's playing on a manual site: the pick's tracker locks its match when
+   * it needs to (`pinPick`), the pick is remembered by (recipeId, pageKey), then the
+   * tab re-resolves so scrobbling starts. */
   setManualMedia(q: {
     recipeId: string;
     pageKey: string;
     media: ParsedMedia;
-    identity: ResolvedIdentity;
+    pick: SearchOption;
     /** Popup supplies the active tabId; a content script omits it. */
     tabId?: number;
   }): { ok: boolean };
@@ -306,9 +315,18 @@ export interface ProtocolMap {
   setEpisode(q: { season: number; episode: number; tabId?: number }): { ok: boolean };
   /** Matcher frame publishes (or clears) this tab's manual context so the badge
    * knows which recipe + page key a pick belongs to. */
-  publishManualContext(ctx: { recipeId: string; pageKey: string } | null): void;
+  publishManualContext(ctx: ManualContext | null): void;
   /** Badge/popup reads the manual context for a tab (popup passes the active tabId). */
-  getManualContext(q?: { tabId?: number }): { recipeId: string; pageKey: string } | null;
+  getManualContext(q?: { tabId?: number }): ManualContext | null;
+  /** The trackers manual mode can search for a recipe's enabled set: `usable` are
+   * the connected ones (or all enabled, when none is connected) that can search;
+   * `searchable` names every tracker that can search, for the "connect one" hint. */
+  manualSearchers(q: { trackers: Tracker[] }): { usable: Tracker[]; searchable: Tracker[] };
+  /** Open the options page (it opens on Account). A content script can't open it
+   * itself. */
+  openOptions(): void;
+  /** Free-text search of one tracker for manual mode. */
+  searchTracker(q: { tracker: Tracker; query: string; type: "movie" | "show" }): SearchOption[];
 
   /** TMDB/IMDB ids for a Trakt show/movie by its URL slug — app.trakt.tv's DOM
    * carries no external-id links (unlike the classic site), so its quick links

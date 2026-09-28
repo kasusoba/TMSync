@@ -1,7 +1,7 @@
 import type { ParsedMedia } from "@tmsync/shared";
 import { animapOverrides } from "../storage";
 import { forwardKey } from "./animap/derive";
-import type { CourSearchOption } from "./types";
+import { type CourSearchOption, type CourTracker, type SearchOption, TRACKER_INFO } from "./types";
 
 /**
  * Where each cour tracker keeps its fix-match pins: the crosswalk override map
@@ -75,4 +75,27 @@ export async function setKey<T>(
     delete all[key];
   } else all[key] = value;
   await item.setValue(all);
+}
+
+/**
+ * Manual-mode search on a cour tracker: its fix-match search, kept to the picked
+ * type (an anime movie is a movie-format entry, a series is any other format).
+ */
+export function courSearch(
+  tracker: CourTracker,
+  search: (query: string) => Promise<CourSearchOption[]>,
+): (query: string, type: "movie" | "show") => Promise<SearchOption[]> {
+  const ns = TRACKER_INFO[tracker].ownNamespace;
+  return async (query, type) =>
+    (await search(query))
+      .filter((o) => (o.format?.toLowerCase() === "movie") === (type === "movie"))
+      .map((o) => ({
+        tracker,
+        id: o.id,
+        mediaType: type,
+        title: o.title,
+        year: o.year,
+        format: o.format,
+        ids: ns ? { [ns]: o.id } : {},
+      }));
 }

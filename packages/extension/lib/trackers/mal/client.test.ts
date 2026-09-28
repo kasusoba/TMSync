@@ -57,6 +57,11 @@ describe("pickBest", () => {
     expect(pickBest(hits, "frieren: beyond journey's end")?.id).toBe(3);
   });
 
+  it("matches only movies on a movie page", () => {
+    expect(pickBest(hits, "Frieren", undefined, "movie")?.id).toBe(1);
+    expect(pickBest(hits.slice(1), "Frieren", undefined, "movie")).toBeUndefined();
+  });
+
   it("skips music videos, promos, and commercials with the exact title", () => {
     const extras = ["music", "pv", "cm"].map((media_type, i) =>
       node({ id: 10 + i, title: "Sousou no Frieren", media_type, start_date: "2023-09-29" }),
