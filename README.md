@@ -18,9 +18,15 @@ reads what's playing, finds it on the right tracker, and logs it for you. No man
 It also works on aggregator sites that don't have an official app or API, which most trackers
 can't touch.
 
-Each thing you watch is routed to the trackers that fit it. Right now that means movies and
-live-action TV go to Trakt and/or Simkl, and anime goes to any of the four at once. If you know MAL-Sync for anime, this is the same idea, made general across
-trackers.
+Each thing you watch is routed to the trackers that fit it:
+
+| You watch | It goes to |
+|---|---|
+| Movies and live-action TV | Trakt and/or Simkl |
+| Anime series | Any of Trakt, AniList, MyAnimeList, and Simkl, all at once if you like |
+
+You choose which trackers are on for each site. If you know MAL-Sync for anime, this is the same
+idea, made general across trackers.
 
 <table>
   <tr>
@@ -37,19 +43,24 @@ trackers.
 
 ## What it does
 
-- Detects the title and episode when you press play and records it to the right tracker, so your
-  profile shows what you're currently watching and marks it watched when you finish. Movies and
-  live-action TV go to Trakt and/or Simkl in real time; anime goes to AniList and/or MyAnimeList
-  (and can go to Trakt and Simkl too).
+- Detects the title and episode when you press play and records it to the right tracker. Trakt
+  and Simkl update in real time, so your profile shows what you're currently watching. AniList
+  and MyAnimeList get one list update per episode, once you pass the point where it counts as
+  watched.
 - Works on most sites with a video and a readable title, including ones with no API.
 - Lets you add a new site yourself with a point-and-click picker, like an ad blocker's element
   picker. No code.
 - Got the wrong match? Click the badge, search the tracker, pick the right one. It remembers the fix.
-- Rate what you watch and keep a private note per item, synced back to your tracker.
-- Adds "watch on…" links to trakt.tv and anilist.co pages that take you to your usual streaming
+- Rate what you watch and keep a private note per item, synced back to your tracker (Simkl
+  takes ratings only).
+- Asks before it touches a finished series. Watching a completed anime again shows a
+  "Rewatching?" prompt first, and TMSync never lowers the progress you already have.
+- Adds "watch on..." links to trakt.tv and anilist.co pages that take you to your usual streaming
   sites at the right episode.
+- Backs up your sites, quick links, and corrections to a file, and exports your Trakt movie
+  history to Letterboxd as a CSV.
 - Your watch history only goes to your own tracker accounts. Matching and scrobbling happen on
-  your machine, and each item goes only to the tracker it's routed to.
+  your machine, and each item goes only to the trackers it's routed to.
 - Only gets access to a site once you enable it there. No broad permissions at install.
 
 ## Getting started
@@ -59,15 +70,21 @@ trackers.
    or [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/tmsync/).
 2. Click the toolbar icon and connect the trackers you use: Trakt, AniList, MyAnimeList, Simkl,
    or any mix. MyAnimeList asks for access to myanimelist.net when you connect it.
-3. Open something to watch on a supported site. A small badge shows what it matched. Press play.
-4. On a new site, click "Set it up with the picker," point at the title and episode, and you're
-   tracking it. You can share the result so others get the site too.
+3. Open something to watch on a streaming site and turn TMSync on for it under "Video detection"
+   in the popup. A small badge shows what it matched. Press play.
+4. On a site nobody has added yet, click "Set up recipe" in the toolbar popup, point at the
+   title and episode, and you're tracking it. Then share it from Options, under Contribute, so
+   others get the site too.
 
 ## Contributing
 
-Site definitions ("recipes") are crowdsourced. Anyone can add support for a new site with a pull
-request, no server involved. Code contributions are welcome too. See
+Site definitions ("recipes") are crowdsourced, and code contributions are welcome. The fastest
+way to add a site is the Contribute page in the extension's options: it opens a prefilled GitHub
+issue, and a bot turns it into a pull request. No server, no account beyond GitHub. Everything
+else, from hand-written recipes to running the code locally, is in
 [`CONTRIBUTING.md`](./CONTRIBUTING.md).
+
+For how the code works, start with [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
 
 ## Support & status
 
@@ -95,148 +112,6 @@ Want to chat, ask a question, or request a site? Join the
   does not allow calls from other origins without this access. No access is granted at
   install.
 -->
-
-## For developers
-
-Cross-browser WebExtension that passively scrobbles what you watch to the right tracker (movies
-and live-action TV to Trakt and Simkl, anime to AniList, MyAnimeList, and the others) using
-declarative **recipes** (data, not code). Trackers sit behind a pluggable adapter seam, so more
-trackers are added behind the same seam, never special-cased in the shared engine (see
-[`docs/TRACKERS-PLAN.md`](./docs/TRACKERS-PLAN.md)).
-
-- [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md): **how the code works**, subsystem by subsystem (start here).
-- [`docs/TMSync-PRD.md`](./docs/TMSync-PRD.md): the what/why (product).
-- [`CLAUDE.md`](./CLAUDE.md): the settled architecture rules and hard constraints.
-- [`docs/MULTI-TRACK.md`](./docs/MULTI-TRACK.md): the anime multi-tracking design.
-
-### Monorepo layout
-
-```
-packages/shared      # recipe schema (Zod) + types + pure extraction engine (no DOM/browser globals)
-packages/extension   # WXT app: entrypoints (background, content, options), engine, tracker adapters, picker, UI
-recipes/index.json   # one tracker-agnostic recipe + quick-link library; each recipe carries its own
-                     #   `trackers` (trakt | anilist | mal | simkl); the engine routes per-recipe (PR-contributed)
-```
-
-**Adding a site or quick link?** See [`CONTRIBUTING.md`](./CONTRIBUTING.md); the recipe library is
-crowdsourced via PRs to `recipes/index.json`.
-
-### Develop
-
-```bash
-pnpm install            # also runs `wxt prepare`
-pnpm dev                # Chrome dev (HMR)
-pnpm dev:firefox        # Firefox dev
-pnpm build              # build chrome-mv3 → packages/extension/.output
-pnpm build:firefox      # build firefox-mv2
-
-pnpm test               # vitest across packages
-pnpm typecheck          # tsc --noEmit across packages
-pnpm lint               # biome (format + lint)
-pnpm format             # biome format --write
-```
-
-Not sure whether the build you loaded is the one you just made? Every content
-script stamps its build time on the page, so in the page console:
-
-```js
-document.documentElement.dataset.tmsyncBuild
-```
-
-### Contributing a change
-
-Work never lands on `main` directly. Branch, open a PR, and let it merge:
-
-```bash
-git checkout -b feat/short-slug
-# commit, then
-git push -u origin feat/short-slug
-gh pr create
-gh pr merge --squash --delete-branch
-```
-
-The PR title becomes a line in the next release notes, so write it for a user:
-what changed for them, in plain words.
-
-### Releasing
-
-Maintainers only.
-
-```bash
-pnpm release minor      # or major / patch / an explicit 1.10.0
-git push --follow-tags
-```
-
-`pnpm release` bumps `packages/extension/package.json`, commits it as
-`chore(release): vX.Y.Z`, and tags that commit. Pushing the tag runs
-`.github/workflows/release.yml`, which re-runs the CI checks, builds the Chrome,
-Firefox, and sources zips, and attaches them to a **draft** GitHub Release whose
-notes are generated from the PRs merged since the last tag. Check them over, then
-publish:
-
-```bash
-gh release edit vX.Y.Z --title vX.Y.Z --draft=false --latest
-```
-
-Uploading to the Chrome Web Store and AMO stays manual.
-
-The workflow needs the `WXT_*` OAuth ids and secrets as repository secrets (see
-`packages/extension/.env.example`); it fails early rather than shipping a build
-that cannot sign in.
-
-The version in `packages/extension/package.json` is the version being *prepared*;
-the tag is the decision to *ship* it. So tag when you actually want a release, not
-every time something lands. To call one off before it goes out, delete the draft
-and its tag (`gh release delete vX.Y.Z --yes --cleanup-tag`), keep working on the
-same prepared version, and tag the final commit when you are ready:
-
-```bash
-git tag -a vX.Y.Z -m vX.Y.Z && git push origin vX.Y.Z
-```
-
-Only ever delete a tag whose release was never published. Once it is out, supersede
-it with a new version instead.
-
-### Status
-
-What works today:
-- **Foundation + engine**: monorepo, `@tmsync/shared` schema + pure `extract()`/`matchRecipe`,
-  recipe-snapshot tests. MV3 posture with no broad host access at install (constraint #5).
-- **Trakt**: OAuth (`launchWebAuthFlow`) + token refresh, search-based resolution with caching,
-  real-time `/scrobble start|pause|stop` driven by a content-side state machine (debounce, one
-  start per session, stop on ended/leave).
-- **AniList + anime**: OAuth (authorization-code), GraphQL `Media` resolution, and threshold-based
-  `SaveMediaListEntry` writes behind the same adapter seam (read-before-write, never lowers
-  progress, "Rewatching?" confirm on a completed season). Anime can be multi-tracked to **both**
-  trackers via the bundled TMDB↔AniList crosswalk (`docs/MULTI-TRACK.md`).
-- **MyAnimeList**: OAuth (authorization code + PKCE, refresh tokens), resolution through
-  AniList's `idMal` or MAL search, and the same threshold-based list writes as AniList (one
-  shared cour planner). Host access to MAL is optional and asked for on Connect.
-- **Simkl**: OAuth (AUTH V2, authorization code + PKCE), real-time scrobbling like Trakt, and
-  entry-level ratings. It gets each page's own numbering (Simkl maps anime itself), never
-  searches before a write, and spaces its calls around Simkl's 20-second scrobble lock.
-- **Element picker**: uBlock-style point-and-click (`@medv/finder`) in a Shadow-DOM overlay with
-  auto-detect + live extract preview; saves a custom recipe and enables the site.
-- **Ratings & notes**: rate what you finish at the levels each tracker supports (Trakt does
-  show/season/episode, AniList and MyAnimeList do the cour, Simkl the whole show or movie),
-  auto-prompted after a write or from the badge, plus
-  one private note per item. Existing scores are read back from the tracker.
-- **Quick links**: on a trakt.tv or anilist.co page, injects deep "watch on ..." links to your
-  sites at the right episode (movie, show S1E1, season S{n}E1, episode S{n}E{m}); managed per-site,
-  reorderable, independent of recipes.
-- **Recipe library**: recipes and quick links fetch from a versioned `index.json` (ETag-conditional,
-  schema-validated, cached), merged custom > remote > bundled. Picker edits shadow a library recipe
-  for the same site.
-- **Options page**: manage enabled sites, quick links (toggle/reorder/edit), the fetched library,
-  your custom recipes (grouped by host), and corrections.
-- **Runtime glue**: a Shadow-DOM scrobble badge showing live state and the matched title,
-  click-to-correct (search the tracker, fix a wrong match, remembered per scraped title), SPA
-  navigation + late-metadata re-matching, same-page and cross-origin iframe players (one frame
-  scrobbles per tab), background reconciliation (a stop if a tab dies), and re-registration on
-  startup.
-
-Running the extension locally (load unpacked, connect a tracker, test a scrobble) is covered in
-[`CONTRIBUTING.md`](./CONTRIBUTING.md#running-the-extension-locally).
 
 ## License
 
