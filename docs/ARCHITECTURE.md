@@ -7,7 +7,8 @@ facts are in [`TRACKERS.md`](./TRACKERS.md).
 
 TMSync scrobbles movies and non-anime TV to Trakt and/or Simkl, and anime to AniList and/or
 MyAnimeList (and to Trakt and Simkl too), all at once if the user wants. It works on arbitrary
-streaming sites, including ones with no API. It exists because tools like MAL-Sync cover only anime,
+streaming sites, including ones with no API. List sync (section 7) can also bring the
+lists of all connected trackers into step. It exists because tools like MAL-Sync cover only anime,
 and others are tied to official integrations and will not touch aggregator sites.
 
 Four decisions shape everything below:
@@ -294,19 +295,102 @@ step best done when a third tracker exists to shape it.)
 
 ---
 
-## 7. Messaging: `packages/extension/messaging.ts`
+## 7. List sync: `lib/sync/`
+
+List sync makes the user's lists agree across every connected tracker: watched episodes, list
+status, and ratings. It is manual. The user previews a plan in Options, then applies it. It runs in
+the background, and nothing of it touches `extract()` or the scrobble path.
+
+**Four steps.**
+
+1. **Read.** Each tracker's service has `readList(kinds)`, which returns its whole list as
+   normalized `ListEntry` values in one of three shapes: `movie` (watched or not), `seasons` (a
+   set of watched episodes per season: Trakt, Simkl shows), and `cour` (a count plus a status:
+   AniList, MAL, Simkl anime). The readers live in `lib/trackers/<tracker>/list.ts`, each a pure
+   normalizer (Zod per item, a bad item is dropped) plus a fetch in its `client.ts`.
+2. **Plan.** `planSync` (`plan.ts`, pure) groups entries that are the same thing, by id only, never
+   by title. Movies and non-anime TV move between Trakt and Simkl by tmdb, imdb, or tvdb. Anime is
+   planned per cour. A seasoned list reaches a cour through the crosswalk, with the user's fix-match
+   pins folded in (`withOverrides`). A crosswalk miss or ambiguity is a skip, reported, never a
+   guess. The result is a `SyncPlan`: per-item writes (`SyncWrite`, which describe intent, not API
+   calls), skips with reasons, conflicts, and notices.
+3. **Preview.** The Options "List sync" pane (`ListSyncView`) shows the plan as a table with one
+   column per tracker, and tabs for removals, conflicts, skips, and items the user keeps out.
+4. **Apply.** Each service has `applyList`, a chunk size and a `run(writes)` that turns writes
+   into that tracker's API calls (`lib/trackers/<tracker>/apply.ts`).
+
+**Merge rules.**
+
+- **Union by default.** Each tracker gets what the others have. Nothing is removed, and progress
+  never goes down.
+- **A main list per kind (optional).** For movies, TV, or anime, one tracker can be the main list.
+  Only it is a source; the others copy it, and a list entry it does not have is removed from them.
+  Trakt watch history is never removed, since deleting plays cannot be undone. A copy that is
+  further than the main list keeps its progress, and the plan says so as a notice.
+- **Kinds per tracker.** The user picks which kinds each tracker takes part in. A kind that is off
+  is off both ways: not read as a source and not written as a target.
+- **Status.** When the progress finishes an entry, it is completed. Otherwise the most recently
+  updated entry wins, and the plan lists it as a conflict. A completed entry is never moved.
+- **Ratings** fill empty ratings only. Scores are compared on the target's own scale, so rounding
+  (AniList 85 to MAL 9 and back) never loops. Two different ratings are a conflict.
+- **Picks.** In a conflict the user can pick the value every tracker gets (`withPicks`). A picked
+  status still follows the episodes. A picked rating replaces the ratings that differ.
+- **Private and adult** AniList entries are skipped unless the user includes them.
+- **Convergence.** Applying a plan and planning again must give no writes. The planner tests check
+  this for every case.
+
+**Jobs, not long messages.** A preview and an apply each run as a job whose state lives in storage
+(`local:list_sync_job`, `local:list_sync_apply`). The start message returns at once, the job saves
+each step with a beat every 10 seconds, and the options page watches the storage item. Closing the
+page does not stop a job. A job whose beat is older than 30 seconds was stopped by the browser, and
+the pane says so. Bump `SYNC_JOB_VERSION` or `APPLY_JOB_VERSION` when a saved shape changes: a job
+from an older build is dropped on read, not rendered.
+
+**Apply.** Trackers run side by side. Each writes in chunks of its own size and spaces its own
+requests. The counts are saved after each chunk, and AniList and MAL also report each entry as it is
+done. Stop ends the run after the chunk in flight, and what was written stays: every write is safe on
+its own. A tracker that answers "too many requests", or loses its connection, stops for the run.
+Nothing retries in a loop.
+
+**No resume from a saved place.** To finish a stopped apply, the user previews again and applies
+that plan. The planner diffs against what each tracker has now, so written items drop out, and a
+history write is never sent twice (on Trakt each one is a new play), not even for a chunk cut off
+when the worker stopped. For the same reason a preview is applied once, and only while it is less
+than 10 minutes old (`applyBlock`).
+
+**Read before write (AniList, MAL).** Scrobbling can change an entry between the preview and the
+apply. So each write is merged with a fresh read of the entry (`merge.ts`, pure): progress is
+`max(fresh, planned)`, a completed entry is never moved, a status goes in only if the entry still has
+the status the preview saw, and a rating fills an empty one unless the user picked it.
+
+**Dates.** A backfilled watch on Trakt or Simkl gets the date the source list last changed, so a
+large first sync does not put hundreds of watches on one day. When the date is unknown, Trakt uses
+the air date and Simkl uses the time of the write.
+
+**Stored choices.** The settings (`sync:list_sync_settings`: kinds, main lists, private, adult, and
+the ignore list) are small user prefs and go into the backup. Picks (`local:list_sync_picks`) stay
+on the device.
+
+**Limits.** Pure union brings back what the user removed on one tracker, because another still has
+it. The main list is the fix today. A snapshot of the last sync (a three-way merge) is the later fix
+for union mode. The ignore list sits in one `sync` item (8 KB, about 400 keys).
+
+---
+
+## 8. Messaging: `packages/extension/messaging.ts`
 
 One typed `ProtocolMap` via `@webext-core/messaging`, no ad-hoc `postMessage`. It's
 the contract for content↔background↔popup/options. Content→background carries `scrobble`,
 `publishMedia`, `updateProgress`, `endSession`, resolve/rate/note/correction messages;
 background→content carries `recheck` and `scrobbleStatus`; popup/options→background carries status,
-connect, search, and register/unregister. Account messages take the tracker as data
+connect, search, register/unregister, and the list sync starts (`listSyncStart`,
+`listSyncApply`). Account messages take the tracker as data
 (`getTrackerStatus`, `connectTracker`, `disconnectTracker`), so a new tracker adds no message. All
 handlers live in `background.ts`.
 
 ---
 
-## 8. Storage: `packages/extension/lib/storage.ts`
+## 9. Storage: `packages/extension/lib/storage.ts`
 
 Every persisted value is a `storage.defineItem`, split into three layers by prefix. The rule that
 keeps them consistent: **the export bundle equals the sync payload equals "your own deltas."**
@@ -316,16 +400,18 @@ travels.
 | Layer | What | Where | Travels? |
 |---|---|---|---|
 | **Library** | shared recipes and quick-link templates (PR-contributed) | `local:remote_recipes` cache, plus the bundled seed | no, each device fetches the repo itself |
-| **Sync** | your recipes, quick links, corrections, manual picks, badge prefs, and your toggles on library items | `sync:` | yes, the only synced layer |
+| **Sync** | your recipes, quick links, corrections, manual picks, badge prefs, list sync choices, and your toggles on library items | `sync:` | yes, the only synced layer |
 | **Local** | tokens, resolution and rating caches, `enabled_origins`, crosswalk data | `local:` | no, secret or regenerable |
 
 - **`sync:`** (small, cross-device, user-owned): one `recipe:{id}` key per custom recipe (through
   `recipes/store.ts`), plus `quick_links`, `quick_links_enabled`, `corrections`, `manual_selections`,
-  and `badge_prefs`.
+  `badge_prefs`, and `list_sync_settings`.
 - **`local:`** (per-device): `trakt_tokens`, `anilist_tokens`, `mal_tokens`, `simkl_tokens`, the
   resolution caches, `simkl_matches`, `simkl_scrobble_at`, `simkl_held_stops`, rating and note
   mirrors (the tracker is the source of truth), `remote_recipes`, `enabled_origins`, `anime_map`
-  and `animap_overrides`, `anilist_corrections`, `mal_corrections`, and `quicklink_slugs`.
+  and `animap_overrides`, `anilist_corrections`, `mal_corrections`, `quicklink_slugs`, and the
+  list sync jobs and picks (`list_sync_job`, `list_sync_apply`, `list_sync_cancel_at`,
+  `list_sync_picks`).
 - **`session:`** (ephemeral, per tab): `tab_sessions` (the crash-reconcile source of truth),
   `tab_frame_origins`, `tab_status`, `manual_contexts`, `episode_overrides`.
 
@@ -355,7 +441,7 @@ The background reads all of this fresh on every wake. There is no in-memory back
 
 ---
 
-## 9. UI: `packages/extension/lib/ui/`
+## 10. UI: `packages/extension/lib/ui/`
 
 - **`kit/kit.tsx`**, the shared design system: `tokens(variant)` (light/dark token maps), and
   primitives `Btn`, `IconBtn`, `Switch`, `Stars`, `Icon`, `TraktMark`, `AniListMark`, `MalMark`, `SimklMark` (via `TrackerMark`). Dark is the
@@ -371,7 +457,7 @@ The background reads all of this fresh on every wake. There is no in-memory back
 
 ---
 
-## 10. Element picker: `lib/picker/`
+## 11. Element picker: `lib/picker/`
 
 How a new site gets added without code. `recipe-builder.ts` is pure authoring logic:
 `autoDetectFields` (tries og/jsonld/title first, using the real `readField`), `suggestUrlPattern`,
@@ -382,7 +468,7 @@ regex/number/title chip builders, `buildRecipe` (assembles + Zod-validates), and
 
 ---
 
-## 11. Build, test, distribution
+## 12. Build, test, distribution
 
 - **WXT** (`packages/extension/wxt.config.ts`): Preact + Tailwind v4. Minimal install permissions
   (`storage, alarms, scripting, identity, activeTab`) + specific host perms (Trakt, AniList, the
@@ -400,7 +486,7 @@ regex/number/title chip builders, `buildRecipe` (assembles + Zod-validates), and
 
 ---
 
-## 12. Known limitations
+## 13. Known limitations
 
 - **Picker versus schema ids.** The schema supports an open multi-id `ids` map, but the picker
   detects TMDB ids only and stores them under `ids.tmdb`. Other namespaces are hand-authorable in a
@@ -412,7 +498,7 @@ regex/number/title chip builders, `buildRecipe` (assembles + Zod-validates), and
 
 ---
 
-## 13. Where do I look when...
+## 14. Where do I look when...
 
 | You want to… | Start here |
 |---|---|
@@ -427,5 +513,6 @@ regex/number/title chip builders, `buildRecipe` (assembles + Zod-validates), and
 | Change rating / notes behaviour | `lib/trackers/trakt/review.ts`, `lib/trackers/anilist/review.ts`, `lib/trackers/mal/review.ts` |
 | Debug anime double-tracking | `lib/trackers/animap/` + `recordDerivedTrackers` in `background.ts` |
 | Change the badge / picker / popup UI | `lib/ui/kit/` (+ `entrypoints/gallery/` to preview) |
+| Change list sync (plan, apply, the pane) | `lib/sync/` + `lib/trackers/<tracker>/list.ts` and `apply.ts` + `lib/ui/kit/ListSyncView.tsx` |
 | Change stored data or add a cache | `lib/storage.ts` |
 | Add a message between parts | `packages/extension/messaging.ts` |

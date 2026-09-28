@@ -55,6 +55,9 @@ idea, made general across trackers.
   takes ratings only).
 - Asks before it touches a finished series. Watching a completed anime again shows a
   "Rewatching?" prompt first, and TMSync never lowers the progress you already have.
+- Brings your lists into step. List sync reads every connected tracker, shows you the plan
+  (episodes, status, ratings, and anything it would remove), and writes it only when you apply.
+  Pick one tracker as the main list, or let each list fill in what the others have.
 - Adds "watch on..." links to trakt.tv and anilist.co pages that take you to your usual streaming
   sites at the right episode.
 - Backs up your sites, quick links, and corrections to a file, and exports your Trakt movie
