@@ -15,7 +15,7 @@ function recipe(partial: Partial<Recipe> & Pick<Recipe, "extract">): Recipe {
     match: { urlPattern: ".*" },
     mediaType: "auto",
     tracker: "trakt",
-    video: { selector: "video", frame: "auto", watchedThreshold: 0.8 },
+    video: { selector: "video", frame: "auto" },
     ...partial,
   };
 }
@@ -157,7 +157,7 @@ describe("isManualRecipe", () => {
     match: { urlPattern: ".*" },
     mediaType: "auto" as const,
     tracker: "trakt" as const,
-    video: { selector: "video", frame: "auto" as const, watchedThreshold: 0.8 },
+    video: { selector: "video", frame: "auto" as const },
   };
 
   it("is true when a recipe has no extract", () => {

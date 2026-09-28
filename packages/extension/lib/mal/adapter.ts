@@ -7,6 +7,7 @@ import {
   planCourWrite,
   planRewatchConfirm,
 } from "../tracker/cour-plan";
+import { WATCHED_THRESHOLD } from "../tracker/types";
 import type {
   RatingLevel,
   RecordPhase,
@@ -114,7 +115,7 @@ async function readEntry(
 
 /**
  * MyAnimeList behind the seam. Same model as AniList (the shared cour planner):
- * no scrobble API, start/pause only read, and a `stop` at/after `watchedThreshold`
+ * no scrobble API, start/pause only read, and a `stop` at/after `WATCHED_THRESHOLD`
  * writes the transition once, never lowering progress. A completed entry is never
  * changed without an explicit rewatch confirmation.
  */
@@ -161,7 +162,6 @@ export const malAdapter: TrackerAdapter = {
     media: ParsedMedia,
     progress: number,
     phase: RecordPhase,
-    watchedThreshold: number,
   ): Promise<RecordResult> {
     if (item.tracker !== "mal") return { ok: false, reason: "unresolved" };
     // Say "connect MyAnimeList" from play onward, not only at the threshold.
@@ -173,7 +173,7 @@ export const malAdapter: TrackerAdapter = {
     const plan = planCourWrite({
       phase,
       progress,
-      watchedThreshold,
+      watchedThreshold: WATCHED_THRESHOLD,
       episode: media.episode,
       total: item.episodes,
       entry: read.entry,

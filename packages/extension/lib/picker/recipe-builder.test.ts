@@ -92,7 +92,7 @@ describe("page-title segments (SPA players, e.g. rivestream)", () => {
       match: { urlPattern: ".*" },
       mediaType: "auto",
       tracker: "trakt",
-      video: { selector: "video", frame: "iframe", watchedThreshold: 0.8 },
+      video: { selector: "video", frame: "iframe" },
       extract: {
         title: {
           source: "title",
@@ -127,7 +127,7 @@ describe("page-title segments (SPA players, e.g. rivestream)", () => {
       match: { urlPattern: ".*" },
       mediaType: "movie",
       tracker: "trakt",
-      video: { selector: "video", frame: "auto", watchedThreshold: 0.8 },
+      video: { selector: "video", frame: "auto" },
       extract: {
         title: {
           source: "title",
@@ -155,7 +155,7 @@ describe("page-title segments (SPA players, e.g. rivestream)", () => {
       match: { urlPattern: ".*" },
       mediaType: "auto",
       tracker: "trakt",
-      video: { selector: "video", frame: "iframe", watchedThreshold: 0.8 },
+      video: { selector: "video", frame: "iframe" },
       extract: {
         title: {
           source: "title",
@@ -207,7 +207,7 @@ describe("DOM number picking (one element packs several, e.g. '1x6 – Episode 6
       match: { urlPattern: ".*" },
       mediaType: "auto",
       tracker: "trakt",
-      video: { selector: "video", frame: "auto", watchedThreshold: 0.8 },
+      video: { selector: "video", frame: "auto" },
       extract: {
         title: { source: "dom", selector: ".show", transforms: ["trim", "collapseSpaces"] },
         season: {
@@ -254,7 +254,7 @@ describe("player-frame URL picking (S/E inside a cross-origin embed, e.g. 1embed
       match: { urlPattern: ".*" },
       mediaType: "auto",
       tracker: "trakt",
-      video: { selector: "video", frame: "iframe", watchedThreshold: 0.8 },
+      video: { selector: "video", frame: "iframe" },
       extract: {
         title: {
           source: "title",
@@ -314,7 +314,7 @@ describe("TMDB id (auto-detect + resolve-by-id)", () => {
       match: { urlPattern: ".*" },
       mediaType: "movie",
       tracker: "trakt",
-      video: { selector: "video", frame: "auto", watchedThreshold: 0.8 },
+      video: { selector: "video", frame: "auto" },
       // biome-ignore lint/style/noNonNullAssertion: asserted defined just above
       extract: { title: { source: "title" }, ids: { tmdb: field! } },
     };
@@ -554,7 +554,7 @@ describe("urlTokenRegex (season/episode from URL)", () => {
       match: { urlPattern: ".*" },
       mediaType: "show",
       tracker: "trakt",
-      video: { selector: "video", frame: "auto", watchedThreshold: 0.8 },
+      video: { selector: "video", frame: "auto" },
       extract: {
         title: { source: "title" },
         season: {

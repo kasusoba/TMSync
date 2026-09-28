@@ -1,6 +1,7 @@
 import type { ParsedMedia } from "@tmsync/shared";
 import type { TrackerAdapter } from "../tracker/adapter";
 import { type CourPlan, planCourWrite, planRewatchConfirm } from "../tracker/cour-plan";
+import { WATCHED_THRESHOLD } from "../tracker/types";
 import type {
   RatingLevel,
   RecordPhase,
@@ -82,7 +83,7 @@ async function readEntry(
 
 /**
  * AniList behind the seam. No scrobble API: start/pause are no-ops, and a `stop`
- * at/after `watchedThreshold` reads the viewer's current entry and writes the
+ * at/after `WATCHED_THRESHOLD` reads the viewer's current entry and writes the
  * right transition (CURRENT → COMPLETED → REPEATING), never lowering progress.
  * A COMPLETED cour is never mutated without an explicit rewatch confirmation
  * (`confirmRewatch`).
@@ -115,7 +116,6 @@ export const anilistAdapter: TrackerAdapter = {
     media: ParsedMedia,
     progress: number,
     phase: RecordPhase,
-    watchedThreshold: number,
   ): Promise<RecordResult> {
     if (item.tracker !== "anilist") return { ok: false, reason: "unresolved" };
     // Surface the not-connected state on the FIRST event (play), not only when the
@@ -135,7 +135,7 @@ export const anilistAdapter: TrackerAdapter = {
     const plan = planCourWrite({
       phase,
       progress,
-      watchedThreshold,
+      watchedThreshold: WATCHED_THRESHOLD,
       episode: media.episode,
       total: item.episodes,
       entry: read.entry,

@@ -11,7 +11,7 @@ const recipe = (id: string, pad = ""): Recipe => ({
   match: { urlPattern: `/${id}/`, hostnames: [`${id}.example`] },
   mediaType: "movie",
   tracker: "trakt",
-  video: { selector: "video", frame: "auto", watchedThreshold: 0.8 },
+  video: { selector: "video", frame: "auto" },
   extract: { title: { source: "meta", selector: "og:title" } },
 });
 

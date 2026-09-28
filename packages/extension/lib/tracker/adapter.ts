@@ -53,7 +53,7 @@ export interface TrackerAdapter {
    *  - Trakt, Simkl: real-time scrobble start/pause/stop; the tracker owns the
    *    80% decision (Simkl allows one call per 20 s, so it may drop a start/pause).
    *  - AniList, MAL: no scrobble API. Start/pause only read the entry; a `stop`
-   *    at/after `watchedThreshold` writes the list entry once (idempotent).
+   *    at/after `WATCHED_THRESHOLD` writes the list entry once (idempotent).
    */
   recordProgress(
     item: TrackedItem,
@@ -61,8 +61,6 @@ export interface TrackerAdapter {
     /** 0–100. */
     progress: number,
     phase: RecordPhase,
-    /** 0–1; per-recipe "treat as finished here" point. */
-    watchedThreshold: number,
   ): Promise<RecordResult>;
 
   /**

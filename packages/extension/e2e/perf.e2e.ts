@@ -47,7 +47,7 @@ test("the content script keeps a churning page responsive (no freeze)", async ()
             match: { urlPattern: "localhost:5599/churn" },
             mediaType: "movie",
             tracker: "trakt",
-            video: { selector: "video", frame: "auto", watchedThreshold: 0.8 },
+            video: { selector: "video", frame: "auto" },
             extract: { title: { source: "meta", selector: "og:title", transforms: ["trim"] } },
           },
         },

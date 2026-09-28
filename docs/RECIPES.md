@@ -34,8 +34,7 @@ one, how recipes are versioned, and how they reach users. To submit one, see
   "mediaType": "auto",           // "auto" | "movie" | "show" ("auto" infers show when season/episode present)
   "video": {
     "selector": "video",         // the <video> element
-    "frame": "auto",             // "auto" | "top" | "iframe": where the player lives
-    "watchedThreshold": 0.8      // per-site "finished here" point for long credits (see below)
+    "frame": "auto"              // "auto" | "top" | "iframe": where the player lives
   },
   "extract": {
     "title":   { "source": "meta", "selector": "og:title", "transforms": ["trim", "collapseSpaces"] },
@@ -53,10 +52,10 @@ The easiest way to write one is the extension's picker (**Set up recipe** in the
 auto-detects metadata first and shows a live preview of what the engine reads. Then copy the result
 from Options, under Sites.
 
-**`watchedThreshold`** is the point where TMSync treats an episode as finished, for sites with long
-credits. For Trakt and Simkl it only decides *when* the stop is sent, because the tracker owns the
-watched decision (80% on stop). For AniList and MyAnimeList there is no scrobble API, so crossing
-the threshold *is* the watched decision: it writes the list entry.
+A recipe does not set when an episode counts as finished. The engine uses one fixed point, 80%
+(`WATCHED_THRESHOLD` in `lib/tracker/types.ts`), which matches Trakt's own rule. For Trakt and Simkl it
+decides *when* the stop is sent. For AniList and MyAnimeList it *is* the watched decision. Older
+recipes may still carry `video.watchedThreshold`. The schema drops it, so it has no effect.
 
 ## Fields and ids
 

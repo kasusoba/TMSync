@@ -54,7 +54,6 @@ export const traktAdapter: TrackerAdapter = {
     media: ParsedMedia,
     progress: number,
     phase: RecordPhase,
-    _watchedThreshold: number,
   ): Promise<RecordResult> {
     if (item.tracker !== "trakt") return { ok: false, reason: "unresolved" };
     const body = buildScrobbleBody(toIdentity(item), media, progress);

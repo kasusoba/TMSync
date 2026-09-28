@@ -10,7 +10,7 @@ function recipe(id: string): Recipe {
     match: { urlPattern: "/watch/(\\d+)", hostnames: [`${id}.example`] },
     mediaType: "auto",
     tracker: "trakt",
-    video: { selector: "video", frame: "auto", watchedThreshold: 0.8 },
+    video: { selector: "video", frame: "auto" },
     extract: { title: { source: "meta", selector: "og:title" } },
   };
 }

@@ -17,7 +17,6 @@ describe("RecipeSchema", () => {
     expect(parsed.mediaType).toBe("auto");
     expect(parsed.video.selector).toBe("video");
     expect(parsed.video.frame).toBe("auto");
-    expect(parsed.video.watchedThreshold).toBe(0.8);
   });
 
   it("defaults tracker to trakt when omitted (v1 back-compat)", () => {
@@ -76,9 +75,10 @@ describe("RecipeSchema", () => {
     expect(RecipeSchema.safeParse(bad).success).toBe(false);
   });
 
-  it("rejects watchedThreshold outside 0..1", () => {
-    const bad = { ...validRecipe, video: { watchedThreshold: 1.5 } };
-    expect(RecipeSchema.safeParse(bad).success).toBe(false);
+  it("drops a legacy video.watchedThreshold instead of applying it", () => {
+    const legacy = { ...validRecipe, video: { watchedThreshold: 0.3 } };
+    const parsed = RecipeSchema.parse(legacy);
+    expect(parsed.video).toEqual({ selector: "video", frame: "auto" });
   });
 
   it("folds a legacy extract.tmdbId into ids.tmdb (v2 → v3 back-compat)", () => {
