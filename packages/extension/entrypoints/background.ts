@@ -1242,7 +1242,7 @@ async function reviewTarget(
 }
 
 /**
- * MULTI-TRACK (docs/MULTI-TRACK.md): record the DERIVED tracker(s) for a scrobble,
+ * MULTI-TRACK (docs/ARCHITECTURE.md): record the DERIVED tracker(s) for a scrobble,
  * alongside the native one. The native item is already resolved+recorded; for each
  * other toggled tracker we derive its numbering via the anime-map crosswalk, then
  * resolve + record it. Independent + advance-only (each adapter owns its own watched

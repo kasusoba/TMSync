@@ -1,5 +1,5 @@
 /**
- * The anime-map crosswalk (multi-track — docs/MULTI-TRACK.md). Resolves an item's
+ * The anime-map crosswalk (multi-track — docs/ARCHITECTURE.md). Resolves an item's
  * identity + episode ACROSS the two numbering families, so an anime watch can be
  * written to trackers in both (Trakt, AniList, MyAnimeList). Derived from
  * Fribb/anime-lists (regenerated weekly upstream), trimmed by

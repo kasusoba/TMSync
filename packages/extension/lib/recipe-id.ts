@@ -1,5 +1,5 @@
 /**
- * Human-readable, content-STABLE recipe ids (docs/IDENTITY-NAMESPACES.md).
+ * Human-readable, content-STABLE recipe ids (docs/RECIPES.md).
  *
  * The old id was `custom-<host>-<Date.now()>` — unique per device, so two users
  * contributing the same site produced different ids → silent duplicate entries in

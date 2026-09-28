@@ -14,7 +14,7 @@ import type { ResolvedIdentity, TraktIds, TraktTokens } from "./trakt/types";
  * All persisted state lives here. The background SW is stateless (constraint
  * #4): it reads everything from storage on each wake.
  *
- * Storage layers (see STORAGE-SYNC.md):
+ * Storage layers (see docs/ARCHITECTURE.md):
  *  - `sync:`  user-owned deltas that follow the user across devices via the
  *             browser account — custom recipes, user quick links, corrections,
  *             manual picks, badge prefs. NEVER secrets (tokens) or large caches.
@@ -182,7 +182,7 @@ export const traktIdsBySlug = storage.defineItem<Record<string, TraktIds>>(
  * resolves a page on that anime site. Reused to deep-link AniList quick links to
  * the exact page instead of a guessed title-slug (anime sites append unguessable
  * junk to URLs). Local + regenerable on the next watch — the no-backend analogue
- * of MALSync's central id→url map (see STORAGE-SYNC.md).
+ * of MALSync's central id→url map (see docs/ARCHITECTURE.md).
  *
  * NOTE: this is NOT the episode-numbering crosswalk in `lib/animap/` — this only
  * maps a site page to its slug for deep-linking. Named distinctly on purpose.
@@ -440,7 +440,7 @@ export const badgePrefs = storage.defineItem<BadgePrefs>("sync:badge_prefs", {
 });
 
 /**
- * User corrections to the anime-map crosswalk (multi-track — docs/MULTI-TRACK.md).
+ * User corrections to the anime-map crosswalk (multi-track — docs/ARCHITECTURE.md).
  * A LOCAL override layer above Fribb (precedence: override › Fribb › miss) — fixes
  * a wrong/missed/ambiguous derived match by pinning (or blocking) the target entry.
  * Local + regenerable-by-hand; contributable back like recipes.
@@ -451,7 +451,7 @@ export const animapOverrides = storage.defineItem<AnimapOverrides>("local:animap
 
 /**
  * Cached copy of the TMDB<->AniList crosswalk fetched from the CDN (multi-track,
- * docs/MULTI-TRACK.md). Not bundled: ~8k rows / ~300 KB would otherwise be inlined
+ * docs/ARCHITECTURE.md). Not bundled: ~8k rows / ~300 KB would otherwise be inlined
  * into the service-worker bundle and parsed on every wake, and a stale copy could
  * only be fixed by an extension release. `etag` enables conditional (304) refetches,
  * `generatedAt` is the upstream build date (shown in the options page).

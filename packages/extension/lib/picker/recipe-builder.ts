@@ -28,7 +28,7 @@ import {
 export interface RecipeDraft {
   match: { urlPattern: string; domFingerprint?: string; hostnames?: string[] };
   mediaType: "auto" | "movie" | "show";
-  /** MULTI-TRACK (docs/MULTI-TRACK.md): the set of trackers to record to — the
+  /** MULTI-TRACK (docs/ARCHITECTURE.md): the set of trackers to record to — the
    * user's independent toggles (a pluggable list; more trackers may be added).
    * Which one is "native" (recorded directly) vs "derived" (mapped via the
    * anime-map crosswalk) is inferred at runtime from the scraped fields, NOT
@@ -295,7 +295,7 @@ export function recipeToDraft(recipe: Recipe): RecipeDraft {
       season: recipe.extract?.season,
       episode: recipe.extract?.episode,
       // The draft carries a single, namespace-agnostic id field; read whichever
-      // namespace the recipe stored it under. See docs/IDENTITY-NAMESPACES.md.
+      // namespace the recipe stored it under. See docs/RECIPES.md.
       tmdbId:
         recipe.extract?.ids?.tmdb ??
         recipe.extract?.ids?.anilist ??

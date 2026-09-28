@@ -35,7 +35,7 @@ export const RECIPES = {
 } as const;
 
 /**
- * The TMDB<->AniList crosswalk used by the multi-track fan-out (docs/MULTI-TRACK.md).
+ * The TMDB<->AniList crosswalk used by the multi-track fan-out (docs/ARCHITECTURE.md).
  * Fetched from the same CDN as the recipe list rather than bundled: the rows are
  * ~300 KB, and upstream (Fribb/anime-lists) regenerates weekly, so a bundled copy
  * would both bloat the service worker and go stale between releases. A plain public

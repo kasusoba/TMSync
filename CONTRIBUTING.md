@@ -49,137 +49,30 @@ If the JSON is too long to prefill, TMSync copies it and the issue asks you to p
 }
 ```
 
-Entries you don't need can be omitted, but keep both top-level keys. The library may be empty
-or small at any given time, so don't rely on existing entries as templates. The examples below
-are enough to start.
-
-Every entry is validated against the Zod schema in
-[`packages/shared/src/schema.ts`](./packages/shared/src/schema.ts) on load. **An entry that fails
-validation is silently discarded**, so a typo means your site just won't appear. The tests
-validate the file, so run them before opening a PR.
-
-You can also copy a recipe you made with the picker into `"recipes"`: in Options, open **Sites**
-and use the copy icon on the recipe.
-
-### Recipe fields
+Keep both top-level keys. The library may be empty or small at any given time, so don't rely on
+existing entries as templates. [`docs/RECIPES.md`](./docs/RECIPES.md) has a full annotated recipe,
+the field reference, authoring tips, and the quick-link placeholders. A minimal recipe looks like
+this:
 
 ```jsonc
 {
-  "id": "cineby-movie",          // unique, kebab-case, usually "<site>-<movie|tv|episode>"
-  "schemaVersion": 4,            // see "Schema version" below (4 because it names simkl)
-  "name": "Cineby",              // human-readable site name (shown in UI)
-  "trackers": ["trakt", "simkl"], // which trackers record this site: trakt | anilist | mal | simkl.
-                                 //   Omit it and the legacy single `tracker` field (default
-                                 //   "trakt") is used. Prefer `trackers` in new recipes.
-  "match": {
-    "urlPattern": "/movie",        // regex tested against location.href: the PATH, no host
-    "hostnames": ["cineby.at"],    // the site's domain(s). A site that moves keeps its recipe
-                                   //   and gains a hostname. Omit it and the recipe matches any host.
-    "domFingerprint": ".player"    // optional: a selector that must exist (clone-resilient)
-  },
-  "mediaType": "auto",           // "auto" | "movie" | "show" ("auto" infers show when season/episode present)
-  "video": {
-    "selector": "video",         // the <video> element
-    "frame": "auto",             // "auto" | "top" | "iframe": where the player lives
-    "watchedThreshold": 0.8      // per-site "finished here" point for long credits (see below)
-  },
+  "id": "cineby-movie",
+  "schemaVersion": 3,
+  "name": "Cineby",
+  "trackers": ["trakt"],
+  "match": { "urlPattern": "/movie", "hostnames": ["cineby.at"] },
+  "mediaType": "movie",
   "extract": {
-    "title":   { "source": "meta", "selector": "og:title", "transforms": ["trim", "collapseSpaces"] },
-    "year":    { "source": "dom",  "selector": ".info .year", "transforms": ["trim", "toInt"] },
-    "season":  { "source": "url",  "regex": "(?:\\D*\\d+){1}\\D*(\\d+)", "group": 1, "transforms": ["toInt"] },
-    "episode": { "source": "url",  "regex": "(?:\\D*\\d+){2}\\D*(\\d+)", "group": 1, "transforms": ["toInt"] },
-    "ids": {                     // optional: ids the page exposes, keyed by namespace
-      "tmdb": { "source": "url", "regex": "/movie/(\\d+)", "group": 1, "transforms": ["toInt"] }
-    }
+    "title": { "source": "meta", "selector": "og:title", "transforms": ["trim"] }
   }
 }
 ```
 
-A **`Field`** (each entry under `extract`) reads one value:
-
-| key          | meaning |
-|--------------|---------|
-| `source`     | `url` · `title` (document title) · `meta` (a `<meta property/name>`) · `jsonld` (`<script type=ld+json>`) · `dom` (CSS selector) |
-| `selector`   | for `dom`: a CSS selector · for `meta`: the property/name (e.g. `og:title`) · for `jsonld`: a dotted path (e.g. `partOfTVSeason.seasonNumber`) |
-| `attr`       | `dom` only: read an attribute instead of `textContent` |
-| `regex`      | applied to the raw string; capture a group |
-| `group`      | capture-group index (default `1`) |
-| `transforms` | ordered list: `trim` · `lowercase` · `uppercase` · `toInt` · `collapseSpaces` · `deslugify` (turns `breaking-bad` into `breaking bad`) |
-
-An `extract` needs **a `title` or at least one id**. `year` helps movie disambiguation. `season`
-and `episode` make it a show (with `mediaType: "auto"`).
-
-**`ids`** is a map from id namespace (`tmdb`, `imdb`, `tvdb`, `anilist`, `mal`) to a `Field`. When
-a page exposes an id, usually in the URL, TMSync resolves by it instead of searching by title,
-which avoids remake and same-title mix-ups. The title then becomes a display fallback. A
-recipe can list several ids and each tracker uses the strongest one it understands. See
-[`docs/IDENTITY-NAMESPACES.md`](./docs/IDENTITY-NAMESPACES.md).
-
-**Other recipe fields**
-- `canonical`: a `Field` that reads the site's own stable series slug. TMSync remembers it per
-  anime, so the site's anime quick link can hit the exact page instead of a guessed title slug.
-- `manualKey` and a missing `extract`: a **manual recipe**, for sites with no readable title
-  (local-file players, watch-party rooms). The user picks the title from the badge, and
-  `manualKey` is a field whose value tells one video from the next so the pick is remembered.
-
-**Schema version.** `schemaVersion` must not exceed the current `SCHEMA_VERSION` in
-`packages/shared/src/schema.ts` (today `4`). Builds ignore recipes newer than they understand.
-Use `4` if the recipe names `mal` or `simkl`, and `3` otherwise, so it still reaches older
-builds. The tests check this.
-
-**`watchedThreshold`** is the point where TMSync treats the episode as finished, for sites with
-long credits. For Trakt and Simkl it only decides *when* the stop is sent, because the tracker
-owns the watched decision (80%). For AniList and MyAnimeList there is no scrobble API, so
-crossing the threshold *is* the watched decision: it writes the list entry.
-
-**Authoring tips**
-- Prefer stable sources in this order: `url`, then `meta` or `jsonld`, then `dom`. URLs and
-  metadata rot far less than class names.
-- Keep `urlPattern` specific enough to tell movie pages from TV or episode pages. Usually that
-  means one recipe per page type.
-- Keep the domain out of `urlPattern` and in `hostnames`. Streaming sites move domain often,
-  and the recipe then survives the move: add the new domain to `hostnames` and nothing else
-  changes. Older recipes that carry the host in the pattern still work.
-- Remember `urlPattern` is a **regex string in JSON**: escape backslashes (`/tv\\-shows`).
-- **Anime sites:** an `anilist` or `mal` recipe assumes the site numbers episodes per season, as
-  dedicated anime sites do. A site that uses absolute numbering (episode 50 of a 12-episode
-  season) is refused with a warning instead of being written.
-
-### Quick links
-
-A quick link puts a "watch on \<site\>" button on a trakt.tv or anilist.co page. It is URL
-templates, independent of whether a recipe exists for that site.
-
-```jsonc
-{
-  "id": "cineby",                            // unique, kebab-case
-  "name": "Cineby",                          // shown on the button
-  "host": "cineby.at",                       // the site's domain, the one field to change if it moves
-  "tracker": "trakt",                        // which tracker's pages it shows on: "trakt" | "anilist"
-  "movie": "/movie/{tmdb}",
-  "tv":    "/tv/{tmdb}/{season}/{episode}",
-  "search": "/search?q={title}"              // fallback when ids are missing
-}
-```
-
-A link for `"tracker": "anilist"` uses `anime` in place of `movie` and `tv`, for example
-`"anime": "/watch/{slug}"`.
-
-Placeholders, substituted from the tracker page (never executed):
-
-| placeholder         | on | value |
-|---------------------|----|-------|
-| `{tmdb}` `{imdb}`   | Trakt | ids read from Trakt's own external links |
-| `{title}`           | both | URL-encoded title (English or romaji on AniList) |
-| `{slug}`            | both | lowercase, hyphen-joined title (on Trakt: the Trakt slug with a trailing year stripped) |
-| `{slugyear}`        | Trakt | the raw Trakt slug, year included |
-| `{season}` `{episode}` | Trakt `tv` | show gives S1E1, season gives S{n}E1, episode gives S{n}E{m} |
-| `{anilist}`         | AniList | the AniList id |
-| `{romaji}`          | AniList | URL-encoded romaji title |
-| `{canonical}`       | AniList | the site's real slug, learned from a prior watch (needs a `canonical` field on the recipe) |
-
-If a template references an id the page doesn't expose, TMSync falls back to `search`. Library
-quick links arrive **disabled**, and each user enables their favourites.
+Every entry is validated against the Zod schema in
+[`packages/shared/src/schema.ts`](./packages/shared/src/schema.ts) on load. **An entry that fails
+validation is silently discarded**, so a typo means your site just won't appear. The tests validate
+the file, so run them before opening a PR. To copy a recipe you made with the picker, open Options,
+then Sites, and use the copy icon on the recipe.
 
 ---
 
@@ -189,9 +82,8 @@ PRs to the extension itself are welcome: bug fixes, a new tracker adapter, engin
 improvements. A few things make a code PR easy to accept:
 
 - **Read [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) first.** It is the map of how the
-  pieces fit together and where each concern lives. [`docs/TMSync-PRD.md`](./docs/TMSync-PRD.md)
-  covers the what and why, and [`docs/MULTI-TRACK.md`](./docs/MULTI-TRACK.md) covers the anime
-  multi-tracking design.
+  pieces fit together and where each concern lives, including how anime is tracked to several
+  trackers at once.
 - **Respect the hard constraints in [`CLAUDE.md`](./CLAUDE.md).** They are settled decisions,
   not preferences. The load-bearing ones:
   - Recipes are data (no `eval`, no remote code).
@@ -202,7 +94,8 @@ improvements. A few things make a code PR easy to accept:
     seam, never in the shared `extract()` engine.
 - **Adding a tracker?** That is the intended way to grow TMSync: a new `lib/<tracker>/` adapter
   and a picker toggle, without touching the other trackers or `extract()`.
-  [`docs/TRACKERS-PLAN.md`](./docs/TRACKERS-PLAN.md) shows how MyAnimeList and Simkl were added.
+  [`docs/TRACKERS.md`](./docs/TRACKERS.md) has the API facts for each tracker and a checklist for
+  adding one.
   It is non-trivial, so **open an issue to align on the approach before you build.**
 - **Open an issue before anything non-trivial.** For a typo or a small, obvious fix, just send
   the PR. For anything that changes behaviour or architecture, an issue first saves us both from

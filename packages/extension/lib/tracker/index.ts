@@ -54,7 +54,7 @@ export function routeTracker(tracker: Tracker, mediaType: ParsedMedia["mediaType
 }
 
 /**
- * The NATIVE tracker for scraped media (multi-track, docs/MULTI-TRACK.md): the one
+ * The NATIVE tracker for scraped media (multi-track, docs/ARCHITECTURE.md): the one
  * whose numbering the page ALREADY speaks, so it's recorded directly; every other
  * enabled tracker is DERIVED (the crosswalk across families, ids within one, the
  * page as is for Simkl). Inferred, NOT user-picked: a page id in a tracker's

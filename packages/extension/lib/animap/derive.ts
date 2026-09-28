@@ -15,7 +15,7 @@ export type TargetIds = ExternalIds;
 
 /**
  * The result of deriving a DERIVED tracker's media coordinates from a natively-
- * resolved item (multi-track, docs/MULTI-TRACK.md). Never a silent guess.
+ * resolved item (multi-track, docs/ARCHITECTURE.md). Never a silent guess.
  */
 export type DeriveOutcome =
   | { kind: "resolved"; media: ParsedMedia; ids?: TargetIds }
@@ -24,7 +24,7 @@ export type DeriveOutcome =
 
 /**
  * User corrections — a LOCAL override layer that sits ABOVE the Fribb crosswalk
- * (docs/MULTI-TRACK.md): precedence is local override › Fribb › miss. Fixes wrong
+ * (docs/ARCHITECTURE.md): precedence is local override › Fribb › miss. Fixes wrong
  * maps, fills misses (real anime Fribb lacks), and pins ambiguous ones. Contributable.
  */
 export interface AnimapOverrides {

@@ -3,7 +3,7 @@ import { browser } from "wxt/browser";
 
 /**
  * The user's own recipes, one `browser.storage.sync` key per recipe
- * (`recipe:{id}`, docs/STORAGE-SYNC.md). Sync allows 8 KB per key, so the old
+ * (`recipe:{id}`, docs/ARCHITECTURE.md). Sync allows 8 KB per key, so the old
  * single `custom_recipes` list stopped saving at about 13 recipes. Same
  * getValue/setValue/watch shape as a WXT storage item.
  *
