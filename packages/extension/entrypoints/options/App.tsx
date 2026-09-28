@@ -885,7 +885,17 @@ export function App() {
   const setSyncKind = (tk: Tracker, kind: SyncKind, on: boolean) => {
     const now = syncSettings.kinds[tk] ?? syncKindsFor(tk);
     const next = on ? [...new Set([...now, kind])] : now.filter((k) => k !== kind);
-    void saveSyncSettings({ ...syncSettings, kinds: { ...syncSettings.kinds, [tk]: next } });
+    // A tracker that stops taking a kind cannot be its main list any more.
+    const main = { ...syncSettings.main };
+    if (!on && main[kind] === tk) delete main[kind];
+    void saveSyncSettings({ ...syncSettings, main, kinds: { ...syncSettings.kinds, [tk]: next } });
+  };
+
+  const setSyncMain = (kind: SyncKind, tk: Tracker | undefined) => {
+    const main = { ...syncSettings.main };
+    if (tk) main[kind] = tk;
+    else delete main[kind];
+    void saveSyncSettings({ ...syncSettings, main });
   };
 
   // Start a preview job: the background reads every list and plans, and reports
@@ -1511,6 +1521,7 @@ export function App() {
                   onPreview={previewListSync}
                   onKind={setSyncKind}
                   onSetting={(key, on) => void saveSyncSettings({ ...syncSettings, [key]: on })}
+                  onMain={setSyncMain}
                   onIgnore={ignoreSyncItem}
                   onRestore={restoreSyncItem}
                   onClearIgnored={() => void saveSyncSettings({ ...syncSettings, ignore: [] })}

@@ -76,6 +76,13 @@ const ListSyncSettingsSchema: z.ZodType<ListSyncSettings> = z.object({
   includePrivate: z.boolean(),
   includeAdult: z.boolean(),
   ignore: z.array(z.string()),
+  main: z
+    .object({
+      movie: z.enum(["trakt", "anilist", "mal", "simkl"]).optional(),
+      tv: z.enum(["trakt", "anilist", "mal", "simkl"]).optional(),
+      anime: z.enum(["trakt", "anilist", "mal", "simkl"]).optional(),
+    })
+    .optional(),
 });
 
 const BackupSchema = z.object({

@@ -15,10 +15,14 @@
  *  - Ratings only fill empty ones. Two different ratings are a conflict for the user.
  *  - Status: when the progress finishes the entry, it is completed. Otherwise the
  *    most recently updated entry wins, and a disagreement is listed as a conflict.
+ *  - A kind with a MAIN list is not a union: only the main list is a source, and
+ *    an entry it does not have is removed from the other lists. Copies still
+ *    never go down, and never lose Trakt watch history: where the main list is
+ *    behind, the plan says so (a notice) instead of acting.
  */
 import type { Animap } from "../trackers/animap/index";
 import type { CourStatus } from "../trackers/cour-plan";
-import { TRACKER_INFO, type Tracker, trackerFamily } from "../trackers/types";
+import { TRACKER_INFO, type Tracker, trackerFamily, trackerLabel } from "../trackers/types";
 import { type ScoreScale, onScale } from "./score";
 import type {
   EpisodeRef,
@@ -28,6 +32,7 @@ import type {
   SyncIds,
   SyncItem,
   SyncKind,
+  SyncNotice,
   SyncPlan,
   SyncSkip,
   SyncTotals,
@@ -58,6 +63,14 @@ export function syncKindsFor(tracker: Tracker): SyncKind[] {
 export function takesKind(tracker: Tracker, kind: SyncKind, settings: ListSyncSettings): boolean {
   if (!syncKindsFor(tracker).includes(kind)) return false;
   return (settings.kinds[tracker] ?? syncKindsFor(tracker)).includes(kind);
+}
+
+/**
+ * Whether sync may remove a tracker's list entry. A seasoned tracker's list IS its
+ * watch history (Trakt), and deleting plays cannot be undone, so it never is. Pure.
+ */
+export function removesEntries(tracker: Tracker): boolean {
+  return trackerFamily(tracker) !== "seasoned";
 }
 
 /** COMPLETED and REPEATING both mean "finished at least once". */
@@ -152,6 +165,21 @@ export function planSync(input: PlanInput): SyncPlan {
   const items: SyncItem[] = [];
   const skips: SyncSkip[] = [];
   const conflicts: SyncConflict[] = [];
+  const notices: SyncNotice[] = [];
+
+  /** The main list for a kind, when the user set one it can hold. */
+  const mainFor = (kind: SyncKind): Tracker | undefined => {
+    const m = settings.main?.[kind];
+    return m && takesKind(m, kind, settings) ? m : undefined;
+  };
+  /** A main list that was not read makes the whole kind unsafe to plan: with no
+   * truth to copy, a union would bring back what the user removed. */
+  const mainMissing = (kind: SyncKind, key: string, title: string): boolean => {
+    const m = mainFor(kind);
+    if (!m || input.trackers.includes(m)) return false;
+    skips.push({ key, title, reason: "main_missing", detail: `${trackerLabel(m)} was not read` });
+    return true;
+  };
 
   const seasonedEntries = entries.filter((e): e is SeasonedEntry => e.shape !== "cour");
   const courEntries = entries.filter((e): e is CourEntry => e.shape === "cour");
@@ -277,7 +305,7 @@ export function planSync(input: PlanInput): SyncPlan {
 
   for (const [key, g] of cours) planCour(key, g);
 
-  return { items, skips, conflicts };
+  return { items, skips, conflicts, notices };
 
   // --- movies and non-anime TV (Trakt, Simkl; no crosswalk) ---
   function planWestern(all: SeasonedEntry[], kind: SyncKind): void {
@@ -288,9 +316,11 @@ export function planSync(input: PlanInput): SyncPlan {
       skips.push({ key, title: first.title, reason: "ignored" });
       return;
     }
+    if (mainMissing(kind, key, first.title)) return;
+    const main = mainFor(kind);
     const members = all.filter((m) => takesKind(m.tracker, kind, settings));
     const targets = input.trackers.filter(
-      (tk) => trackerFamily(tk) !== "cour" && takesKind(tk, kind, settings),
+      (tk) => trackerFamily(tk) !== "cour" && takesKind(tk, kind, settings) && tk !== main,
     );
     const writes: SyncWrite[] = [];
     const own = (tk: Tracker) => members.find((m) => m.tracker === tk);
@@ -299,9 +329,44 @@ export function planSync(input: PlanInput): SyncPlan {
       ids,
       mediaType: kind === "movie" ? "movie" : "show",
     });
+    const mainEntry = main ? own(main) : undefined;
+
+    // A main list without this item: remove it from the others.
+    if (main && !mainEntry) {
+      for (const m of members) {
+        if (removesEntries(m.tracker))
+          writes.push({ tracker: m.tracker, op: "remove", target: ref(m.tracker) });
+        else
+          notices.push({
+            key,
+            title: first.title,
+            kind,
+            tracker: m.tracker,
+            reason: "history_kept",
+          });
+      }
+      push(key, kind, first.title, first.year, writes);
+      return;
+    }
+    // With a main list, only it is a source.
+    const sources = mainEntry ? [mainEntry] : members;
 
     if (kind === "movie") {
-      const watched = members.some((m) => m.shape === "movie" && m.watched);
+      const watched = sources.some((m) => m.shape === "movie" && m.watched);
+      if (main && !watched) {
+        for (const m of members) {
+          if (m.tracker !== main && m.shape === "movie" && m.watched) {
+            notices.push({
+              key,
+              title: first.title,
+              kind,
+              tracker: m.tracker,
+              reason: "ahead",
+              detail: `watched here, not on ${trackerLabel(main)}`,
+            });
+          }
+        }
+      }
       for (const tk of targets) {
         const mine = own(tk);
         if (watched && !(mine?.shape === "movie" && mine.watched)) {
@@ -310,7 +375,7 @@ export function planSync(input: PlanInput): SyncPlan {
       }
     } else {
       const union = new Map<string, EpisodeRef>();
-      for (const m of members) {
+      for (const m of sources) {
         if (m.shape !== "seasons") continue;
         for (const [s, eps] of Object.entries(m.seasons)) {
           for (const n of eps) union.set(`${s}:${n}`, { season: Number(s), number: n });
@@ -324,13 +389,44 @@ export function planSync(input: PlanInput): SyncPlan {
         if (add.length)
           writes.push({ tracker: tk, op: "episodes", target: ref(tk), add: sortEps(add) });
       }
+      // Episodes a copy has that the main list does not: left as they are.
+      if (main) {
+        for (const m of members) {
+          if (m.tracker === main || m.shape !== "seasons") continue;
+          let extra = 0;
+          for (const [s, eps] of Object.entries(m.seasons)) {
+            for (const n of eps) if (!union.has(`${s}:${n}`)) extra += 1;
+          }
+          if (extra) {
+            notices.push({
+              key,
+              title: first.title,
+              kind,
+              tracker: m.tracker,
+              reason: "ahead",
+              detail: `${extra} watched episode${extra === 1 ? "" : "s"} ${trackerLabel(main)} does not have`,
+            });
+          }
+        }
+      }
     }
 
     // Ratings: the movie, or the whole show.
     const level = kind === "movie" ? "movie" : "show";
-    const rated = members.flatMap((m) =>
+    const rated = sources.flatMap((m) =>
       m.rating !== null ? [{ tracker: m.tracker, value: m.rating, at: m.updatedAt }] : [],
     );
+    if (main) {
+      ratingNotices(
+        key,
+        first.title,
+        kind,
+        rated,
+        members.flatMap((m) =>
+          m.tracker !== main && m.rating !== null ? [{ tracker: m.tracker, value: m.rating }] : [],
+        ),
+      );
+    }
     fillRatings(
       key,
       first.title,
@@ -360,22 +456,35 @@ export function planSync(input: PlanInput): SyncPlan {
       skips.push({ key, title: g.title, reason: "adult" });
       return;
     }
+    if (mainMissing("anime", key, g.title)) return;
+    const main = mainFor("anime");
     const cour = g.cour.filter((e) => takesKind(e.tracker, "anime", settings));
     const seasoned = g.seasoned.filter((p) => takesKind(p.entry.tracker, "anime", settings));
-    const targets = input.trackers.filter((tk) => takesKind(tk, "anime", settings));
+    const targets = input.trackers.filter((tk) => takesKind(tk, "anime", settings) && tk !== main);
     const title = cour.find((e) => e.tracker === "anilist")?.title ?? cour[0]?.title ?? g.title;
     const year = cour[0]?.year ?? g.year;
     const total = g.movie ? 1 : (cour.find((e) => e.total !== null)?.total ?? null);
 
+    // With a main list, only it is a source. A seasoned list "has" a cour only
+    // when it has watched some of it (every cour of a show gets a part).
+    const srcCour = main ? cour.filter((e) => e.tracker === main) : cour;
+    const srcSeasoned = main
+      ? seasoned.filter((p) => p.entry.tracker === main && p.local.size > 0)
+      : seasoned;
+    if (main && !srcCour.length && !srcSeasoned.length) {
+      removeFromCopies();
+      return;
+    }
+
     // The union of progress. A seasoned list counts to its highest episode (the
     // same rule as scrobbling: `max(remote, ep)`).
-    const courMax = Math.max(0, ...cour.map(courCount));
-    const seasonedMax = Math.max(0, ...seasoned.map((p) => Math.max(0, ...p.local)));
+    const courMax = Math.max(0, ...srcCour.map(courCount));
+    const seasonedMax = Math.max(0, ...srcSeasoned.map((p) => Math.max(0, ...p.local)));
     const progress = Math.max(courMax, seasonedMax);
-    const repeat = Math.max(0, ...cour.map((e) => e.repeat));
+    const repeat = Math.max(0, ...srcCour.map((e) => e.repeat));
 
     // Status: finished by progress, else the most recent entry.
-    const withStatus = cour
+    const withStatus = srcCour
       .filter((e): e is CourEntry & { status: CourStatus } => e.status !== null)
       .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
     const done = total !== null && progress >= total && progress > 0;
@@ -421,10 +530,12 @@ export function planSync(input: PlanInput): SyncPlan {
       }
     }
 
-    // Ratings: every rated source, on whatever level maps to the cour.
-    const rated: { tracker: Tracker; value: number; at?: number }[] = [];
+    // Ratings: every rated entry, on whatever level maps to the cour. Only the
+    // sources fill; every rated tracker keeps its own.
+    const allRated: { tracker: Tracker; value: number; at?: number }[] = [];
     for (const e of cour)
-      if (e.rating !== null) rated.push({ tracker: e.tracker, value: e.rating, at: e.updatedAt });
+      if (e.rating !== null)
+        allRated.push({ tracker: e.tracker, value: e.rating, at: e.updatedAt });
     for (const p of seasoned) {
       const v =
         rt?.kind === "season"
@@ -434,9 +545,45 @@ export function planSync(input: PlanInput): SyncPlan {
           : rt
             ? p.entry.rating
             : undefined;
-      if (v != null) rated.push({ tracker: p.entry.tracker, value: v, at: p.entry.updatedAt });
+      if (v != null) allRated.push({ tracker: p.entry.tracker, value: v, at: p.entry.updatedAt });
     }
-    const hasRating = new Set(rated.map((r) => r.tracker));
+    const rated = main ? allRated.filter((r) => r.tracker === main) : allRated;
+    const hasRating = new Set(allRated.map((r) => r.tracker));
+    if (main) {
+      ratingNotices(
+        key,
+        title,
+        "anime",
+        rated,
+        allRated.filter((r) => r.tracker !== main),
+      );
+      // Copies further than the main list: left as they are, and said so.
+      for (const e of cour) {
+        if (e.tracker !== main && courCount(e) > progress) {
+          notices.push({
+            key,
+            title,
+            kind: "anime",
+            tracker: e.tracker,
+            reason: "ahead",
+            detail: `episode ${courCount(e)} here, ${progress} on ${trackerLabel(main)}`,
+          });
+        }
+      }
+      for (const p of seasoned) {
+        const top = Math.max(0, ...p.local);
+        if (p.entry.tracker !== main && top > progress) {
+          notices.push({
+            key,
+            title,
+            kind: "anime",
+            tracker: p.entry.tracker,
+            reason: "ahead",
+            detail: `episode ${top} here, ${progress} on ${trackerLabel(main)}`,
+          });
+        }
+      }
+    }
     fillRatings(
       key,
       title,
@@ -447,6 +594,35 @@ export function planSync(input: PlanInput): SyncPlan {
     );
 
     push(key, "anime", title, year, writes);
+
+    /** The main list does not have this cour: remove each copy's list entry. A
+     * seasoned list (Trakt, or a Simkl show) is kept: it is watch history, or a
+     * whole show that holds other cours too. */
+    function removeFromCopies(): void {
+      const out: SyncWrite[] = [];
+      for (const e of cour) {
+        if (removesEntries(e.tracker)) {
+          out.push({
+            tracker: e.tracker,
+            op: "remove",
+            target: { id: e.id, ids: e.ids, mediaType: e.movie ? "movie" : "show", anime: true },
+          });
+        }
+      }
+      for (const p of seasoned) {
+        if (p.local.size > 0) {
+          notices.push({
+            key,
+            title,
+            kind: "anime",
+            tracker: p.entry.tracker,
+            reason: "history_kept",
+            detail: `${trackerLabel(main as Tracker)} does not have it`,
+          });
+        }
+      }
+      push(key, "anime", title, year, out);
+    }
 
     /** A tracker that keeps a count and a status (AniList, MAL, Simkl anime). */
     function courTarget(tk: Tracker, entry: CourEntry | undefined): void {
@@ -516,7 +692,7 @@ export function planSync(input: PlanInput): SyncPlan {
       // own gaps with episodes nobody watched.
       const wanted = new Set<number>();
       for (let n = 1; n <= courMax; n += 1) wanted.add(n);
-      for (const other of seasoned) if (other !== p) for (const n of other.local) wanted.add(n);
+      for (const other of srcSeasoned) if (other !== p) for (const n of other.local) wanted.add(n);
       const ns = g.anilist !== undefined ? "anilist" : "mal";
       const cid = g.anilist ?? g.mal;
       if (cid === undefined) return;
@@ -610,6 +786,30 @@ export function planSync(input: PlanInput): SyncPlan {
     }
   }
 
+  /** A copy's own rating that differs from the main list's is kept, and said so. */
+  function ratingNotices(
+    key: string,
+    title: string,
+    kind: SyncKind,
+    mainRated: { value: number }[],
+    copies: { tracker: Tracker; value: number }[],
+  ): void {
+    const m = mainRated[0];
+    if (!m) return;
+    for (const c of copies) {
+      if (onScale(c.value, scale(c.tracker)) !== onScale(m.value, scale(c.tracker))) {
+        notices.push({
+          key,
+          title,
+          kind,
+          tracker: c.tracker,
+          reason: "rating_kept",
+          detail: `${Math.round(c.value) / 10} here, ${Math.round(m.value) / 10} on the main list`,
+        });
+      }
+    }
+  }
+
   function push(
     key: string,
     kind: SyncKind,
@@ -630,7 +830,7 @@ export function summarize(plan: SyncPlan, trackers: Tracker[]): SyncTotals[] {
   const totals = new Map<Tracker, SyncTotals>(
     trackers.map((tk) => [
       tk,
-      { tracker: tk, episodes: 0, movies: 0, created: 0, updated: 0, ratings: 0 },
+      { tracker: tk, episodes: 0, movies: 0, created: 0, updated: 0, ratings: 0, removed: 0 },
     ]),
   );
   for (const item of plan.items) {
@@ -640,6 +840,7 @@ export function summarize(plan: SyncPlan, trackers: Tracker[]): SyncTotals[] {
       if (w.op === "episodes") t.episodes += w.add.length;
       else if (w.op === "movie") t.movies += 1;
       else if (w.op === "rating") t.ratings += 1;
+      else if (w.op === "remove") t.removed += 1;
       else if (w.create) t.created += 1;
       else t.updated += 1;
     }

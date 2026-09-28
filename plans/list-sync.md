@@ -213,6 +213,24 @@ The crosswalk stays in `lib/trackers/animap/`. `extract()` is not touched.
 5. **Private and adult entries (items 28, 29).** Skipped by default, with an option to
    include them.
 6. **What each tracker syncs (section H).** A per-tracker choice of kinds.
+7. **A main list per kind (added 2026-09-28).** Pure union re-adds stale entries: Akira is
+   plan to watch on an old MAL list, removed from AniList, and union copies it back to AniList.
+   So each kind can have a main list. With one:
+   - Only the main list is a source. The others copy it; nothing flows back.
+   - An entry the main list does not have is REMOVED from the others. Only list entries: a
+     seasoned list (Trakt history, or a whole Simkl show holding other cours) is never
+     removed, and the plan says so (`history_kept`).
+   - A copy's progress still never goes down, and a completed entry is never moved. Where a
+     copy is further than the main list, the plan says so (`ahead`) and leaves it.
+   - Ratings: the main list fills empty ones; a copy's own different rating is kept
+     (`rating_kept`).
+   - The main list's status wins, however old (no "most recent wins").
+   - If the main list was not read, nothing of that kind is planned (`main_missing`). A union
+     fallback would bring back what the user removed.
+   - Turning a kind off for its main tracker clears the main list for that kind, on screen.
+   - The preview has its own Removals tab, and a "Left as is" tab for the notices.
+   Kinds with no main list stay a union. Section G (remembering the last sync) is still the
+   later fix for removals in union mode.
 
 ## Phases
 

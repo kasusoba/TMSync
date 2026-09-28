@@ -14,6 +14,7 @@ import type {
   SyncConflict,
   SyncItem,
   SyncKind,
+  SyncNotice,
   SyncWrite,
 } from "@/lib/sync/types";
 import type { CourStatus } from "@/lib/trackers/cour-plan";
@@ -42,6 +43,13 @@ const SKIP_LABEL: Record<SkipReason, string> = {
   not_mapped: "Not in the anime crosswalk",
   numbering: "Episode numbers don’t match",
   no_id: "No id the tracker can use",
+  main_missing: "The main list wasn’t read, so nothing of this kind is planned",
+};
+
+const NOTICE_LABEL: Record<SyncNotice["reason"], string> = {
+  ahead: "Further than the main list. Sync never lowers progress.",
+  history_kept: "Not on the main list, but this is watch history. Sync never deletes it.",
+  rating_kept: "A different rating. Sync only fills empty ratings.",
 };
 
 const READ_LABEL: Record<TrackerRead["state"], string> = {
@@ -60,6 +68,8 @@ export function describeWrite(w: SyncWrite): string {
       return `+${w.add.length} episode${w.add.length === 1 ? "" : "s"}`;
     case "movie":
       return "mark watched";
+    case "remove":
+      return "remove from list";
     case "rating":
       return `rate ${Math.round(w.score) / 10}/10${w.level === "season" ? ` (season ${w.season})` : ""}`;
     case "entry": {
@@ -94,6 +104,7 @@ export function ListSyncView({
   onPreview,
   onKind,
   onSetting,
+  onMain,
   onIgnore,
   onRestore,
   onClearIgnored,
@@ -110,6 +121,8 @@ export function ListSyncView({
   onPreview: () => void;
   onKind: (tracker: Tracker, kind: SyncKind, on: boolean) => void;
   onSetting: (key: "includePrivate" | "includeAdult", on: boolean) => void;
+  /** Set (or clear, with undefined) the main list of a kind. */
+  onMain: (kind: SyncKind, tracker: Tracker | undefined) => void;
   onIgnore: (key: string) => void;
   onRestore: (key: string) => void;
   onClearIgnored: () => void;
@@ -118,8 +131,9 @@ export function ListSyncView({
     <div class="space-y-5">
       <p class={clsx("max-w-2xl text-[12px] leading-relaxed", t.sub)}>
         Make your trackers agree. TMSync reads each connected list and works out what the others are
-        missing: watched episodes, list status, and ratings. It only adds, it never removes. This
-        version shows the plan only. Nothing is written to your trackers yet.
+        missing: watched episodes, list status, and ratings. By default it only adds. Pick a main
+        list for a kind to make the others copy it instead, removals included. This version shows
+        the plan only. Nothing is written to your trackers yet.
       </p>
 
       <div class="grid gap-3 lg:grid-cols-[3fr_2fr]">
@@ -164,8 +178,40 @@ export function ListSyncView({
                   ))}
                 </tr>
               ))}
+              <tr class={clsx("border-t", t.divider)}>
+                <td class={clsx("pt-2.5 font-medium", t.heading)}>Main list</td>
+                {KINDS.map((k) => {
+                  const able = rows.filter((r) => r.can.includes(k) && r.on.includes(k));
+                  const cur = settings.main?.[k];
+                  return (
+                    <td key={k} class="pt-2.5 text-center">
+                      <select
+                        value={cur ?? ""}
+                        onChange={(e) => {
+                          const v = (e.target as HTMLSelectElement).value;
+                          onMain(k, v ? (v as Tracker) : undefined);
+                        }}
+                        class={clsx("w-[4.75rem] rounded-md px-1 py-1 text-[11px]", t.input)}
+                        title={`Main list for ${KIND_LABEL[k]}`}
+                      >
+                        <option value="">None</option>
+                        {able.map((r) => (
+                          <option key={r.tracker} value={r.tracker}>
+                            {trackerLabel(r.tracker)}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                  );
+                })}
+              </tr>
             </tbody>
           </table>
+          <p class={clsx("mt-2 text-[11px] leading-relaxed", t.sub)}>
+            None: every list gets what the others have. A main list: the others copy it, and lose
+            list entries it doesn’t have. Progress never goes down and Trakt history is never
+            deleted. The preview lists what stays as it is.
+          </p>
         </section>
 
         <section class={clsx("flex flex-col gap-3 rounded-lg p-3", t.card)}>
@@ -247,6 +293,7 @@ function TrackerCards({
               x.created && plural(x.created, "new entry", "new entries"),
               x.updated && `${x.updated} updated`,
               x.ratings && plural(x.ratings, "rating"),
+              x.removed && `${x.removed} removed`,
             ].filter(Boolean)
           : [];
         return (
@@ -275,7 +322,9 @@ function TrackerCards({
   );
 }
 
-type Tab = "changes" | "conflicts" | "skipped" | "kept";
+type Tab = "changes" | "removals" | "notices" | "conflicts" | "skipped" | "kept";
+
+const isRemoval = (i: SyncItem) => i.writes.every((w) => w.op === "remove");
 
 const PAGE = 100;
 
@@ -307,7 +356,10 @@ function PreviewResult({
   const match = (title: string, k?: SyncKind) =>
     title.toLowerCase().includes(q.trim().toLowerCase()) && (kind === "all" || k === kind);
 
-  const items = plan.items.filter((i) => !kept.has(i.key) && match(i.title, i.kind));
+  const live = plan.items.filter((i) => !kept.has(i.key));
+  const items = live.filter((i) => !isRemoval(i) && match(i.title, i.kind));
+  const removals = live.filter((i) => isRemoval(i) && match(i.title, i.kind));
+  const notices = plan.notices.filter((n) => !kept.has(n.key) && match(n.title, n.kind));
   const conflicts = plan.conflicts.filter((c) => !kept.has(c.key) && match(c.title));
   const skips = plan.skips.filter((s) => s.reason !== "ignored" && match(s.title));
   // A kept-out item's name: from this plan when it is there, else its key.
@@ -322,7 +374,9 @@ function PreviewResult({
   };
 
   const tabs: { id: Tab; label: string; n: number }[] = [
-    { id: "changes", label: "Changes", n: plan.items.filter((i) => !kept.has(i.key)).length },
+    { id: "changes", label: "Changes", n: live.filter((i) => !isRemoval(i)).length },
+    { id: "removals", label: "Removals", n: live.filter(isRemoval).length },
+    { id: "notices", label: "Left as is", n: plan.notices.filter((n) => !kept.has(n.key)).length },
     {
       id: "conflicts",
       label: "Trackers disagree",
@@ -373,7 +427,7 @@ function PreviewResult({
         </div>
         {tab !== "kept" && (
           <div class="ml-auto flex items-center gap-2">
-            {tab === "changes" && (
+            {tab !== "conflicts" && tab !== "skipped" && (
               <div class={clsx("flex gap-0.5 rounded-lg p-0.5", t.card)}>
                 {(["all", ...KINDS] as const).map((k) => (
                   <button
@@ -432,6 +486,29 @@ function PreviewResult({
       )}
       {tab === "changes" && !items.length && <Empty t={t} text="Nothing to change." />}
 
+      {tab === "removals" && (
+        <>
+          {removals.length > 0 && (
+            <p class={clsx("text-[11px] leading-relaxed", t.sub)}>
+              Your main list doesn’t have these, so sync would remove them from the other lists.
+              Keep one out of sync to leave it where it is.
+            </p>
+          )}
+          <ChangesTable
+            t={t}
+            trackers={trackers}
+            items={removals.slice(0, shown)}
+            onKeepOut={keepOut}
+          />
+          {!removals.length && <Empty t={t} text="Nothing to remove." />}
+        </>
+      )}
+
+      {tab === "notices" && <NoticeTable t={t} notices={notices} />}
+      {tab === "notices" && !notices.length && (
+        <Empty t={t} text="Every copy matches its main list, or there is no main list." />
+      )}
+
       {tab === "conflicts" && <ConflictTable t={t} trackers={trackers} conflicts={conflicts} />}
       {tab === "conflicts" && !conflicts.length && <Empty t={t} text="Your trackers agree." />}
 
@@ -464,7 +541,15 @@ function ChangesTable({
   if (!items.length) return null;
   return (
     <div class={clsx("overflow-x-auto rounded-lg", t.card)}>
-      <table class="w-full text-[12px]">
+      {/* Fixed layout: the columns keep their width whatever rows a filter shows. */}
+      <table class="w-full min-w-[640px] table-fixed text-[12px]">
+        <colgroup>
+          <col class="w-[30%]" />
+          {trackers.map((tk) => (
+            <col key={tk} />
+          ))}
+          <col class="w-10" />
+        </colgroup>
         <thead>
           <tr class={clsx("border-b text-left", t.divider, t.faint)}>
             <th class="px-3 py-2 font-medium">Title</th>
@@ -523,6 +608,54 @@ function ChangesTable({
   );
 }
 
+function NoticeTable({ t, notices }: { t: Tokens; notices: SyncNotice[] }) {
+  if (!notices.length) return null;
+  return (
+    <div class="space-y-2">
+      <p class={clsx("text-[11px] leading-relaxed", t.sub)}>
+        These copies differ from your main list, and sync leaves them as they are. Fix them by hand
+        on the tracker if you want them to match.
+      </p>
+      <div class={clsx("overflow-x-auto rounded-lg", t.card)}>
+        <table class="w-full min-w-[640px] table-fixed text-[12px]">
+          <colgroup>
+            <col class="w-[30%]" />
+            <col class="w-36" />
+            <col />
+          </colgroup>
+          <thead>
+            <tr class={clsx("border-b text-left", t.divider, t.faint)}>
+              <th class="px-3 py-2 font-medium">Title</th>
+              <th class="px-3 py-2 font-medium">Tracker</th>
+              <th class="px-3 py-2 font-medium">Why</th>
+            </tr>
+          </thead>
+          <tbody>
+            {notices.map((n) => (
+              <tr
+                key={`${n.key}:${n.tracker}:${n.reason}`}
+                class={clsx("border-b align-top last:border-b-0", t.divider)}
+              >
+                <td class={clsx("truncate px-3 py-2", t.heading)}>{n.title}</td>
+                <td class="px-3 py-2">
+                  <span class={clsx("flex items-center gap-1.5", t.sub)}>
+                    <TrackerMark tracker={n.tracker} />
+                    {trackerLabel(n.tracker)}
+                  </span>
+                </td>
+                <td class={clsx("px-3 py-2", t.sub)}>
+                  {NOTICE_LABEL[n.reason]}
+                  {n.detail && <span class={clsx("block", t.faint)}>{n.detail}</span>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function conflictValue(c: SyncConflict, v: string | number): string {
   return c.field === "status" ? STATUS_LABEL[v as CourStatus] : `${Math.round(Number(v)) / 10}/10`;
 }
@@ -540,7 +673,15 @@ function ConflictTable({
         one.
       </p>
       <div class={clsx("overflow-x-auto rounded-lg", t.card)}>
-        <table class="w-full text-[12px]">
+        <table class="w-full min-w-[640px] table-fixed text-[12px]">
+          <colgroup>
+            <col class="w-[30%]" />
+            <col class="w-20" />
+            {trackers.map((tk) => (
+              <col key={tk} />
+            ))}
+            <col />
+          </colgroup>
           <thead>
             <tr class={clsx("border-b text-left", t.divider, t.faint)}>
               <th class="px-3 py-2 font-medium">Title</th>

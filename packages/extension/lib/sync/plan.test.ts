@@ -100,6 +100,10 @@ function apply(entries: ListEntry[], p: SyncPlan): ListEntry[] {
               (w.target.ids.mal !== undefined && e.ids.mal === w.target.ids.mal)),
       );
     let e = find();
+    if (w.op === "remove") {
+      if (e) out.splice(out.indexOf(e), 1);
+      continue;
+    }
     if (w.op === "episodes") {
       if (!e) {
         e = {
@@ -565,8 +569,143 @@ describe("summarize", () => {
   it("counts writes per tracker", () => {
     const p = plan([traktShow(1399, { 1: [1, 2] })], { trackers: ["trakt", "simkl"] });
     expect(summarize(p, ["trakt", "simkl"])).toEqual([
-      { tracker: "trakt", episodes: 0, movies: 0, created: 0, updated: 0, ratings: 0 },
-      { tracker: "simkl", episodes: 2, movies: 0, created: 0, updated: 0, ratings: 0 },
+      { tracker: "trakt", episodes: 0, movies: 0, created: 0, updated: 0, ratings: 0, removed: 0 },
+      { tracker: "simkl", episodes: 2, movies: 0, created: 0, updated: 0, ratings: 0, removed: 0 },
     ]);
+  });
+});
+
+describe("a main list", () => {
+  const main = (anime: Tracker, extra: Partial<ListSyncSettings> = {}) => ({
+    settings: { main: { anime }, ...extra },
+    trackers: ["trakt", "anilist", "mal"] as Tracker[],
+  });
+
+  it("removes what the main list does not have, and adds nothing back to it", () => {
+    // Akira: plan to watch on MAL, removed from AniList long ago.
+    const akira = courEntry("mal", { mal: 300 }, { status: "PLANNING", total: 1, movie: true });
+    const p = plan([akira], main("anilist"));
+    expect(writesFor(p, "mal")).toEqual([expect.objectContaining({ op: "remove" })]);
+    expect(writesFor(p, "anilist")).toEqual([]);
+    // Without a main list it would be copied to AniList (the union).
+    expect(writesFor(plan([akira], { trackers: ["anilist", "mal"] }), "anilist")).not.toEqual([]);
+  });
+
+  it("copies the main list to the others", () => {
+    const p = plan(
+      [courEntry("anilist", { anilist: 30, mal: 300 }, { progress: 4 })],
+      main("anilist"),
+    );
+    expect(writesFor(p, "mal")).toEqual([
+      expect.objectContaining({ create: true, progress: { from: 0, to: 4 } }),
+    ]);
+  });
+
+  it("never lowers a copy, and says so", () => {
+    const p = plan(
+      [
+        courEntry("anilist", { anilist: 30, mal: 300 }, { progress: 6 }),
+        courEntry("mal", { anilist: 30, mal: 300 }, { progress: 10 }),
+      ],
+      main("anilist"),
+    );
+    expect(writesFor(p, "mal")).toEqual([]);
+    expect(writesFor(p, "anilist")).toEqual([]);
+    expect(p.notices).toEqual([
+      expect.objectContaining({
+        tracker: "mal",
+        reason: "ahead",
+        detail: "episode 10 here, 6 on AniList",
+      }),
+    ]);
+  });
+
+  it("the main list's status wins, however old", () => {
+    const p = plan(
+      [
+        courEntry(
+          "anilist",
+          { anilist: 30, mal: 300 },
+          { status: "DROPPED", progress: 4, updatedAt: 1 },
+        ),
+        courEntry(
+          "mal",
+          { anilist: 30, mal: 300 },
+          { status: "CURRENT", progress: 4, updatedAt: 9 },
+        ),
+      ],
+      main("anilist"),
+    );
+    expect(writesFor(p, "mal")).toEqual([
+      expect.objectContaining({ status: { from: "CURRENT", to: "DROPPED" } }),
+    ]);
+    expect(p.conflicts).toEqual([]);
+  });
+
+  it("never deletes Trakt watch history", () => {
+    const p = plan([traktShow(50, { 1: [1, 2] })], main("anilist"));
+    expect(writesFor(p, "trakt")).toEqual([]);
+    expect(p.notices).toEqual([
+      expect.objectContaining({ tracker: "trakt", reason: "history_kept" }),
+    ]);
+  });
+
+  it("keeps a copy's own rating, fills an empty one from the main list only", () => {
+    const p = plan(
+      [
+        courEntry("anilist", { anilist: 30, mal: 300 }, { rating: 80, progress: 1 }),
+        courEntry("mal", { anilist: 30, mal: 300 }, { rating: 50, progress: 1 }),
+        traktShow(50, { 1: [1] }, { rating: 100 }),
+      ],
+      main("anilist"),
+    );
+    expect(writesFor(p, "mal").filter((w) => w.op === "rating")).toEqual([]);
+    expect(writesFor(p, "trakt").filter((w) => w.op === "rating")).toEqual([]);
+    expect(
+      p.notices
+        .filter((n) => n.reason === "rating_kept")
+        .map((n) => n.tracker)
+        .sort(),
+    ).toEqual(["mal", "trakt"]);
+  });
+
+  it("plans nothing of a kind whose main list was not read", () => {
+    const p = plan([courEntry("mal", { mal: 300 }, { progress: 2 })], {
+      settings: { main: { anime: "anilist" } },
+      trackers: ["trakt", "mal"],
+    });
+    expect(p.items).toEqual([]);
+    expect(p.skips).toEqual([expect.objectContaining({ reason: "main_missing" })]);
+  });
+
+  it("works for TV too: removes from Simkl, keeps its extra episodes", () => {
+    const settings = { main: { tv: "trakt" as Tracker } };
+    const p = plan(
+      [
+        traktShow(1399, { 1: [1, 2] }),
+        simklShow({ tmdb: 1399 }, { 1: [1, 2, 3] }),
+        simklShow({ tmdb: 555 }, { 1: [1] }),
+      ],
+      { settings, trackers: ["trakt", "simkl"] },
+    );
+    expect(writesFor(p, "simkl")).toEqual([
+      expect.objectContaining({
+        op: "remove",
+        target: expect.objectContaining({ ids: { tmdb: 555 } }),
+      }),
+    ]);
+    expect(p.notices).toEqual([expect.objectContaining({ tracker: "simkl", reason: "ahead" })]);
+  });
+
+  it("converges", () => {
+    expectConverges(
+      [
+        courEntry("anilist", { anilist: 30, mal: 300 }, { progress: 4, rating: 70 }),
+        courEntry("mal", { mal: 300 }, { progress: 2 }),
+        courEntry("mal", { mal: 47 }, { status: "PLANNING" }),
+        traktShow(1429, { 1: [1] }),
+      ],
+      main("anilist"),
+    );
   });
 });

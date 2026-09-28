@@ -98,6 +98,21 @@ const entries: ListEntry[] = [
     rating: 80,
     watched: true,
   },
+  // Plan to watch on MyAnimeList only (removed from AniList long ago).
+  {
+    tracker: "mal",
+    shape: "cour",
+    id: 47,
+    title: "Akira",
+    year: 1988,
+    ids: { mal: 47 },
+    rating: null,
+    progress: 0,
+    total: 1,
+    status: "PLANNING",
+    repeat: 0,
+    movie: true,
+  },
 ];
 
 function preview(settings: ListSyncSettings, trackers: Tracker[]): SyncPreview {
@@ -131,21 +146,26 @@ function rows(settings: ListSyncSettings) {
 export function ListSyncTile({
   variant,
   state,
-}: { variant: Variant; state: "idle" | "preview" | "no-simkl-anime" | "too-few" | "reading" }) {
+}: {
+  variant: Variant;
+  state: "idle" | "preview" | "no-simkl-anime" | "main-anilist" | "too-few" | "reading";
+}) {
   const t = tokens(variant);
   const settings: ListSyncSettings =
     state === "no-simkl-anime"
       ? { ...DEFAULT_SYNC_SETTINGS, kinds: { simkl: ["movie", "tv"] }, ignore: ["movie:tmdb:1"] }
-      : DEFAULT_SYNC_SETTINGS;
+      : state === "main-anilist"
+        ? { ...DEFAULT_SYNC_SETTINGS, main: { anime: "anilist" } }
+        : DEFAULT_SYNC_SETTINGS;
   const p =
-    state === "preview" || state === "no-simkl-anime"
+    state === "preview" || state === "no-simkl-anime" || state === "main-anilist"
       ? preview(settings, ALL_TRACKERS)
       : state === "too-few"
         ? {
             ...preview(settings, ["trakt"]),
             reason: "too_few" as const,
             totals: [],
-            plan: { items: [], skips: [], conflicts: [] },
+            plan: { items: [], skips: [], conflicts: [], notices: [] },
           }
         : null;
   return (
@@ -169,6 +189,7 @@ export function ListSyncTile({
         onPreview={noop}
         onKind={noop}
         onSetting={noop}
+        onMain={noop}
         onIgnore={noop}
         onRestore={noop}
         onClearIgnored={noop}

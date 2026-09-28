@@ -832,6 +832,9 @@ export function App() {
             <Tile label="Preview · Simkl without anime, one item kept out" t={t}>
               <ListSyncTile variant={variant} state="no-simkl-anime" />
             </Tile>
+            <Tile label="Preview · AniList is the main list for anime (removals, left as is)" t={t}>
+              <ListSyncTile variant={variant} state="main-anilist" />
+            </Tile>
             <Tile label="Only one tracker connected" t={t}>
               <ListSyncTile variant={variant} state="too-few" />
             </Tile>

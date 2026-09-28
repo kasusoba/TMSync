@@ -134,7 +134,7 @@ async function runPreview(): Promise<void> {
     const trackers = reads.filter((r) => r.state === "read").map((r) => r.tracker);
     const animap = await loadAnimap();
     const base = { at: Date.now(), reads, noCrosswalk: animap.size === 0 };
-    const empty: SyncPlan = { items: [], skips: [], conflicts: [] };
+    const empty: SyncPlan = { items: [], skips: [], conflicts: [], notices: [] };
     const preview: SyncPreview =
       trackers.length < 2
         ? { ...base, reason: "too_few", totals: [], plan: empty }

@@ -88,6 +88,13 @@ export interface ListSyncSettings {
   includeAdult: boolean;
   /** Group keys the user keeps out of sync (`SyncItem.key`). */
   ignore: string[];
+  /**
+   * The main list per kind. With one, that kind stops being a union: the main
+   * list is the truth, the others copy it, and an entry the main list does not
+   * have is removed from the others (a list entry only, never Trakt watch
+   * history). The copies' progress still never goes down. Missing = union.
+   */
+  main?: Partial<Record<SyncKind, Tracker>>;
 }
 
 export const DEFAULT_SYNC_SETTINGS: ListSyncSettings = {
@@ -139,6 +146,9 @@ export type SyncWrite =
       status?: Change<CourStatus | null>;
       repeat?: Change<number>;
     }
+  /** Remove the entry from the tracker's list (a main list does not have it).
+   * Only list entries: Trakt watch history is never removed. */
+  | { tracker: Tracker; op: "remove"; target: TargetRef }
   /** Fill an empty rating. `score` is 0 to 100. */
   | {
       tracker: Tracker;
@@ -174,7 +184,10 @@ export type SkipReason =
   /** The progress is above the target's episode count (numbering does not match). */
   | "numbering"
   /** No id the target tracker can use. */
-  | "no_id";
+  | "no_id"
+  /** This kind has a main list, but it was not read (not connected, or failed),
+   * so nothing of this kind is planned. */
+  | "main_missing";
 
 /** Something sync will not do, and why. `tracker` is the one that misses out. */
 export interface SyncSkip {
@@ -197,10 +210,32 @@ export interface SyncConflict {
   chosen: { tracker: Tracker; value: string | number } | null;
 }
 
+/**
+ * A copy of a main list that sync leaves as it is, and why. Sync tells the user
+ * instead of acting, because acting would lower progress or delete history.
+ */
+export interface SyncNotice {
+  key: string;
+  title: string;
+  kind: SyncKind;
+  /** The copy that differs from the main list. */
+  tracker: Tracker;
+  reason: /** The copy is further than the main list. Sync never lowers progress. */
+    | "ahead"
+    /** The main list does not have it, but this copy is Trakt watch history,
+     * which sync never removes. */
+    | "history_kept"
+    /** The copy has a different rating. Sync only fills empty ratings. */
+    | "rating_kept";
+  detail?: string;
+}
+
 export interface SyncPlan {
   items: SyncItem[];
   skips: SyncSkip[];
   conflicts: SyncConflict[];
+  /** Copies of a main list left as they are (see `SyncNotice`). */
+  notices: SyncNotice[];
 }
 
 /** Per-tracker totals, for the preview header. */
@@ -211,4 +246,5 @@ export interface SyncTotals {
   created: number;
   updated: number;
   ratings: number;
+  removed: number;
 }
