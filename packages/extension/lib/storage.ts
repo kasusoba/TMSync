@@ -23,7 +23,7 @@ import type { QuickLinkTracker, Tracker } from "./trackers/types";
  *  - `session:` ephemeral per-tab session state.
  *
  * Quota note: `browser.storage.sync` caps items at ~8 KB each / ~100 KB total.
- * Custom recipes use one key per recipe (recipe-store.ts). The other synced items
+ * Custom recipes use one key per recipe (recipes/store.ts). The other synced items
  * are single keys; if they grow large, move them to per-item keys too.
  */
 
@@ -168,7 +168,7 @@ export const resolutionCache = storage.defineItem<Record<string, ResolvedIdentit
  * TMDB/IMDB ids for a Trakt show/movie, keyed by `${type}:${slug}`. app.trakt.tv's
  * SvelteKit UI renders no external-id links in its DOM (unlike the classic site's
  * `#external-link-tmdb`), so quick links there resolve `{tmdb}` via GET
- * /shows|movies/{slug} instead (see trakt.content.tsx). Cached since a title's
+ * /shows|movies/{slug} instead (see trakt-quicklinks.content.tsx). Cached since a title's
  * ids never change.
  */
 export const traktIdsBySlug = storage.defineItem<Record<string, TraktIds>>(
@@ -219,8 +219,8 @@ export const optionsIntent = storage.defineItem<OptionsIntent | null>("session:o
 });
 
 /** Recipes authored locally via the element picker (merged with the bundled list).
- * One sync key per recipe; see recipe-store.ts. */
-export { customRecipes } from "./recipe-store";
+ * One sync key per recipe; see recipes/store.ts. */
+export { customRecipes } from "./recipes/store";
 
 /**
  * Cached copy of the versioned recipe list fetched from the repo/CDN (Phase 1

@@ -6,8 +6,8 @@ import {
 } from "@/lib/diagnostics/frame-tree";
 import { actionError } from "@/lib/errors";
 import { deriveQuickLink } from "@/lib/picker/recipe-builder";
-import { linkOnHost, removeLinkOnHost, saveLinkOnHost } from "@/lib/quick-link-edit";
-import { type SiteGroup, findMovedSite, groupSites, withSiteHosts } from "@/lib/sites";
+import { linkOnHost, removeLinkOnHost, saveLinkOnHost } from "@/lib/recipes/quick-link-edit";
+import { type SiteGroup, findMovedSite, groupSites, withSiteHosts } from "@/lib/recipes/sites";
 import {
   type BadgePrefs,
   type QuickLinkSite,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { newRecipeId, slugifyHost, uniqueRecipeId } from "./recipe-id";
+import { newRecipeId, slugifyHost, uniqueRecipeId } from "./id";
 
 describe("slugifyHost", () => {
   it("strips www., lowercases, and hyphenates dots", () => {

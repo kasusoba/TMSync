@@ -1,6 +1,6 @@
 import { browser } from "wxt/browser";
-import { launchAuthFlow } from "../../oauth";
 import { anilistTokens } from "../../storage";
+import { launchAuthFlow } from "../oauth";
 import { ANILIST } from "./config";
 import type { AniListTokens } from "./types";
 

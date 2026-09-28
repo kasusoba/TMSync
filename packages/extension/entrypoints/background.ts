@@ -1,8 +1,8 @@
 import { ANIME_MAP, RECIPES } from "@/config";
 import { errorMessage } from "@/lib/errors";
 import { bundledLinks } from "@/lib/recipes";
+import { addedHosts } from "@/lib/recipes/sites";
 import { statusDotColor } from "@/lib/scrobble/action-badge";
-import { addedHosts } from "@/lib/sites";
 import {
   type QuickLinkSite,
   animapOverrides,

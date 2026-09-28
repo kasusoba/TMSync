@@ -19,7 +19,7 @@ export default defineContentScript({
     if (!(await quickLinksEnabled.getValue())) return; // quick links turned off in Options
 
     // Only Trakt-tracker quick links inject on Trakt pages (AniList ones show on
-    // anilist.co — see anilist.content.tsx). Undefined tracker defaults to trakt.
+    // anilist.co — see anilist-quicklinks.content.tsx). Undefined tracker defaults to trakt.
     const sites = (await quickLinks.getValue()).filter(
       (s) => s.enabled && (s.tracker ?? "trakt") === "trakt",
     );
@@ -172,7 +172,7 @@ export default defineContentScript({
 
     // One watchdog for every kind of client-side navigation. It polls `location`
     // rather than listening for `wxt:locationchange`, mirroring
-    // anilist.content.tsx (history patching in the page's world doesn't reliably
+    // anilist-quicklinks.content.tsx (history patching in the page's world doesn't reliably
     // reach an isolated content script). Three things need it:
     //
     //  1. The DRAWERS: mount/unmount them, and re-read the media after a
@@ -187,7 +187,7 @@ export default defineContentScript({
     //  3. RE-MOUNT a host the page discarded, as a safety net. autoMount only
     //     watches the ANCHOR, so a re-render that drops our node while keeping
     //     the anchor leaves nothing to bring it back (the same failure
-    //     anilist.content.tsx guards against).
+    //     anilist-quicklinks.content.tsx guards against).
     let lastPath = location.pathname;
     let lastPaint = paintKey();
     ctx.setInterval(() => {

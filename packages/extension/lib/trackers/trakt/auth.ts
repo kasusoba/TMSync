@@ -1,6 +1,6 @@
 import { TRAKT } from "@/config";
-import { launchAuthFlow } from "@/lib/oauth";
 import { traktTokens } from "@/lib/storage";
+import { launchAuthFlow } from "@/lib/trackers/oauth";
 import { browser } from "wxt/browser";
 import type { TraktTokens } from "./types";
 import { isTokenExpired } from "./util";

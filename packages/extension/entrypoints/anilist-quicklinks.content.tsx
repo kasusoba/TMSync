@@ -14,7 +14,7 @@ function siteHost(animeTemplate?: string): string | undefined {
 }
 
 /**
- * Runs on anilist.co (the AniList analogue of trakt.content). Reads an anime's id
+ * Runs on anilist.co (the AniList analogue of trakt-quicklinks.content). Reads an anime's id
  * + title from the page and injects "watch on <site>" links for every ENABLED
  * AniList quick-link site, deep-linked to the series (or a title search). Mirrors
  * the Trakt quick-links feature.

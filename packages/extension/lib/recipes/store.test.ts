@@ -2,7 +2,7 @@ import type { Recipe } from "@tmsync/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { browser } from "wxt/browser";
 import { fakeBrowser } from "wxt/testing";
-import { customRecipes } from "./recipe-store";
+import { customRecipes } from "./store";
 
 const recipe = (id: string, pad = ""): Recipe => ({
   id,

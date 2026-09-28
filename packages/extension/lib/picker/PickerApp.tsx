@@ -1,7 +1,7 @@
 import "@/lib/ui/theme.css";
 import { actionError } from "@/lib/errors";
-import { newRecipeId, slugifyHost } from "@/lib/recipe-id";
 import { loadRecipes, recipeTarget } from "@/lib/recipes";
+import { newRecipeId, slugifyHost } from "@/lib/recipes/id";
 import { customRecipes } from "@/lib/storage";
 import { isSeasonless } from "@/lib/trackers/types";
 import { useKeyShield } from "@/lib/ui/key-shield";

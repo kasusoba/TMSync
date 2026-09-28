@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
+import type { QuickLinkSite } from "../storage";
 import {
   type QuickLinkFields,
   linkOnHost,
   removeLinkOnHost,
   saveLinkOnHost,
 } from "./quick-link-edit";
-import type { QuickLinkSite } from "./storage";
 
 const link = (id: string, host: string, extra: Partial<QuickLinkSite> = {}): QuickLinkSite => ({
   id,

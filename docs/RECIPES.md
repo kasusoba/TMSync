@@ -106,7 +106,7 @@ anime crosswalk, then a title search, then the user-correction picker. See the t
   is refused with a warning instead of being written.
 
 Recipe ids are readable and stable, not timestamps. The picker derives one from the host slug
-(`www.miruro.to` becomes `miruro-to`), with `-2`, `-3` on a collision (`lib/recipe-id.ts`). Two
+(`www.miruro.to` becomes `miruro-to`), with `-2`, `-3` on a collision (`lib/recipes/id.ts`). Two
 users who contribute the same site then produce the same id, so the library never gets a silent
 duplicate. No store references a recipe id as a foreign key, so ids can change freely.
 
@@ -241,7 +241,7 @@ that older patterns carry. A move is handled in one of three ways, cheapest firs
 1. **The popup offers it.** Open the popup on the new domain. If one of your sites has the same
    name on another domain, it asks "Did Cinejoy move here?". One click asks for access, adds the
    domain to every recipe of that site, and starts tracking (`findMovedSite` in
-   `packages/extension/lib/sites.ts`).
+   `packages/extension/lib/recipes/sites.ts`).
 2. **Options, under Sites, on the site's card.** Add the new domain (access is requested), then
    remove the old one (its access is revoked). A library recipe is forked locally under the same id,
    so the next library sync cannot undo the edit.

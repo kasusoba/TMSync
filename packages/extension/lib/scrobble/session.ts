@@ -310,7 +310,7 @@ function primaryStatus(
  * Navigation API's `navigate` event doesn't fire in the isolated world either,
  * which is why `wxt:locationchange` is no use here.) `location` is the one thing
  * that always reflects the real URL from any world, so poll it, mirroring
- * anilist.content.tsx / trakt.content.tsx.
+ * anilist-quicklinks.content.tsx / trakt-quicklinks.content.tsx.
  *
  * Without this, an SPA episode swap (anikototv `/ep-10` to `/ep-11`) only got
  * re-extracted if the site happened to also mutate <head> (the title observer) or

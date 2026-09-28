@@ -1,10 +1,10 @@
 import type { ParsedMedia } from "@tmsync/shared";
 import { errorMessage } from "../../errors";
-import { errorDetail } from "../../oauth";
 import { malCorrections, malEntryCache, malMissCache, malResolutionCache } from "../../storage";
 import { resolveById as anilistResolveById } from "../anilist/client";
 import type { CourEntry, CourStatus } from "../cour-plan";
 import { freshHit, stamp } from "../identity-cache";
+import { errorDetail } from "../oauth";
 import type { CourSearchOption } from "../types";
 import { hasMalAccess } from "./access";
 import { forgetGrant, getValidAccessToken, refreshAfterReject } from "./auth";
