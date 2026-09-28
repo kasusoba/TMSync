@@ -4,7 +4,7 @@
  *
  * The MAL app is registered as type "Other": a public client with NO secret, so
  * sign-in is authorization code + PKCE and nothing secret ships in the bundle.
- * MAL supports only the `plain` PKCE method (docs/TRACKERS-PLAN.md, "MAL API
+ * MAL supports only the `plain` PKCE method (docs/TRACKERS.md, "MAL API
  * facts"). One app registers both browsers' redirect URIs, so the same id serves
  * Chrome and Firefox.
  */

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Build `recipes/anime-map.json`, the TMDB<->AniList crosswalk the multi-track
- * fan-out derives episode numbering from (docs/MULTI-TRACK.md).
+ * fan-out derives episode numbering from (docs/ARCHITECTURE.md).
  *
  * Source: Fribb/anime-lists `anime-list-full.json`, which a bot regenerates every
  * week. The output is a trimmed subset of it: only entries that carry BOTH an

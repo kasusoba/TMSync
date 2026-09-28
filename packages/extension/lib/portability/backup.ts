@@ -17,7 +17,7 @@ import { z } from "zod";
  * Manual backup (export/import). The bundle is exactly the **sync layer** — the
  * user-owned deltas (custom recipes, user quick links + library toggles,
  * corrections, manual picks, badge prefs) — and explicitly NOT library content
- * (re-fetched from the repo), tokens, or caches. See STORAGE-SYNC.md: the export
+ * (re-fetched from the repo), tokens, or caches. See docs/ARCHITECTURE.md: the export
  * bundle === the sync payload === "your stuff", so both portability paths move the
  * same set.
  *

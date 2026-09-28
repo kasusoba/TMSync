@@ -5,7 +5,7 @@
  * correct; only the host changes. So the host is held in ONE place,
  * `match.hostnames`, which is the recipe's host scope AND the list of origins the
  * background requests permission for. A move is then one entry added to that list
- * (see docs/RECIPE-LIFECYCLE.md).
+ * (see docs/RECIPES.md).
  *
  * Older recipes carry the host inside `match.urlPattern` instead (the picker used
  * to build `cineby\.at/movie`). These helpers read and rewrite that anchor so both

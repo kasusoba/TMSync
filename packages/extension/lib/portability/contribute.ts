@@ -7,7 +7,7 @@ import type { Recipe } from "@tmsync/shared";
  * Contributing site config (recipes / quick links) to the central repo, with NO
  * backend (constraint #7): a one-click prefilled GitHub issue carrying a
  * self-describing, merge-ready payload, so a maintainer or an issue→PR bot can
- * route + merge it with minimal cleanup (see STORAGE-SYNC.md "Contribution").
+ * route + merge it with minimal cleanup (see docs/ARCHITECTURE.md "Contribution").
  *
  * ONLY site config is contributable — corrections, manual picks and the crosswalk
  * are watch-revealing and never leave the device (constraint #6).

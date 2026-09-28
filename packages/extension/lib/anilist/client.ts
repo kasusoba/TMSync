@@ -186,7 +186,7 @@ query ($id: Int) {
 
 /**
  * Resolve a KNOWN AniList Media id → identity (cached). The multi-track derived
- * path (docs/MULTI-TRACK.md) gets the id straight from the anime-map crosswalk, so
+ * path (docs/ARCHITECTURE.md) gets the id straight from the anime-map crosswalk, so
  * it resolves by id instead of a title search — exact, no same-title ambiguity.
  */
 export async function resolveById(anilistId: number): Promise<AniListIdentity | null> {

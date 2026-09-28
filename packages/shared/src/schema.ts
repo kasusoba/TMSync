@@ -15,7 +15,7 @@ import { z } from "zod";
  *
  * v3 generalises identity from the single `extract.tmdbId` to an OPEN, per-field
  * `extract.ids` map keyed by id NAMESPACE (tmdb/imdb/tvdb/anilist/mal — see
- * `IdNamespace`; docs/IDENTITY-NAMESPACES.md). A page may expose several ids;
+ * `IdNamespace`; docs/RECIPES.md). A page may expose several ids;
  * resolution tries them best-first. A v≤2 `extract.tmdbId` is folded into
  * `ids.tmdb` by the transform below, so old recipes still parse (back-compat).
  *
@@ -152,7 +152,7 @@ export const Recipe = z.object({
   // below; `tracker` is kept for back-compat + as a default. Its "trakt" default is
   // why `recipeTrackers()` treats `trackers` as authoritative, not a union.
   tracker: TrackerId.default("trakt"),
-  // MULTI-TRACK (docs/MULTI-TRACK.md): the set of trackers this recipe records to —
+  // MULTI-TRACK (docs/ARCHITECTURE.md): the set of trackers this recipe records to —
   // the user's toggled set (a pluggable list; more trackers may be added later).
   // AUTHORITATIVE when present. Which one is "native" (its numbering matches the
   // page → written directly) vs "derived" (mapped via the anime-map crosswalk,
@@ -221,7 +221,7 @@ export const RecipeSchema = Recipe;
 export type Tracker = z.infer<typeof TrackerId>;
 
 /**
- * The set of trackers a recipe writes to (multi-track — docs/MULTI-TRACK.md).
+ * The set of trackers a recipe writes to (multi-track — docs/ARCHITECTURE.md).
  * `trackers` is AUTHORITATIVE when present (the user's toggled set), deduped; only
  * a legacy recipe with no `trackers` falls back to the single `tracker`. It is NOT
  * unioned with `tracker` — the `tracker` field defaults to "trakt", so unioning

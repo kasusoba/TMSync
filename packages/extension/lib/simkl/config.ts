@@ -6,7 +6,7 @@
  * The app is an AUTH V2 "Mobile, desktop & browser apps" registration: no client
  * secret, sign-in is authorization code + PKCE (S256 only). One app registers both
  * browsers' redirect URIs. api.simkl.com answers CORS, so unlike MAL no host
- * permission is needed (docs/TRACKERS-PLAN.md, "Step 2").
+ * permission is needed (docs/TRACKERS.md, "Simkl").
  */
 export const SIMKL = {
   clientId: import.meta.env.WXT_SIMKL_CLIENT_ID,

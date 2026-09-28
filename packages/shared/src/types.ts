@@ -11,7 +11,7 @@ export interface ParsedMedia {
   season?: number;
   episode?: number;
   /** Identity ids scraped from the page (usually the URL), keyed by namespace
-   * (docs/IDENTITY-NAMESPACES.md). When one is present an adapter resolves by id —
+   * (docs/RECIPES.md). When one is present an adapter resolves by id —
    * exact, immune to same-title/remake ambiguity — instead of a title search. For
    * shows an id identifies the show; season/episode still come from their own
    * fields. `imdb` values are strings ("tt…"); tmdb/tvdb/anilist/mal are numeric. */

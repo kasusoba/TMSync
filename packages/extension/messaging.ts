@@ -23,7 +23,7 @@ export interface ScrobbleRequest {
   /** The recipe's primary tracker (the legacy single field). The native tracker is
    * inferred from `trackers` at scrobble time. */
   tracker: Tracker;
-  /** MULTI-TRACK (docs/MULTI-TRACK.md): the full toggled set. Any tracker beyond
+  /** MULTI-TRACK (docs/ARCHITECTURE.md): the full toggled set. Any tracker beyond
    * the native one is DERIVED via the anime-map crosswalk. Omitted ⇒ [tracker]
    * (native-only, unchanged behaviour). */
   trackers?: Tracker[];

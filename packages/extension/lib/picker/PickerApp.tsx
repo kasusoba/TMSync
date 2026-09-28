@@ -323,7 +323,7 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
   }
 
   async function save() {
-    // Stable, human-readable id (docs/IDENTITY-NAMESPACES.md): a host slug, unique
+    // Stable, human-readable id (docs/RECIPES.md): a host slug, unique
     // against existing recipe ids — so a re-authored site updates rather than dupes.
     const existing = await customRecipes.getValue();
     const id =
