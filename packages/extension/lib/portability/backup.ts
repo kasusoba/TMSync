@@ -8,7 +8,7 @@ import {
   quickLinks,
   quickLinksEnabled,
 } from "@/lib/storage";
-import type { ResolvedIdentity } from "@/lib/trakt/types";
+import type { ResolvedIdentity } from "@/lib/trackers/trakt/types";
 import type { ParsedMedia, Recipe } from "@tmsync/shared";
 import { LinkTemplates, RecipeSchema } from "@tmsync/shared";
 import { z } from "zod";

@@ -7,7 +7,7 @@ import {
   type TraktRatedMovie,
   buildLetterboxdRows,
   toLetterboxdCsv,
-} from "../portability/letterboxd";
+} from "../../portability/letterboxd";
 import { getValidAccessToken, refreshTokens } from "./auth";
 import type {
   RatingSyncBody,

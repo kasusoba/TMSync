@@ -1,4 +1,4 @@
-import { QUICK_LINK_TRACKERS, type QuickLinkTracker, trackerLabel } from "@/lib/tracker/types";
+import { QUICK_LINK_TRACKERS, type QuickLinkTracker, trackerLabel } from "@/lib/trackers/types";
 import clsx from "clsx";
 import { type Tokens, TrackerMark } from "./kit";
 

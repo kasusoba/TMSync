@@ -1,6 +1,6 @@
 import { type LinkTemplates, linkHost, normalizeHost } from "@tmsync/shared";
 import type { QuickLinkSite } from "./storage";
-import type { QuickLinkTracker } from "./tracker/types";
+import type { QuickLinkTracker } from "./trackers/types";
 
 /** What the popup's quick-link editor saves. */
 export interface QuickLinkFields extends LinkTemplates {

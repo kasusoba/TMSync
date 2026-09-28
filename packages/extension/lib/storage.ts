@@ -1,14 +1,14 @@
 import type { BadgeStatus } from "@/messaging";
 import type { LinkTemplates, ParsedMedia, Recipe } from "@tmsync/shared";
 import { storage } from "wxt/utils/storage";
-import type { AniListIdentity, AniListTokens } from "./anilist/types";
-import type { AnimapOverrides } from "./animap/derive";
-import type { AnimapRow } from "./animap/index";
-import type { MalIdentity, MalListStatus, MalTokens } from "./mal/types";
-import type { SimklMatch, SimklTokens } from "./simkl/types";
-import type { Cached } from "./tracker/identity-cache";
-import type { QuickLinkTracker, Tracker } from "./tracker/types";
-import type { ResolvedIdentity, TraktIds, TraktTokens } from "./trakt/types";
+import type { AniListIdentity, AniListTokens } from "./trackers/anilist/types";
+import type { AnimapOverrides } from "./trackers/animap/derive";
+import type { AnimapRow } from "./trackers/animap/index";
+import type { Cached } from "./trackers/identity-cache";
+import type { MalIdentity, MalListStatus, MalTokens } from "./trackers/mal/types";
+import type { SimklMatch, SimklTokens } from "./trackers/simkl/types";
+import type { ResolvedIdentity, TraktIds, TraktTokens } from "./trackers/trakt/types";
+import type { QuickLinkTracker, Tracker } from "./trackers/types";
 
 /**
  * All persisted state lives here. The background SW is stateless (constraint
@@ -184,7 +184,7 @@ export const traktIdsBySlug = storage.defineItem<Record<string, TraktIds>>(
  * junk to URLs). Local + regenerable on the next watch — the no-backend analogue
  * of MALSync's central id→url map (see docs/ARCHITECTURE.md).
  *
- * NOTE: this is NOT the episode-numbering crosswalk in `lib/animap/` — this only
+ * NOTE: this is NOT the episode-numbering crosswalk in `lib/trackers/animap/` — this only
  * maps a site page to its slug for deep-linking. Named distinctly on purpose.
  */
 export const quickLinkSlugs = storage.defineItem<Record<string, string>>("local:quicklink_slugs", {

@@ -1,6 +1,6 @@
 import { RECIPES } from "@/config";
 import type { QuickLinkSite } from "@/lib/storage";
-import type { Tracker } from "@/lib/tracker/types";
+import type { Tracker } from "@/lib/trackers/types";
 import type { Recipe } from "@tmsync/shared";
 
 /**

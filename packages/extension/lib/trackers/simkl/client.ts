@@ -1,6 +1,6 @@
 import type { ParsedMedia } from "@tmsync/shared";
 import { browser } from "wxt/browser";
-import { simklHeldStops, simklMatches, simklScrobbleAt } from "../storage";
+import { simklHeldStops, simklMatches, simklScrobbleAt } from "../../storage";
 import { forgetGrant, getValidAccessToken, refreshAfterReject } from "./auth";
 import { SCROBBLE_LOCK_MS, SIMKL } from "./config";
 import type { SimklMatch, SimklMediaObject, SimklScrobbleResponse, SimklSection } from "./types";

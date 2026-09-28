@@ -7,7 +7,7 @@ import {
   isSeasonless,
   trackerFix,
   trackerLabel,
-} from "@/lib/tracker/types";
+} from "@/lib/trackers/types";
 import {
   type BadgeState,
   type BadgeStatus,

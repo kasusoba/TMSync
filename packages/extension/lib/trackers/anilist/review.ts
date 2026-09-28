@@ -1,6 +1,6 @@
 import type { ParsedMedia } from "@tmsync/shared";
-import { errorMessage } from "../errors";
-import { anilistNotes, anilistRatings } from "../storage";
+import { errorMessage } from "../../errors";
+import { anilistNotes, anilistRatings } from "../../storage";
 import {
   AniListNotConnectedError,
   resolve as anilistResolve,

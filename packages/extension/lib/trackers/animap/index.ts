@@ -5,7 +5,7 @@
  * Fribb/anime-lists (regenerated weekly upstream), trimmed by
  * `scripts/build-anime-map.mjs` and fetched from the CDN like the recipe list, NOT
  * bundled, so ~300 KB of rows never sit in the service-worker bundle and a refresh
- * needs no extension release. Loading lives in `lib/animap/load.ts`; this file
+ * needs no extension release. Loading lives in `lib/trackers/animap/load.ts`; this file
  * stays pure (rows in, lookups out).
  *
  * It maps between the two numbering families (`NumberingFamily` in lib/tracker):

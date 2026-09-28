@@ -1,6 +1,6 @@
 import type { ParsedMedia } from "@tmsync/shared";
-import { errorMessage } from "../errors";
-import { malNotes, malRatings } from "../storage";
+import { errorMessage } from "../../errors";
+import { malNotes, malRatings } from "../../storage";
 import { getMyListStatus, resolve as malResolve, updateListStatus } from "./client";
 
 /**

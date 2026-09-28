@@ -1,5 +1,5 @@
 import { defaultRecipeName } from "@/lib/picker/recipe-builder";
-import type { QuickLinkTracker, Tracker } from "@/lib/tracker/types";
+import type { QuickLinkTracker, Tracker } from "@/lib/trackers/types";
 import {
   ANILIST_PLACEHOLDERS,
   type LinkTemplates,

@@ -1,9 +1,9 @@
 import type { ParsedMedia } from "@tmsync/shared";
-import { anilistAdapter } from "../anilist/adapter";
-import { malAdapter } from "../mal/adapter";
-import { simklAdapter } from "../simkl/adapter";
-import { traktAdapter } from "../trakt/adapter";
 import type { TrackerAdapter } from "./adapter";
+import { anilistAdapter } from "./anilist/adapter";
+import { malAdapter } from "./mal/adapter";
+import { simklAdapter } from "./simkl/adapter";
+import { traktAdapter } from "./trakt/adapter";
 import { ALL_TRACKERS, type Tracker, isPassthrough, isSeasonless } from "./types";
 
 export type { TrackerAdapter } from "./adapter";

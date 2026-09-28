@@ -8,7 +8,7 @@
  * native-only exactly as an unmapped title does.
  */
 import { z } from "zod";
-import { animeMap } from "../storage";
+import { animeMap } from "../../storage";
 import { Animap, type AnimapRow, EMPTY_ANIMAP } from "./index";
 
 /** One row of the CDN payload. Unknown/extra fields are dropped, bad rows are

@@ -3,7 +3,7 @@ import { actionError } from "@/lib/errors";
 import { newRecipeId, slugifyHost } from "@/lib/recipe-id";
 import { loadRecipes, recipeTarget } from "@/lib/recipes";
 import { customRecipes } from "@/lib/storage";
-import { isSeasonless } from "@/lib/tracker/types";
+import { isSeasonless } from "@/lib/trackers/types";
 import { useKeyShield } from "@/lib/ui/key-shield";
 import { PickerPanel } from "@/lib/ui/kit/PickerPanel";
 import { sendMessage } from "@/messaging";

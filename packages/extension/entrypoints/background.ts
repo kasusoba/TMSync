@@ -1,64 +1,7 @@
 import { ANIME_MAP, RECIPES } from "@/config";
-import {
-  connect as anilistConnect,
-  disconnect as anilistDisconnect,
-  isConnected as anilistIsConnected,
-  getRedirectUri as anilistRedirectUri,
-} from "@/lib/anilist/auth";
-import {
-  AniListNotConnectedError,
-  anilistCacheKey,
-  resolveById as anilistIdentityById,
-  resolve as anilistResolve,
-  legacyAnilistKey,
-  searchAniList,
-} from "@/lib/anilist/client";
-import { ANILIST } from "@/lib/anilist/config";
-import {
-  anilistDeleteNote,
-  anilistGetReview,
-  anilistRate,
-  anilistSaveNote,
-  anilistUnrate,
-} from "@/lib/anilist/review";
-import type { AniListIdentity } from "@/lib/anilist/types";
-import {
-  type AnimapOverrides,
-  type TargetIds,
-  deriveMediaWith,
-  forwardKey,
-} from "@/lib/animap/derive";
-import type { Animap } from "@/lib/animap/index";
-import { loadAnimap, parseAnimeMap } from "@/lib/animap/load";
 import { errorMessage } from "@/lib/errors";
-import { hasMalAccess, isMalGrant } from "@/lib/mal/access";
-import {
-  connect as malConnect,
-  disconnect as malDisconnect,
-  isConnected as malIsConnected,
-  getRedirectUri as malRedirectUri,
-} from "@/lib/mal/auth";
-import { getAnime as getMalAnime, malCacheKey, searchMal } from "@/lib/mal/client";
-import { MAL } from "@/lib/mal/config";
-import { malDeleteNote, malGetReview, malRate, malSaveNote, malUnrate } from "@/lib/mal/review";
-import type { MalIdentity } from "@/lib/mal/types";
 import { bundledLinks } from "@/lib/recipes";
 import { statusDotColor } from "@/lib/scrobble/action-badge";
-import {
-  connect as simklConnect,
-  disconnect as simklDisconnect,
-  isConnected as simklIsConnected,
-  getRedirectUri as simklRedirectUri,
-} from "@/lib/simkl/auth";
-import { HELD_STOP_ALARM, flushHeldStops } from "@/lib/simkl/client";
-import { SIMKL } from "@/lib/simkl/config";
-import {
-  simklDeleteNote,
-  simklGetReview,
-  simklRate,
-  simklSaveNote,
-  simklUnrate,
-} from "@/lib/simkl/review";
 import { addedHosts } from "@/lib/sites";
 import {
   type QuickLinkSite,
@@ -92,8 +35,88 @@ import {
   routeTracker,
   trackerFamily,
   trackerLabel,
-} from "@/lib/tracker";
-import { planCourWrite } from "@/lib/tracker/cour-plan";
+} from "@/lib/trackers";
+import {
+  connect as anilistConnect,
+  disconnect as anilistDisconnect,
+  isConnected as anilistIsConnected,
+  getRedirectUri as anilistRedirectUri,
+} from "@/lib/trackers/anilist/auth";
+import {
+  AniListNotConnectedError,
+  anilistCacheKey,
+  resolveById as anilistIdentityById,
+  resolve as anilistResolve,
+  legacyAnilistKey,
+  searchAniList,
+} from "@/lib/trackers/anilist/client";
+import { ANILIST } from "@/lib/trackers/anilist/config";
+import {
+  anilistDeleteNote,
+  anilistGetReview,
+  anilistRate,
+  anilistSaveNote,
+  anilistUnrate,
+} from "@/lib/trackers/anilist/review";
+import type { AniListIdentity } from "@/lib/trackers/anilist/types";
+import {
+  type AnimapOverrides,
+  type TargetIds,
+  deriveMediaWith,
+  forwardKey,
+} from "@/lib/trackers/animap/derive";
+import type { Animap } from "@/lib/trackers/animap/index";
+import { loadAnimap, parseAnimeMap } from "@/lib/trackers/animap/load";
+import { planCourWrite } from "@/lib/trackers/cour-plan";
+import { hasMalAccess, isMalGrant } from "@/lib/trackers/mal/access";
+import {
+  connect as malConnect,
+  disconnect as malDisconnect,
+  isConnected as malIsConnected,
+  getRedirectUri as malRedirectUri,
+} from "@/lib/trackers/mal/auth";
+import { getAnime as getMalAnime, malCacheKey, searchMal } from "@/lib/trackers/mal/client";
+import { MAL } from "@/lib/trackers/mal/config";
+import {
+  malDeleteNote,
+  malGetReview,
+  malRate,
+  malSaveNote,
+  malUnrate,
+} from "@/lib/trackers/mal/review";
+import type { MalIdentity } from "@/lib/trackers/mal/types";
+import {
+  connect as simklConnect,
+  disconnect as simklDisconnect,
+  isConnected as simklIsConnected,
+  getRedirectUri as simklRedirectUri,
+} from "@/lib/trackers/simkl/auth";
+import { HELD_STOP_ALARM, flushHeldStops } from "@/lib/trackers/simkl/client";
+import { SIMKL } from "@/lib/trackers/simkl/config";
+import {
+  simklDeleteNote,
+  simklGetReview,
+  simklRate,
+  simklSaveNote,
+  simklUnrate,
+} from "@/lib/trackers/simkl/review";
+import { connect, disconnect, getRedirectUri, isConnected } from "@/lib/trackers/trakt/auth";
+import {
+  TraktNotConnectedError,
+  exportLetterboxd,
+  idsForSlug,
+  resolve,
+  search,
+} from "@/lib/trackers/trakt/client";
+import {
+  traktDeleteNote,
+  traktGetReview,
+  traktRate,
+  traktSaveNote,
+  traktUnrate,
+} from "@/lib/trackers/trakt/review";
+import type { ReviewLevel } from "@/lib/trackers/trakt/types";
+import { resolutionCacheKey } from "@/lib/trackers/trakt/util";
 import {
   type CourSearchOption,
   type CourTracker,
@@ -101,24 +124,7 @@ import {
   type TrackedItem,
   type Tracker,
   WATCHED_THRESHOLD,
-} from "@/lib/tracker/types";
-import { connect, disconnect, getRedirectUri, isConnected } from "@/lib/trakt/auth";
-import {
-  TraktNotConnectedError,
-  exportLetterboxd,
-  idsForSlug,
-  resolve,
-  search,
-} from "@/lib/trakt/client";
-import {
-  traktDeleteNote,
-  traktGetReview,
-  traktRate,
-  traktSaveNote,
-  traktUnrate,
-} from "@/lib/trakt/review";
-import type { ReviewLevel } from "@/lib/trakt/types";
-import { resolutionCacheKey } from "@/lib/trakt/util";
+} from "@/lib/trackers/types";
 import {
   type BadgeStatus,
   type DerivedOutcome,
@@ -1313,7 +1319,7 @@ async function recordDerivedTrackers(
   return out;
 }
 
-// Each tracker's rating + notes live in lib/<tracker>/review.ts. The message
+// Each tracker's rating + notes live in lib/trackers/<tracker>/review.ts. The message
 // handlers above just dispatch through REVIEW.
 
 // MV3 (Chrome + Firefox 109+) expose `action`; Firefox MV2 uses `browserAction`.

@@ -1,4 +1,4 @@
-import type { RecordPhase } from "@/lib/tracker/types";
+import type { RecordPhase } from "@/lib/trackers/types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ScrobbleController, type VideoLike } from "./controller";
 
