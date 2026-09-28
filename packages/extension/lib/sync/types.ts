@@ -130,11 +130,32 @@ export interface TargetRef {
   anime?: boolean;
 }
 
+/** What a target entry held before the write, for the preview ("was ..."). */
+export interface EntryState {
+  status?: CourStatus | null;
+  /** Episodes watched on a count tracker, of `total`. */
+  progress?: number;
+  total?: number | null;
+  /** A movie on a watched-set tracker. */
+  watched?: boolean;
+  /** Episodes watched on a watched-set tracker. */
+  episodes?: number;
+  /** 0 to 100, null = not rated. */
+  rating?: number | null;
+}
+
 export type SyncWrite =
   /** Mark episodes watched (Trakt, Simkl). */
-  | { tracker: Tracker; op: "episodes"; target: TargetRef; add: EpisodeRef[] }
+  | {
+      tracker: Tracker;
+      op: "episodes";
+      target: TargetRef;
+      add: EpisodeRef[];
+      /** Missing = the tracker does not have the item yet. */
+      was?: EntryState;
+    }
   /** Mark a movie watched (Trakt, Simkl). */
-  | { tracker: Tracker; op: "movie"; target: TargetRef }
+  | { tracker: Tracker; op: "movie"; target: TargetRef; was?: EntryState }
   /** Create or update a list entry (AniList, MAL, Simkl anime). */
   | {
       tracker: Tracker;
@@ -148,7 +169,7 @@ export type SyncWrite =
     }
   /** Remove the entry from the tracker's list (a main list does not have it).
    * Only list entries: Trakt watch history is never removed. */
-  | { tracker: Tracker; op: "remove"; target: TargetRef }
+  | { tracker: Tracker; op: "remove"; target: TargetRef; was: EntryState }
   /** Fill an empty rating. `score` is 0 to 100. */
   | {
       tracker: Tracker;

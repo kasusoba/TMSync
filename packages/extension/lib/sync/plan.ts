@@ -25,6 +25,7 @@ import type { CourStatus } from "../trackers/cour-plan";
 import { TRACKER_INFO, type Tracker, trackerFamily, trackerLabel } from "../trackers/types";
 import { type ScoreScale, onScale } from "./score";
 import type {
+  EntryState,
   EpisodeRef,
   ListEntry,
   ListSyncSettings,
@@ -71,6 +72,17 @@ export function takesKind(tracker: Tracker, kind: SyncKind, settings: ListSyncSe
  */
 export function removesEntries(tracker: Tracker): boolean {
   return trackerFamily(tracker) !== "seasoned";
+}
+
+/** What an entry holds now, for the preview's "was ...". Pure. */
+export function stateOf(e: ListEntry): EntryState {
+  if (e.shape === "cour") {
+    return { status: e.status, progress: e.progress, total: e.total, rating: e.rating };
+  }
+  if (e.shape === "movie")
+    return { status: e.status ?? null, watched: e.watched, rating: e.rating };
+  const episodes = Object.values(e.seasons).reduce((n, eps) => n + eps.length, 0);
+  return { status: e.status ?? null, episodes, rating: e.rating };
 }
 
 /** COMPLETED and REPEATING both mean "finished at least once". */
@@ -335,7 +347,12 @@ export function planSync(input: PlanInput): SyncPlan {
     if (main && !mainEntry) {
       for (const m of members) {
         if (removesEntries(m.tracker))
-          writes.push({ tracker: m.tracker, op: "remove", target: ref(m.tracker) });
+          writes.push({
+            tracker: m.tracker,
+            op: "remove",
+            target: ref(m.tracker),
+            was: stateOf(m),
+          });
         else
           notices.push({
             key,
@@ -370,7 +387,7 @@ export function planSync(input: PlanInput): SyncPlan {
       for (const tk of targets) {
         const mine = own(tk);
         if (watched && !(mine?.shape === "movie" && mine.watched)) {
-          writes.push({ tracker: tk, op: "movie", target: ref(tk) });
+          writes.push({ tracker: tk, op: "movie", target: ref(tk), was: mine && stateOf(mine) });
         }
       }
     } else {
@@ -387,7 +404,13 @@ export function planSync(input: PlanInput): SyncPlan {
           (ep) => !(mine && hasEpisode(mine, ep.season as number, ep.number)),
         );
         if (add.length)
-          writes.push({ tracker: tk, op: "episodes", target: ref(tk), add: sortEps(add) });
+          writes.push({
+            tracker: tk,
+            op: "episodes",
+            target: ref(tk),
+            add: sortEps(add),
+            was: mine && stateOf(mine),
+          });
       }
       // Episodes a copy has that the main list does not: left as they are.
       if (main) {
@@ -606,6 +629,7 @@ export function planSync(input: PlanInput): SyncPlan {
             tracker: e.tracker,
             op: "remove",
             target: { id: e.id, ids: e.ids, mediaType: e.movie ? "movie" : "show", anime: true },
+            was: stateOf(e),
           });
         }
       }
@@ -715,7 +739,7 @@ export function planSync(input: PlanInput): SyncPlan {
       };
       if (first.value.tmdbKind === "movie") {
         if (wanted.size && !(p?.entry.shape === "movie" && p.entry.watched)) {
-          writes.push({ tracker: tk, op: "movie", target });
+          writes.push({ tracker: tk, op: "movie", target, was: p && stateOf(p.entry) });
         }
       } else {
         const add: EpisodeRef[] = [];
@@ -725,7 +749,10 @@ export function planSync(input: PlanInput): SyncPlan {
           if (hit.kind !== "resolved" || hit.value.tmdbSeason === null) continue;
           add.push({ season: hit.value.tmdbSeason, number: hit.value.tmdbEpisode });
         }
-        if (add.length) writes.push({ tracker: tk, op: "episodes", target, add: sortEps(add) });
+        // "had" counts this cour's episodes, not the whole show's.
+        const was: EntryState | undefined = p ? { episodes: p.local.size } : undefined;
+        if (add.length)
+          writes.push({ tracker: tk, op: "episodes", target, add: sortEps(add), was });
       }
       if (rt) {
         ratingRefs.set(tk, {

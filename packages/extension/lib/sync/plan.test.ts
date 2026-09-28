@@ -585,7 +585,12 @@ describe("a main list", () => {
     // Akira: plan to watch on MAL, removed from AniList long ago.
     const akira = courEntry("mal", { mal: 300 }, { status: "PLANNING", total: 1, movie: true });
     const p = plan([akira], main("anilist"));
-    expect(writesFor(p, "mal")).toEqual([expect.objectContaining({ op: "remove" })]);
+    expect(writesFor(p, "mal")).toEqual([
+      expect.objectContaining({
+        op: "remove",
+        was: { status: "PLANNING", progress: 0, total: 1, rating: null },
+      }),
+    ]);
     expect(writesFor(p, "anilist")).toEqual([]);
     // Without a main list it would be copied to AniList (the union).
     expect(writesFor(plan([akira], { trackers: ["anilist", "mal"] }), "anilist")).not.toEqual([]);

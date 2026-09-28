@@ -5,7 +5,7 @@ import type { SyncPreview } from "../../sync/run";
 import { DEFAULT_SYNC_SETTINGS, type ListEntry, type ListSyncSettings } from "../../sync/types";
 import { Animap } from "../../trackers/animap/index";
 import { ALL_TRACKERS, type Tracker } from "../../trackers/types";
-import { ListSyncView } from "./ListSyncView";
+import { ListSyncView, describeWrite } from "./ListSyncView";
 import { tokens } from "./kit";
 
 // A render smoke test: a crash in this view blanks the whole options pane.
@@ -107,6 +107,43 @@ describe("ListSyncView", () => {
   it("renders a main-list preview with removals and notices", () => {
     const text = show({ ...DEFAULT_SYNC_SETTINGS, main: { anime: "anilist" }, ignore: ["x"] });
     expect(text).toContain("Removals");
+    // The Changes tab says what each tracker had: Simkl gets Severance as new.
+    expect(text).toContain("+2 episodes · new");
     expect(text).toContain("Left as is");
+  });
+});
+
+describe("describeWrite", () => {
+  it("says what the tracker had before", () => {
+    const target = { ids: {}, mediaType: "show" as const };
+    expect(
+      describeWrite({
+        tracker: "mal",
+        op: "remove",
+        target,
+        was: { status: "PLANNING", progress: 0, total: 1, rating: 80 },
+      }),
+    ).toBe("remove · was Plan to watch · 0/1 eps · rated 8/10");
+    expect(
+      describeWrite({
+        tracker: "trakt",
+        op: "episodes",
+        target,
+        add: [{ number: 3 }],
+        was: { episodes: 2 },
+      }),
+    ).toBe("+1 episode · had 2");
+    expect(describeWrite({ tracker: "trakt", op: "episodes", target, add: [{ number: 1 }] })).toBe(
+      "+1 episode · new",
+    );
+    expect(
+      describeWrite({
+        tracker: "mal",
+        op: "entry",
+        target,
+        create: false,
+        status: { from: "CURRENT", to: "DROPPED" },
+      }),
+    ).toBe("update · Watching → Dropped");
   });
 });
