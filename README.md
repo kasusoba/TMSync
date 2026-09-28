@@ -18,12 +18,12 @@ reads what's playing, finds it on the right tracker, and logs it for you. No man
 It also works on aggregator sites that don't have an official app or API, which most trackers
 can't touch.
 
-Each thing you watch is routed to the trackers that fit it:
+Each thing you watch is routed to the trackers that fit it, all at once if you like:
 
-| You watch | It goes to |
+| Tracker | Takes |
 |---|---|
-| Live-action movies and TV | Trakt and/or Simkl |
-| Anime series and anime movies | Any of Trakt, AniList, MyAnimeList, and Simkl, all at once if you like |
+| Trakt, Simkl | Everything: movies and TV, live-action and anime |
+| AniList, MyAnimeList | Anime only: series and movies |
 
 You choose which trackers are on for each site. If you know MAL-Sync for anime, this is the same
 idea, made general across trackers.
