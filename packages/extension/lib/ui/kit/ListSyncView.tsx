@@ -21,6 +21,7 @@ import type {
 import type { CourStatus } from "@/lib/trackers/cour-plan";
 import { type Tracker, trackerLabel } from "@/lib/trackers/types";
 import clsx from "clsx";
+import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
 import { Btn, Icon, IconBtn, Switch, type Tokens, TrackerMark } from "./kit";
 
@@ -543,6 +544,19 @@ function PreviewResult({
   );
 }
 
+/**
+ * A header cell that stays at the top of the window while its table scrolls, so
+ * the tracker of each column is always in view. The cell is opaque, and its
+ * bottom line is inside it: a row border would not move with a sticky cell.
+ */
+function Th({ t, children }: { t: Tokens; children?: ComponentChildren }) {
+  return (
+    <th class={clsx("sticky top-0 z-10 p-0 font-medium", t.cardSolid)}>
+      <div class={clsx("border-b px-3 py-2", t.divider)}>{children}</div>
+    </th>
+  );
+}
+
 function Empty({ t, text }: { t: Tokens; text: string }) {
   return <p class={clsx("py-6 text-center text-[12px]", t.faint)}>{text}</p>;
 }
@@ -561,9 +575,9 @@ function ChangesTable({
 }) {
   if (!items.length) return null;
   return (
-    <div class={clsx("overflow-x-auto rounded-lg", t.card)}>
+    <div class={clsx("overflow-x-clip rounded-lg", t.card)}>
       {/* Fixed layout: the columns keep their width whatever rows a filter shows. */}
-      <table class="w-full min-w-[640px] table-fixed text-[12px]">
+      <table class="w-full table-fixed text-[12px]">
         <colgroup>
           <col class="w-[30%]" />
           {trackers.map((tk) => (
@@ -572,17 +586,17 @@ function ChangesTable({
           <col class="w-10" />
         </colgroup>
         <thead>
-          <tr class={clsx("border-b text-left", t.divider, t.faint)}>
-            <th class="px-3 py-2 font-medium">Title</th>
+          <tr class={clsx("text-left", t.faint)}>
+            <Th t={t}>Title</Th>
             {trackers.map((tk) => (
-              <th key={tk} class="px-3 py-2 font-medium">
+              <Th t={t} key={tk}>
                 <span class="flex items-center gap-1.5">
                   <TrackerMark tracker={tk} />
                   {trackerLabel(tk)}
                 </span>
-              </th>
+              </Th>
             ))}
-            <th class="w-10" />
+            <Th t={t} />
           </tr>
         </thead>
         <tbody>
@@ -637,18 +651,18 @@ function NoticeTable({ t, notices }: { t: Tokens; notices: SyncNotice[] }) {
         These copies differ from your main list, and sync leaves them as they are. Fix them by hand
         on the tracker if you want them to match.
       </p>
-      <div class={clsx("overflow-x-auto rounded-lg", t.card)}>
-        <table class="w-full min-w-[640px] table-fixed text-[12px]">
+      <div class={clsx("overflow-x-clip rounded-lg", t.card)}>
+        <table class="w-full table-fixed text-[12px]">
           <colgroup>
             <col class="w-[30%]" />
             <col class="w-36" />
             <col />
           </colgroup>
           <thead>
-            <tr class={clsx("border-b text-left", t.divider, t.faint)}>
-              <th class="px-3 py-2 font-medium">Title</th>
-              <th class="px-3 py-2 font-medium">Tracker</th>
-              <th class="px-3 py-2 font-medium">Why</th>
+            <tr class={clsx("text-left", t.faint)}>
+              <Th t={t}>Title</Th>
+              <Th t={t}>Tracker</Th>
+              <Th t={t}>Why</Th>
             </tr>
           </thead>
           <tbody>
@@ -693,8 +707,8 @@ function ConflictTable({
         For status, the most recent change wins. Different ratings are left alone until you pick
         one.
       </p>
-      <div class={clsx("overflow-x-auto rounded-lg", t.card)}>
-        <table class="w-full min-w-[640px] table-fixed text-[12px]">
+      <div class={clsx("overflow-x-clip rounded-lg", t.card)}>
+        <table class="w-full table-fixed text-[12px]">
           <colgroup>
             <col class="w-[30%]" />
             <col class="w-20" />
@@ -704,15 +718,15 @@ function ConflictTable({
             <col />
           </colgroup>
           <thead>
-            <tr class={clsx("border-b text-left", t.divider, t.faint)}>
-              <th class="px-3 py-2 font-medium">Title</th>
-              <th class="px-3 py-2 font-medium">Field</th>
+            <tr class={clsx("text-left", t.faint)}>
+              <Th t={t}>Title</Th>
+              <Th t={t}>Field</Th>
               {trackers.map((tk) => (
-                <th key={tk} class="px-3 py-2 font-medium">
+                <Th t={t} key={tk}>
                   {trackerLabel(tk)}
-                </th>
+                </Th>
               ))}
-              <th class="px-3 py-2 font-medium">Result</th>
+              <Th t={t}>Result</Th>
             </tr>
           </thead>
           <tbody>
