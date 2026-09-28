@@ -29,22 +29,17 @@ import type { AnimapOverrides } from "@/lib/trackers/animap/derive";
 import { requestMalAccess } from "@/lib/trackers/mal/access";
 import type { MalIdentity } from "@/lib/trackers/mal/types";
 import type { ResolvedIdentity } from "@/lib/trackers/trakt/types";
-import { type QuickLinkTracker, type Tracker, trackerLabel } from "@/lib/trackers/types";
+import {
+  ALL_TRACKERS,
+  type QuickLinkTracker,
+  TRACKER_INFO,
+  type Tracker,
+  trackerLabel,
+} from "@/lib/trackers/types";
+import { type Accounts, loadAccounts } from "@/lib/ui/accounts";
 import { BadgeModeToggle } from "@/lib/ui/kit/PopupView";
 import { TrackerTab } from "@/lib/ui/kit/TrackerTab";
-import {
-  AniListMark,
-  Btn,
-  Icon,
-  IconBtn,
-  type IconName,
-  MalMark,
-  SimklMark,
-  Switch,
-  TrackerMark,
-  TraktMark,
-  tokens,
-} from "@/lib/ui/kit/kit";
+import { Btn, Icon, IconBtn, type IconName, Switch, TrackerMark, tokens } from "@/lib/ui/kit/kit";
 import { type AccountStatus, sendMessage } from "@/messaging";
 import {
   ANILIST_PLACEHOLDERS,
@@ -596,53 +591,83 @@ const SECTIONS: { id: string; label: string; icon: IconName }[] = [
 ];
 
 /**
- * One provider row in the Account list — uniform across providers (constraint #1:
- * two independent connections, never a sync pair). Always NAMES the provider so
- * "Connect" is never "connect to what?".
+ * One tracker's row in the Account list, the same for every tracker (constraint
+ * #1: independent connections, never a sync pair). It always NAMES the tracker so
+ * "Connect" is never "connect to what?". Below it: a hint when this build lacks
+ * the tracker's credentials, the dev-only redirect URI a forker must register, and
+ * any tracker-only extra (`children`).
  */
-function ProviderRow({
-  mark,
-  name,
-  connected,
+function AccountRow({
+  tracker,
+  status,
   busy,
   onConnect,
   onDisconnect,
+  children,
 }: {
-  mark: preact.ComponentChildren;
-  name: string;
-  connected: boolean;
+  tracker: Tracker;
+  status: AccountStatus | undefined;
   busy: boolean;
   onConnect: () => void;
   onDisconnect: () => void;
+  children?: preact.ComponentChildren;
 }) {
+  const name = trackerLabel(tracker);
+  const connected = status?.connected ?? false;
+  const env = TRACKER_INFO[tracker].env;
   return (
-    <div class={clsx("flex items-center gap-3 rounded-lg px-3 py-2.5", t.card)}>
-      {mark}
-      <span class="min-w-0 flex-1">
-        <span class={clsx("block text-[13px] font-semibold", t.heading)}>{name}</span>
-        <span class={clsx("flex items-center gap-1.5 text-[11px]", t.sub)}>
-          {connected && <span class="size-1.5 rounded-full bg-emerald-500" />}
-          {connected ? "Connected" : "Not connected"}
+    <>
+      <div class={clsx("flex items-center gap-3 rounded-lg px-3 py-2.5", t.card)}>
+        <TrackerMark tracker={tracker} />
+        <span class="min-w-0 flex-1">
+          <span class={clsx("block text-[13px] font-semibold", t.heading)}>{name}</span>
+          <span class={clsx("flex items-center gap-1.5 text-[11px]", t.sub)}>
+            {connected && <span class="size-1.5 rounded-full bg-emerald-500" />}
+            {connected ? "Connected" : "Not connected"}
+          </span>
         </span>
-      </span>
-      {connected ? (
-        <Btn t={t} tone="ghost" disabled={busy} onClick={onDisconnect}>
-          Disconnect
-        </Btn>
-      ) : (
-        <Btn t={t} tone="primary" disabled={busy} onClick={onConnect}>
-          Connect
-        </Btn>
+        {connected ? (
+          <Btn t={t} tone="ghost" disabled={busy} onClick={onDisconnect}>
+            Disconnect
+          </Btn>
+        ) : (
+          <Btn t={t} tone="primary" disabled={busy} onClick={onConnect}>
+            Connect
+          </Btn>
+        )}
+      </div>
+      {status && !status.configured && (
+        <p class={clsx("rounded-md px-2.5 py-1.5 text-[11px]", t.infoBox)}>
+          {name} isn’t configured in this build · set{" "}
+          {env.map((v, i) => (
+            <span key={v}>
+              {i > 0 && " and "}
+              <code class="font-mono">{v}</code>
+            </span>
+          ))}{" "}
+          to enable it.
+        </p>
       )}
-    </div>
+      {/* Dev-only: a forker running their OWN OAuth app needs to register this
+          redirect URI. The published build uses bundled credentials with a fixed
+          redirect, so end users never see it. */}
+      {import.meta.env.DEV && status?.configured && !connected && status.redirectUri && (
+        <p class={clsx("text-[11px] leading-relaxed", t.sub)}>
+          Set this redirect URI in your {name} app:
+          <code
+            class={clsx("mt-1 block break-all rounded-md px-2 py-1 font-mono text-[10px]", t.chip)}
+          >
+            {status.redirectUri}
+          </code>
+        </p>
+      )}
+      {children}
+    </>
   );
 }
 
 export function App() {
-  const [status, setStatus] = useState<AccountStatus | null>(null);
-  const [anilist, setAnilist] = useState<AccountStatus | null>(null);
-  const [mal, setMal] = useState<AccountStatus | null>(null);
-  const [simkl, setSimkl] = useState<AccountStatus | null>(null);
+  const [accounts, setAccounts] = useState<Accounts>({});
   const [sites, setSites] = useState<string[]>([]);
   /** Broad "enable all sites" grant held (then every recipe site is enabled). */
   const [allSites, setAllSites] = useState(false);
@@ -702,29 +727,22 @@ export function App() {
   const has = (s: string) => s.toLowerCase().includes(q.toLowerCase());
 
   const refresh = async () => {
-    const [s, al, ml, sk, sit, rec, ql, qlOn, c, ac, mc, am, rem, amap, bp, broad] =
-      await Promise.all([
-        sendMessage("getTrackerStatus", "trakt"),
-        sendMessage("getTrackerStatus", "anilist"),
-        sendMessage("getTrackerStatus", "mal"),
-        sendMessage("getTrackerStatus", "simkl"),
-        sendMessage("listEnabledSites", undefined),
-        customRecipes.getValue(),
-        quickLinks.getValue(),
-        quickLinksEnabled.getValue(),
-        corrections.getValue(),
-        anilistCorrections.getValue(),
-        malCorrections.getValue(),
-        animapOverrides.getValue(),
-        remoteRecipes.getValue(),
-        animeMap.getValue(),
-        badgePrefs.getValue(),
-        browser.permissions.contains({ origins: ["*://*/*"] }),
-      ]);
-    setStatus(s);
-    setAnilist(al);
-    setMal(ml);
-    setSimkl(sk);
+    const [acc, sit, rec, ql, qlOn, c, ac, mc, am, rem, amap, bp, broad] = await Promise.all([
+      loadAccounts(),
+      sendMessage("listEnabledSites", undefined),
+      customRecipes.getValue(),
+      quickLinks.getValue(),
+      quickLinksEnabled.getValue(),
+      corrections.getValue(),
+      anilistCorrections.getValue(),
+      malCorrections.getValue(),
+      animapOverrides.getValue(),
+      remoteRecipes.getValue(),
+      animeMap.getValue(),
+      badgePrefs.getValue(),
+      browser.permissions.contains({ origins: ["*://*/*"] }),
+    ]);
+    setAccounts(acc);
     setSites(sit);
     setRecipes(rec);
     setLinks(ql);
@@ -1136,7 +1154,27 @@ export function App() {
       setAnimap({ forward: {}, reverse: {} });
     });
 
-  const connected = status?.connected ?? false;
+  // Trakt's Letterboxd export, shown under the Trakt account row once connected.
+  const letterboxdCard = (
+    <div class={clsx("space-y-2 rounded-lg px-3 py-2.5", t.card)}>
+      <div class="flex items-center justify-between gap-3">
+        <span class="min-w-0">
+          <span class={clsx("block text-[13px] font-medium", t.heading)}>Export to Letterboxd</span>
+          <span class={clsx("block text-[11px] leading-relaxed", t.sub)}>
+            Your Trakt movie history, ratings &amp; reviews as a Letterboxd-import CSV (rewatches
+            included). Trakt only · AniList isn’t included.
+          </span>
+        </span>
+        <Btn t={t} tone="ghost" disabled={exporting} onClick={exportLetterboxd}>
+          <Icon name="external" class="text-[12px]" /> {exporting ? "Exporting…" : "Export CSV"}
+        </Btn>
+      </div>
+      {exportNote && (
+        <p class={clsx("rounded-md px-2.5 py-1.5 text-[11px]", t.infoBox)}>{exportNote}</p>
+      )}
+    </div>
+  );
+
   // The complete fix-match ledger: Trakt corrections + AniList and MAL title pins + the
   // tmdb-keyed crosswalk overrides. Each row names its tracker so the pane shows
   // every correction the badge can make, regardless of tracker.
@@ -1359,145 +1397,18 @@ export function App() {
                     {accountMsg}
                   </p>
                 )}
-                <ProviderRow
-                  mark={<TraktMark />}
-                  name="Trakt"
-                  connected={connected}
-                  busy={busy}
-                  onConnect={() => connectProvider("trakt")}
-                  onDisconnect={() => act(() => sendMessage("disconnectTracker", "trakt"))}
-                />
-                {/* Dev-only: a forker running their OWN Trakt OAuth app needs to
-                    register this redirect URI. The published build uses bundled
-                    credentials with a fixed redirect, so end users never see it. */}
-                {import.meta.env.DEV && !connected && status?.redirectUri && (
-                  <p class={clsx("text-[11px] leading-relaxed", t.sub)}>
-                    Set this redirect URI in your Trakt app:
-                    <code
-                      class={clsx(
-                        "mt-1 block break-all rounded-md px-2 py-1 font-mono text-[10px]",
-                        t.chip,
-                      )}
-                    >
-                      {status.redirectUri}
-                    </code>
-                  </p>
-                )}
-                {connected && (
-                  <div class={clsx("space-y-2 rounded-lg px-3 py-2.5", t.card)}>
-                    <div class="flex items-center justify-between gap-3">
-                      <span class="min-w-0">
-                        <span class={clsx("block text-[13px] font-medium", t.heading)}>
-                          Export to Letterboxd
-                        </span>
-                        <span class={clsx("block text-[11px] leading-relaxed", t.sub)}>
-                          Your Trakt movie history, ratings &amp; reviews as a Letterboxd-import CSV
-                          (rewatches included). Trakt only · AniList isn’t included.
-                        </span>
-                      </span>
-                      <Btn t={t} tone="ghost" disabled={exporting} onClick={exportLetterboxd}>
-                        <Icon name="external" class="text-[12px]" />{" "}
-                        {exporting ? "Exporting…" : "Export CSV"}
-                      </Btn>
-                    </div>
-                    {exportNote && (
-                      <p class={clsx("rounded-md px-2.5 py-1.5 text-[11px]", t.infoBox)}>
-                        {exportNote}
-                      </p>
-                    )}
-                  </div>
-                )}
-                <ProviderRow
-                  mark={<AniListMark />}
-                  name="AniList"
-                  connected={anilist?.connected ?? false}
-                  busy={busy}
-                  onConnect={() => connectProvider("anilist")}
-                  onDisconnect={() => act(() => sendMessage("disconnectTracker", "anilist"))}
-                />
-                {anilist && !anilist.configured && (
-                  <p class={clsx("rounded-md px-2.5 py-1.5 text-[11px]", t.infoBox)}>
-                    AniList isn’t configured in this build · set{" "}
-                    <code class="font-mono">WXT_ANILIST_CLIENT_ID</code> and{" "}
-                    <code class="font-mono">WXT_ANILIST_CLIENT_SECRET</code> to enable it.
-                  </p>
-                )}
-                {/* Dev-only, same as the Trakt redirect hint above. */}
-                {import.meta.env.DEV &&
-                  anilist?.configured &&
-                  !anilist.connected &&
-                  anilist.redirectUri && (
-                    <p class={clsx("text-[11px] leading-relaxed", t.sub)}>
-                      Set this redirect URI in your AniList app:
-                      <code
-                        class={clsx(
-                          "mt-1 block break-all rounded-md px-2 py-1 font-mono text-[10px]",
-                          t.chip,
-                        )}
-                      >
-                        {anilist.redirectUri}
-                      </code>
-                    </p>
-                  )}
-                <ProviderRow
-                  mark={<MalMark />}
-                  name="MyAnimeList"
-                  connected={mal?.connected ?? false}
-                  busy={busy}
-                  onConnect={() => connectProvider("mal")}
-                  onDisconnect={() => act(() => sendMessage("disconnectTracker", "mal"))}
-                />
-                {mal && !mal.configured && (
-                  <p class={clsx("rounded-md px-2.5 py-1.5 text-[11px]", t.infoBox)}>
-                    MyAnimeList isn’t configured in this build · set{" "}
-                    <code class="font-mono">WXT_MAL_CLIENT_ID</code> to enable it.
-                  </p>
-                )}
-                {/* Dev-only, same as the redirect hints above. */}
-                {import.meta.env.DEV && mal?.configured && !mal.connected && mal.redirectUri && (
-                  <p class={clsx("text-[11px] leading-relaxed", t.sub)}>
-                    Set this redirect URI in your MyAnimeList app:
-                    <code
-                      class={clsx(
-                        "mt-1 block break-all rounded-md px-2 py-1 font-mono text-[10px]",
-                        t.chip,
-                      )}
-                    >
-                      {mal.redirectUri}
-                    </code>
-                  </p>
-                )}
-                <ProviderRow
-                  mark={<SimklMark />}
-                  name="Simkl"
-                  connected={simkl?.connected ?? false}
-                  busy={busy}
-                  onConnect={() => connectProvider("simkl")}
-                  onDisconnect={() => act(() => sendMessage("disconnectTracker", "simkl"))}
-                />
-                {simkl && !simkl.configured && (
-                  <p class={clsx("rounded-md px-2.5 py-1.5 text-[11px]", t.infoBox)}>
-                    Simkl isn’t configured in this build · set{" "}
-                    <code class="font-mono">WXT_SIMKL_CLIENT_ID</code> to enable it.
-                  </p>
-                )}
-                {/* Dev-only, same as the redirect hints above. */}
-                {import.meta.env.DEV &&
-                  simkl?.configured &&
-                  !simkl.connected &&
-                  simkl.redirectUri && (
-                    <p class={clsx("text-[11px] leading-relaxed", t.sub)}>
-                      Set this redirect URI in your Simkl app:
-                      <code
-                        class={clsx(
-                          "mt-1 block break-all rounded-md px-2 py-1 font-mono text-[10px]",
-                          t.chip,
-                        )}
-                      >
-                        {simkl.redirectUri}
-                      </code>
-                    </p>
-                  )}
+                {ALL_TRACKERS.map((tk) => (
+                  <AccountRow
+                    key={tk}
+                    tracker={tk}
+                    status={accounts[tk]}
+                    busy={busy}
+                    onConnect={() => connectProvider(tk)}
+                    onDisconnect={() => act(() => sendMessage("disconnectTracker", tk))}
+                  >
+                    {tk === "trakt" && accounts.trakt?.connected && letterboxdCard}
+                  </AccountRow>
+                ))}
               </>
             )}
 

@@ -69,12 +69,22 @@ export interface TrackerInfo {
   note: NoteKind;
   /** How a wrong match is fixed (which panel the fix button opens). */
   fix: FixKind;
+  /** The build variables that configure this tracker (named in the Account pane when
+   * a build lacks them). */
+  env: readonly string[];
 }
 
 // Order matters: `ALL_TRACKERS` follows it, and native inference takes the first
 // match. Simkl stays last (it is native only when it stands alone anyway).
 const INFO = {
-  trakt: { label: "Trakt", family: "seasoned", rates: "levels", note: "public", fix: "search" },
+  trakt: {
+    label: "Trakt",
+    family: "seasoned",
+    rates: "levels",
+    note: "public",
+    fix: "search",
+    env: ["WXT_TRAKT_CLIENT_ID", "WXT_TRAKT_CLIENT_SECRET"],
+  },
   anilist: {
     label: "AniList",
     family: "cour",
@@ -82,6 +92,7 @@ const INFO = {
     rates: "entry",
     note: "private",
     fix: "cour",
+    env: ["WXT_ANILIST_CLIENT_ID", "WXT_ANILIST_CLIENT_SECRET"],
   },
   mal: {
     label: "MyAnimeList",
@@ -90,8 +101,16 @@ const INFO = {
     rates: "entry",
     note: "private",
     fix: "cour",
+    env: ["WXT_MAL_CLIENT_ID"],
   },
-  simkl: { label: "Simkl", family: "any", rates: "entry", note: "none", fix: "none" },
+  simkl: {
+    label: "Simkl",
+    family: "any",
+    rates: "entry",
+    note: "none",
+    fix: "none",
+    env: ["WXT_SIMKL_CLIENT_ID"],
+  },
 } as const satisfies Record<Tracker, TrackerInfo>;
 
 export const TRACKER_INFO: Record<Tracker, TrackerInfo> = INFO;
