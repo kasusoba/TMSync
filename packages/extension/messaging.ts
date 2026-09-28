@@ -1,22 +1,18 @@
-import type { ScoreFormat } from "@/lib/anilist/types";
 import type {
   CourSearchOption,
   CourTracker,
   RatingLevel,
+  RecordPhase,
+  ScoreFormat,
   Tracker,
   WatchedState,
 } from "@/lib/tracker/types";
-import type {
-  ResolvedIdentity,
-  ScrobbleAction,
-  TraktIds,
-  TraktSearchOption,
-} from "@/lib/trakt/types";
+import type { ResolvedIdentity, TraktIds, TraktSearchOption } from "@/lib/trakt/types";
 import type { ParsedMedia } from "@tmsync/shared";
 import { defineExtensionMessaging } from "@webext-core/messaging";
 
 export interface ScrobbleRequest {
-  action: ScrobbleAction;
+  action: RecordPhase;
   media: ParsedMedia;
   /** 0–100. */
   progress: number;

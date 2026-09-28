@@ -209,6 +209,23 @@ export interface CourSearchOption {
 export type RecordPhase = "start" | "pause" | "stop";
 
 /**
+ * Coerce a 0 to 100 progress to a finite value, clamp it, and round it to 2
+ * decimals. High-precision floats are a known cause of 422 on Trakt /scrobble/*.
+ */
+export function clampProgress(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  const clamped = Math.min(100, Math.max(0, n));
+  return Math.round(clamped * 100) / 100;
+}
+
+/**
+ * A tracker's per-user score scale, for rendering the score affordance. The
+ * values are AniList's (`Viewer.mediaListOptions.scoreFormat`), the only tracker
+ * that lets the user pick one.
+ */
+export type ScoreFormat = "POINT_100" | "POINT_10_DECIMAL" | "POINT_10" | "POINT_5" | "POINT_3";
+
+/**
  * Normalized outcome of `recordProgress`, mapped to a `ScrobbleReply` by the
  * background. Adapters never throw for connection/HTTP issues — they fold them
  * into `reason` so the background stays tracker-agnostic.
