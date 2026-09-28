@@ -141,12 +141,7 @@ export function App() {
         {/* POPUP */}
         <Group id="popup" title="Popup" t={t}>
           <Tile label="Not connected" t={t}>
-            <PopupView
-              variant={variant}
-              connected={false}
-              redirectUri="https://hkfpacmhbiccimikfleemmhfemdnjfpf.chromiumapp.org/"
-              origins={null}
-            />
+            <PopupView variant={variant} connected={false} origins={null} />
           </Tile>
           <Tile label="Connected · one site, no recipe" t={t}>
             <PopupView
