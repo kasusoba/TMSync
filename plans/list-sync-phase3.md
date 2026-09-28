@@ -1,13 +1,15 @@
 # Plan: list sync, phase 3 (automatic sync and remembered removals)
 
-Status: not started. A working plan, not a doc. It lives only on `feat/list-sync-auto`. Before the
+Status: not started. PR #39 (phases 1 and 2) is merged to `main` (2026-09-28, no release cut
+yet). **The owner's priority is the daily run (A).** Start the next session by asking the five
+decisions below, then build in the order under "Phases". A working plan, not a doc. It lives only on `feat/list-sync-auto`. Before the
 PR merges, the facts that stay true move into `docs/ARCHITECTURE.md` (section 7) and
 `docs/TRACKERS.md` ("List sync: reads and writes"), and this file is deleted.
 
 Phases 1 and 2 (preview and apply) are done and were tested live on the owner's four accounts
 (2026-09-28). How they work is in `docs/ARCHITECTURE.md` section 7. The old working plan, with all
-47 edge cases and the settled decisions, is in git history: `git show aee1d23^:plans/list-sync.md`
-(while `feat/list-sync` exists), and always in the commits of the phase 1 and 2 PR on GitHub.
+47 edge cases and the settled decisions, was squashed away with PR #39. Get it back from GitHub's PR
+ref: `git fetch origin pull/39/head:pr39 && git show aee1d23^:plans/list-sync.md`.
 
 ## Goal
 
