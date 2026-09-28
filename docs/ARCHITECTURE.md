@@ -8,7 +8,7 @@ facts are in [`TRACKERS.md`](./TRACKERS.md).
 TMSync scrobbles movies and non-anime TV to Trakt and/or Simkl, and anime to AniList and/or
 MyAnimeList (and to Trakt and Simkl too), all at once if the user wants. It works on arbitrary
 streaming sites, including ones with no API. List sync (section 7) can also bring the
-lists of all connected trackers into step. It exists because tools like MAL-Sync cover only anime,
+lists of all connected trackers in sync. It exists because tools like MAL-Sync cover only anime,
 and others are tied to official integrations and will not touch aggregator sites.
 
 Four decisions shape everything below:

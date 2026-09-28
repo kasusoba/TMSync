@@ -164,7 +164,7 @@ export async function applySimkl(writes: SyncWrite[]): Promise<ChunkOutcome> {
   return { results, stop };
 }
 
-/** Keep the local rating mirror in step (reading a rating back costs quota). Only
+/** Keep the local rating mirror up to date (reading a rating back costs quota). Only
  * entries Simkl already named by id: that is the mirror's key. */
 async function mirror(writes: SyncWrite[], at: number[], results: WriteOutcome[]) {
   const all = { ...(await simklRatings.getValue()) };

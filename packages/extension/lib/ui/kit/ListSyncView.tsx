@@ -179,7 +179,7 @@ export function ListSyncView({
   return (
     <div class="space-y-5">
       <p class={clsx("max-w-2xl text-[12px] leading-relaxed", t.sub)}>
-        Keep your lists in step. TMSync reads each connected list and works out what the others are
+        Keep your lists in sync. TMSync reads each connected list and works out what the others are
         missing: watched episodes, list status, and ratings. By default it only adds. Pick a main
         list for a kind to make the others copy it instead, removals included. Preview first:
         nothing is written until you apply the plan.
