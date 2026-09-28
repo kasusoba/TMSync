@@ -19,10 +19,15 @@
  *    an entry it does not have is removed from the other lists. Copies still
  *    never go down, and never lose Trakt watch history: where the main list is
  *    behind, the plan says so (a notice) instead of acting.
+ *  - Remembered removals (with a base, `base.ts`): in a union, an entry one list
+ *    removed since the last clean sync is removed from the others instead of
+ *    added back, and so is a rating. Only when every list that still has it had
+ *    it at the base too: a list that added it since wins, and it is added back.
  */
 import type { Animap } from "../trackers/animap/index";
 import type { CourStatus } from "../trackers/cour-plan";
 import { TRACKER_INFO, type Tracker, trackerFamily, trackerLabel } from "../trackers/types";
+import { type BaseEntry, BaseIndex, idKeys as baseKeys, baseOf, entryKeys } from "./base";
 import { newest } from "./read";
 import { type ScoreScale, onScale } from "./score";
 import { pickKey } from "./types";
@@ -54,6 +59,9 @@ export interface PlanInput {
   animap: Animap;
   /** Each tracker's score scale. A missing tracker rates 1 to 10. */
   scales?: Partial<Record<Tracker, ScoreScale>>;
+  /** Each tracker's list at the last clean sync (`base.ts`), for remembered
+   * removals. Missing = none: a union adds everything back. */
+  base?: Partial<Record<Tracker, BaseEntry[]>>;
 }
 
 type CourEntry = Extract<ListEntry, { shape: "cour" }>;
@@ -192,6 +200,47 @@ export function planSync(input: PlanInput): SyncPlan {
     const m = settings.main?.[kind];
     return m && takesKind(m, kind, settings) ? m : undefined;
   };
+  // --- remembered removals (base.ts) ---
+  const bases = new Map<Tracker, BaseIndex>();
+  for (const [tk, list] of Object.entries(input.base ?? {}) as [Tracker, BaseEntry[]][])
+    if (taking.has(tk)) bases.set(tk, new BaseIndex(list));
+  const atBase = (tk: Tracker, keys: string[]) => bases.get(tk)?.find(keys);
+  // What each tracker has now, by id key: a tracker "lacks" an item only when no
+  // entry of it shares an id, so a crosswalk change never looks like a removal.
+  const nows = new Map<Tracker, BaseIndex>(
+    input.trackers.map((tk) => [
+      tk,
+      new BaseIndex(baseOf(entries.filter((e) => e.tracker === tk))),
+    ]),
+  );
+  const hasNow = (tk: Tracker, keys: string[]) => !!nows.get(tk)?.find(keys);
+
+  /** The trackers that removed an item since the last clean sync: they had it at
+   * the base and have nothing of it now. Only when every tracker that has it now
+   * had it at the base too (else it was added since, and the add wins). */
+  const removedSince = (keys: string[], among: Tracker[], holders: Tracker[]): Tracker[] => {
+    if (!bases.size || !holders.length) return [];
+    const gone = among.filter((tk) => !hasNow(tk, keys) && atBase(tk, keys));
+    if (!gone.length || !holders.every((tk) => atBase(tk, keys))) return [];
+    return gone;
+  };
+
+  /** The trackers whose rating to clear: some tracker that has the item had a
+   * rating at the base and has none now, and every rated one was rated at the base
+   * too (else a new rating wins, and fills as usual). */
+  const unratedSince = (
+    present: Tracker[],
+    ratedNow: (tk: Tracker) => boolean,
+    ratedBase: (tk: Tracker) => boolean,
+  ): Tracker[] => {
+    if (!bases.size) return [];
+    const gone = present.filter((tk) => bases.has(tk) && ratedBase(tk) && !ratedNow(tk));
+    const rated = present.filter(ratedNow);
+    if (!gone.length || !rated.length || !rated.every(ratedBase)) return [];
+    return rated;
+  };
+  const removedOn = (gone: Tracker[]) => `removed on ${gone.map(trackerLabel).join(", ")}`;
+
   /** A main list that was not read makes the whole kind unsafe to plan: with no
    * truth to copy, a union would bring back what the user removed. */
   const mainMissing = (kind: SyncKind, key: string, title: string): boolean => {
@@ -350,6 +399,38 @@ export function planSync(input: PlanInput): SyncPlan {
       mediaType: kind === "movie" ? "movie" : "show",
     });
     const mainEntry = main ? own(main) : undefined;
+    const keys = [...new Set(all.flatMap(entryKeys))];
+
+    // Removed from one list since the last clean sync: remove it from the others.
+    const gone = main
+      ? []
+      : removedSince(
+          keys,
+          targets,
+          members.map((m) => m.tracker),
+        );
+    if (gone.length) {
+      for (const m of members) {
+        if (removesEntries(m.tracker))
+          writes.push({
+            tracker: m.tracker,
+            op: "remove",
+            target: ref(m.tracker),
+            was: stateOf(m),
+          });
+        else
+          notices.push({
+            key,
+            title: first.title,
+            kind,
+            tracker: m.tracker,
+            reason: "history_kept",
+            detail: removedOn(gone),
+          });
+      }
+      push(key, kind, first.title, first.year, writes);
+      return;
+    }
 
     // A main list without this item: remove it from the others.
     if (main && !mainEntry) {
@@ -469,16 +550,27 @@ export function planSync(input: PlanInput): SyncPlan {
         ),
       );
     }
-    fillRatings(
-      key,
-      first.title,
-      kind,
-      rated,
-      targets,
-      new Set(targets.filter((tk) => own(tk)?.rating != null)),
-      (tk) => ({ level, target: ref(tk) }),
-      writes,
-    );
+    // A rating removed from one list since the last clean sync: clear it on the others.
+    const clear = main
+      ? []
+      : unratedSince(
+          targets.filter((tk) => own(tk)),
+          (tk) => own(tk)?.rating != null,
+          (tk) => atBase(tk, keys)?.r === 1,
+        );
+    for (const tk of clear)
+      writes.push({ tracker: tk, op: "unrate", level, target: ref(tk), was: own(tk)?.rating ?? 0 });
+    if (!clear.length)
+      fillRatings(
+        key,
+        first.title,
+        kind,
+        rated,
+        targets,
+        new Set(targets.filter((tk) => own(tk)?.rating != null)),
+        (tk) => ({ level, target: ref(tk) }),
+        writes,
+      );
 
     push(key, kind, first.title, first.year, writes);
   }
@@ -513,7 +605,36 @@ export function planSync(input: PlanInput): SyncPlan {
       ? seasoned.filter((p) => p.entry.tracker === main && p.local.size > 0)
       : seasoned;
     if (main && !srcCour.length && !srcSeasoned.length) {
-      removeFromCopies();
+      removeFromCopies(`${trackerLabel(main)} does not have it`);
+      return;
+    }
+
+    // Removed from one list since the last clean sync: remove it from the others.
+    // The keys: the cour's ids, the show or movie the crosswalk maps it to, and
+    // each seasoned list's own ids.
+    const cid = g.anilist ?? g.mal;
+    const back =
+      cid === undefined
+        ? null
+        : animap.reverse(g.anilist !== undefined ? "anilist" : "mal", cid, 1);
+    const keys = [
+      ...new Set([
+        ...baseKeys({ anilist: g.anilist, mal: g.mal }, "tv"),
+        ...(back?.kind === "resolved"
+          ? baseKeys({ tmdb: back.value.tmdbId }, back.value.tmdbKind === "movie" ? "movie" : "tv")
+          : []),
+        ...seasoned.flatMap((p) => entryKeys(p.entry)),
+      ]),
+    ];
+    const holders = [
+      ...new Set([
+        ...cour.map((e) => e.tracker),
+        ...seasoned.filter((p) => p.local.size > 0).map((p) => p.entry.tracker),
+      ]),
+    ];
+    const gone = main ? [] : removedSince(keys, targets, holders);
+    if (gone.length) {
+      removeFromCopies(removedOn(gone));
       return;
     }
 
@@ -633,23 +754,44 @@ export function planSync(input: PlanInput): SyncPlan {
         }
       }
     }
-    fillRatings(
-      key,
-      title,
-      "anime",
-      rated,
-      [...ratingRefs.keys()],
-      hasRating,
-      (tk) => ratingRefs.get(tk) as RatingRef,
-      writes,
-    );
+    // A rating removed from one list since the last clean sync: clear it on the
+    // others. Only lists that have the entry now; a seasoned list's rating is the
+    // level the crosswalk maps the cour to (a season, or the show).
+    const clear = main
+      ? []
+      : unratedSince(
+          [...ratingRefs.keys()].filter((tk) => own(tk) || part(tk)),
+          (tk) => hasRating.has(tk),
+          (tk) => {
+            const b = atBase(tk, keys);
+            if (!b) return false;
+            if (part(tk) && rt?.kind === "season") return !!b.s?.includes(rt.season);
+            return b.r === 1;
+          },
+        );
+    for (const tk of clear) {
+      const ref = ratingRefs.get(tk) as RatingRef;
+      const was = allRated.find((r) => r.tracker === tk)?.value ?? 0;
+      writes.push({ tracker: tk, op: "unrate", ...ref, was });
+    }
+    if (!clear.length)
+      fillRatings(
+        key,
+        title,
+        "anime",
+        rated,
+        [...ratingRefs.keys()],
+        hasRating,
+        (tk) => ratingRefs.get(tk) as RatingRef,
+        writes,
+      );
 
     push(key, "anime", title, year, writes);
 
-    /** The main list does not have this cour: remove each copy's list entry. A
-     * seasoned list (Trakt, or a Simkl show) is kept: it is watch history, or a
-     * whole show that holds other cours too. */
-    function removeFromCopies(): void {
+    /** The main list does not have this cour, or another list removed it (`why`):
+     * remove each copy's list entry. A seasoned list (Trakt, or a Simkl show) is
+     * kept: it is watch history, or a whole show that holds other cours too. */
+    function removeFromCopies(why: string): void {
       const out: SyncWrite[] = [];
       for (const e of cour) {
         if (removesEntries(e.tracker)) {
@@ -669,7 +811,7 @@ export function planSync(input: PlanInput): SyncPlan {
             kind: "anime",
             tracker: p.entry.tracker,
             reason: "history_kept",
-            detail: `${trackerLabel(main as Tracker)} does not have it`,
+            detail: why,
           });
         }
       }
@@ -914,7 +1056,16 @@ export function summarize(plan: SyncPlan, trackers: Tracker[]): SyncTotals[] {
   const totals = new Map<Tracker, SyncTotals>(
     trackers.map((tk) => [
       tk,
-      { tracker: tk, episodes: 0, movies: 0, created: 0, updated: 0, ratings: 0, removed: 0 },
+      {
+        tracker: tk,
+        episodes: 0,
+        movies: 0,
+        created: 0,
+        updated: 0,
+        ratings: 0,
+        removed: 0,
+        unrated: 0,
+      },
     ]),
   );
   for (const item of plan.items) {
@@ -925,6 +1076,7 @@ export function summarize(plan: SyncPlan, trackers: Tracker[]): SyncTotals[] {
       else if (w.op === "movie") t.movies += 1;
       else if (w.op === "rating") t.ratings += 1;
       else if (w.op === "remove") t.removed += 1;
+      else if (w.op === "unrate") t.unrated += 1;
       else if (w.create) t.created += 1;
       else t.updated += 1;
     }

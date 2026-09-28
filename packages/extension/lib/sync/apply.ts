@@ -26,6 +26,7 @@ import {
 } from "../storage";
 import { getService } from "../trackers/service";
 import { ALL_TRACKERS, type Tracker } from "../trackers/types";
+import { commitBase } from "./base-store";
 import { withPicks } from "./plan";
 import { STALE_MS, type SyncPreview, jobAlive, readJob } from "./run";
 import type { ChunkOutcome, SyncPicks, SyncWrite, WriteOutcome } from "./types";
@@ -154,18 +155,30 @@ export async function startApply(): Promise<{ started: boolean; reason?: ApplyBl
   const queues = preview ? applyQueues(preview, settings.ignore, picks) : new Map();
   const reason = applyBlock(preview, last, queues, now);
   if (reason || !preview) return { started: false, reason: reason ?? "no_plan" };
-  void beginApply(preview, queues, false);
+  void beginApply(preview, queues, false, true);
   return { started: true };
+}
+
+/** Every write went in as planned: none failed, none was left out because the
+ * entry changed, and no tracker stopped early. Pure. */
+export function cleanApply(job: ApplyJob): boolean {
+  return (
+    job.state === "done" &&
+    job.trackers.every((t) => t.state === "done" && !t.failedCount && !t.changed)
+  );
 }
 
 /**
  * Save a new apply job for `preview` and run it. Resolves to the finished job.
- * The caller checks first that nothing blocks it (`applyBlock`).
+ * The caller checks first that nothing blocks it (`applyBlock`). `full` = the
+ * queues hold every removal the plan has (the automatic run may hold some back):
+ * a clean apply of them makes the lists the new base (`base-store.ts`).
  */
 export async function beginApply(
   preview: SyncPreview,
   queues: Map<Tracker, QueuedWrite[]>,
   auto: boolean,
+  full: boolean,
 ): Promise<ApplyJob> {
   const now = Date.now();
   const trackers: ApplyTracker[] = ALL_TRACKERS.filter((tk) => queues.get(tk)?.length).map(
@@ -189,7 +202,12 @@ export async function beginApply(
     ...(auto ? { auto } : {}),
   };
   await listSyncApply.setValue(start);
-  return runApply(start, queues);
+  const done = await runApply(start, queues);
+  if (full && cleanApply(done)) {
+    const writes = [...queues.values()].flatMap((q) => q.map((x) => x.w));
+    await commitBase(preview.at, writes).catch(() => {});
+  }
+  return done;
 }
 
 /** Ask a running apply to stop after the chunk in flight. What was written stays:

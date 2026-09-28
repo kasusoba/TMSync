@@ -25,6 +25,8 @@ import { withOverrides } from "../trackers/animap/overrides";
 import { getAdapter } from "../trackers/index";
 import { getService } from "../trackers/service";
 import { ALL_TRACKERS, type Tracker } from "../trackers/types";
+import { baseOf, settingsSig } from "./base";
+import { commitBase, loadBase, savePending } from "./base-store";
 import { planSync, summarize, syncKindsFor, takesKind } from "./plan";
 import type { ScoreScale } from "./score";
 import type { ListEntry, SyncPlan, SyncTotals } from "./types";
@@ -200,13 +202,27 @@ async function runPreview(auto: boolean): Promise<SyncJob> {
       ...(auto ? { auto } : {}),
     };
     const empty: SyncPlan = { items: [], skips: [], conflicts: [], notices: [] };
+    // Remembered removals plan against the base, when the user turned them on.
+    const sig = settingsSig(settings);
+    const last = settings.removals ? await loadBase(sig) : undefined;
     const preview: SyncPreview =
       trackers.length < 2
         ? { ...base, reason: "too_few", totals: [], plan: empty }
         : (() => {
-            const plan = planSync({ entries, trackers, settings, animap, scales });
+            const plan = planSync({ entries, trackers, settings, animap, scales, base: last });
             return { ...base, totals: summarize(plan, trackers), plan };
           })();
+    // The lists as read become the base once this plan is fully applied, or now
+    // when there is nothing to write. Kept up to date even with removals off, so
+    // turning them on works at once.
+    if (!preview.reason) {
+      const lists = Object.fromEntries(
+        trackers.map((tk) => [tk, baseOf(entries.filter((e) => e.tracker === tk))]),
+      );
+      await savePending(preview.at, sig, lists);
+      const ignored = new Set(settings.ignore);
+      if (!preview.plan.items.some((i) => !ignored.has(i.key))) await commitBase(preview.at, []);
+    }
     await save({ state: "done", planning: false, preview });
   } catch (e) {
     await save({ state: "failed", planning: false, error: errorMessage(e) });

@@ -19,6 +19,7 @@ import {
 } from "../storage";
 import { trackerLabel } from "../trackers/types";
 import { applyQueues, beginApply, readApply } from "./apply";
+import { commitBase } from "./base-store";
 import { beginPreview, jobAlive, readJob } from "./run";
 import type { SyncItem, SyncPlan, SyncWrite } from "./types";
 
@@ -53,7 +54,7 @@ export interface AutoRun {
  * In: watched episodes and movies, rating fills (never a picked score), new list
  * entries, progress up, a higher rewatch count, and the status that progress
  * brings with it (watching, or completed at the last episode).
- * Held: removals, a status change with no progress, a new entry whose status the
+ * Held: removals (of entries and ratings), a status change with no progress, a new entry whose status the
  * trackers disagree on, and every conflict.
  */
 export function additionsOnly(plan: SyncPlan): { plan: SyncPlan; held: string[] } {
@@ -81,6 +82,7 @@ function addition(w: SyncWrite, contested: boolean): SyncWrite | null {
     case "rating":
       return w.picked ? null : w;
     case "remove":
+    case "unrate":
       return null;
     case "entry": {
       if (w.create) return contested ? null : w;
@@ -91,6 +93,18 @@ function addition(w: SyncWrite, contested: boolean): SyncWrite | null {
       return rest.progress || rest.repeat ? rest : null;
     }
   }
+}
+
+/** Whether a held item removes something (an entry or a rating). Pure. */
+export function holdsRemoval(plan: SyncPlan, held: string[], ignore: string[] = []): boolean {
+  const h = new Set(held);
+  const out = new Set(ignore);
+  return plan.items.some(
+    (i) =>
+      h.has(i.key) &&
+      !out.has(i.key) &&
+      i.writes.some((w) => w.op === "remove" || w.op === "unrate"),
+  );
 }
 
 /** How many held items the user has not seen yet (the badge count). Pure. */
@@ -161,10 +175,15 @@ export async function runAuto(): Promise<void> {
 
     const { plan, held } = additionsOnly(preview.plan);
     const queues = applyQueues({ ...preview, plan }, settings.ignore, {});
-    if (![...queues.values()].some((q) => q.length))
+    // A removal held for the user must stay "removed since the base", so the base
+    // moves only when none is held (`base-store.ts`).
+    const full = !holdsRemoval(preview.plan, held, settings.ignore);
+    if (![...queues.values()].some((q) => q.length)) {
+      if (full) await commitBase(preview.at, []).catch(() => {});
       return save({ ...blank, notes, held, state: "done" });
+    }
 
-    const applied = await beginApply(preview, queues, true);
+    const applied = await beginApply(preview, queues, true, full);
     for (const t of applied.trackers)
       if (t.error) notes.push(`${trackerLabel(t.tracker)}: ${t.error}`);
     return save({

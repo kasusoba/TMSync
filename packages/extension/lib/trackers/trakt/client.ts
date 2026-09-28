@@ -537,7 +537,7 @@ export async function readTraktActivity(): Promise<unknown> {
 
 /** A Trakt sync POST: status, the JSON body when it worked, and a short error. */
 export async function syncPost(
-  path: "/sync/history" | "/sync/ratings",
+  path: "/sync/history" | "/sync/ratings" | "/sync/ratings/remove",
   body: unknown,
 ): Promise<{ status: number; data?: unknown; error?: string }> {
   const res = await api(path, { method: "POST", body: JSON.stringify(body) }, true);

@@ -63,3 +63,20 @@ describe("Trakt bodies", () => {
     });
   });
 });
+
+describe("ratingsBody: unrate", () => {
+  it("builds the ratings/remove body with no rating values", () => {
+    const w: SyncWrite = {
+      tracker: "trakt",
+      op: "unrate",
+      level: "season",
+      season: 2,
+      target: { id: 9, ids: { tmdb: 50 }, mediaType: "show" },
+      was: 80,
+    };
+    expect(ratingsBody([w]).at).toEqual([]);
+    const out = ratingsBody([w], "unrate");
+    expect(out.at).toEqual([0]);
+    expect(out.body.shows).toEqual([{ ids: { trakt: 9, tmdb: 50 }, seasons: [{ number: 2 }] }]);
+  });
+});

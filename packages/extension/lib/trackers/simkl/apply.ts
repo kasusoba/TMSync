@@ -55,10 +55,11 @@ const date = (at?: number) => (at !== undefined ? { watched_at: new Date(at).toI
 
 type Body = Record<"movies" | "shows", unknown[]>;
 
-/** The three bodies a chunk needs, and which writes each holds. Pure. */
+/** The bodies a chunk needs, and which writes each holds. Pure. */
 export function simklBodies(writes: SyncWrite[]): {
   history: { body: Body; at: number[] };
   ratings: { body: Body; at: number[] };
+  unrate: { body: Body; at: number[] };
   remove: { body: Body; at: number[] };
   /** Writes with nothing Simkl can take (a rewatch count), done as they are. */
   nothing: number[];
@@ -66,6 +67,7 @@ export function simklBodies(writes: SyncWrite[]): {
   const empty = (): { body: Body; at: number[] } => ({ body: { movies: [], shows: [] }, at: [] });
   const history = empty();
   const ratings = empty();
+  const unrate = empty();
   const remove = empty();
   const nothing: number[] = [];
   const put = (b: { body: Body; at: number[] }, w: SyncWrite, i: number, item: object) => {
@@ -112,21 +114,24 @@ export function simklBodies(writes: SyncWrite[]): {
       }
       case "rating":
         return put(ratings, w, i, { rating: toTen(w.score) });
+      case "unrate":
+        return put(unrate, w, i, {});
       case "remove":
         return put(remove, w, i, {});
     }
   });
-  return { history, ratings, remove, nothing };
+  return { history, ratings, unrate, remove, nothing };
 }
 
 export async function applySimkl(writes: SyncWrite[]): Promise<ChunkOutcome> {
   const results = outcomes(writes.length, { ok: true });
-  const { history, ratings, remove, nothing } = simklBodies(writes);
+  const { history, ratings, unrate, remove, nothing } = simklBodies(writes);
   for (const i of nothing) results[i] = { ok: true };
   const parts = [
     { path: "/sync/history/remove", ...remove },
     { path: "/sync/history", ...history },
     { path: "/sync/ratings", ...ratings },
+    { path: "/sync/ratings/remove", ...unrate },
   ].filter((p) => p.at.length);
   let stop: string | undefined;
   for (const part of parts) {
@@ -155,7 +160,7 @@ export async function applySimkl(writes: SyncWrite[]): Promise<ChunkOutcome> {
           ? { ok: false, reason: "not_found", error: "Simkl could not match it." }
           : { ok: true };
       }
-      if (part.path === "/sync/ratings") await mirror(writes, part.at, results);
+      if (part.path.startsWith("/sync/ratings")) await mirror(writes, part.at, results);
     } catch (e) {
       if (e instanceof SimklNotConnectedError) stop = "Simkl is not connected.";
       set({ ok: false, reason: "failed", error: errorMessage(e) });
@@ -170,8 +175,9 @@ async function mirror(writes: SyncWrite[], at: number[], results: WriteOutcome[]
   const all = { ...(await simklRatings.getValue()) };
   for (const i of at) {
     const w = writes[i];
-    if (w?.op === "rating" && w.target.id !== undefined && results[i]?.ok)
-      all[`simkl:${w.target.id}`] = toTen(w.score);
+    if (w?.target.id === undefined || !results[i]?.ok) continue;
+    if (w.op === "rating") all[`simkl:${w.target.id}`] = toTen(w.score);
+    else if (w.op === "unrate") delete all[`simkl:${w.target.id}`];
   }
   await simklRatings.setValue(all).catch(() => {});
 }

@@ -97,6 +97,12 @@ export interface ListSyncSettings {
   main?: Partial<Record<SyncKind, Tracker>>;
   /** Sync once a day on its own, additions only (`auto.ts`). Off by default. */
   auto?: boolean;
+  /**
+   * Remember removals (`base.ts`): in union mode, an entry or a rating removed
+   * from one list since the last clean sync is removed from the others, instead
+   * of added back. Trakt watch history is still never removed. Off by default.
+   */
+  removals?: boolean;
 }
 
 export const DEFAULT_SYNC_SETTINGS: ListSyncSettings = {
@@ -177,6 +183,9 @@ export type SyncWrite =
   /** Remove the entry from the tracker's list (a main list does not have it).
    * Only list entries: Trakt watch history is never removed. */
   | { tracker: Tracker; op: "remove"; target: TargetRef; was: EntryState }
+  /** Clear a rating: the user removed it from another list since the last clean
+   * sync (`base.ts`). `was` is the rating now, 0 to 100. */
+  | ({ tracker: Tracker; op: "unrate"; was: number } & RatingRef)
   /** Fill an empty rating. `score` is 0 to 100. */
   | ({ tracker: Tracker; op: "rating"; score: number } & RatingRef & {
         /** The user picked this score in a disagreement, so it replaces the
@@ -289,8 +298,8 @@ export interface SyncNotice {
   tracker: Tracker;
   reason: /** The copy is further than the main list. Sync never lowers progress. */
     | "ahead"
-    /** The main list does not have it, but this copy is Trakt watch history,
-     * which sync never removes. */
+    /** The main list does not have it (or another list removed it), but this
+     * copy is Trakt watch history, which sync never removes. */
     | "history_kept"
     /** The copy has a different rating. Sync only fills empty ratings. */
     | "rating_kept";
@@ -314,6 +323,8 @@ export interface SyncTotals {
   updated: number;
   ratings: number;
   removed: number;
+  /** Ratings cleared. */
+  unrated: number;
 }
 
 /** What became of one write when sync applied it. */

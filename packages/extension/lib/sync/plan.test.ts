@@ -692,8 +692,26 @@ describe("summarize", () => {
   it("counts writes per tracker", () => {
     const p = plan([traktShow(1399, { 1: [1, 2] })], { trackers: ["trakt", "simkl"] });
     expect(summarize(p, ["trakt", "simkl"])).toEqual([
-      { tracker: "trakt", episodes: 0, movies: 0, created: 0, updated: 0, ratings: 0, removed: 0 },
-      { tracker: "simkl", episodes: 2, movies: 0, created: 0, updated: 0, ratings: 0, removed: 0 },
+      {
+        tracker: "trakt",
+        episodes: 0,
+        movies: 0,
+        created: 0,
+        updated: 0,
+        ratings: 0,
+        removed: 0,
+        unrated: 0,
+      },
+      {
+        tracker: "simkl",
+        episodes: 2,
+        movies: 0,
+        created: 0,
+        updated: 0,
+        ratings: 0,
+        removed: 0,
+        unrated: 0,
+      },
     ]);
   });
 });

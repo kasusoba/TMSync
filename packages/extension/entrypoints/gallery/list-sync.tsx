@@ -1,6 +1,7 @@
 /** List sync states for the gallery, with mock lists run through the REAL planner,
  * so the tiles show what the pane renders, not a hand-written imitation. */
 import { APPLY_JOB_VERSION, type ApplyJob, applyBlock, applyQueues } from "@/lib/sync/apply";
+import { type BaseEntry, baseOf } from "@/lib/sync/base";
 import { planSync, summarize, syncKindsFor } from "@/lib/sync/plan";
 import type { SyncPreview } from "@/lib/sync/run";
 import { DEFAULT_SYNC_SETTINGS, type ListEntry, type ListSyncSettings } from "@/lib/sync/types";
@@ -118,8 +119,44 @@ const entries: ListEntry[] = [
 
 const FROM: Partial<Record<Tracker, "saved" | "changes">> = { trakt: "saved", simkl: "changes" };
 
-function preview(settings: ListSyncSettings, trackers: Tracker[]): SyncPreview {
-  const plan = planSync({ entries, trackers, settings, animap, scales: { anilist: "POINT_100" } });
+/** The lists at the last clean sync, for remembered removals: AniList still had
+ * Akira (so MyAnimeList loses it now), and Simkl had rated Severance (so Trakt's
+ * rating is cleared). */
+function galleryBase(): Partial<Record<Tracker, BaseEntry[]>> {
+  const was: ListEntry[] = entries.map((e) =>
+    e.tracker === "simkl" && e.title === "Severance" ? { ...e, rating: 90 } : e,
+  );
+  was.push({
+    tracker: "anilist",
+    shape: "cour",
+    id: 47,
+    title: "Akira",
+    ids: { anilist: 47, mal: 47 },
+    rating: null,
+    progress: 0,
+    total: 1,
+    status: "PLANNING",
+    repeat: 0,
+    movie: true,
+  });
+  return Object.fromEntries(
+    ALL_TRACKERS.map((tk) => [tk, baseOf(was.filter((e) => e.tracker === tk))]),
+  );
+}
+
+function preview(
+  settings: ListSyncSettings,
+  trackers: Tracker[],
+  base?: Partial<Record<Tracker, BaseEntry[]>>,
+): SyncPreview {
+  const plan = planSync({
+    entries,
+    trackers,
+    settings,
+    animap,
+    scales: { anilist: "POINT_100" },
+    base,
+  });
   return {
     at: Date.UTC(2026, 8, 28, 9, 30),
     reads: ALL_TRACKERS.map((tracker) =>
@@ -164,7 +201,8 @@ export function ListSyncTile({
     | "stale"
     | "applying"
     | "applied"
-    | "auto";
+    | "auto"
+    | "remembered";
 }) {
   const t = tokens(variant);
   const settings: ListSyncSettings =
@@ -174,7 +212,9 @@ export function ListSyncTile({
         ? { ...DEFAULT_SYNC_SETTINGS, main: { anime: "anilist" } }
         : state === "auto"
           ? { ...DEFAULT_SYNC_SETTINGS, auto: true }
-          : DEFAULT_SYNC_SETTINGS;
+          : state === "remembered"
+            ? { ...DEFAULT_SYNC_SETTINGS, removals: true }
+            : DEFAULT_SYNC_SETTINGS;
   const p =
     state === "preview" ||
     state === "no-simkl-anime" ||
@@ -185,14 +225,16 @@ export function ListSyncTile({
       ? preview(settings, ALL_TRACKERS)
       : state === "auto"
         ? { ...preview(settings, ALL_TRACKERS), auto: true }
-        : state === "too-few"
-          ? {
-              ...preview(settings, ["trakt"]),
-              reason: "too_few" as const,
-              totals: [],
-              plan: { items: [], skips: [], conflicts: [], notices: [] },
-            }
-          : null;
+        : state === "remembered"
+          ? preview(settings, ALL_TRACKERS, galleryBase())
+          : state === "too-few"
+            ? {
+                ...preview(settings, ["trakt"]),
+                reason: "too_few" as const,
+                totals: [],
+                plan: { items: [], skips: [], conflicts: [], notices: [] },
+              }
+            : null;
   const job =
     p && (state === "applying" || state === "applied" || state === "auto")
       ? applyJob(p.at, state)

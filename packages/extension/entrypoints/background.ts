@@ -25,6 +25,7 @@ import {
 } from "@/lib/storage";
 import { startApply } from "@/lib/sync/apply";
 import { AUTO_ALARM, runAuto, showAutoBadge, syncAutoAlarm } from "@/lib/sync/auto";
+import { forgetBase } from "@/lib/sync/base-store";
 import { startPreview } from "@/lib/sync/run";
 import {
   ALL_TRACKERS,
@@ -179,10 +180,11 @@ export default defineBackground(() => {
   // Accounts: one set of handlers for every tracker, through its service.
   onMessage("getTrackerStatus", ({ data }) => getService(data).status());
 
-  // A saved list sync read belongs to one account; a new sign-in drops it.
+  // A saved list sync read and base belong to one account; a new sign-in drops them.
   onMessage("connectTracker", async ({ data }) => {
     try {
       await listSyncCache(data).removeValue();
+      await forgetBase(data);
       await getService(data).connect();
       return { ok: true };
     } catch (e) {
@@ -192,6 +194,7 @@ export default defineBackground(() => {
 
   onMessage("disconnectTracker", async ({ data }) => {
     await listSyncCache(data).removeValue();
+    await forgetBase(data);
     await getService(data).disconnect();
   });
 

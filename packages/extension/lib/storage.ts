@@ -3,6 +3,7 @@ import type { LinkTemplates, ParsedMedia, Recipe } from "@tmsync/shared";
 import { storage } from "wxt/utils/storage";
 import type { ApplyJob } from "./sync/apply";
 import type { AutoRun } from "./sync/auto";
+import type { PendingBase, SyncBase } from "./sync/base";
 import type { ListCache } from "./sync/cache";
 import type { SyncJob } from "./sync/run";
 import type { SyncPicks } from "./sync/types";
@@ -487,6 +488,21 @@ function listCacheItem(tracker: Tracker) {
 export function listSyncCache(tracker: Tracker) {
   return LIST_SYNC_CACHE[tracker];
 }
+
+/** Each tracker's list after the last clean list sync (`sync/base.ts`): id keys
+ * and rated flags only, for remembered removals. */
+export const listSyncBase = storage.defineItem<SyncBase | null>("local:list_sync_base", {
+  fallback: null,
+});
+
+/** The lists of the last preview, until its apply says whether they became the
+ * base (`sync/base-store.ts`). */
+export const listSyncBaseNext = storage.defineItem<PendingBase | null>(
+  "local:list_sync_base_next",
+  {
+    fallback: null,
+  },
+);
 
 /** The last automatic list sync run (`sync/auto.ts`). */
 export const listSyncAuto = storage.defineItem<AutoRun | null>("local:list_sync_auto", {

@@ -102,6 +102,8 @@ export function describeWrite(w: SyncWrite): string {
       return `remove · was ${describeState(w.was)}`;
     case "rating":
       return `rate ${Math.round(w.score) / 10}/10${w.level === "season" ? ` (season ${w.season})` : ""}${w.picked ? " · your pick" : ""}`;
+    case "unrate":
+      return `remove rating${w.level === "season" ? ` (season ${w.season})` : ""} · was ${Math.round(w.was) / 10}/10`;
     case "entry": {
       const parts: string[] = [w.create ? "add" : "update"];
       if (w.progress) parts.push(`${w.progress.from} → ${w.progress.to} eps`);
@@ -177,7 +179,7 @@ export function ListSyncView({
   onPick?: (key: string, value: SyncPick | undefined) => void;
   onPreview: () => void;
   onKind: (tracker: Tracker, kind: SyncKind, on: boolean) => void;
-  onSetting: (key: "includePrivate" | "includeAdult" | "auto", on: boolean) => void;
+  onSetting: (key: "includePrivate" | "includeAdult" | "removals" | "auto", on: boolean) => void;
   /** The last automatic run (null = none yet). */
   autoRun?: AutoRun | null;
   /** Set (or clear, with undefined) the main list of a kind. */
@@ -286,6 +288,13 @@ export function ListSyncView({
             label="Include adult entries"
             on={settings.includeAdult}
             onClick={() => onSetting("includeAdult", !settings.includeAdult)}
+          />
+          <SettingRow
+            t={t}
+            label="Remember removals"
+            hint="With no main list: an entry or a rating you remove from one list since the last full sync is removed from the others, not added back. Trakt history is never deleted."
+            on={!!settings.removals}
+            onClick={() => onSetting("removals", !settings.removals)}
           />
           <SettingRow
             t={t}
@@ -406,6 +415,7 @@ function totalParts(x: SyncTotals, removals = true): string[] {
     x.updated && `${x.updated} updated`,
     x.ratings && plural(x.ratings, "rating"),
     removals && x.removed && `${x.removed} removed`,
+    removals && x.unrated && `${plural(x.unrated, "rating")} removed`,
   ].filter((p): p is string => !!p);
 }
 
@@ -445,7 +455,7 @@ function ApplyBar({
     );
   }
   const writes = plan.items.filter((i) => !kept.has(i.key)).flatMap((i) => i.writes).length;
-  const removals = totals.filter((x) => x.removed);
+  const removals = totals.filter((x) => x.removed || x.unrated);
   if (!confirm) {
     return (
       <div class={clsx("flex items-center gap-3 rounded-lg p-3", t.card)}>
@@ -465,7 +475,15 @@ function ApplyBar({
         <p class={clsx("rounded-md px-2.5 py-1.5 text-[12px] leading-relaxed", t.badBox)}>
           Removes{" "}
           {removals
-            .map((x) => `${plural(x.removed, "entry", "entries")} from ${trackerLabel(x.tracker)}`)
+            .map((x) =>
+              [
+                x.removed && plural(x.removed, "entry", "entries"),
+                x.unrated && plural(x.unrated, "rating"),
+              ]
+                .filter(Boolean)
+                .join(" and "),
+            )
+            .map((what, i) => `${what} from ${trackerLabel((removals[i] as SyncTotals).tracker)}`)
             .join(", ")}
           . A removed entry loses its progress, status, and rating there.
         </p>
@@ -657,7 +675,7 @@ function TrackerCards({
 
 type Tab = "changes" | "removals" | "notices" | "conflicts" | "skipped" | "kept";
 
-const isRemoval = (i: SyncItem) => i.writes.every((w) => w.op === "remove");
+const isRemoval = (i: SyncItem) => i.writes.every((w) => w.op === "remove" || w.op === "unrate");
 
 const PAGE = 100;
 
