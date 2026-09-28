@@ -16,6 +16,7 @@ import {
   badgePrefs,
   corrections,
   customRecipes,
+  listSyncSettings,
   malConnectIntent,
   malCorrections,
   newPendingSites,
@@ -24,6 +25,9 @@ import {
   quickLinksEnabled,
   remoteRecipes,
 } from "@/lib/storage";
+import { syncKindsFor } from "@/lib/sync/plan";
+import type { SyncPreview } from "@/lib/sync/run";
+import { DEFAULT_SYNC_SETTINGS, type ListSyncSettings, type SyncKind } from "@/lib/sync/types";
 import type { AniListIdentity } from "@/lib/trackers/anilist/types";
 import type { AnimapOverrides } from "@/lib/trackers/animap/derive";
 import { requestMalAccess } from "@/lib/trackers/mal/access";
@@ -37,6 +41,7 @@ import {
   trackerLabel,
 } from "@/lib/trackers/types";
 import { type Accounts, loadAccounts } from "@/lib/ui/accounts";
+import { ListSyncView } from "@/lib/ui/kit/ListSyncView";
 import { BadgeModeToggle } from "@/lib/ui/kit/PopupView";
 import { TrackerTab } from "@/lib/ui/kit/TrackerTab";
 import { Btn, Icon, IconBtn, type IconName, Switch, TrackerMark, tokens } from "@/lib/ui/kit/kit";
@@ -582,6 +587,7 @@ function useSettled(on: boolean, ms: number): boolean {
 
 const SECTIONS: { id: string; label: string; icon: IconName }[] = [
   { id: "account", label: "Account", icon: "play" },
+  { id: "listsync", label: "List sync", icon: "refresh" },
   { id: "sites", label: "Sites", icon: "frame" },
   { id: "links", label: "Quick links", icon: "link" },
   { id: "corrections", label: "Corrections", icon: "check" },
@@ -724,6 +730,11 @@ export function App() {
   const [actError, setActError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [badge, setBadge] = useState<BadgePrefs>({ mode: "full", position: null });
+  // List sync (plans/list-sync.md): the user's choices, and the last preview.
+  const [syncSettings, setSyncSettings] = useState<ListSyncSettings>(DEFAULT_SYNC_SETTINGS);
+  const [syncPreview, setSyncPreview] = useState<SyncPreview | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [syncError, setSyncError] = useState<string | undefined>();
   const has = (s: string) => s.toLowerCase().includes(q.toLowerCase());
 
   const refresh = async () => {
@@ -833,6 +844,48 @@ export function App() {
     const next = !linksOn;
     setLinksOn(next);
     await quickLinksEnabled.setValue(next);
+  };
+
+  useEffect(() => {
+    void listSyncSettings.getValue().then(setSyncSettings);
+  }, []);
+
+  const saveSyncSettings = async (next: ListSyncSettings) => {
+    setSyncSettings(next);
+    try {
+      await listSyncSettings.setValue(next);
+    } catch (e) {
+      setSyncError(actionError(e));
+    }
+  };
+
+  const setSyncKind = (tk: Tracker, kind: SyncKind, on: boolean) => {
+    const now = syncSettings.kinds[tk] ?? syncKindsFor(tk);
+    const next = on ? [...new Set([...now, kind])] : now.filter((k) => k !== kind);
+    void saveSyncSettings({ ...syncSettings, kinds: { ...syncSettings.kinds, [tk]: next } });
+  };
+
+  // Read every list and plan. Nothing is written (phase 1).
+  const previewListSync = async () => {
+    setPreviewing(true);
+    setSyncError(undefined);
+    try {
+      const out = await sendMessage("listSyncPreview", undefined);
+      if (out.ok && out.preview) setSyncPreview(out.preview);
+      else setSyncError(out.error ?? "Couldn’t read your lists.");
+    } catch (e) {
+      setSyncError(actionError(e));
+    } finally {
+      setPreviewing(false);
+    }
+  };
+
+  // Keep one item out of sync, and drop it from the preview on screen.
+  const ignoreSyncItem = (key: string) => {
+    void saveSyncSettings({ ...syncSettings, ignore: [...new Set([...syncSettings.ignore, key])] });
+    setSyncPreview((p) =>
+      p ? { ...p, plan: { ...p.plan, items: p.plan.items.filter((i) => i.key !== key) } } : p,
+    );
   };
 
   const updateBadge = async (patch: Partial<BadgePrefs>) => {
@@ -1409,6 +1462,29 @@ export function App() {
                     {tk === "trakt" && accounts.trakt?.connected && letterboxdCard}
                   </AccountRow>
                 ))}
+              </>
+            )}
+
+            {active === "listsync" && (
+              <>
+                <PaneHead title="List sync" />
+                <ListSyncView
+                  t={t}
+                  rows={ALL_TRACKERS.map((tk) => ({
+                    tracker: tk,
+                    can: syncKindsFor(tk),
+                    on: syncSettings.kinds[tk] ?? syncKindsFor(tk),
+                  }))}
+                  settings={syncSettings}
+                  preview={syncPreview}
+                  busy={previewing}
+                  error={syncError}
+                  onPreview={previewListSync}
+                  onKind={setSyncKind}
+                  onSetting={(key, on) => void saveSyncSettings({ ...syncSettings, [key]: on })}
+                  onIgnore={ignoreSyncItem}
+                  onClearIgnored={() => void saveSyncSettings({ ...syncSettings, ignore: [] })}
+                />
               </>
             )}
 

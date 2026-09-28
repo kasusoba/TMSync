@@ -1,6 +1,7 @@
 import type { BadgeStatus } from "@/messaging";
 import type { LinkTemplates, ParsedMedia, Recipe } from "@tmsync/shared";
 import { storage } from "wxt/utils/storage";
+import { DEFAULT_SYNC_SETTINGS, type ListSyncSettings } from "./sync/types";
 import type { AniListIdentity, AniListTokens } from "./trackers/anilist/types";
 import type { AnimapOverrides } from "./trackers/animap/derive";
 import type { AnimapRow } from "./trackers/animap/index";
@@ -437,6 +438,12 @@ export interface BadgePrefs {
 }
 export const badgePrefs = storage.defineItem<BadgePrefs>("sync:badge_prefs", {
   fallback: { mode: "full", position: null },
+});
+
+/** List sync choices (plans/list-sync.md): which kinds each tracker takes part in,
+ * private and adult entries, and the items the user keeps out. */
+export const listSyncSettings = storage.defineItem<ListSyncSettings>("sync:list_sync_settings", {
+  fallback: DEFAULT_SYNC_SETTINGS,
 });
 
 /**

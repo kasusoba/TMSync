@@ -2,9 +2,11 @@ import type { TrackerService } from "../service";
 import { connect, disconnect, getRedirectUri, isConnected } from "./auth";
 import { HELD_STOP_ALARM, flushHeldStops } from "./client";
 import { SIMKL } from "./config";
+import { readSimklEntries } from "./list";
 import { simklDeleteNote, simklGetReview, simklRate, simklSaveNote, simklUnrate } from "./review";
 
 export const simklService: TrackerService = {
+  readList: async () => ({ entries: await readSimklEntries() }),
   status: async () => ({
     connected: await isConnected(),
     redirectUri: getRedirectUri(),

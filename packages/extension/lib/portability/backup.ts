@@ -4,10 +4,12 @@ import {
   badgePrefs,
   corrections,
   customRecipes,
+  listSyncSettings,
   manualSelections,
   quickLinks,
   quickLinksEnabled,
 } from "@/lib/storage";
+import type { ListSyncSettings } from "@/lib/sync/types";
 import type { ResolvedIdentity } from "@/lib/trackers/trakt/types";
 import type { ParsedMedia, Recipe } from "@tmsync/shared";
 import { LinkTemplates, RecipeSchema } from "@tmsync/shared";
@@ -63,6 +65,19 @@ const BadgePrefsSchema: z.ZodType<BadgePrefs> = z.object({
     .nullable(),
 });
 
+const SyncKindSchema = z.enum(["movie", "tv", "anime"]);
+const ListSyncSettingsSchema: z.ZodType<ListSyncSettings> = z.object({
+  kinds: z.object({
+    trakt: z.array(SyncKindSchema).optional(),
+    anilist: z.array(SyncKindSchema).optional(),
+    mal: z.array(SyncKindSchema).optional(),
+    simkl: z.array(SyncKindSchema).optional(),
+  }),
+  includePrivate: z.boolean(),
+  includeAdult: z.boolean(),
+  ignore: z.array(z.string()),
+});
+
 const BackupSchema = z.object({
   app: z.literal("tmsync"),
   version: z.number(),
@@ -77,6 +92,7 @@ const BackupSchema = z.object({
     manualSelections: z.record(z.string(), ParsedMediaSchema).default({}),
     badgePrefs: BadgePrefsSchema.optional(),
     quickLinksEnabled: z.boolean().optional(),
+    listSync: ListSyncSettingsSchema.optional(),
   }),
 });
 
@@ -94,13 +110,14 @@ export interface ImportSummary {
 
 /** Gather the user-owned deltas into a versioned, downloadable bundle. */
 export async function buildBackup(): Promise<Backup> {
-  const [recipes, links, corr, manual, badge, linksOn] = await Promise.all([
+  const [recipes, links, corr, manual, badge, linksOn, listSync] = await Promise.all([
     customRecipes.getValue(),
     quickLinks.getValue(),
     corrections.getValue(),
     manualSelections.getValue(),
     badgePrefs.getValue(),
     quickLinksEnabled.getValue(),
+    listSyncSettings.getValue(),
   ]);
   // Library quick links come from the repo on every device — carry only their
   // on/off toggle, not the templates.
@@ -119,6 +136,7 @@ export async function buildBackup(): Promise<Backup> {
       manualSelections: manual,
       badgePrefs: badge,
       quickLinksEnabled: linksOn,
+      listSync,
     },
   };
 }
@@ -168,6 +186,7 @@ export async function applyBackup(backup: Backup): Promise<ImportSummary> {
 
   if (d.badgePrefs) await badgePrefs.setValue(d.badgePrefs);
   if (d.quickLinksEnabled !== undefined) await quickLinksEnabled.setValue(d.quickLinksEnabled);
+  if (d.listSync) await listSyncSettings.setValue(d.listSync);
 
   return {
     recipes: validRecipes.length,

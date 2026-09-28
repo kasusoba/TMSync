@@ -375,3 +375,25 @@ export async function updateListStatus(
     return { ok: false, error: errorMessage(e) };
   }
 }
+
+// --- list sync (reads the whole list; plans/list-sync.md) ---
+
+const ANIMELIST_FIELDS =
+  "list_status{status,score,num_episodes_watched,is_rewatching,num_times_rewatched,updated_at},num_episodes,media_type,nsfw,start_season";
+const PAGE = 1000;
+
+/** Read the user's whole anime list, 1000 entries per request, one request at a
+ * time (MAL answers bursts with 403). */
+export async function readMalList(): Promise<unknown[]> {
+  const out: unknown[] = [];
+  for (let offset = 0; offset < 100 * PAGE; offset += PAGE) {
+    const page = await malFetch<{ data: unknown[]; paging?: { next?: string } }>(
+      `/users/@me/animelist?fields=${ANIMELIST_FIELDS}&limit=${PAGE}&offset=${offset}&nsfw=true`,
+      { auth: true },
+    );
+    if (!page) break;
+    out.push(...page.data);
+    if (!page.paging?.next) break;
+  }
+  return out;
+}

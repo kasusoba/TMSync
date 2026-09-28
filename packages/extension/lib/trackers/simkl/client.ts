@@ -353,3 +353,34 @@ export async function scrobble(
   }
   return { kind: "ok", action: res.data?.action, match: matchFrom(res.data) };
 }
+
+// --- list sync (reads the whole list; plans/list-sync.md) ---
+
+/**
+ * Read the user's whole Simkl library in ONE request (shows with their watched
+ * episodes, anime, movies, ratings, statuses). This costs one call of the user's
+ * daily quota. Simkl asks apps not to call it on a timer: a scheduled sync must
+ * check `/sync/activities` first and pass `date_from`. A manual "Sync now" is the
+ * initial full pull its sync guide describes.
+ */
+export async function readSimklList(): Promise<unknown> {
+  const token = await getValidAccessToken();
+  if (!token) throw new SimklNotConnectedError();
+  const query = `${appParams()}&extended=full&include_all_episodes=yes`;
+  const send = (bearer: string) =>
+    fetch(`${SIMKL.apiBase}/sync/all-items?${query}`, {
+      headers: { Accept: "application/json", Authorization: `Bearer ${bearer}` },
+    });
+  let res = await send(token);
+  if (res.status === 401) {
+    const next = await refreshAfterReject(token);
+    if (!next) throw new SimklNotConnectedError();
+    res = await send(next);
+    if (res.status === 401) {
+      await forgetGrant();
+      throw new SimklNotConnectedError();
+    }
+  }
+  if (!res.ok) throw new Error(`Simkl ${res.status}`);
+  return (await res.json()) ?? {};
+}

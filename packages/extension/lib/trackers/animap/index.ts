@@ -146,6 +146,62 @@ export class Animap {
     };
   }
 
+  /** Whether the crosswalk knows this TMDB id at all (the item is anime). */
+  has(tmdbId: number, kind: "tv" | "movie"): boolean {
+    return (this.byTmdb.get(`${kind}:${tmdbId}`)?.length ?? 0) > 0;
+  }
+
+  /**
+   * The AniList id for a MAL id, when exactly one entry carries it. List sync uses
+   * this to put a MAL entry in the same group as its AniList entry.
+   */
+  anilistForMal(malId: number): number | undefined {
+    const ids = new Set((this.byMal.get(malId) ?? []).map((r) => r.a));
+    return ids.size === 1 ? [...ids][0] : undefined;
+  }
+
+  /** The MAL id of an AniList entry, when the crosswalk has one. */
+  malForAnilist(anilistId: number): number | undefined {
+    const ids = new Set(
+      (this.byAnilist.get(anilistId) ?? []).flatMap((r) => (r.m != null ? [r.m] : [])),
+    );
+    return ids.size === 1 ? [...ids][0] : undefined;
+  }
+
+  /** The AniList entries a TMDB show or movie maps to (every cour, in any season). */
+  anilistIds(tmdbId: number, kind: "tv" | "movie"): number[] {
+    return [...new Set((this.byTmdb.get(`${kind}:${tmdbId}`) ?? []).map((r) => r.a))];
+  }
+
+  /**
+   * Which Trakt rating an AniList entry's score maps to, when the two rate the
+   * same thing. A cour rates exactly a TMDB season only when it is the whole
+   * season (the only row for that season, no offset). When the cour is the whole
+   * show (the show has one row), the show rating is the match. Null otherwise: a
+   * split season or a many-cour show has no single Trakt object to rate.
+   */
+  ratingTarget(
+    anilistId: number,
+  ):
+    | { kind: "movie"; tmdbId: number }
+    | { kind: "show"; tmdbId: number }
+    | { kind: "season"; tmdbId: number; season: number }
+    | null {
+    const rows = this.byAnilist.get(anilistId) ?? [];
+    const targets = new Set(rows.map((r) => `${r.k}:${r.t}:${r.s ?? ""}`));
+    const r = rows[0];
+    if (!r || targets.size !== 1) return null;
+    if (r.k === "movie")
+      return this.anilistIds(r.t, "movie").length === 1 ? { kind: "movie", tmdbId: r.t } : null;
+    const show = this.byTmdb.get(`tv:${r.t}`) ?? [];
+    if (new Set(show.map((x) => x.a)).size === 1) return { kind: "show", tmdbId: r.t };
+    if (r.s == null || off(r) !== 0) return null;
+    const season = show.filter((x) => (x.s ?? null) === r.s);
+    return new Set(season.map((x) => x.a)).size === 1
+      ? { kind: "season", tmdbId: r.t, season: r.s }
+      : null;
+  }
+
   /**
    * Cour-native site (AniList or MAL) → TMDB/Trakt. `episode` is the local episode
    * within the cour. Ambiguous only if one entry maps to >1 distinct TMDB target.

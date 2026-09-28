@@ -380,3 +380,49 @@ export async function saveNotes(
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
 }
+
+// --- list sync (reads the whole list; plans/list-sync.md) ---
+
+const VIEWER_QUERY = `
+query { Viewer { id mediaListOptions { scoreFormat } } }`;
+
+const COLLECTION_QUERY = `
+query ($userId: Int, $chunk: Int) {
+  MediaListCollection(userId: $userId, type: ANIME, chunk: $chunk, perChunk: 500) {
+    hasNextChunk
+    lists {
+      isCustomList
+      entries {
+        mediaId status progress repeat private updatedAt
+        score(format: POINT_100)
+        media { id idMal episodes format isAdult startDate { year } title { userPreferred } }
+      }
+    }
+  }
+}`;
+
+/** Read the viewer's whole anime list, and their score format. One request per
+ * 500 entries, plus one for the viewer. */
+export async function readAniListList(): Promise<{
+  entries: unknown[];
+  scoreFormat: ScoreFormat | null;
+}> {
+  const viewer = await gql<{
+    Viewer: { id: number; mediaListOptions?: { scoreFormat?: ScoreFormat } };
+  }>(VIEWER_QUERY, {}, true);
+  const entries: unknown[] = [];
+  for (let chunk = 1; chunk < 100; chunk += 1) {
+    const data = await gql<{
+      MediaListCollection: {
+        hasNextChunk: boolean;
+        lists: { isCustomList: boolean; entries: unknown[] }[];
+      };
+    }>(COLLECTION_QUERY, { userId: viewer.Viewer.id, chunk }, true);
+    // Custom lists repeat entries that are already in a status list.
+    for (const list of data.MediaListCollection.lists) {
+      if (!list.isCustomList) entries.push(...list.entries);
+    }
+    if (!data.MediaListCollection.hasNextChunk) break;
+  }
+  return { entries, scoreFormat: viewer.Viewer.mediaListOptions?.scoreFormat ?? null };
+}

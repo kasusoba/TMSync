@@ -495,3 +495,26 @@ export async function exportLetterboxd(): Promise<{ csv: string; count: number }
   const rows = buildLetterboxdRows({ history, ratings, comments });
   return { csv: toLetterboxdCsv(rows), count: rows.length };
 }
+
+// --- list sync (reads the whole list; plans/list-sync.md) ---
+
+/** Everything list sync reads from Trakt, as Trakt returns it. */
+export interface TraktListDump {
+  shows: unknown[];
+  movies: unknown[];
+  showRatings: unknown[];
+  seasonRatings: unknown[];
+  movieRatings: unknown[];
+}
+
+/** Read the user's watched shows and movies, and their ratings. Five GETs. */
+export async function readTraktList(): Promise<TraktListDump> {
+  const [shows, movies, showRatings, seasonRatings, movieRatings] = await Promise.all([
+    getAllPages<unknown>("/sync/watched/shows"),
+    getAllPages<unknown>("/sync/watched/movies"),
+    getAllPages<unknown>("/sync/ratings/shows"),
+    getAllPages<unknown>("/sync/ratings/seasons"),
+    getAllPages<unknown>("/sync/ratings/movies"),
+  ]);
+  return { shows, movies, showRatings, seasonRatings, movieRatings };
+}

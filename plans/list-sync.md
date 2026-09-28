@@ -16,8 +16,9 @@ changes that make them agree, shows the plan, and applies it when the user confi
 
 ## Shape
 
-1. **Read.** Each adapter gets an optional `readList()` that returns its whole list as
-   normalized entries (ids, family, progress or watched set, status, rating, timestamps).
+1. **Read.** Each tracker's service gets an optional `readList()` that returns its whole list
+   as normalized entries (ids, progress or watched set, status, rating, timestamps). It is on
+   `TrackerService`, not the adapter, so the content scripts never bundle it.
 2. **Match.** Group entries that are the same thing on different trackers. Ids only, never a
    title search (search costs Simkl quota, and a title match can be wrong).
 3. **Plan.** A pure function in `lib/sync/plan.ts` turns matched groups into per-tracker
@@ -130,8 +131,9 @@ The crosswalk stays in `lib/trackers/animap/`. `extract()` is not touched.
 
 ### E. Privacy
 
-28. **Private entries.** An AniList entry marked `private` or hidden from status lists must
-    not be copied to a public Trakt profile. Default: skip it and report it.
+28. **Private entries.** An AniList entry marked `private` must not be copied to a public
+    Trakt profile. Default: skip it and report it. "Hidden from status lists" is not privacy
+    (it is how AniList keeps an entry only in a custom list), so it syncs as usual.
 29. **Adult entries** (`isAdult`). Same question. Default: skip, with an option to include.
 
 ### F. Running the sync
@@ -220,9 +222,50 @@ The crosswalk stays in `lib/trackers/animap/`. `extract()` is not touched.
 3. **Later:** a daily run with cheap change checks (Trakt `/sync/last_activities`, Simkl
    `/sync/activities`, AniList `updatedAt`), and the three-way merge if chosen.
 
+## Phase 1 status (built on `feat/list-sync`, not yet run on a real account)
+
+What is built:
+
+- `lib/sync/types.ts`, `score.ts`, `plan.ts`: the pure planner, with tests for sections A to
+  H, and a convergence test (apply the plan, plan again, expect no writes).
+- `lib/trackers/<tracker>/list.ts`: one reader per tracker, each a pure normalizer (Zod, a bad
+  item is dropped) plus a fetch in that tracker's `client.ts`.
+- `lib/sync/run.ts` and the `listSyncPreview` message: read, plan, return. No writes.
+- Options: a "List sync" pane (`ListSyncView`), with the per-tracker kind switches, the private
+  and adult switches, the preview, and "keep out of sync" per item. Gallery states added.
+- The choices are in `sync:list_sync_settings` and in the backup file.
+
+What the reads cost, per preview:
+
+- Trakt: 5 GETs (`/sync/watched/shows`, `/sync/watched/movies`, `/sync/ratings/{shows,seasons,movies}`).
+- AniList: 1 + one per 500 entries (`Viewer`, `MediaListCollection` in chunks, custom lists skipped).
+- MAL: one per 1000 entries (`/users/@me/animelist`), one after the other.
+- Simkl: 1 (`/sync/all-items?extended=full&include_all_episodes=yes`), so 1 of the daily quota.
+
+Found while building:
+
+- **Trakt keeps ratings apart from history.** An item rated but not watched is still an entry
+  (nothing watched). Without that, a rating written to Trakt would not be read back, and the
+  next sync would write it again.
+- **Trakt's own gaps stay.** Trakt watched 1, 2, 5 gives AniList progress 5 (the scrobble
+  rule), but Trakt is not filled with 3 and 4 from its own max. Only a cour tracker's count, or
+  another list's real episodes, adds episodes to Trakt.
+- **A cour score maps to a Trakt rating only when they rate the same thing:** the show when
+  the show is one cour, the season when the cour is that whole season, else nothing
+  (`Animap.ratingTarget`).
+- **A MAL entry finds its AniList group** through an AniList entry's `idMal`, else the
+  crosswalk. A MAL entry that is in neither can reach only Simkl.
+- **The ignore list is in `sync` storage**, which has an 8 KB per-item limit. That is about
+  400 ignored items. If it grows past that, move it to `local`.
+- **Crosswalk user overrides** (`animapOverrides`, the fix-match pins) are not used by the
+  planner yet. Phase 2 should apply them before the Fribb rows, as scrobbling does.
+- **Anime titles that Simkl files under `shows`** (not `anime`) are handled like Trakt: by
+  their tmdb id through the crosswalk.
+
 ## To verify against the live APIs
 
-- The Simkl `/sync/all-items` shape for anime (are `anilist` and `mal` ids always there?).
+- The Simkl `/sync/all-items` shape for anime (are `anilist` and `mal` ids always there?). The
+  documented example has them, as strings.
 - AniList: several aliased mutations in one request, and how they count against the limit.
 - Trakt free account item limits (watchlist, history).
 - MAL list paging (`limit=1000`, `offset`) and its fields for `updated_at` and rewatch.

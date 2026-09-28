@@ -19,6 +19,7 @@ import {
   tabSessions,
   tabStatus,
 } from "@/lib/storage";
+import { previewSync } from "@/lib/sync/run";
 import {
   ALL_TRACKERS,
   connectedTrackers,
@@ -170,6 +171,15 @@ export default defineBackground(() => {
   });
 
   onMessage("disconnectTracker", ({ data }) => getService(data).disconnect());
+
+  // List sync: read every list and plan (phase 1 writes nothing).
+  onMessage("listSyncPreview", async () => {
+    try {
+      return { ok: true, preview: await previewSync() };
+    } catch (e) {
+      return { ok: false, error: errorMessage(e) };
+    }
+  });
 
   // A frame reports a video event; route to the recipe's tracker adapter, resolve
   // identity (cached) and record progress. The scrobble trackers (Trakt, Simkl) and

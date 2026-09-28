@@ -4,6 +4,7 @@ import type { CourTrackerService } from "../service";
 import { connect, disconnect, getRedirectUri, isConnected } from "./auth";
 import { anilistCacheKey, legacyAnilistKey, resolveById, searchAniList } from "./client";
 import { ANILIST } from "./config";
+import { readAniListEntries } from "./list";
 import {
   anilistDeleteNote,
   anilistGetReview,
@@ -14,6 +15,7 @@ import {
 import type { AniListIdentity } from "./types";
 
 export const anilistService: CourTrackerService = {
+  readList: readAniListEntries,
   status: async () => ({
     connected: await isConnected(),
     redirectUri: getRedirectUri(),

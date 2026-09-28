@@ -10,11 +10,13 @@ import {
   saveCorrection,
   search,
 } from "./client";
+import { readTraktEntries } from "./list";
 import { traktDeleteNote, traktGetReview, traktRate, traktSaveNote, traktUnrate } from "./review";
 import type { ReviewLevel } from "./types";
 import { pickedIdentity } from "./util";
 
 export const traktService: TrackerService = {
+  readList: async () => ({ entries: await readTraktEntries() }),
   status: async () => ({
     connected: await isConnected(),
     redirectUri: getRedirectUri(),

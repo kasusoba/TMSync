@@ -18,6 +18,7 @@ import { QuickLinksView } from "@/lib/ui/kit/QuickLinksView";
 import { Btn, Icon, type Tokens, type Variant, tokens } from "@/lib/ui/kit/kit";
 import clsx from "clsx";
 import { useState } from "preact/hooks";
+import { ListSyncTile } from "./list-sync";
 
 /**
  * The picker's real source palette, run against a mock page, so the gallery
@@ -84,6 +85,7 @@ const NAV = [
   ["badge", "Badge"],
   ["links", "Quick links"],
   ["options", "Options"],
+  ["listsync", "List sync"],
 ] as const;
 
 export function App() {
@@ -809,6 +811,25 @@ export function App() {
           </Tile>
           <Tile label="Loading (page hasn't produced the title yet)" t={t}>
             <QuickLinksView variant={variant} items={[]} loading />
+          </Tile>
+        </Group>
+
+        {/* LIST SYNC */}
+        <Group id="listsync" title="List sync (options pane)" t={t}>
+          <Tile label="Before a preview" t={t}>
+            <ListSyncTile variant={variant} state="idle" />
+          </Tile>
+          <Tile label="Reading the lists" t={t}>
+            <ListSyncTile variant={variant} state="reading" />
+          </Tile>
+          <Tile label="Preview · all four trackers" t={t}>
+            <ListSyncTile variant={variant} state="preview" />
+          </Tile>
+          <Tile label="Preview · Simkl without anime, one item kept out" t={t}>
+            <ListSyncTile variant={variant} state="no-simkl-anime" />
+          </Tile>
+          <Tile label="Only one tracker connected" t={t}>
+            <ListSyncTile variant={variant} state="too-few" />
           </Tile>
         </Group>
 
