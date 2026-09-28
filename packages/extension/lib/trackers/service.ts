@@ -1,10 +1,14 @@
 import type { ParsedMedia } from "@tmsync/shared";
+import type { ChunkOutcome, ListEntry, SyncKind, SyncWrite, WriteOutcome } from "../sync/types";
+
+/** Report some writes of a chunk as done, by their place in the chunk. */
+export type ApplyReport = (at: number[], outcome: WriteOutcome) => void;
 import { anilistService } from "./anilist/service";
 import type { BoundCourPins } from "./cour-pins";
 import { malService } from "./mal/service";
 import { simklService } from "./simkl/service";
 import { traktService } from "./trakt/service";
-import type { CourTracker, RatingLevel, SearchOption, Tracker } from "./types";
+import type { CourTracker, RatingLevel, ScoreFormat, SearchOption, Tracker } from "./types";
 
 type Ok = Promise<{ ok: boolean; error?: string }>;
 
@@ -56,6 +60,26 @@ export interface TrackerService {
    * drift (Trakt keeps a correction). Optional: a cour pick names its entry by id.
    */
   pinPick?(media: ParsedMedia, pick: SearchOption): Promise<void>;
+  /**
+   * Read the user's whole list for list sync (plans/list-sync.md). Read only: it
+   * never writes. `kinds` are the kinds this tracker takes part in, so it can skip
+   * reads nobody needs. `scoreFormat` is the user's score scale where it is theirs
+   * to pick (AniList). Optional: a tracker without it takes no part in list sync.
+   */
+  readList?(kinds: SyncKind[]): Promise<{ entries: ListEntry[]; scoreFormat?: ScoreFormat | null }>;
+  /**
+   * Write this tracker's part of a list sync plan (plans/list-sync.md, phase 2).
+   * The runner sends the writes `chunk` at a time and saves its place after each,
+   * so the tracker picks a size that suits its limits. `run` spaces its own
+   * requests, answers one result per write, and never throws for one bad item.
+   * A tracker that writes one entry at a time may also call `report` as each one
+   * is done (the writes' places in the chunk), so the progress moves. Optional,
+   * like `readList`.
+   */
+  applyList?: {
+    chunk: number;
+    run(writes: SyncWrite[], report?: ApplyReport): Promise<ChunkOutcome>;
+  };
   /** Alarm handlers by alarm name (the tracker creates the alarms itself). */
   alarms?: Record<string, () => Promise<void>>;
   /** Listeners and this tracker's own message handlers (features only it has), set

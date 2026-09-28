@@ -186,3 +186,40 @@ describe("an unloaded crosswalk", () => {
     expect(EMPTY_ANIMAP.reverse("anilist", 16498, 1)).toEqual({ kind: "miss" });
   });
 });
+
+describe("list sync lookups", () => {
+  const withMal = new Animap([
+    ...rows,
+    { a: 30, m: 300, t: 50, k: "tv", s: 1, o: null }, // a one-cour show
+  ]);
+
+  it("knows which TMDB ids are anime", () => {
+    expect(map.has(1429, "tv")).toBe(true);
+    expect(map.has(999, "movie")).toBe(true);
+    expect(map.has(999, "tv")).toBe(false);
+  });
+
+  it("bridges MAL and AniList ids both ways", () => {
+    expect(withMal.anilistForMal(300)).toBe(30);
+    expect(withMal.malForAnilist(30)).toBe(300);
+    expect(withMal.anilistForMal(1)).toBeUndefined();
+  });
+
+  it("lists every cour of a show", () => {
+    expect(map.anilistIds(1429, "tv").sort()).toEqual([16498, 20958, 99147, 104578].sort());
+  });
+
+  it("maps a cour score to the Trakt object it rates", () => {
+    // The whole show is one cour: the show rating.
+    expect(withMal.ratingTarget(30)).toEqual({ kind: "show", tmdbId: 50 });
+    // A whole season of a many-cour show: that season's rating.
+    expect(map.ratingTarget(16498)).toEqual({ kind: "season", tmdbId: 1429, season: 1 });
+    // Half of a split season: nothing on Trakt rates exactly that.
+    expect(map.ratingTarget(99147)).toBeNull();
+    expect(map.ratingTarget(104578)).toBeNull();
+    // A show with no season in the crosswalk that is one cour: the show.
+    expect(map.ratingTarget(21)).toEqual({ kind: "show", tmdbId: 37854 });
+    expect(map.ratingTarget(500)).toEqual({ kind: "movie", tmdbId: 999 });
+    expect(map.ratingTarget(501)).toBeNull();
+  });
+});

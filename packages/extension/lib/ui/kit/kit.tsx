@@ -22,6 +22,9 @@ export interface Tokens {
   sub: string;
   faint: string;
   card: string;
+  /** An opaque surface that reads as `card` on the page, for a sticky table
+   * header that rows scroll under (`card` is see-through). */
+  cardSolid: string;
   divider: string;
   primary: string;
   ghost: string;
@@ -43,6 +46,7 @@ export function tokens(v: Variant): Tokens {
       sub: "text-zinc-400",
       faint: "text-zinc-500",
       card: "bg-white/5 ring-1 ring-white/10",
+      cardSolid: "bg-zinc-900",
       divider: "border-white/10",
       primary: "bg-ikura text-white hover:bg-ikura-600 active:bg-ikura-700",
       ghost: "bg-white/5 text-zinc-200 ring-1 ring-white/10 hover:bg-white/10",
@@ -63,6 +67,7 @@ export function tokens(v: Variant): Tokens {
     sub: "text-zinc-500",
     faint: "text-zinc-400",
     card: "bg-zinc-50 ring-1 ring-zinc-200",
+    cardSolid: "bg-zinc-50",
     divider: "border-zinc-200",
     primary: "bg-ikura text-white hover:bg-ikura-600 active:bg-ikura-700",
     ghost: "bg-white text-zinc-700 ring-1 ring-zinc-300 hover:bg-zinc-50",

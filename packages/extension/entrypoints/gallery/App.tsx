@@ -18,6 +18,7 @@ import { QuickLinksView } from "@/lib/ui/kit/QuickLinksView";
 import { Btn, Icon, type Tokens, type Variant, tokens } from "@/lib/ui/kit/kit";
 import clsx from "clsx";
 import { useState } from "preact/hooks";
+import { ListSyncTile } from "./list-sync";
 
 /**
  * The picker's real source palette, run against a mock page, so the gallery
@@ -84,6 +85,7 @@ const NAV = [
   ["badge", "Badge"],
   ["links", "Quick links"],
   ["options", "Options"],
+  ["listsync", "List sync"],
 ] as const;
 
 export function App() {
@@ -811,6 +813,42 @@ export function App() {
             <QuickLinksView variant={variant} items={[]} loading />
           </Tile>
         </Group>
+
+        {/* LIST SYNC */}
+        <section id="listsync" class="scroll-mt-20 space-y-4">
+          <h2 class={clsx("text-sm font-semibold", t.heading)}>
+            List sync (options pane, full width)
+          </h2>
+          <div class="grid gap-6">
+            <Tile label="Before a preview" t={t}>
+              <ListSyncTile variant={variant} state="idle" />
+            </Tile>
+            <Tile label="Reading the lists" t={t}>
+              <ListSyncTile variant={variant} state="reading" />
+            </Tile>
+            <Tile label="Preview · all four trackers" t={t}>
+              <ListSyncTile variant={variant} state="preview" />
+            </Tile>
+            <Tile label="Preview · Simkl without anime, one item kept out" t={t}>
+              <ListSyncTile variant={variant} state="no-simkl-anime" />
+            </Tile>
+            <Tile label="Preview · AniList is the main list for anime (removals, left as is)" t={t}>
+              <ListSyncTile variant={variant} state="main-anilist" />
+            </Tile>
+            <Tile label="Only one tracker connected" t={t}>
+              <ListSyncTile variant={variant} state="too-few" />
+            </Tile>
+            <Tile label="Preview too old to apply" t={t}>
+              <ListSyncTile variant={variant} state="stale" />
+            </Tile>
+            <Tile label="Applying · Stop keeps what was written" t={t}>
+              <ListSyncTile variant={variant} state="applying" />
+            </Tile>
+            <Tile label="Applied · MyAnimeList stopped at its limit" t={t}>
+              <ListSyncTile variant={variant} state="applied" />
+            </Tile>
+          </div>
+        </section>
 
         {/* OPTIONS */}
         <section id="options" class="scroll-mt-20 space-y-4">

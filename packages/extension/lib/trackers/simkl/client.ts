@@ -353,3 +353,50 @@ export async function scrobble(
   }
   return { kind: "ok", action: res.data?.action, match: matchFrom(res.data) };
 }
+
+// --- list sync (reads the whole list; plans/list-sync.md) ---
+
+/** The Simkl library types list sync reads. */
+export type SimklListType = "shows" | "anime" | "movies";
+
+/**
+ * Read the user's Simkl library, one request per type asked for (so one to three
+ * calls of the user's daily quota). Shows come with their watched episodes;
+ * anime and movies need only the summary (anime is a count per cour). Simkl asks
+ * apps not to call this on a timer: a scheduled sync must check
+ * `/sync/activities` first and pass `date_from`. A manual "Sync now" is the
+ * initial full pull its sync guide describes.
+ */
+export async function readSimklList(types: SimklListType[]): Promise<Record<string, unknown[]>> {
+  const out: Record<string, unknown[]> = {};
+  for (const type of types) {
+    const extra = type === "shows" ? "&extended=full&include_all_episodes=yes" : "";
+    const body = (await simklGet(`/sync/all-items/${type}`, extra)) as Record<string, unknown>;
+    const items = body?.[type];
+    out[type] = Array.isArray(items) ? items : [];
+  }
+  return out;
+}
+
+/** GET from the Simkl API with the user's token. A 401 retries once with a
+ * refreshed token, and a second 401 drops the grant. */
+async function simklGet(path: string, query = ""): Promise<unknown> {
+  const token = await getValidAccessToken();
+  if (!token) throw new SimklNotConnectedError();
+  const send = (bearer: string) =>
+    fetch(`${SIMKL.apiBase}${path}?${appParams()}${query}`, {
+      headers: { Accept: "application/json", Authorization: `Bearer ${bearer}` },
+    });
+  let res = await send(token);
+  if (res.status === 401) {
+    const next = await refreshAfterReject(token);
+    if (!next) throw new SimklNotConnectedError();
+    res = await send(next);
+    if (res.status === 401) {
+      await forgetGrant();
+      throw new SimklNotConnectedError();
+    }
+  }
+  if (!res.ok) throw new Error(`Simkl ${res.status}`);
+  return (await res.json()) ?? {};
+}

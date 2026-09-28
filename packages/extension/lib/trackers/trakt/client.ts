@@ -495,3 +495,44 @@ export async function exportLetterboxd(): Promise<{ csv: string; count: number }
   const rows = buildLetterboxdRows({ history, ratings, comments });
   return { csv: toLetterboxdCsv(rows), count: rows.length };
 }
+
+// --- list sync (reads the whole list; plans/list-sync.md) ---
+
+/** Everything list sync reads from Trakt, as Trakt returns it. */
+export interface TraktListDump {
+  shows: unknown[];
+  movies: unknown[];
+  showRatings: unknown[];
+  seasonRatings: unknown[];
+  movieRatings: unknown[];
+}
+
+/** Read the user's watched shows and movies, and their ratings: up to five GETs,
+ * fewer when shows or movies are not wanted. */
+export async function readTraktList(want: {
+  shows: boolean;
+  movies: boolean;
+}): Promise<TraktListDump> {
+  const get = (on: boolean, path: string) =>
+    on ? getAllPages<unknown>(path) : Promise.resolve<unknown[]>([]);
+  const [shows, movies, showRatings, seasonRatings, movieRatings] = await Promise.all([
+    get(want.shows, "/sync/watched/shows"),
+    get(want.movies, "/sync/watched/movies"),
+    get(want.shows, "/sync/ratings/shows"),
+    get(want.shows, "/sync/ratings/seasons"),
+    get(want.movies, "/sync/ratings/movies"),
+  ]);
+  return { shows, movies, showRatings, seasonRatings, movieRatings };
+}
+
+// --- list sync writes (plans/list-sync.md, phase 2) ---
+
+/** A Trakt sync POST: status, the JSON body when it worked, and a short error. */
+export async function syncPost(
+  path: "/sync/history" | "/sync/ratings",
+  body: unknown,
+): Promise<{ status: number; data?: unknown; error?: string }> {
+  const res = await api(path, { method: "POST", body: JSON.stringify(body) }, true);
+  if (!res.ok) return { status: res.status, error: await errorDetail(res) };
+  return { status: res.status, data: await res.json().catch(() => undefined) };
+}

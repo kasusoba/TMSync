@@ -1,6 +1,10 @@
 import type { BadgeStatus } from "@/messaging";
 import type { LinkTemplates, ParsedMedia, Recipe } from "@tmsync/shared";
 import { storage } from "wxt/utils/storage";
+import type { ApplyJob } from "./sync/apply";
+import type { SyncJob } from "./sync/run";
+import type { SyncPicks } from "./sync/types";
+import { DEFAULT_SYNC_SETTINGS, type ListSyncSettings } from "./sync/types";
 import type { AniListIdentity, AniListTokens } from "./trackers/anilist/types";
 import type { AnimapOverrides } from "./trackers/animap/derive";
 import type { AnimapRow } from "./trackers/animap/index";
@@ -437,6 +441,36 @@ export interface BadgePrefs {
 }
 export const badgePrefs = storage.defineItem<BadgePrefs>("sync:badge_prefs", {
   fallback: { mode: "full", position: null },
+});
+
+/** List sync choices (plans/list-sync.md): which kinds each tracker takes part in,
+ * private and adult entries, and the items the user keeps out. */
+export const listSyncSettings = storage.defineItem<ListSyncSettings>("sync:list_sync_settings", {
+  fallback: DEFAULT_SYNC_SETTINGS,
+});
+
+/** The last list sync preview job: its progress while it runs, then the plan. The
+ * background saves it step by step; the options page watches it. */
+export const listSyncJob = storage.defineItem<SyncJob | null>("local:list_sync_job", {
+  fallback: null,
+});
+
+/** The last list sync apply job: each tracker's progress while it writes, then
+ * what was written. The background saves it after each chunk. */
+export const listSyncApply = storage.defineItem<ApplyJob | null>("local:list_sync_apply", {
+  fallback: null,
+});
+
+/** When the user asked to stop an apply (ms). Its own item, so the running job's
+ * saves never overwrite it. */
+export const listSyncCancelAt = storage.defineItem<number>("local:list_sync_cancel_at", {
+  fallback: 0,
+});
+
+/** What the user picked where trackers disagree (a score 0 to 100, or a status),
+ * by `pickKey`. See `withPicks`. */
+export const listSyncPicks = storage.defineItem<SyncPicks>("local:list_sync_picks", {
+  fallback: {},
 });
 
 /**
