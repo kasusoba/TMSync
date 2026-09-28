@@ -135,12 +135,11 @@ git push -u origin feat/short-slug
 gh pr create
 ```
 
-- **Commits.** Write in short, plain sentences and say *why* in the body. Commits land on `main`
-  as they are (the maintainer rebase-merges, never squashes), so each one must build and read
-  well on its own. Fold fixups in before you push: `git commit --fixup <sha>`, then
-  `GIT_SEQUENCE_EDITOR=: git rebase -i --autosquash main`.
-- **PR title.** It becomes a line in the release notes, so write it for a user: what changed for
-  them, in plain words, with no type prefix and no scope. The body carries the detail.
+- **Commits.** Commit as often as you like. The maintainer squash-merges, so your PR becomes one
+  commit on `main` and you do not need to tidy your history.
+- **PR title.** It becomes the commit on `main` and a line in the release notes, so write it for
+  a user: what changed for them, in plain words, with no type prefix and no scope. The body
+  carries the detail and says why.
 - **Style.** Do not use em dashes or en dashes in UI text, docs, comments, or commit messages.
   Use commas, periods, or parentheses.
 
