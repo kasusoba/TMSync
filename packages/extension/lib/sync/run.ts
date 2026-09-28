@@ -59,7 +59,7 @@ export interface SyncPreview {
  * `SyncPlan` changes shape: a job saved by an older build is then dropped on read,
  * instead of rendering (and crashing on) fields it does not have.
  */
-export const SYNC_JOB_VERSION = 4;
+export const SYNC_JOB_VERSION = 5;
 
 /** A preview job, as saved in storage. */
 export interface SyncJob {

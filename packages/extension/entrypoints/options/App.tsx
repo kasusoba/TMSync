@@ -31,7 +31,13 @@ import {
 import { type ApplyJob, applyBlock, applyQueues, cancelApply, readApply } from "@/lib/sync/apply";
 import { syncKindsFor } from "@/lib/sync/plan";
 import { type SyncJob, jobAlive, readJob } from "@/lib/sync/run";
-import { DEFAULT_SYNC_SETTINGS, type ListSyncSettings, type SyncKind } from "@/lib/sync/types";
+import {
+  DEFAULT_SYNC_SETTINGS,
+  type ListSyncSettings,
+  type SyncKind,
+  type SyncPick,
+  type SyncPicks,
+} from "@/lib/sync/types";
 import type { AniListIdentity } from "@/lib/trackers/anilist/types";
 import type { AnimapOverrides } from "@/lib/trackers/animap/derive";
 import { requestMalAccess } from "@/lib/trackers/mal/access";
@@ -738,7 +744,7 @@ export function App() {
   const [syncSettings, setSyncSettings] = useState<ListSyncSettings>(DEFAULT_SYNC_SETTINGS);
   const [syncJob, setSyncJob] = useState<SyncJob | null>(null);
   const [syncApply, setSyncApply] = useState<ApplyJob | null>(null);
-  const [syncPicks, setSyncPicks] = useState<Record<string, number>>({});
+  const [syncPicks, setSyncPicks] = useState<SyncPicks>({});
   const [syncError, setSyncError] = useState<string | undefined>();
   /** Re-render while a job runs, so a job the browser stopped shows as stopped. */
   const [now, setNow] = useState(Date.now());
@@ -957,11 +963,12 @@ export function App() {
     }
   };
 
-  // A score picked in a rating disagreement (undefined = leave it alone).
-  const pickRating = (key: string, score: number | undefined) => {
+  // A pick in a disagreement, by `pickKey` (undefined = no pick: a rating is left
+  // alone, a status goes to the most recent).
+  const pickConflict = (key: string, value: SyncPick | undefined) => {
     const next = { ...syncPicks };
-    if (score === undefined) delete next[key];
-    else next[key] = score;
+    if (value === undefined) delete next[key];
+    else next[key] = value;
     setSyncPicks(next);
     void listSyncPicks.setValue(next).catch((e) => setSyncError(actionError(e)));
   };
@@ -1583,7 +1590,7 @@ export function App() {
                   onCancelApply={() =>
                     void cancelApply().catch((e) => setSyncError(actionError(e)))
                   }
-                  onPick={pickRating}
+                  onPick={pickConflict}
                 />
               </>
             )}

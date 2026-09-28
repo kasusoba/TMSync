@@ -3,6 +3,7 @@ import type { LinkTemplates, ParsedMedia, Recipe } from "@tmsync/shared";
 import { storage } from "wxt/utils/storage";
 import type { ApplyJob } from "./sync/apply";
 import type { SyncJob } from "./sync/run";
+import type { SyncPicks } from "./sync/types";
 import { DEFAULT_SYNC_SETTINGS, type ListSyncSettings } from "./sync/types";
 import type { AniListIdentity, AniListTokens } from "./trackers/anilist/types";
 import type { AnimapOverrides } from "./trackers/animap/derive";
@@ -466,9 +467,9 @@ export const listSyncCancelAt = storage.defineItem<number>("local:list_sync_canc
   fallback: 0,
 });
 
-/** The scores the user picked where trackers disagree on a rating, by group key
- * (0 to 100). See `withPicks`. */
-export const listSyncPicks = storage.defineItem<Record<string, number>>("local:list_sync_picks", {
+/** What the user picked where trackers disagree (a score 0 to 100, or a status),
+ * by `pickKey`. See `withPicks`. */
+export const listSyncPicks = storage.defineItem<SyncPicks>("local:list_sync_picks", {
   fallback: {},
 });
 

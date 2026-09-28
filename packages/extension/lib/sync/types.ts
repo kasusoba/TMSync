@@ -242,8 +242,37 @@ export interface SyncConflict {
   /** Rating only: where each tracker taking part keeps this rating, so a score
    * the user picks can be written to all of them. */
   refs?: ({ tracker: Tracker } & RatingRef)[];
-  /** Rating only: the score the user picked (0 to 100), see `withPicks`. */
-  picked?: number;
+  /** Status only: each tracker that holds this entry's status, so a status the
+   * user picks can be written to all of them. */
+  targets?: StatusTarget[];
+  /** What the user picked (see `withPicks`): a score (0 to 100), or a status. */
+  picked?: SyncPick;
+}
+
+/** One tracker's entry in a status disagreement: where it is, the status it has
+ * now, and the progress and length it will have after sync (a picked status must
+ * still follow them: a finished entry is completed, one with progress is not
+ * "plan to watch"). A completed entry is never listed: sync never moves it. */
+export interface StatusTarget {
+  tracker: Tracker;
+  target: TargetRef;
+  /** The tracker has the entry now. */
+  exists: boolean;
+  status: CourStatus | null;
+  progress: number;
+  total: number | null;
+}
+
+/** A choice in a disagreement: a score (0 to 100) for a rating, a status for a
+ * status. */
+export type SyncPick = number | CourStatus;
+
+/** The user's picks, by `pickKey`. */
+export type SyncPicks = Record<string, SyncPick>;
+
+/** The key of a disagreement's pick. One item can disagree on both fields. Pure. */
+export function pickKey(c: { key: string; field: SyncConflict["field"] }): string {
+  return `${c.field}:${c.key}`;
 }
 
 /**

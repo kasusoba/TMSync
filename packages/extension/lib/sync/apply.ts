@@ -28,7 +28,7 @@ import { getService } from "../trackers/service";
 import { ALL_TRACKERS, type Tracker } from "../trackers/types";
 import { withPicks } from "./plan";
 import { STALE_MS, type SyncPreview, jobAlive, readJob } from "./run";
-import type { ChunkOutcome, SyncWrite } from "./types";
+import type { ChunkOutcome, SyncPicks, SyncWrite } from "./types";
 
 /** How old a preview may be when it is applied. An older one is planned from lists
  * that may have changed, so the user previews again (edge case 36). */
@@ -98,14 +98,14 @@ export interface QueuedWrite {
 }
 
 /**
- * Each tracker's writes, from the preview's plan with the user's rating picks,
+ * Each tracker's writes, from the preview's plan with the user's picks,
  * minus the items the user keeps out. In plan order, so one item's writes to a
  * tracker stay together. Pure.
  */
 export function applyQueues(
   preview: SyncPreview,
   ignore: string[],
-  picks: Record<string, number>,
+  picks: SyncPicks,
 ): Map<Tracker, QueuedWrite[]> {
   const kept = new Set(ignore);
   const plan = withPicks(preview.plan, picks, preview.scales);

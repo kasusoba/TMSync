@@ -72,7 +72,7 @@ describe("applyQueues", () => {
         ],
       },
     };
-    const q = applyQueues(withConflict, [], { "tv:tmdb:1": 90 });
+    const q = applyQueues(withConflict, [], { "rating:tv:tmdb:1": 90 });
     expect(q.get("trakt")?.map((x) => x.w)).toContainEqual(
       expect.objectContaining({ op: "rating", score: 90, picked: true }),
     );

@@ -390,6 +390,11 @@ What is built:
 - **Rating picks**: the "Trackers disagree" tab has a score picker per rating conflict
   (`local:list_sync_picks`). `withPicks` turns a pick into writes for every tracker that differs
   (`picked: true`, which replaces its rating). Conflicts carry `refs` for this.
+- **Status picks**: the same tab has a status picker (no pick = the most recent wins). A status
+  conflict carries `targets` (each cour tracker's entry, its status, and the progress and length
+  it will have), and `withPicks` rewrites their `entry` writes. A picked status still follows
+  the episodes: finished by sync = completed, "completed" needs every episode, progress > 0 is
+  never "plan to watch". Picks are keyed `rating:<key>` / `status:<key>` (`pickKey`).
 - **Crosswalk pins** in the planner: `withOverrides` (`lib/trackers/animap/overrides.ts`) folds
   `animapOverrides` into the Fribb rows. Only pins that name a TV season; a pin keyed
   `${tmdb}:` does not say movie or show, so it is left out. "Not on AniList" for a season
@@ -408,8 +413,6 @@ Still open for phase 2:
 
 - **Run it once live** on the owner's accounts, then preview again: it must show no changes
   (convergence for real). Watch the Simkl quota line and MAL's 403.
-- Status conflicts cannot be flipped yet (decision 2 said the user can flip them; only ratings
-  have a picker).
 - `/sync/history` for a Simkl anime entry with top-level `episodes` is from the docs, not yet
   seen live. Same for Trakt `watched_at: "released"` in a sync body.
 - Firefox: the runner's beat is the same as the preview's; long MAL runs are unverified there.

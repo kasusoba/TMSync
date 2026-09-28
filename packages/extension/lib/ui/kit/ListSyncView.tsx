@@ -18,10 +18,13 @@ import type {
   SyncItem,
   SyncKind,
   SyncNotice,
+  SyncPick,
+  SyncPicks,
   SyncPlan,
   SyncTotals,
   SyncWrite,
 } from "@/lib/sync/types";
+import { pickKey } from "@/lib/sync/types";
 import type { CourStatus } from "@/lib/trackers/cour-plan";
 import { type Tracker, trackerLabel } from "@/lib/trackers/types";
 import clsx from "clsx";
@@ -151,8 +154,8 @@ export function ListSyncView({
   progress?: TrackerRead[];
   busy: boolean;
   error?: string;
-  /** The scores the user picked where trackers disagree on a rating, by key. */
-  picks?: Record<string, number>;
+  /** What the user picked where trackers disagree, by `pickKey`. */
+  picks?: SyncPicks;
   /** The last apply: its progress while it runs, then its summary. */
   apply?: ApplyJob | null;
   /** An apply is running now. */
@@ -162,7 +165,8 @@ export function ListSyncView({
   onApply?: () => void;
   onCancelApply?: () => void;
   /** Pick a score for a rating disagreement (undefined = leave it alone). */
-  onPick?: (key: string, score: number | undefined) => void;
+  /** Pick in a disagreement, by `pickKey` (undefined = no pick). */
+  onPick?: (key: string, value: SyncPick | undefined) => void;
   onPreview: () => void;
   onKind: (tracker: Tracker, kind: SyncKind, on: boolean) => void;
   onSetting: (key: "includePrivate" | "includeAdult", on: boolean) => void;
@@ -610,13 +614,13 @@ function PreviewResult({
   onIgnore: (key: string) => void;
   onRestore: (key: string) => void;
   onClearIgnored: () => void;
-  picks: Record<string, number>;
+  picks: SyncPicks;
   apply: ApplyJob | null;
   applying: boolean;
   blocked: ApplyBlock | null;
   onApply: () => void;
   onCancelApply: () => void;
-  onPick: (key: string, score: number | undefined) => void;
+  onPick: (key: string, value: SyncPick | undefined) => void;
 }) {
   const [tab, setTab] = useState<Tab>("changes");
   const [q, setQ] = useState("");
@@ -625,7 +629,7 @@ function PreviewResult({
   /** The item just kept out, for the one-click undo. */
   const [undo, setUndo] = useState<{ key: string; title: string } | null>(null);
 
-  // The plan as it will be applied: the user's rating picks in, kept-out items out.
+  // The plan as it will be applied: the user's picks in, kept-out items out.
   const plan = withPicks(preview.plan, picks, preview.scales);
   const kept = new Set(ignore);
   const trackers = preview.reads.filter((r) => r.state === "read").map((r) => r.tracker);
@@ -981,14 +985,15 @@ function ConflictTable({
   t: Tokens;
   trackers: Tracker[];
   conflicts: SyncConflict[];
-  onPick: (key: string, score: number | undefined) => void;
+  onPick: (key: string, value: SyncPick | undefined) => void;
 }) {
   if (!conflicts.length) return null;
   return (
     <div class="space-y-2">
       <p class={clsx("text-[11px] leading-relaxed", t.sub)}>
-        For status, the most recent change wins. Different ratings are left alone until you pick
-        one: the score you pick goes to every tracker, and replaces the ratings that differ.
+        Pick the value every tracker should get. With no pick, the most recent status change wins,
+        and different ratings are left alone. A status still follows the episodes: an entry sync
+        finishes is completed, and one with watched episodes is never plan to watch.
       </p>
       <div class={clsx("overflow-x-clip rounded-lg", t.card)}>
         <table class="w-full table-fixed text-[12px]">
@@ -1030,6 +1035,8 @@ function ConflictTable({
                 <td class={clsx("px-3 py-1.5", t.heading)}>
                   {c.field === "rating" && c.refs?.length ? (
                     <RatingPick t={t} c={c} onPick={onPick} />
+                  ) : c.field === "status" && c.targets?.length ? (
+                    <StatusPick t={t} c={c} onPick={onPick} />
                   ) : c.chosen ? (
                     conflictValue(c, c.chosen.value)
                   ) : (
@@ -1050,18 +1057,19 @@ function RatingPick({
   t,
   c,
   onPick,
-}: { t: Tokens; c: SyncConflict; onPick: (key: string, score: number | undefined) => void }) {
+}: { t: Tokens; c: SyncConflict; onPick: (key: string, value: SyncPick | undefined) => void }) {
   // The scores on offer, on the 1 to 10 scale most trackers use, highest first.
   const scores = [...new Set(c.values.map((v) => Math.round(Number(v.value) / 10) * 10))].sort(
     (a, b) => b - a,
   );
-  if (c.picked !== undefined && !scores.includes(c.picked)) scores.unshift(c.picked);
+  const picked = typeof c.picked === "number" ? c.picked : undefined;
+  if (picked !== undefined && !scores.includes(picked)) scores.unshift(picked);
   return (
     <select
-      value={c.picked ?? ""}
+      value={picked ?? ""}
       onChange={(e) => {
         const v = (e.target as HTMLSelectElement).value;
-        onPick(c.key, v ? Number(v) : undefined);
+        onPick(pickKey(c), v ? Number(v) : undefined);
       }}
       class={clsx("rounded-md px-1 py-1 text-[11px]", t.input)}
       title="The rating every tracker gets"
@@ -1070,6 +1078,39 @@ function RatingPick({
       {scores.map((s) => (
         <option key={s} value={s}>
           {Math.round(s) / 10}/10
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/** Pick one of the statuses the trackers have. No pick = the most recent change
+ * wins (the planner's choice, named in the first option). */
+function StatusPick({
+  t,
+  c,
+  onPick,
+}: { t: Tokens; c: SyncConflict; onPick: (key: string, value: SyncPick | undefined) => void }) {
+  // A rewatch reads as completed across trackers, as the planner compares them.
+  const norm = (s: CourStatus): CourStatus => (s === "REPEATING" ? "COMPLETED" : s);
+  const statuses = [...new Set(c.values.map((v) => norm(v.value as CourStatus)))];
+  const picked = typeof c.picked === "string" ? c.picked : undefined;
+  return (
+    <select
+      value={picked ?? ""}
+      onChange={(e) => {
+        const v = (e.target as HTMLSelectElement).value;
+        onPick(pickKey(c), v ? (v as CourStatus) : undefined);
+      }}
+      class={clsx("rounded-md px-1 py-1 text-[11px]", t.input)}
+      title="The status every tracker gets"
+    >
+      <option value="">
+        Most recent{c.chosen ? ` (${STATUS_LABEL[c.chosen.value as CourStatus]})` : ""}
+      </option>
+      {statuses.map((s) => (
+        <option key={s} value={s}>
+          {STATUS_LABEL[s]}
         </option>
       ))}
     </select>

@@ -310,7 +310,7 @@ describe("ratings", () => {
       courEntry("simkl", { anilist: 30, mal: 300 }, { id: 9 }),
     ];
     const scales = { anilist: "POINT_100" } as const;
-    const first = withPicks(plan(entries), { "anilist:30": 90 }, scales);
+    const first = withPicks(plan(entries), { "rating:anilist:30": 90 }, scales);
     const ratings = first.items.flatMap((i) => i.writes).filter((w) => w.op === "rating");
     // The show is one cour, so Trakt holds the same rating on the show.
     expect(ratings).toEqual([
@@ -319,7 +319,7 @@ describe("ratings", () => {
       expect.objectContaining({ tracker: "simkl", score: 90, picked: true }),
     ]);
     expect(first.conflicts).toEqual([expect.objectContaining({ field: "rating", picked: 90 })]);
-    const second = withPicks(plan(apply(entries, first)), { "anilist:30": 90 }, scales);
+    const second = withPicks(plan(apply(entries, first)), { "rating:anilist:30": 90 }, scales);
     expect(second.items).toEqual([]);
     expect(second.conflicts).toEqual([]);
   });
@@ -523,6 +523,62 @@ describe("status and progress", () => {
     expect(p.skips).toContainEqual(
       expect.objectContaining({ tracker: "mal", reason: "numbering" }),
     );
+  });
+
+  it("a picked status goes to every tracker, and then they agree", () => {
+    const entries = [
+      courEntry(
+        "anilist",
+        { anilist: 30, mal: 300 },
+        { status: "DROPPED", progress: 4, updatedAt: 200 },
+      ),
+      courEntry(
+        "mal",
+        { anilist: 30, mal: 300 },
+        { status: "CURRENT", progress: 4, updatedAt: 100 },
+      ),
+    ];
+    const opts = { trackers: ["anilist", "mal"] as Tracker[] };
+    const picks = { "status:anilist:30": "CURRENT" as const };
+    const first = withPicks(plan(entries, opts), picks);
+    expect(writesFor(first, "anilist")).toEqual([
+      expect.objectContaining({ op: "entry", status: { from: "DROPPED", to: "CURRENT" } }),
+    ]);
+    // MAL already has it: its planned move to DROPPED is gone.
+    expect(writesFor(first, "mal")).toEqual([]);
+    expect(first.conflicts).toEqual([
+      expect.objectContaining({ field: "status", picked: "CURRENT" }),
+    ]);
+    const second = withPicks(plan(apply(entries, first), opts), picks);
+    expect(second.items).toEqual([]);
+    expect(second.conflicts).toEqual([]);
+  });
+
+  it("a picked status still follows the episodes", () => {
+    const p = withPicks(
+      plan(
+        [
+          courEntry(
+            "anilist",
+            { anilist: 30, mal: 300 },
+            { status: "PLANNING", progress: 0, updatedAt: 200 },
+          ),
+          courEntry(
+            "mal",
+            { anilist: 30, mal: 300 },
+            { status: "COMPLETED", progress: 5, total: null, updatedAt: 100 },
+          ),
+        ],
+        { trackers: ["anilist", "mal"] },
+      ),
+      { "status:anilist:30": "PLANNING" },
+    );
+    // AniList gets MAL's 5 episodes, so it cannot stay "plan to watch".
+    expect(writesFor(p, "anilist")).toEqual([
+      expect.objectContaining({ status: { from: "PLANNING", to: "CURRENT" } }),
+    ]);
+    // The completed MAL entry is never moved, so it is not in the disagreement.
+    expect(writesFor(p, "mal")).toEqual([]);
   });
 
   it("the most recent status wins, and the preview lists the conflict", () => {

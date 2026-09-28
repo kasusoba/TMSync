@@ -25,6 +25,7 @@ import type { CourStatus } from "../trackers/cour-plan";
 import { TRACKER_INFO, type Tracker, trackerFamily, trackerLabel } from "../trackers/types";
 import { newest } from "./read";
 import { type ScoreScale, onScale } from "./score";
+import { pickKey } from "./types";
 import type {
   EntryState,
   EpisodeRef,
@@ -36,6 +37,7 @@ import type {
   SyncItem,
   SyncKind,
   SyncNotice,
+  SyncPicks,
   SyncPlan,
   SyncSkip,
   SyncTotals,
@@ -542,15 +544,20 @@ export function planSync(input: PlanInput): SyncPlan {
           : null;
     if (desired === "PLANNING" && progress > 0) desired = "CURRENT";
     const distinct = new Set(withStatus.map((e) => norm(e.status)));
+    // The disagreement, if any: each cour target adds itself below, so a status the
+    // user picks can go to all of them (`withPicks`).
+    let statusConflict: SyncConflict | undefined;
     if (!done && latest && distinct.size > 1) {
-      conflicts.push({
+      statusConflict = {
         key,
         title,
         kind: "anime",
         field: "status",
         values: withStatus.map((e) => ({ tracker: e.tracker, value: e.status, at: e.updatedAt })),
         chosen: { tracker: latest.tracker, value: norm(latest.status) },
-      });
+        targets: [],
+      };
+      conflicts.push(statusConflict);
     }
 
     const writes: SyncWrite[] = [];
@@ -720,6 +727,14 @@ export function planSync(input: PlanInput): SyncPlan {
       if (tTotal !== null && to >= tTotal && to > 0) status = "COMPLETED";
       else if (status === "COMPLETED") status = "CURRENT";
       if (status === "PLANNING" && to > 0) status = entry?.status ?? "CURRENT";
+      statusConflict?.targets?.push({
+        tracker: tk,
+        target,
+        exists: !!entry,
+        status: entry?.status ?? null,
+        progress: to,
+        total: tTotal,
+      });
       const w: Extract<SyncWrite, { op: "entry" }> = {
         tracker: tk,
         op: "entry",
@@ -918,37 +933,82 @@ export function summarize(plan: SyncPlan, trackers: Tracker[]): SyncTotals[] {
 }
 
 /**
- * The plan with the user's picks in rating disagreements. A pick (0 to 100, by
- * group key) replaces the planned rating writes of that item: every tracker that
- * can hold the rating and does not already have the picked score (on its own
- * scale) gets it, its own rating included. Without a pick, a disagreement writes
- * nothing to the trackers that disagree. Pure.
+ * The plan with the user's picks in disagreements (keyed by `pickKey`). Pure.
+ *
+ * A rating pick (0 to 100) replaces the planned rating writes of that item: every
+ * tracker that can hold the rating and does not already have the picked score
+ * (on its own scale) gets it, its own rating included.
+ *
+ * A status pick replaces "the most recent wins": every tracker in the
+ * disagreement gets the picked status, by the same rules the planner keeps (an
+ * entry that sync finishes is completed, "completed" needs every episode, and an
+ * entry with progress is not "plan to watch").
+ *
+ * Without a pick the plan is as planned.
  */
 export function withPicks(
   plan: SyncPlan,
-  picks: Record<string, number>,
+  picks: SyncPicks,
   scales: Partial<Record<Tracker, ScoreScale>> = {},
 ): SyncPlan {
   const scale = (tk: Tracker): ScoreScale => scales[tk] ?? "ten";
   const items = [...plan.items];
-  const conflicts = plan.conflicts.map((c) => {
-    const pick = picks[c.key];
-    if (c.field !== "rating" || pick === undefined || !c.refs) return c;
-    const writes: SyncWrite[] = [];
-    for (const { tracker, ...ref } of c.refs) {
-      const score = onScale(pick, scale(tracker));
-      const cur = c.values.find((v) => v.tracker === tracker)?.value;
-      if (typeof cur === "number" && onScale(cur, scale(tracker)) === score) continue;
-      writes.push({ tracker, op: "rating", ...ref, score, picked: true });
-    }
+  /** Replace an item's writes (adding the item, or dropping it when empty). */
+  const setWrites = (c: SyncConflict, edit: (writes: SyncWrite[]) => SyncWrite[]) => {
     const at = items.findIndex((i) => i.key === c.key);
     const found = at >= 0 ? items[at] : undefined;
-    const all = [...(found?.writes ?? []).filter((w) => w.op !== "rating"), ...writes];
+    const all = edit(found?.writes ?? []);
     const item = { key: c.key, kind: c.kind, title: c.title, year: found?.year, writes: all };
     if (found && all.length) items[at] = item;
     else if (found) items.splice(at, 1);
     else if (all.length) items.push(item);
-    return { ...c, picked: pick };
+  };
+
+  const conflicts = plan.conflicts.map((c) => {
+    const pick = picks[pickKey(c)];
+    if (pick === undefined) return c;
+    if (c.field === "rating" && typeof pick === "number" && c.refs) {
+      const writes: SyncWrite[] = [];
+      for (const { tracker, ...ref } of c.refs) {
+        const score = onScale(pick, scale(tracker));
+        const cur = c.values.find((v) => v.tracker === tracker)?.value;
+        if (typeof cur === "number" && onScale(cur, scale(tracker)) === score) continue;
+        writes.push({ tracker, op: "rating", ...ref, score, picked: true });
+      }
+      setWrites(c, (ws) => [...ws.filter((w) => w.op !== "rating"), ...writes]);
+      return { ...c, picked: pick };
+    }
+    if (c.field === "status" && typeof pick === "string" && c.targets) {
+      setWrites(c, (ws) => {
+        const out = [...ws];
+        for (const t of c.targets ?? []) {
+          let to: CourStatus = pick;
+          if (t.total !== null && t.progress >= t.total && t.progress > 0) to = "COMPLETED";
+          else if (to === "COMPLETED" && t.total !== null) to = "CURRENT";
+          if (to === "PLANNING" && t.progress > 0) to = "CURRENT";
+          const status = to !== t.status ? { from: t.status, to } : undefined;
+          const at = out.findIndex((w) => w.tracker === t.tracker && w.op === "entry");
+          const w = out[at];
+          if (w?.op === "entry") {
+            const { status: _planned, ...rest } = w;
+            const next: SyncWrite = status ? { ...rest, status } : rest;
+            if (status || rest.progress || rest.repeat) out[at] = next;
+            else out.splice(at, 1);
+          } else if (status) {
+            out.push({
+              tracker: t.tracker,
+              op: "entry",
+              target: t.target,
+              create: !t.exists,
+              status,
+            });
+          }
+        }
+        return out;
+      });
+      return { ...c, picked: pick };
+    }
+    return c;
   });
   return { ...plan, items, conflicts };
 }
