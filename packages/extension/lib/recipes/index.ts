@@ -4,8 +4,8 @@ import { type LibraryLink, type Recipe, parseLibrary, recipeHosts } from "@tmsyn
 // tracker-agnostic file: every recipe carries its own `tracker` field and the
 // engine routes per-recipe, so Trakt and AniList (and future trackers) coexist
 // in the same list.
-import rawBundled from "../../../recipes/index.json";
-import { customRecipes, remoteRecipes } from "./storage";
+import rawBundled from "../../../../recipes/index.json";
+import { customRecipes, remoteRecipes } from "../storage";
 
 const bundledLibrary = parseLibrary(rawBundled);
 const bundled = bundledLibrary.recipes;

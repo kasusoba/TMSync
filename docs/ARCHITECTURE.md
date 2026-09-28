@@ -301,7 +301,7 @@ travels.
 | **Local** | tokens, resolution and rating caches, `enabled_origins`, crosswalk data | `local:` | no, secret or regenerable |
 
 - **`sync:`** (small, cross-device, user-owned): one `recipe:{id}` key per custom recipe (through
-  `recipe-store.ts`), plus `quick_links`, `quick_links_enabled`, `corrections`, `manual_selections`,
+  `recipes/store.ts`), plus `quick_links`, `quick_links_enabled`, `corrections`, `manual_selections`,
   and `badge_prefs`.
 - **`local:`** (per-device): `trakt_tokens`, `anilist_tokens`, `mal_tokens`, `simkl_tokens`, the
   resolution caches, `simkl_matches`, `simkl_scrobble_at`, `simkl_held_stops`, rating and note

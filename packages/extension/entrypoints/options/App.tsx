@@ -3,7 +3,7 @@ import { actionError } from "@/lib/errors";
 import { defaultRecipeName } from "@/lib/picker/recipe-builder";
 import { applyBackup, buildBackup, parseBackup } from "@/lib/portability/backup";
 import { type Contribution, contribute } from "@/lib/portability/contribute";
-import { type SiteGroup, groupSites, withSiteHosts, withSiteName } from "@/lib/sites";
+import { type SiteGroup, groupSites, withSiteHosts, withSiteName } from "@/lib/recipes/sites";
 import {
   type AnimeMapCache,
   type BadgePrefs,

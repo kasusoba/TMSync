@@ -152,7 +152,7 @@ export async function saveCorrection(
 /**
  * TMDB/IMDB ids for a show/movie by its Trakt URL slug — the analogue of the
  * `#external-link-tmdb` DOM element the classic site exposes but app.trakt.tv's
- * SvelteKit UI doesn't render (see trakt.content.tsx's parseAppTraktPage).
+ * SvelteKit UI doesn't render (see trakt-quicklinks.content.tsx's parseAppTraktPage).
  * Cached per (type,slug), since a title's ids never change. Returns null on any
  * non-2xx (unknown slug, network error) — the caller falls back to search links.
  */

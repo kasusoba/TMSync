@@ -1,12 +1,12 @@
 import { browser } from "wxt/browser";
+import { simklTokens } from "../../storage";
 import {
   TokenEndpointError,
   base64url,
   launchAuthFlow,
   postTokenForm,
   singleFlight,
-} from "../../oauth";
-import { simklTokens } from "../../storage";
+} from "../oauth";
 import { SIMKL } from "./config";
 import type { SimklTokens } from "./types";
 
