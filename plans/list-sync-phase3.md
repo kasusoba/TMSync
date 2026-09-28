@@ -6,7 +6,8 @@ PR merges, the facts that stay true move into `docs/ARCHITECTURE.md` (section 7)
 
 Phases 1 and 2 (preview and apply) are done and were tested live on the owner's four accounts
 (2026-09-28). How they work is in `docs/ARCHITECTURE.md` section 7. The old working plan, with all
-47 edge cases and the settled decisions, is in git history: `git show aee1d23^:plans/list-sync.md`.
+47 edge cases and the settled decisions, is in git history: `git show aee1d23^:plans/list-sync.md`
+(while `feat/list-sync` exists), and always in the commits of the phase 1 and 2 PR on GitHub.
 
 ## Goal
 
