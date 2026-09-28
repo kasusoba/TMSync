@@ -12,6 +12,7 @@ import {
 } from "./client";
 import { traktDeleteNote, traktGetReview, traktRate, traktSaveNote, traktUnrate } from "./review";
 import type { ReviewLevel } from "./types";
+import { pickedIdentity } from "./util";
 
 export const traktService: TrackerService = {
   status: async () => ({
@@ -31,6 +32,27 @@ export const traktService: TrackerService = {
     saveNote: (m, level, text, spoiler) => traktSaveNote(m, level as ReviewLevel, text, spoiler),
     deleteNote: (m, level) => traktDeleteNote(m, level as ReviewLevel),
   },
+  // Manual mode: a Trakt search, and a correction so the pick can't drift to a
+  // remake or another year when the title is searched again.
+  search: async (query, type) =>
+    (await search(query, type)).map((o) => ({
+      tracker: "trakt" as const,
+      id: o.traktId,
+      mediaType: o.type,
+      title: o.title,
+      year: o.year,
+      ids: { ...o.ids },
+    })),
+  pinPick: (media, pick) =>
+    saveCorrection(
+      media,
+      pickedIdentity({
+        type: pick.mediaType,
+        traktId: pick.id,
+        title: pick.title,
+        year: pick.year,
+      }),
+    ),
   onWake() {
     // Fix a wrong match (Trakt's `search` fix kind): a free-text search, then pin
     // the pick and re-resolve the tab (replaces the wrong scrobble).

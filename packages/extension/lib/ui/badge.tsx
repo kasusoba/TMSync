@@ -176,10 +176,10 @@ function BadgeRoot() {
   >(null);
   const [fixTracker, setFixTracker] = useState<CourTracker>("anilist");
   const [media, setMedia] = useState<ParsedMedia | null>(null);
-  const [tracker, setTracker] = useState<Tracker>("trakt");
+  const [tracker, setTracker] = useState<Tracker | null>(null);
   /** The item's enabled trackers (multi-track) — the rate/note composer fans out
    * across these; `tracker` stays the primary for the quick prompt. */
-  const [trackers, setTrackers] = useState<Tracker[]>(["trakt"]);
+  const [trackers, setTrackers] = useState<Tracker[]>([]);
   const [rewatchHidden, setRewatchHidden] = useState(false);
   /** The title the rewatch dismissal applies to (see the status listener). */
   const rewatchTitle = useRef<string | undefined>(undefined);
@@ -356,6 +356,7 @@ function BadgeRoot() {
   const ratable =
     status?.state === "scrobbled" &&
     media !== null &&
+    tracker !== null &&
     (!isSeasonless(tracker) || status.completed === true);
 
   // After a watch lands, auto-open the "now" panel (per-tracker match + Rate/note)
@@ -464,7 +465,9 @@ function BadgeRoot() {
             trackers={activeTrackers}
             outcomes={status.trackers}
             onFix={(tk) => {
-              if (trackerFix(tk) === "search") return setPanel(manualMode ? "manual" : "fix");
+              // On a manual site the pick IS the match, whichever tracker it came from.
+              if (manualMode) return setPanel("manual");
+              if (trackerFix(tk) === "search") return setPanel("fix");
               if (!isCourFix(tk)) return; // nothing to fix (Simkl matches server-side)
               setFixTracker(tk);
               setPanel("cour-fix");

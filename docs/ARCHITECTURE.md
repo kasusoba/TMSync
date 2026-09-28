@@ -50,7 +50,7 @@ from AniList.
                │  typed messages (@webext-core/messaging)
                ▼
 ┌─────────────────────────── background service worker (stateless) ─────────────────┐
-│   routeTracker → TrackerAdapter(s)                                                 │
+│   connectedTrackers → inferNativeTracker → TrackerAdapter(s)                       │
 │     Trakt adapter  → Trakt REST  (real-time scrobble start/pause/stop)            │
 │     AniList adapter → AniList GraphQL (one SaveMediaListEntry at threshold)        │
 │     MAL adapter    → MAL REST (one my_list_status PATCH at threshold)             │
@@ -99,9 +99,10 @@ watched". Follow the numbers:
    (`lib/scrobble/session.ts`). If the player is in a cross-origin iframe (common on gray-market
    sites), the *matching* frame publishes the media for the tab and the *video-owning* frame pulls
    it: they coordinate over messaging.
-5. **Route.** The background decides which adapter(s) get this item from `recipeTrackers()` and
-   `routeTracker()`. A cour tracker (AniList, MAL) records series only, so a movie on a cour site
-   goes to Trakt. A recipe can name several trackers, and the item fans out to all of them.
+5. **Route.** The background decides which adapter(s) get this item from `recipeTrackers()`,
+   kept to the trackers the user connected (`connectedTrackers()`). A recipe can name several
+   trackers, and the item fans out to all of them. Every tracker takes movies: an anime movie is a
+   one-episode entry on AniList and MAL.
 6. **Resolve (once, cached).** The adapter turns the `ParsedMedia` into a `TrackedItem`: Trakt via
    `/search` (returns trakt/imdb/tmdb ids), AniList via a GraphQL `Media` search, MAL by id (or AniList's `idMal`) else
    MAL search, and Simkl not at all (see below). Results are cached in storage so this only happens
@@ -149,7 +150,8 @@ The heart of the "recipes are data, not code" guarantee. Everything here is pure
 ## 5. Tracker adapters: the seam that keeps the trackers apart
 
 `lib/trackers/adapter.ts` defines the contract; `lib/trackers/index.ts` is the routing single source
-of truth (`getAdapter`, `routeTracker`, `inferNativeTracker`). Four implementations behind it.
+of truth (`getAdapter`, `connectedTrackers`, `inferNativeTracker`, `speaksPage`). Four
+implementations behind it.
 `TRACKER_INFO` holds each tracker's metadata (label, numbering **family**; see below). It also says what each
 tracker rates (`levels` or the whole `entry`) and what note it keeps (`public`, `private`,
 `none`); the rating panel reads those, not tracker names.
@@ -193,6 +195,21 @@ directly. Every other enabled tracker is **derived**. Native is inferred at scro
 wins, a scraped season means the first enabled seasoned tracker, and a bare linear episode (a
 dedicated anime site) means the first enabled cour tracker. A tracker in the `any` family is native
 only when it is the only one enabled, and it is recorded last in a fan-out.
+
+**Each tracker stands alone.** "Enabled" means toggled on for the recipe AND connected
+(`connectedTrackers`). A tracker the user never connected is never called and never anchors the
+others, so a user with only MAL does not depend on Trakt being up (or existing). It gets a quiet
+"not connected" row in the badge. When none of a recipe's trackers is connected, all of them count,
+so the badge can still show a match before Connect. Because of this, the native tracker can be one
+that does not speak the page's numbering (a cour tracker on a TMDB page when Trakt is not
+connected). `speaksPage` catches that case: the native tracker then goes through the crosswalk like
+a derived one, so it gets the exact cour and its own episode. A crosswalk miss falls back to the
+page as scraped (the numbering guardrail still applies), and an ambiguous row is refused.
+
+**Anime movies.** A movie is a one-episode entry on the cour side. As native, AniList and MAL search
+only movie entries on a movie page (and only series on a series page), and a watch counts
+episode 1, which completes it (`courEpisode`). Derived, the crosswalk maps a TMDB movie the same
+way.
 
 Identity resolution for each adapter is one ladder: a native id, then an id mapped through the
 crosswalk, then a title search, then the user-correction picker.
@@ -251,8 +268,10 @@ listener it needs on each worker wake. Features only one tracker has register th
 handlers there too (Trakt: the fix-match search, trakt.tv slug ids, the Letterboxd export). The
 registry is `lib/trackers/service.ts`. The background's account, `rateItem`/`saveNote`/etc., and
 fix-match handlers are thin dispatchers over it, so the background never names a tracker for
-these. One tie is left: the manual media picker searches Trakt, so its pick is saved as a Trakt
-correction. (The `TrackerAdapter` interface itself covers
+these. Manual mode (a site with no readable title) searches through the optional `search` on each
+service, so it works with any connected tracker that can search (Trakt, AniList, MAL; Simkl has
+none because of its quota). The pick carries the entry's ids, and a tracker that needs more to lock
+the match keeps its own (`pinPick`: Trakt saves a correction). (The `TrackerAdapter` interface itself covers
 resolve/record/ratingLevels/watchedState; folding rate/note *writes* into the interface is a future
 step best done when a third tracker exists to shape it.)
 

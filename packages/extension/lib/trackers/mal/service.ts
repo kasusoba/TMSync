@@ -1,6 +1,6 @@
 import { browser } from "wxt/browser";
 import { malConnectIntent, malCorrections, malMissCache, malResolutionCache } from "../../storage";
-import { bindPins, setKey } from "../cour-pins";
+import { bindPins, courSearch, setKey } from "../cour-pins";
 import type { CourTrackerService } from "../service";
 import { hasMalAccess, isMalGrant } from "./access";
 import { connect, disconnect, getRedirectUri, isConnected } from "./auth";
@@ -33,6 +33,7 @@ export const malService: CourTrackerService = {
     saveNote: (m, _level, text) => malSaveNote(m, text),
     deleteNote: (m) => malDeleteNote(m),
   },
+  search: courSearch("mal", searchMal),
   pins: bindPins<MalIdentity>({
     search: searchMal,
     load: getAnime,

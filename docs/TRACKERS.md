@@ -189,8 +189,9 @@ a fixed set:
 5. **Service.** Add `review.ts` and a `service.ts` with a `TrackerService`: account status, connect,
    disconnect, the rating and note calls, any alarms or wake listeners, and message handlers for
    features only this tracker has. A cour tracker also
-   brings its fix-match `pins` (the type requires them). Register it in `SERVICES`
-   (`lib/trackers/service.ts`). The background needs no edit.
+   brings its fix-match `pins` (the type requires them). If the tracker can search, add `search`
+   (and `pinPick` if a pick's ids alone could drift), so manual mode can use it. Register it in
+   `SERVICES` (`lib/trackers/service.ts`). The background needs no edit.
 6. **UI.** Add a mark (`marks.data.ts`, `kit.tsx`, the `TRACKER_MARK` entry), an Account row in
    Options, a connect button in the popup, and a picker toggle entry in `PickerPanel.tsx`. Provider
    rows are hand-wired per provider, not a loop. Add the new states to the gallery.

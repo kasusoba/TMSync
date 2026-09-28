@@ -331,7 +331,7 @@ describe("TMDB id (auto-detect + resolve-by-id)", () => {
     // The 1embed case: the in-frame title is junk, so the user drops it and relies
     // on the id. Title is optional once a tmdbId is present.
     const draft: RecipeDraft = {
-      ...emptyDraft("https://bcine.ru/movie/936075"),
+      ...emptyDraft("https://bcine.ru/movie/936075", ["trakt"]),
       fields: { tmdbId: detectTmdbIdField("https://bcine.ru/movie/936075") },
     };
     const built = buildRecipe(draft, { id: "m", name: "bCine" });
@@ -483,7 +483,7 @@ describe("TMDB id (auto-detect + resolve-by-id)", () => {
     // picked up a stray season/episode would resolve tmdb id 4977 in the *tv*
     // namespace (a 1979 series). A movie must never carry season/episode.
     const draft: RecipeDraft = {
-      ...emptyDraft("https://bcine.ru/movie/4977"),
+      ...emptyDraft("https://bcine.ru/movie/4977", ["trakt"]),
       mediaType: "movie",
       fields: {
         tmdbId: detectTmdbIdField("https://bcine.ru/movie/4977"),
@@ -608,6 +608,22 @@ describe("autoDetectFields", () => {
 });
 
 describe("buildRecipe + previewDraft", () => {
+  it("starts a new draft with the given trackers, none by default", () => {
+    expect(emptyDraft("https://x/watch").trackers).toEqual([]);
+    expect(emptyDraft("https://x/watch", ["mal", "simkl"]).trackers).toEqual(["mal", "simkl"]);
+  });
+
+  it("fails without a tracker (no Trakt fallback)", () => {
+    const draft: RecipeDraft = {
+      ...emptyDraft("https://x/watch"),
+      manual: true,
+    };
+    expect(buildRecipe(draft, { id: "x", name: "X" })).toEqual({
+      ok: false,
+      error: "Turn on at least one tracker.",
+    });
+  });
+
   it("fails without a title", () => {
     const draft = emptyDraft("https://x/watch");
     expect(buildRecipe(draft, { id: "x", name: "X" })).toMatchObject({ ok: false });
@@ -616,7 +632,7 @@ describe("buildRecipe + previewDraft", () => {
   it("builds a valid recipe and previews the parsed media end-to-end", () => {
     const ctx = { document: parse(episodeHtml), url: "https://samplestreamer.example/watch/1" };
     const draft: RecipeDraft = {
-      ...emptyDraft(ctx.url),
+      ...emptyDraft(ctx.url, ["trakt"]),
       fields: autoDetectFields(ctx),
     };
 
@@ -700,7 +716,10 @@ describe("cour trackers (AniList, MAL)", () => {
 
 describe("manual recipes", () => {
   it("builds a manual recipe with no extract (title not required)", () => {
-    const draft: RecipeDraft = { ...emptyDraft("https://twoseven.xyz/room/abc"), manual: true };
+    const draft: RecipeDraft = {
+      ...emptyDraft("https://twoseven.xyz/room/abc", ["trakt"]),
+      manual: true,
+    };
     const built = buildRecipe(draft, { id: "m", name: "TwoSeven" });
     expect(built.ok).toBe(true);
     if (built.ok) {
@@ -711,7 +730,7 @@ describe("manual recipes", () => {
 
   it("carries an optional manualKey through build + round-trips via recipeToDraft", () => {
     const draft: RecipeDraft = {
-      ...emptyDraft("https://twoseven.xyz/room/abc"),
+      ...emptyDraft("https://twoseven.xyz/room/abc", ["trakt"]),
       manual: true,
       manualKey: { source: "dom", selector: ".media-title", transforms: ["trim"] },
     };

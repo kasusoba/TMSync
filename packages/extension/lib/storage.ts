@@ -362,6 +362,8 @@ export const episodeOverrides = storage.defineItem<
 export interface ManualContext {
   recipeId: string;
   pageKey: string;
+  /** The recipe's enabled trackers, so manual mode searches one of them. */
+  trackers: Tracker[];
 }
 export const manualContexts = storage.defineItem<Record<number, ManualContext>>(
   "session:manual_contexts",

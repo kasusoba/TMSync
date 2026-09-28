@@ -1,6 +1,12 @@
 import type { ParsedMedia } from "@tmsync/shared";
-import { describe, expect, it } from "vitest";
-import { type Tracker, getAdapter, inferNativeTracker, routeTracker } from "./index";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  type Tracker,
+  connectedTrackers,
+  getAdapter,
+  inferNativeTracker,
+  speaksPage,
+} from "./index";
 
 describe("getAdapter", () => {
   it("routes each tracker to its adapter", () => {
@@ -18,20 +24,11 @@ describe("getAdapter", () => {
   });
 });
 
-describe("routeTracker (route by type — constraint #1)", () => {
-  it("sends a movie to Trakt even on an anilist site (anime movies → Trakt)", () => {
-    expect(routeTracker("anilist", "movie")).toBe("trakt");
-    expect(routeTracker("mal", "movie")).toBe("trakt");
-    expect(routeTracker("trakt", "movie")).toBe("trakt");
-  });
-
-  it("keeps a movie on a tracker that takes movies (Simkl)", () => {
-    expect(routeTracker("simkl", "movie")).toBe("simkl");
-  });
-
-  it("leaves shows on the recipe's tracker (series → AniList stays)", () => {
-    expect(routeTracker("anilist", "show")).toBe("anilist");
-    expect(routeTracker("trakt", "show")).toBe("trakt");
+describe("anime movies on a cour tracker", () => {
+  it("stay on the cour tracker (an anime movie is a one-episode entry there)", () => {
+    const movie: ParsedMedia = { mediaType: "movie", title: "A Silent Voice" };
+    expect(inferNativeTracker(movie, ["anilist"])).toBe("anilist");
+    expect(inferNativeTracker(movie, ["mal"])).toBe("mal");
   });
 });
 
@@ -122,5 +119,64 @@ describe("inferNativeTracker's choice", () => {
   it("treats an empty enabled list like no list (no hardcoded default)", () => {
     expect(inferNativeTracker(tv, [])).toBe(inferNativeTracker(tv));
     expect(inferNativeTracker(anime, [])).toBe(inferNativeTracker(anime));
+  });
+});
+
+describe("connectedTrackers (each tracker stands alone)", () => {
+  const connect = (on: Tracker[]) => {
+    for (const tk of ["trakt", "anilist", "mal", "simkl"] as Tracker[]) {
+      vi.spyOn(getAdapter(tk), "isConnected").mockResolvedValue(on.includes(tk));
+    }
+  };
+  afterEach(() => vi.restoreAllMocks());
+
+  it("keeps only the connected trackers, in the recipe's order", async () => {
+    connect(["mal", "simkl"]);
+    expect(await connectedTrackers(["trakt", "mal", "simkl"])).toEqual(["mal", "simkl"]);
+  });
+
+  it("never anchors a MAL-only user on Trakt", async () => {
+    connect(["mal"]);
+    const page: ParsedMedia = { mediaType: "show", title: "Frieren", ids: { tmdb: 209867 } };
+    const on = await connectedTrackers(["trakt", "mal"]);
+    expect(inferNativeTracker(page, on)).toBe("mal");
+  });
+
+  it("falls back to every enabled tracker when none is connected", async () => {
+    connect([]);
+    expect(await connectedTrackers(["trakt", "anilist"])).toEqual(["trakt", "anilist"]);
+  });
+
+  it("reads a failed connection check as not connected", async () => {
+    connect(["trakt"]);
+    vi.spyOn(getAdapter("mal"), "isConnected").mockRejectedValue(new Error("no access"));
+    expect(await connectedTrackers(["mal", "trakt"])).toEqual(["trakt"]);
+  });
+});
+
+describe("speaksPage", () => {
+  const tmdbPage: ParsedMedia = {
+    mediaType: "show",
+    title: "AoT",
+    season: 3,
+    episode: 2,
+    ids: { tmdb: 1429 },
+  };
+  const animePage: ParsedMedia = { mediaType: "show", title: "Frieren", episode: 3 };
+
+  it("a cour tracker doesn't speak a TMDB page, so it goes through the crosswalk", () => {
+    expect(speaksPage("mal", tmdbPage)).toBe(false);
+    expect(speaksPage("anilist", tmdbPage)).toBe(false);
+    expect(speaksPage("trakt", tmdbPage)).toBe(true);
+  });
+
+  it("a cour tracker speaks a dedicated anime page", () => {
+    expect(speaksPage("anilist", animePage)).toBe(true);
+    expect(speaksPage("trakt", animePage)).toBe(false);
+  });
+
+  it("Simkl takes any numbering", () => {
+    expect(speaksPage("simkl", tmdbPage)).toBe(true);
+    expect(speaksPage("simkl", animePage)).toBe(true);
   });
 });

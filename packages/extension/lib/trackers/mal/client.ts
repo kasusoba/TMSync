@@ -105,17 +105,18 @@ export function liveMisses(
 
 /** Cache key for a MAL resolution: a native id when present, else title (+year,
  * + season when the page has one: each season is its own entry, so a title pin for
- * one season must not apply to another). */
+ * one season must not apply to another; + `:movie` on a movie page). */
 export function malCacheKey(media: ParsedMedia): string {
   if (media.ids?.mal !== undefined) return `id:${media.ids.mal}`;
   if (media.ids?.anilist !== undefined) return `al:${media.ids.anilist}`;
   return titleKey(media);
 }
 
-/** The title part of {@link malCacheKey}: title, year, and season. Pure. */
+/** The title part of {@link malCacheKey}: title, year, season, and movie. Pure. */
 function titleKey(media: ParsedMedia): string {
   const season = media.season !== undefined ? `:s${media.season}` : "";
-  return `${media.title.trim().toLowerCase()}:${media.year ?? ""}${season}`;
+  const movie = media.mediaType === "movie" ? ":movie" : "";
+  return `${media.title.trim().toLowerCase()}:${media.year ?? ""}${season}${movie}`;
 }
 
 /** Map an anime node to our identity. English title first (as AniList does), else
@@ -132,22 +133,25 @@ export function nodeToIdentity(node: MalAnimeNode): MalIdentity {
 
 const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
 
-/** MAL media types that are not a series: anime movies route to Trakt, and music
- * videos, promos (`pv`), and commercials (`cm`) are never what a page plays. */
+/** MAL media types that are not a series: movies are matched only on a movie page,
+ * and music videos, promos (`pv`), and commercials (`cm`) are never what a page plays. */
 const NOT_SERIES = new Set(["movie", "music", "pv", "cm"]);
 
 /**
- * Pick the best search hit for a scraped title. Only series count (see
- * `NOT_SERIES`): cour trackers record series, as AniList's search does. An exact
- * title match (main, English, or synonym) wins, preferring the scraped year; else
- * the first hit from the scraped year; else MAL's top hit. Pure.
+ * Pick the best search hit for a scraped title. A series page counts series only
+ * (see `NOT_SERIES`) and a movie page movies only, as AniList's search does. An
+ * exact title match (main, English, or synonym) wins, preferring the scraped year;
+ * else the first hit from the scraped year; else MAL's top hit. Pure.
  */
 export function pickBest(
   nodes: MalAnimeNode[],
   title: string,
   year?: number,
+  mediaType: ParsedMedia["mediaType"] = "show",
 ): MalAnimeNode | undefined {
-  const series = nodes.filter((n) => !NOT_SERIES.has(n.media_type ?? ""));
+  const series = nodes.filter((n) =>
+    mediaType === "movie" ? n.media_type === "movie" : !NOT_SERIES.has(n.media_type ?? ""),
+  );
   const want = norm(title);
   const yearOf = (n: MalAnimeNode) => Number(n.start_date?.slice(0, 4));
   const names = (n: MalAnimeNode) => [
@@ -238,7 +242,7 @@ export async function resolve(media: ParsedMedia): Promise<MalIdentity | null> {
   }
   // MAL rejects very short queries; a title that short can't be matched well anyway.
   if (!identity && media.title && media.title.trim().length >= 3) {
-    const best = pickBest(await searchAnime(media.title), media.title, media.year);
+    const best = pickBest(await searchAnime(media.title), media.title, media.year, media.mediaType);
     identity = best ? nodeToIdentity(best) : null;
   }
   if (!identity) {

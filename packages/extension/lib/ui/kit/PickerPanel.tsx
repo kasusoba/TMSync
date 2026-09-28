@@ -58,6 +58,11 @@ export interface PickerPanelProps {
   status?: string | null;
   /** Override the save/copy enabled state (default: title currently resolves). */
   canSave?: boolean;
+  /** No tracker is connected, so a recipe would have nowhere to record: the panel
+   * asks the user to connect one instead of showing the setup. */
+  noTracker?: boolean;
+  /** Open the options page (Account), from the `noTracker` prompt. */
+  onOpenSettings?: () => void;
   /** Manual mode: no scraping — the user picks each title from the badge. */
   manual?: boolean;
   /** Manual only: the current "remember-by" element value, if one is picked. */
@@ -195,6 +200,24 @@ export function PickerPanel(p: PickerPanelProps) {
   const hasTitle =
     p.canSave ?? (p.manual || p.fields.some((f) => f.key === "title" && f.value !== null));
 
+  if (p.noTracker) {
+    return (
+      <div class={clsx("w-[320px] rounded-2xl p-3.5 shadow-2xl shadow-black/30", t.panel)}>
+        <header class="mb-3 flex items-center justify-between">
+          <strong class={clsx("text-[13px]", t.heading)}>Set up site</strong>
+          <IconBtn t={t} name="x" title="Close" onClick={p.onClose} />
+        </header>
+        <p class={clsx("text-[12px] leading-snug", t.sub)}>
+          Connect a tracker first. A site setup records what you watch to your tracker accounts, and
+          none is connected yet.
+        </p>
+        <Btn t={t} tone="primary" class="mt-3 w-full" onClick={p.onOpenSettings}>
+          Connect a tracker
+        </Btn>
+      </div>
+    );
+  }
+
   return (
     // Fixed-width, position-relative shell: the picker is anchored to the right
     // edge of the screen, so the "click to pick" pill MUST float (absolute) above
@@ -300,7 +323,8 @@ export function PickerPanel(p: PickerPanelProps) {
             <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>Scrobble to</span>
             <div class="flex flex-wrap gap-1.5">
               {TRACKER_TOGGLES.map(({ key, label, mark, need, needHint }) => {
-                const canEnable = need(fieldVal);
+                // In manual mode the user's pick supplies the title and ids.
+                const canEnable = !!p.manual || need(fieldVal);
                 const on = p.trackers.includes(key);
                 const disabled = !canEnable && !on;
                 return (
@@ -387,17 +411,15 @@ export function PickerPanel(p: PickerPanelProps) {
             </label>
           )}
 
-          {/* manual mode: a no-title concept; irrelevant once a cour tracker is on
-            (anime always has a title). Shown only when none is enabled. */}
-          {!p.trackers.some(isSeasonless) && (
-            <ToggleRow
-              t={t}
-              on={!!p.manual}
-              label="Pick titles manually"
-              info="For players with no title to read (local files, watch parties). You’ll choose each title from the badge."
-              onToggle={() => p.onManualChange?.(!p.manual)}
-            />
-          )}
+          {/* manual mode: for a player with no title to read. The pick is searched
+            on any connected tracker that can search, so it works with every one. */}
+          <ToggleRow
+            t={t}
+            on={!!p.manual}
+            label="Pick titles manually"
+            info="For players with no title to read (local files, watch parties). You’ll choose each title from the badge."
+            onToggle={() => p.onManualChange?.(!p.manual)}
+          />
 
           {/* player-in-a-separate-frame */}
           <ToggleRow

@@ -85,31 +85,6 @@ export function isTokenExpired(tokens: TraktTokens, nowSec: number, skewSec = 60
   return nowSec >= tokens.created_at + tokens.expires_in - skewSec;
 }
 
-/**
- * The media for a manual pick (a page with no readable metadata). It carries the
- * ids Trakt knows, so every tracker resolves the pick by id: the crosswalk needs
- * the tmdb id to reach AniList and MAL, and Simkl matches on it too. Without ids,
- * a cour tracker falls back to a title search with seasoned numbering. Pure.
- */
-export function pickedMedia(
-  option: TraktSearchOption,
-  season?: number,
-  episode?: number,
-): ParsedMedia {
-  const ids: NonNullable<ParsedMedia["ids"]> = {};
-  if (option.ids?.tmdb !== undefined) ids.tmdb = option.ids.tmdb;
-  if (option.ids?.imdb !== undefined) ids.imdb = option.ids.imdb;
-  if (option.ids?.tvdb !== undefined) ids.tvdb = option.ids.tvdb;
-  const base = {
-    title: option.title,
-    year: option.year,
-    ...(Object.keys(ids).length ? { ids } : {}),
-  };
-  return option.type === "movie"
-    ? { mediaType: "movie", ...base }
-    : { mediaType: "show", ...base, season, episode };
-}
-
 /** The Trakt identity for a picked search result. Pure. */
 export function pickedIdentity(option: TraktSearchOption): ResolvedIdentity {
   return {

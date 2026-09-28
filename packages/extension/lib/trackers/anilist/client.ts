@@ -15,12 +15,14 @@ export class AniListNotConnectedError extends Error {
 
 /** Cache key for an AniList resolution: a native id when present, else title (+year,
  * + season when the page has one: each season is its own cour, so a title pin for
- * one season must not apply to another). */
+ * one season must not apply to another; + `:movie` on a movie page, so a movie and
+ * a series with the same title never share a match). */
 export function anilistCacheKey(media: ParsedMedia): string {
   if (media.ids?.anilist !== undefined) return `id:${media.ids.anilist}`;
   if (media.ids?.mal !== undefined) return `mal:${media.ids.mal}`;
   const season = media.season !== undefined ? `:s${media.season}` : "";
-  return `${media.title.trim().toLowerCase()}:${media.year ?? ""}${season}`;
+  const movie = media.mediaType === "movie" ? ":movie" : "";
+  return `${media.title.trim().toLowerCase()}:${media.year ?? ""}${season}${movie}`;
 }
 
 /**
@@ -104,19 +106,30 @@ async function gql<T>(query: string, variables: Record<string, unknown>, auth = 
   return body.data;
 }
 
-const SEARCH_QUERY = `
-query ($search: String) {
-  Media(search: $search, type: ANIME, format_not: MOVIE) {
+const MEDIA_FIELDS = `
     id idMal episodes
     startDate { year }
-    title { romaji english }
+    title { romaji english }`;
+
+/** Title search for a series page: movies are left out, so a series never matches
+ * its own film. */
+const SEARCH_SERIES_QUERY = `
+query ($search: String) {
+  Media(search: $search, type: ANIME, format_not: MOVIE) {${MEDIA_FIELDS}
+  }
+}`;
+
+/** Title search for a movie page: only movies, so a film never matches its series. */
+const SEARCH_MOVIE_QUERY = `
+query ($search: String) {
+  Media(search: $search, type: ANIME, format: MOVIE) {${MEDIA_FIELDS}
   }
 }`;
 
 /**
- * Resolve scraped media → an AniList series identity (cached). `format_not: MOVIE`
- * keeps this to series — anime *movies* route to Trakt (constraint #2). Returns
- * null if nothing matches.
+ * Resolve scraped media → an AniList identity (cached). A series page matches
+ * series only and a movie page movies only. An anime movie is one entry with one
+ * episode (see `courEpisode`). Returns null if nothing matches.
  */
 export async function resolve(media: ParsedMedia): Promise<AniListIdentity | null> {
   const key = anilistCacheKey(media);
@@ -155,7 +168,8 @@ export async function resolve(media: ParsedMedia): Promise<AniListIdentity | nul
   }
   // Fall back to a TITLE search when there was no native id, or the id didn't resolve.
   if (!node && media.title) {
-    node = (await gql<{ Media: MediaNode | null }>(SEARCH_QUERY, { search: media.title })).Media;
+    const query = media.mediaType === "movie" ? SEARCH_MOVIE_QUERY : SEARCH_SERIES_QUERY;
+    node = (await gql<{ Media: MediaNode | null }>(query, { search: media.title })).Media;
   }
   if (!node) return null;
   const identity = mediaToIdentity(node);

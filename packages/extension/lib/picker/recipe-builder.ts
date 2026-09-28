@@ -254,7 +254,9 @@ export function suggestUrlPattern(url: string): string {
   }
 }
 
-export function emptyDraft(url: string): RecipeDraft {
+/** A fresh draft for `url`. `trackers` starts the toggles: the trackers the user
+ * connected, so a new site records where they already track. */
+export function emptyDraft(url: string, trackers: Tracker[] = []): RecipeDraft {
   let hostname: string | undefined;
   try {
     hostname = new URL(url).hostname;
@@ -269,7 +271,7 @@ export function emptyDraft(url: string): RecipeDraft {
       hostnames: hostname ? [hostText(hostname)] : undefined,
     },
     mediaType: "auto",
-    trackers: ["trakt"],
+    trackers: [...trackers],
     video: { selector: "video", frame: "auto" },
     manual: false,
     fields: {},
@@ -385,14 +387,13 @@ export function buildRecipe(draft: RecipeDraft, meta: { id: string; name: string
   // cour tracker). A passthrough tracker (Simkl) is never native while another is
   // on, so it is the hint only when it stands alone. The runtime re-infers this per
   // watch; we persist it as the legacy `tracker` field.
-  const trackers = draft.trackers.length ? draft.trackers : (["trakt"] as Tracker[]);
+  const { trackers } = draft;
+  const first = trackers[0];
+  if (!first) return { ok: false, error: "Turn on at least one tracker." };
   const seasonedFields = !!(draft.fields.tmdbId || draft.fields.season);
   const anchors = trackers.filter((tk) => !isPassthrough(tk));
   const nativeHint: Tracker =
-    anchors.find((tk) => isSeasonless(tk) !== seasonedFields) ??
-    anchors[0] ??
-    trackers[0] ??
-    "trakt";
+    anchors.find((tk) => isSeasonless(tk) !== seasonedFields) ?? anchors[0] ?? first;
   // The scraped fields are PRUNED to what the enabled trackers actually consume, so
   // toggling the seasoned trackers off drops their fields instead of leaving them
   // stale on the recipe:

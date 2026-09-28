@@ -4,7 +4,7 @@ import { anilistAdapter } from "./anilist/adapter";
 import { malAdapter } from "./mal/adapter";
 import { simklAdapter } from "./simkl/adapter";
 import { traktAdapter } from "./trakt/adapter";
-import { ALL_TRACKERS, type Tracker, isPassthrough, isSeasonless } from "./types";
+import { ALL_TRACKERS, type Tracker, isPassthrough, isSeasonless, trackerFamily } from "./types";
 
 export type { TrackerAdapter } from "./adapter";
 export type {
@@ -42,15 +42,23 @@ export function getAdapter(tracker: Tracker): TrackerAdapter {
 }
 
 /**
- * The tracker an item actually routes to, decided by TYPE (constraint #1). A cour
- * tracker (AniList, MAL) records series only, so a movie on a cour site goes to
- * Trakt. This lets one `mediaType: "auto"` recipe on a mixed anime site (where
- * movie and series pages look the same by URL/DOM) send series to the cour tracker
- * and movies to Trakt, keyed off whether an episode was scraped. A tracker that
- * takes movies (Trakt, Simkl) keeps them.
+ * The enabled trackers the user is connected to, in `enabled` order. Each tracker
+ * stands on its own (constraint #1): a tracker the user never connected is never
+ * called and never anchors the others, so a MAL-only user does not depend on Trakt
+ * being up. When none is connected, all of `enabled` come back, so the badge can
+ * still show a match and say "connect".
  */
-export function routeTracker(tracker: Tracker, mediaType: ParsedMedia["mediaType"]): Tracker {
-  return mediaType === "movie" && isSeasonless(tracker) ? "trakt" : tracker;
+export async function connectedTrackers(enabled: Tracker[]): Promise<Tracker[]> {
+  const on: Tracker[] = [];
+  for (const tk of enabled) {
+    if (
+      await getAdapter(tk)
+        .isConnected()
+        .catch(() => false)
+    )
+      on.push(tk);
+  }
+  return on.length ? on : enabled;
 }
 
 /**
@@ -92,4 +100,16 @@ export function inferNativeTracker(media: ParsedMedia, enabled?: Tracker[]): Tra
   // 3) A bare linear episode (or nothing) ⇒ a SEASONLESS tracker, else the first
   //    allowed one. `allowed` is never empty, so there is no hardcoded default.
   return candidates.find(isSeasonless) ?? (candidates[0] as Tracker);
+}
+
+/**
+ * Whether a tracker takes the page's numbering as scraped: its family is the one
+ * the page speaks (the native tracker when every tracker is on), or it takes any
+ * numbering (Simkl). When the anchor doesn't (a cour tracker on a TMDB page because
+ * Trakt is not connected), the background resolves it through the crosswalk like a
+ * derived tracker, so it gets the exact cour and its own episode.
+ */
+export function speaksPage(tracker: Tracker, media: ParsedMedia): boolean {
+  const family = trackerFamily(tracker);
+  return family === "any" || family === trackerFamily(inferNativeTracker(media));
 }

@@ -1,4 +1,11 @@
+import type { ParsedMedia } from "@tmsync/shared";
 import type { RecordPhase } from "./types";
+
+/** The episode a cour write counts. An anime movie is one entry with a single
+ * episode, so watching it counts episode 1 (and completes it). Pure. */
+export function courEpisode(media: ParsedMedia): number | undefined {
+  return media.mediaType === "movie" ? 1 : media.episode;
+}
 
 /**
  * List status of a cour-family entry, in AniList's vocabulary (MAL maps onto it:
