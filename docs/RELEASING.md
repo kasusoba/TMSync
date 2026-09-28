@@ -31,9 +31,9 @@ The release title is the version and nothing else: `v1.10.2`.
 
 ## Merging PRs
 
-Never commit to `main`. Merge with `gh pr merge --rebase --delete-branch`, then
-`git checkout main && git pull`. Never squash-merge: the branch's commits are already clean, and
-a rebase merge keeps them as they are.
+Never commit to `main`. Merge with `gh pr merge --squash --delete-branch`, then
+`git checkout main && git pull`. Always squash-merge: one PR is one commit on `main`, with the PR
+title as its subject. The detailed commits stay on the PR page.
 
 ## Store uploads and secrets
 
