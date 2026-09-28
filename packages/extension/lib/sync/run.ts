@@ -44,8 +44,16 @@ export interface SyncPreview {
   plan: SyncPlan;
 }
 
+/**
+ * The shape version of a saved job. Bump it whenever `SyncJob`, `SyncPreview`, or
+ * `SyncPlan` changes shape: a job saved by an older build is then dropped on read,
+ * instead of rendering (and crashing on) fields it does not have.
+ */
+export const SYNC_JOB_VERSION = 2;
+
 /** A preview job, as saved in storage. */
 export interface SyncJob {
+  v: number;
   state: "running" | "done" | "failed";
   startedAt: number;
   /** Last sign of life (ms). A running job with an old beat was stopped. */
@@ -65,6 +73,12 @@ const BEAT_MS = 10_000;
 /** A running job with no beat for this long was stopped by the browser. */
 export const STALE_MS = 3 * BEAT_MS;
 
+/** A saved job, or null when it is missing or from an older build. Pure. */
+export function readJob(raw: unknown): SyncJob | null {
+  const job = raw as SyncJob | null;
+  return job && job.v === SYNC_JOB_VERSION ? job : null;
+}
+
 /** Whether a saved job is still really running. Pure. */
 export function jobAlive(job: SyncJob | null, now: number): boolean {
   return job?.state === "running" && now - job.beatAt < STALE_MS;
@@ -75,9 +89,15 @@ export function jobAlive(job: SyncJob | null, now: number): boolean {
  * `listSyncJob`. Writes nothing to a tracker.
  */
 export async function startPreview(): Promise<{ started: boolean }> {
-  if (jobAlive(await listSyncJob.getValue(), Date.now())) return { started: false };
+  if (jobAlive(readJob(await listSyncJob.getValue()), Date.now())) return { started: false };
   const now = Date.now();
-  await listSyncJob.setValue({ state: "running", startedAt: now, beatAt: now, reads: [] });
+  await listSyncJob.setValue({
+    v: SYNC_JOB_VERSION,
+    state: "running",
+    startedAt: now,
+    beatAt: now,
+    reads: [],
+  });
   void runPreview();
   return { started: true };
 }

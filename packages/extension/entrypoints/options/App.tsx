@@ -27,7 +27,7 @@ import {
   remoteRecipes,
 } from "@/lib/storage";
 import { syncKindsFor } from "@/lib/sync/plan";
-import { type SyncJob, jobAlive } from "@/lib/sync/run";
+import { type SyncJob, jobAlive, readJob } from "@/lib/sync/run";
 import { DEFAULT_SYNC_SETTINGS, type ListSyncSettings, type SyncKind } from "@/lib/sync/types";
 import type { AniListIdentity } from "@/lib/trackers/anilist/types";
 import type { AnimapOverrides } from "@/lib/trackers/animap/derive";
@@ -850,8 +850,9 @@ export function App() {
 
   useEffect(() => {
     void listSyncSettings.getValue().then(setSyncSettings);
-    void listSyncJob.getValue().then(setSyncJob);
-    return listSyncJob.watch((job) => setSyncJob(job));
+    // readJob drops a preview saved by an older build (a different shape).
+    void listSyncJob.getValue().then((job) => setSyncJob(readJob(job)));
+    return listSyncJob.watch((job) => setSyncJob(readJob(job)));
   }, []);
 
   const jobRunning = syncJob?.state === "running";
