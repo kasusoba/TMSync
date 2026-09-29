@@ -393,7 +393,7 @@ export async function saveNotes(
   }
 }
 
-// --- list sync (reads the whole list; plans/list-sync.md) ---
+// --- list sync (reads the whole list; docs/ARCHITECTURE.md section 7) ---
 
 const VIEWER_QUERY = `
 query { Viewer { id mediaListOptions { scoreFormat } } }`;
@@ -405,7 +405,7 @@ query ($userId: Int, $chunk: Int) {
     lists {
       isCustomList
       entries {
-        mediaId status progress repeat private updatedAt
+        mediaId status progress repeat private hiddenFromStatusLists updatedAt
         score(format: POINT_100)
         media { id idMal episodes format isAdult startDate { year } title { userPreferred } }
       }
@@ -423,6 +423,7 @@ export async function readAniListList(): Promise<{
     Viewer: { id: number; mediaListOptions?: { scoreFormat?: ScoreFormat } };
   }>(VIEWER_QUERY, {}, true);
   const entries: unknown[] = [];
+  const seen = new Set<unknown>();
   for (let chunk = 1; chunk < 100; chunk += 1) {
     const data = await gql<{
       MediaListCollection: {
@@ -430,16 +431,26 @@ export async function readAniListList(): Promise<{
         lists: { isCustomList: boolean; entries: unknown[] }[];
       };
     }>(COLLECTION_QUERY, { userId: viewer.Viewer.id, chunk }, true);
-    // Custom lists repeat entries that are already in a status list.
-    for (const list of data.MediaListCollection.lists) {
-      if (!list.isCustomList) entries.push(...list.entries);
+    // Custom lists repeat entries that are already in a status list, so keep one
+    // per media. Status lists come first: an entry "hidden from status lists" is
+    // only in a custom list, and must still be read (else it looks removed).
+    const lists = [...data.MediaListCollection.lists].sort(
+      (a, b) => Number(a.isCustomList) - Number(b.isCustomList),
+    );
+    for (const list of lists) {
+      for (const e of list.entries) {
+        const id = (e as { mediaId?: unknown } | null)?.mediaId;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        entries.push(e);
+      }
     }
     if (!data.MediaListCollection.hasNextChunk) break;
   }
   return { entries, scoreFormat: viewer.Viewer.mediaListOptions?.scoreFormat ?? null };
 }
 
-// --- list sync writes (plans/list-sync.md, phase 2) ---
+// --- list sync writes (docs/ARCHITECTURE.md section 7) ---
 
 const FRESH_QUERY = `
 query ($userId: Int, $ids: [Int]) {
