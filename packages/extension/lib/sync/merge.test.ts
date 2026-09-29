@@ -32,6 +32,20 @@ describe("mergeCour", () => {
     expect(mergeCour([w], fresh())).toEqual({ kind: "save", progress: 8 });
   });
 
+  it("fills an empty day, never changes one, also on a completed entry", () => {
+    const w = entry({ startedOn: "2026-09-01", finishedOn: "2026-09-20" });
+    expect(mergeCour([w], fresh({ status: "COMPLETED", progress: 12 }))).toEqual({
+      kind: "save",
+      startedOn: "2026-09-01",
+      finishedOn: "2026-09-20",
+    });
+    expect(mergeCour([w], fresh({ startedOn: "2026-08-01", finishedOn: "2026-08-02" }))).toEqual({
+      kind: "none",
+    });
+    // No entry, and nothing else to write: a day alone never adds one.
+    expect(mergeCour([w], null)).toEqual({ kind: "none" });
+  });
+
   it("never lowers progress a scrobble raised since the preview", () => {
     const w = entry({ progress: { from: 3, to: 8 } });
     expect(mergeCour([w], fresh({ progress: 10 }))).toEqual({ kind: "none" });

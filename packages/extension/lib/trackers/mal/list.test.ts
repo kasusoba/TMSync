@@ -50,11 +50,21 @@ describe("malEntries", () => {
     const updated_at = "2026-01-01T00:00:00+00:00";
     const [done, current, partial] = malEntries([
       { node, list_status: { status: "completed", finish_date: "2020-05-03", updated_at } },
-      { node, list_status: { status: "watching", finish_date: "2020-05-03", updated_at } },
+      {
+        node,
+        list_status: {
+          status: "watching",
+          start_date: "2020-04-01",
+          finish_date: "2020-05-03",
+          updated_at,
+        },
+      },
       { node, list_status: { status: "completed", finish_date: "2020-05", updated_at } },
     ]);
     expect(done?.watchedAt).toBe(Date.UTC(2020, 4, 3, 12));
     expect(current?.watchedAt).toBe(Date.parse(updated_at));
+    expect(current).toMatchObject({ startedOn: "2020-04-01", finishedOn: "2020-05-03" });
+    expect(partial).not.toHaveProperty("finishedOn");
     expect(partial?.watchedAt).toBe(Date.parse(updated_at));
   });
 });

@@ -44,6 +44,9 @@ export interface MalListStatus {
   num_times_rewatched?: number;
   score?: number;
   comments?: string;
+  /** `2024-03-09`, or only `2024-03` or `2024`. */
+  start_date?: string;
+  finish_date?: string;
 }
 
 /** An anime node from search or details (fields we request). */

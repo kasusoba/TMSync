@@ -24,6 +24,7 @@ import { fillRatings, ratingNotices } from "./ratings";
 import {
   courCount,
   finished,
+  keepsDays,
   keepsRepeat,
   mergeIds,
   normStatus,
@@ -112,6 +113,12 @@ export function planCour(ctx: PlanContext, key: string, g: CourGroup): void {
   const seasonedMax = Math.max(0, ...srcSeasoned.map((p) => Math.max(0, ...p.local)));
   const progress = Math.max(courMax, seasonedMax);
   const repeat = Math.max(0, ...srcCour.map((e) => e.repeat));
+  // Start and finish days: the first start and the last finish the sources keep.
+  // A copy gets one only where it has none (sync never changes a day).
+  const starts = srcCour.flatMap((e) => (e.startedOn ? [e.startedOn] : [])).sort();
+  const finishes = srcCour.flatMap((e) => (e.finishedOn ? [e.finishedOn] : [])).sort();
+  const startedOn = starts[0];
+  const finishedOn = finishes[finishes.length - 1];
   // The date backfilled watches get: when the sources were last watched.
   const srcAt = newest(
     ...srcCour.filter((e) => courCount(e) > 0).map((e) => e.watchedAt),
@@ -307,16 +314,17 @@ export function planCour(ctx: PlanContext, key: string, g: CourGroup): void {
     }
     if (entry && finished(entry.status)) {
       ratingRefs.set(tk, { level: "entry", target });
-      // Never move a completed entry. A higher rewatch count is still news.
-      if (keepsRepeat(tk) && repeat > entry.repeat) {
-        writes.push({
-          tracker: tk,
-          op: "entry",
-          target,
-          create: false,
-          repeat: { from: entry.repeat, to: repeat },
-        });
-      }
+      // Never move a completed entry. A higher rewatch count, or an empty day
+      // filled, is still news.
+      const w: Extract<SyncWrite, { op: "entry" }> = {
+        tracker: tk,
+        op: "entry",
+        target,
+        create: false,
+      };
+      if (keepsRepeat(tk) && repeat > entry.repeat) w.repeat = { from: entry.repeat, to: repeat };
+      fillDays(tk, w, entry, true);
+      if (w.repeat || w.startedOn || w.finishedOn) writes.push(w);
       return;
     }
     const tTotal = g.movie ? 1 : (entry?.total ?? total);
@@ -359,7 +367,22 @@ export function planCour(ctx: PlanContext, key: string, g: CourGroup): void {
     if (keepsRepeat(tk) && repeat > (entry?.repeat ?? 0))
       w.repeat = { from: entry?.repeat ?? 0, to: repeat };
     if (w.progress && srcAt !== undefined) w.at = srcAt;
-    if (w.progress || w.status || w.repeat) writes.push(w);
+    // A day only goes where there is (or will be) an entry.
+    if (entry || w.progress || w.status) fillDays(tk, w, entry, finished(status));
+    if (w.progress || w.status || w.repeat || w.startedOn || w.finishedOn) writes.push(w);
+  }
+
+  /** Fill the entry's empty start day, and its empty finish day once it is
+   * finished (`done`). */
+  function fillDays(
+    tk: Tracker,
+    w: Extract<SyncWrite, { op: "entry" }>,
+    entry: CourEntry | undefined,
+    done: boolean,
+  ): void {
+    if (!keepsDays(tk)) return;
+    if (startedOn && !entry?.startedOn) w.startedOn = startedOn;
+    if (done && finishedOn && !entry?.finishedOn) w.finishedOn = finishedOn;
   }
 
   /** A tracker that keeps watched episodes by season (Trakt, Simkl shows). */

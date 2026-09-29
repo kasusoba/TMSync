@@ -62,7 +62,14 @@ describe("anilistEntries", () => {
         completedAt: { year: 2020, month: 5, day: 3 },
         media,
       },
-      { mediaId: 2, status: "CURRENT", progress: 4, updatedAt: edited, media },
+      {
+        mediaId: 2,
+        status: "CURRENT",
+        progress: 4,
+        updatedAt: edited,
+        startedAt: { year: 2026, month: 9, day: 1 },
+        media,
+      },
       // A finish day with no full date: the last change it is.
       {
         mediaId: 3,
@@ -74,7 +81,10 @@ describe("anilistEntries", () => {
       },
     ]);
     expect(done?.watchedAt).toBe(Date.UTC(2020, 4, 3, 12));
+    expect(done).toMatchObject({ finishedOn: "2020-05-03" });
+    expect(early).not.toHaveProperty("finishedOn");
     expect(current?.watchedAt).toBe(edited * 1000);
+    expect(current).toMatchObject({ startedOn: "2026-09-01" });
     expect(early?.watchedAt).toBe(edited * 1000);
   });
 });

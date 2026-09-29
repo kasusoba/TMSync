@@ -2,6 +2,13 @@ import { describe, expect, it } from "vitest";
 import { malFields } from "./apply";
 
 describe("malFields", () => {
+  it("sends start and finish days as MAL dates", () => {
+    expect(malFields({ startedOn: "2026-09-01", finishedOn: "2026-09-20" })).toEqual({
+      start_date: "2026-09-01",
+      finish_date: "2026-09-20",
+    });
+  });
+
   it("maps a cour status, count, and score to MAL's fields", () => {
     expect(malFields({ status: "PAUSED", progress: 4, score: 76 })).toEqual({
       status: "on_hold",

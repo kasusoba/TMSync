@@ -56,6 +56,10 @@ export function stateOf(e: ListEntry): EntryState {
  * `num_times_rewatched`). Simkl reads as 0 and has nothing to write it to. Pure. */
 export const keepsRepeat = (tk: Tracker) => trackerFamily(tk) === "cour";
 
+/** Whether a tracker keeps start and finish days on an entry (AniList, MAL). Simkl
+ * has none to write them to. Pure. */
+export const keepsDays = (tk: Tracker) => trackerFamily(tk) === "cour";
+
 /** COMPLETED and REPEATING both mean "finished at least once". */
 export const finished = (s: CourStatus | null | undefined) =>
   s === "COMPLETED" || s === "REPEATING";

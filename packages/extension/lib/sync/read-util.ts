@@ -26,17 +26,39 @@ export function parseEach<S extends z.ZodTypeAny>(schema: S, items: unknown[]): 
   return out;
 }
 
+/** A date with no time, `2024-03-09`: how AniList and MAL keep start and finish days. */
+export type Day = string;
+
+/** A full date from its parts (AniList's `FuzzyDate`), or undefined when a part is
+ * missing. Pure. */
+export function dayOf(
+  d: { year?: number | null; month?: number | null; day?: number | null } | null | undefined,
+): Day | undefined {
+  if (!d?.year || !d.month || !d.day) return undefined;
+  return `${String(d.year).padStart(4, "0")}-${String(d.month).padStart(2, "0")}-${String(d.day).padStart(2, "0")}`;
+}
+
+/** A MAL date (`2024-03-09`, or only `2024-03` or `2024`) as a full day, or
+ * undefined when it is not one. Pure. */
+export function fullDay(v: string | null | undefined): Day | undefined {
+  return v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : undefined;
+}
+
+/** A day as its parts (AniList's `FuzzyDateInput`). Pure. */
+export function dayParts(d: Day): { year: number; month: number; day: number } {
+  const [year, month, day] = d.split("-").map(Number) as [number, number, number];
+  return { year, month, day };
+}
+
 /**
- * When a finished entry was watched: its finish day (a date with no time), at noon
- * UTC so no time zone moves it to another day. Never after `edited` (the entry's
- * last change): the watch came first. Undefined when the day is not a full date.
+ * When a finished entry was watched: its finish day, at noon UTC so no time zone
+ * moves it to another day. Never after `edited` (the entry's last change): the
+ * watch came first. Undefined with no finish day.
  */
-export function finishedAt(
-  day: { year?: number | null; month?: number | null; day?: number | null } | null | undefined,
-  edited: number | undefined,
-): number | undefined {
-  if (!day?.year || !day.month || !day.day) return undefined;
-  const t = Date.UTC(day.year, day.month - 1, day.day, 12);
+export function finishedAt(day: Day | undefined, edited: number | undefined): number | undefined {
+  if (!day) return undefined;
+  const { year, month, day: d } = dayParts(day);
+  const t = Date.UTC(year, month - 1, d, 12);
   return edited !== undefined ? Math.min(t, edited) : t;
 }
 

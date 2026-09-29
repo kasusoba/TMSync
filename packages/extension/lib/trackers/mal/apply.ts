@@ -6,6 +6,7 @@
  */
 import { errorMessage } from "../../errors";
 import { mergeCour } from "../../sync/merge";
+import { type Day, fullDay } from "../../sync/read-util";
 import type { ChunkOutcome, SyncWrite, TargetRef } from "../../sync/types";
 import { byTarget, outcomes, sleep, toTen } from "../../sync/write-util";
 import type { CourStatus } from "../cour-plan";
@@ -36,6 +37,8 @@ export function malFields(a: {
   status?: CourStatus;
   repeat?: number;
   score?: number;
+  startedOn?: Day;
+  finishedOn?: Day;
 }): MalListFields {
   const out: MalListFields = {};
   if (a.status === "REPEATING") {
@@ -48,6 +51,8 @@ export function malFields(a: {
   if (a.repeat !== undefined) out.num_times_rewatched = a.repeat;
   // MAL reads a score of 0 as "not rated": that is how a rating is cleared.
   if (a.score !== undefined) out.score = a.score === 0 ? 0 : toTen(a.score);
+  if (a.startedOn) out.start_date = a.startedOn;
+  if (a.finishedOn) out.finish_date = a.finishedOn;
   return out;
 }
 
@@ -79,7 +84,12 @@ export async function applyMal(writes: SyncWrite[], report?: ApplyReport): Promi
       await sleep(GAP_MS);
       const raw = await getMyListStatus(id);
       const entry = raw ? toCourEntry(raw) : null;
-      const fresh = entry && { ...entry, score: raw?.score ? raw.score * 10 : null };
+      const fresh = entry && {
+        ...entry,
+        score: raw?.score ? raw.score * 10 : null,
+        startedOn: fullDay(raw?.start_date),
+        finishedOn: fullDay(raw?.finish_date),
+      };
       const action = mergeCour(
         g.at.map((i) => writes[i] as SyncWrite),
         fresh,

@@ -1,6 +1,6 @@
 /** MyAnimeList's list for list sync: one cour entry per anime on the user's list. */
 import { z } from "zod";
-import { finishedAt, ms, parseEach } from "../../sync/read-util";
+import { finishedAt, fullDay, ms, parseEach } from "../../sync/read-util";
 import type { ListEntry } from "../../sync/types";
 import { readMalList, toCourEntry } from "./client";
 import { MAL_STATUSES } from "./types";
@@ -21,6 +21,7 @@ const Item = z.object({
     is_rewatching: z.boolean().nullish(),
     num_times_rewatched: z.number().nullish(),
     updated_at: z.string().nullish(),
+    start_date: z.string().nullish(),
     finish_date: z.string().nullish(),
   }),
 });
@@ -29,6 +30,8 @@ const Item = z.object({
  * "unknown", and a score of 0 for "not scored". Pure. */
 export function malEntries(raw: unknown[]): ListEntry[] {
   return parseEach(Item, raw).map(({ node, list_status: s }) => {
+    const startedOn = fullDay(s.start_date);
+    const finishedOn = fullDay(s.finish_date);
     const entry = toCourEntry({
       status: s.status ?? undefined,
       num_episodes_watched: s.num_episodes_watched ?? undefined,
@@ -45,25 +48,20 @@ export function malEntries(raw: unknown[]): ListEntry[] {
       rating: s.score ? s.score * 10 : null,
       updatedAt: ms(s.updated_at),
       watchedAt:
-        (s.status === "completed"
-          ? finishedAt(malDay(s.finish_date), ms(s.updated_at))
-          : undefined) ?? ms(s.updated_at),
+        (s.status === "completed" ? finishedAt(finishedOn, ms(s.updated_at)) : undefined) ??
+        ms(s.updated_at),
       adult: node.nsfw === "black",
       progress: entry.progress,
       total: node.num_episodes ? node.num_episodes : null,
       status: entry.status,
       repeat: entry.repeat,
       movie: node.media_type === "movie",
+      ...(startedOn ? { startedOn } : {}),
+      ...(finishedOn ? { finishedOn } : {}),
     };
   });
 }
 
 export async function readMalEntries(): Promise<ListEntry[]> {
   return malEntries(await readMalList());
-}
-
-/** A MAL date (`2024-03-09`, or only `2024-03` or `2024`) as its parts. Pure. */
-function malDay(v: string | null | undefined) {
-  const m = v?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  return m ? { year: Number(m[1]), month: Number(m[2]), day: Number(m[3]) } : null;
 }

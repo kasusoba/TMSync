@@ -62,6 +62,8 @@ const entries: ListEntry[] = [
     status: "COMPLETED",
     repeat: 0,
     updatedAt: 2,
+    startedOn: "2023-09-29",
+    finishedOn: "2024-03-22",
   },
   {
     tracker: "mal",

@@ -343,6 +343,11 @@ and nothing of it touches `extract()` or the scrobble path.
   updated entry wins, and the plan lists it as a conflict. A completed entry is never moved.
 - **Ratings** fill empty ratings only. Scores are compared on the target's own scale, so rounding
   (AniList 85 to MAL 9 and back) never loops. Two different ratings are a conflict.
+- **Start and finish days** (AniList `startedAt` and `completedAt`, MAL `start_date` and
+  `finish_date`) fill empty days only, on AniList and MAL (Simkl keeps none). A copy gets the first
+  start day of the sources, and the last finish day once the copy is finished. A day the copy has
+  is never changed, and a completed entry still gets an empty day filled (a day is not a move).
+  Only full dates count: a MAL date with no day is left alone.
 - **Picks.** In a conflict the user can pick the value every tracker gets (`withPicks`). A picked
   status still follows the episodes. A picked rating replaces the ratings that differ.
 - **Private and adult** AniList entries are skipped unless the user includes them.
