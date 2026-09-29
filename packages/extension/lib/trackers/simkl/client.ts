@@ -354,7 +354,7 @@ export async function scrobble(
   return { kind: "ok", action: res.data?.action, match: matchFrom(res.data) };
 }
 
-// --- list sync (reads the whole list; plans/list-sync.md) ---
+// --- list sync (reads the whole list; docs/ARCHITECTURE.md section 7) ---
 
 /** The Simkl library types list sync reads. */
 export type SimklListType = "shows" | "anime" | "movies";

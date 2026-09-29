@@ -418,20 +418,26 @@ show that holds other cours). Without more, the next base would have the item on
 and the sync after it would add the item back from there. So the plan lists the lists that lose
 the item (`SyncPlan.removed`), and the next base keeps a REMOVED mark for it on each (`x`). A mark
 counts as "had it at the base", so the item stays removed there, but not as a list that holds it,
-so it never blocks a removal. An anime's mark names the cour by its AniList and MAL ids only,
+so it never blocks a removal. A list that was not read this run (a failed read, an expired sign-in)
+also counts as a kept copy when its base has the item: its old base stays, and without marks the
+next run would read its copy and add the item back. An anime's mark names the cour by its AniList and MAL ids only,
 never the TMDB show, which names every cour. The plan says "history kept" only when the removal
 is new, not on every later sync. A mark goes when the user adds the item to that list again (the
 add wins), and when no list keeps a copy any more (the plan stops carrying it).
 
-**Stored choices.** The settings (`sync:list_sync_settings`: kinds, main lists, private, adult,
-automatic sync, and the ignore list) are small user prefs and go into the
-backup. Picks (`local:list_sync_picks`) stay on the device.
+**Stored choices.** `listSyncSettings` in `storage.ts` reads and writes one `ListSyncSettings`
+value over three items. Kinds, main lists, private, and adult are small user prefs and sync
+(`sync:list_sync_settings`). The ignore list stays on the device (`local:list_sync_ignore`): it can
+grow past the 8 KB a synced item may hold. Automatic sync is per device too
+(`local:list_sync_auto_on`): two browsers running the daily sync side by side would each send the
+same Trakt plays. All of it goes into the backup, and an import sets automatic sync on the device
+that imports it. Picks (`local:list_sync_picks`) stay on the device.
 
 **Limits.** Before the first clean sync there is no base, so a union brings back what the user
 removed on one tracker, because another still has it. An automatic run that holds a removal does not move the base, so
 additions it applied meanwhile are not in the base yet: if one of them is then removed on another
 list, the add wins until a clean run. Un-watched episodes are never carried over (that would lower
-progress). The ignore list sits in one `sync` item (8 KB, about 400 keys).
+progress). The ignore list does not follow the user to another browser (the backup carries it).
 
 ---
 
@@ -463,12 +469,13 @@ travels.
 
 - **`sync:`** (small, cross-device, user-owned): one `recipe:{id}` key per custom recipe (through
   `recipes/store.ts`), plus `quick_links`, `quick_links_enabled`, `corrections`, `manual_selections`,
-  `badge_prefs`, and `list_sync_settings`.
+  `badge_prefs`, and `list_sync_settings` (without the ignore list and automatic sync, which
+  are per device).
 - **`local:`** (per-device): `trakt_tokens`, `anilist_tokens`, `mal_tokens`, `simkl_tokens`, the
   resolution caches, `simkl_matches`, `simkl_scrobble_at`, `simkl_held_stops`, rating and note
   mirrors (the tracker is the source of truth), `remote_recipes`, `enabled_origins`, `anime_map`
   and `animap_overrides`, `anilist_corrections`, `mal_corrections`, `quicklink_slugs`, and the
-  list sync state (`list_sync_job`, `list_sync_apply`, `list_sync_cancel_at`, `list_sync_picks`,
+  list sync state (`list_sync_ignore`, `list_sync_auto_on`, `list_sync_job`, `list_sync_apply`, `list_sync_cancel_at`, `list_sync_picks`,
   `list_sync_cache_<tracker>`, `list_sync_base`, `list_sync_base_next`, `list_sync_auto`,
   `list_sync_auto_seen`).
 - **`session:`** (ephemeral, per tab): `tab_sessions` (the crash-reconcile source of truth),

@@ -1,5 +1,5 @@
 /**
- * List sync, background side (plans/list-sync.md): the preview. It reads and
+ * List sync, background side (docs/ARCHITECTURE.md section 7): the preview. It reads and
  * plans only; nothing here writes to a tracker (`apply.ts` does, from the plan
  * saved here).
  *

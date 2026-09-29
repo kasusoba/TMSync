@@ -1,5 +1,5 @@
 /**
- * Simkl's part of applying a list sync plan (plans/list-sync.md, phase 2). Per
+ * Simkl's part of applying a list sync plan (docs/ARCHITECTURE.md section 7). Per
  * chunk, at most four POSTs of the user's daily quota: `/sync/history/remove`,
  * `/sync/history` (watches, and an anime entry's episodes and status),
  * `/sync/ratings`, and `/sync/ratings/remove`. Never the scrobble endpoints, so

@@ -1,5 +1,5 @@
 /**
- * List sync, background side: apply (plans/list-sync.md, phase 2). Writes the
+ * List sync, background side: apply (docs/ARCHITECTURE.md section 7). Writes the
  * plan of the last preview to each tracker.
  *
  * Like the preview, an apply is a JOB whose state lives in storage
@@ -11,9 +11,9 @@
  * apply, the user previews again and applies that plan. The planner diffs
  * against what each tracker has NOW, so whatever was written drops out of the
  * new plan, and a history write (a new play on Trakt) is never sent twice,
- * even for the chunk that was in flight when the worker stopped (edge case 34).
+ * even for the chunk that was in flight when the worker stopped.
  * For the same reason a preview can be applied once, and only while it is fresh
- * (edge case 36).
+ * (a plan from lists that changed since could undo a newer watch).
  */
 import { browser } from "wxt/browser";
 import { errorMessage } from "../errors";
@@ -32,7 +32,7 @@ import { STALE_MS, type SyncPreview, jobAlive, readJob } from "./run";
 import type { ChunkOutcome, SyncPicks, SyncWrite, WriteOutcome } from "./types";
 
 /** How old a preview may be when it is applied. An older one is planned from lists
- * that may have changed, so the user previews again (edge case 36). */
+ * that may have changed, so the user previews again. */
 export const APPLY_FRESH_MS = 10 * 60_000;
 
 /** The shape version of a saved apply job (see `SYNC_JOB_VERSION`). */

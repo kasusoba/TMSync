@@ -1,5 +1,5 @@
 /**
- * MyAnimeList's part of applying a list sync plan (plans/list-sync.md, phase 2).
+ * MyAnimeList's part of applying a list sync plan (docs/ARCHITECTURE.md section 7).
  * One PATCH (or DELETE) per entry, after a fresh read of it (`mergeCour`), so a
  * scrobble that landed since the preview is never undone. MAL answers bursts with
  * 403, so calls are spaced, and a 403 stops MAL for this run: never a retry loop.

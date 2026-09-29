@@ -62,7 +62,7 @@ export interface TrackerService {
    */
   pinPick?(media: ParsedMedia, pick: SearchOption): Promise<void>;
   /**
-   * Read the user's whole list for list sync (plans/list-sync.md). Read only: it
+   * Read the user's whole list for list sync (docs/ARCHITECTURE.md section 7). Read only: it
    * never writes. `kinds` are the kinds this tracker takes part in, so it can skip
    * reads nobody needs. `saved` is the list this tracker saved at its last read,
    * for a tracker with a cheap change check to reuse (`sync/cache.ts`); it
@@ -72,7 +72,7 @@ export interface TrackerService {
    */
   readList?(kinds: SyncKind[], saved: ListCache | null, timed: boolean): Promise<ListRead>;
   /**
-   * Write this tracker's part of a list sync plan (plans/list-sync.md, phase 2).
+   * Write this tracker's part of a list sync plan (docs/ARCHITECTURE.md section 7).
    * The runner sends the writes `chunk` at a time and saves its place after each,
    * so the tracker picks a size that suits its limits. `run` spaces its own
    * requests, answers one result per write, and never throws for one bad item.

@@ -1,5 +1,5 @@
 /**
- * Saved lists for list sync (plans/list-sync-phase3.md, phase 1). A tracker with a
+ * Saved lists for list sync (docs/ARCHITECTURE.md section 7, "Change checks"). A tracker with a
  * cheap "what changed" check (Trakt `/sync/last_activities`, Simkl
  * `/sync/activities`) saves the list it read, with the check's stamps. The next
  * read asks the check first and reuses each part whose stamp did not move, so an

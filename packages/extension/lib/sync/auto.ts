@@ -1,5 +1,5 @@
 /**
- * List sync, the automatic run (plans/list-sync-phase3.md, phase 2: the daily run).
+ * List sync, the automatic run (docs/ARCHITECTURE.md section 7, "Automatic sync").
  * Optional and off by default (`ListSyncSettings.auto`). Once a day an alarm runs the same
  * preview and apply jobs the user runs by hand, but applies only the ADDITIONS:
  * what cannot lose anything. Everything else (removals, status changes, conflicts)

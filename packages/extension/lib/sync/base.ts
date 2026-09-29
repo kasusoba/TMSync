@@ -1,5 +1,5 @@
 /**
- * The list sync base (plans/list-sync-phase3.md, phase 3): what each tracker's list
+ * The list sync base (docs/ARCHITECTURE.md section 7, "The base"): what each tracker's list
  * held after the last CLEAN sync. With it, union mode can tell "removed on one
  * list" (in the base, gone now) from "never there" (not in the base), and remove
  * the entry (or the rating) from the others instead of adding it back.

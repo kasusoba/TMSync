@@ -1,5 +1,5 @@
 /**
- * The List sync pane (plans/list-sync.md), presentational: the options page and the
+ * The List sync pane (docs/ARCHITECTURE.md section 7), presentational: the options page and the
  * gallery feed it. A preview shows what each tracker is missing; Apply writes it,
  * after a confirm that says what will be removed first.
  *

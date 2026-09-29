@@ -1,7 +1,7 @@
 /**
  * Read before write, for the trackers that keep a count (AniList, MAL): the plan
  * was made from a read that may be minutes old, and scrobbling can change an
- * entry in between (plans/list-sync.md, edge case 35). So each write is merged
+ * entry in between (docs/ARCHITECTURE.md section 7, "Read before write"). So each write is merged
  * with a fresh read of the entry, by the scrobbling rules:
  *  - progress never goes down: `max(fresh, planned)`.
  *  - a completed entry (or a rewatch) is never moved. Only a higher rewatch count

@@ -1,4 +1,4 @@
-/** Small helpers the per-tracker writers share (plans/list-sync.md, phase 2). */
+/** Small helpers the per-tracker writers share (docs/ARCHITECTURE.md section 7). */
 import { onScale } from "./score";
 import type { SyncWrite, TargetRef, WriteOutcome } from "./types";
 

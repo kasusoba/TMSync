@@ -176,7 +176,7 @@ How list sync reads and writes each tracker. How it plans is in
 | | **Reads (one preview)** | **Writes (apply)** | **Spacing and stops** |
 |---|---|---|---|
 | Trakt | `/sync/last_activities`, then (if it moved) up to 5 GETs: `/sync/watched/{shows,movies}`, `/sync/ratings/{shows,seasons,movies}` (paged) | `POST /sync/history`, `POST /sync/ratings`, and `POST /sync/ratings/remove`, up to 100 items each | 1.1 s between POSTs. 429 or 420 stops Trakt. |
-| AniList | `Viewer`, then `MediaListCollection` in chunks of 500 (custom lists skipped) | a fresh `Page.mediaList(mediaId_in)` read per 25 entries, then one `SaveMediaListEntry` or `DeleteMediaListEntry` per entry | 2.1 s between requests. A 429 waits out `Retry-After` once; a second one stops AniList. |
+| AniList | `Viewer`, then `MediaListCollection` in chunks of 500 (custom lists too, one entry per media: an entry hidden from status lists is only there) | a fresh `Page.mediaList(mediaId_in)` read per 25 entries, then one `SaveMediaListEntry` or `DeleteMediaListEntry` per entry | 2.1 s between requests. A 429 waits out `Retry-After` once; a second one stops AniList. |
 | MyAnimeList | `/users/@me/animelist`, 1000 per page, one page at a time | per entry: `GET /anime/{id}` (`my_list_status`), then `PATCH` or `DELETE /anime/{id}/my_list_status` | 1.5 s between requests. A 403 stops MAL. |
 | Simkl | `/sync/activities`, then 0 to 3: `/sync/all-items/{shows,anime,movies}` for the types that moved, with `date_from` when nothing was removed | `POST /sync/history/remove`, `/sync/history`, `/sync/ratings`, `/sync/ratings/remove`, up to 250 items per chunk | 1.1 s between POSTs. A 429 stops Simkl. |
 
@@ -188,7 +188,7 @@ How list sync reads and writes each tracker. How it plans is in
   entries, so sync writes it no status and never removes from it.
 - **AniList.** Read scores with `score(format: POINT_100)`, so every score is 0 to 100, and write
   with `scoreRaw` (0 clears a rating). A removal needs the LIST ENTRY id (`MediaList.id`), not the media id; the fresh
-  read before each write gives it. `private` entries and `isAdult` media are skipped by default.
+  read before each write gives it. `private` entries, entries hidden from status lists (`hiddenFromStatusLists`), and `isAdult` media are skipped by default.
 - **MyAnimeList.** Read with `nsfw=true`, or adult entries are missing from the list. Rewatching is
   `completed` plus `is_rewatching`, and `num_episodes: 0` means unknown. A score of 0 clears a
   rating. `DELETE` answers 404 when

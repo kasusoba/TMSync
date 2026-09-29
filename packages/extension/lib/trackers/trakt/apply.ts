@@ -1,5 +1,5 @@
 /**
- * Trakt's part of applying a list sync plan (plans/list-sync.md, phase 2): one
+ * Trakt's part of applying a list sync plan (docs/ARCHITECTURE.md section 7): one
  * `POST /sync/history` for the watches, one `POST /sync/ratings` for the ratings,
  * and one `POST /sync/ratings/remove` for the ratings to clear, per chunk.
  * Trakt keeps a new play for every history write, so the plan never sends one

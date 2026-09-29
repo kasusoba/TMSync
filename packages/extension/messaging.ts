@@ -238,7 +238,7 @@ export interface ProtocolMap {
    * and reviews (rewatches included). Client-side only — the CSV is returned to
    * the page to download; nothing is sent anywhere new (constraint #6). */
   exportLetterboxd(): { ok: boolean; csv?: string; count?: number; error?: string };
-  /** List sync (plans/list-sync.md): start reading every connected tracker's list
+  /** List sync (docs/ARCHITECTURE.md section 7): start reading every connected tracker's list
    * and planning what each is missing. Returns at once; progress and the plan land
    * in the `listSyncJob` storage item. Read only, it writes nothing to a tracker.
    * `started: false` = a preview is already running. */
