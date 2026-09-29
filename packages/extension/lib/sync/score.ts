@@ -18,7 +18,6 @@ export function onScale(score: number, scale: ScoreScale): number {
   const s = Math.min(100, Math.max(0, score));
   switch (scale) {
     case "POINT_100":
-      return Math.max(1, Math.round(s));
     case "POINT_10_DECIMAL":
       return Math.max(1, Math.round(s));
     case "POINT_5":
@@ -31,7 +30,7 @@ export function onScale(score: number, scale: ScoreScale): number {
   }
 }
 
-/** Whether two scores are equal on the target's scale. Pure. */
-export function sameScore(a: number, b: number, scale: ScoreScale): boolean {
-  return onScale(a, scale) === onScale(b, scale);
+/** A 0 to 100 score as the "8.5" of "8.5/10", for the preview. Pure. */
+export function outOfTen(score: number): number {
+  return Math.round(score) / 10;
 }

@@ -1,12 +1,12 @@
 import { render } from "preact";
 import { describe, expect, it } from "vitest";
-import { planSync, summarize, syncKindsFor } from "../../sync/plan";
-import type { SyncPreview } from "../../sync/run";
-import { DEFAULT_SYNC_SETTINGS, type ListEntry, type ListSyncSettings } from "../../sync/types";
-import { Animap } from "../../trackers/animap/index";
-import { ALL_TRACKERS, type Tracker } from "../../trackers/types";
-import { ListSyncView, describeWrite } from "./ListSyncView";
-import { tokens } from "./kit";
+import { planSync, summarize, syncKindsFor } from "../../../sync/plan/index";
+import type { SyncPreview } from "../../../sync/preview";
+import { DEFAULT_SYNC_SETTINGS, type ListEntry, type ListSyncSettings } from "../../../sync/types";
+import { Animap } from "../../../trackers/animap/index";
+import { ALL_TRACKERS, type Tracker } from "../../../trackers/types";
+import { tokens } from "../kit";
+import { ListSyncView } from "./ListSyncView";
 
 // A render smoke test: a crash in this view blanks the whole options pane.
 const entries: ListEntry[] = [
@@ -154,40 +154,5 @@ describe("ListSyncView apply", () => {
     expect(text).toContain("Applying…");
     expect(text).toContain("1 of 4 written · 1 changed since the preview");
     expect(text).toContain("Stop");
-  });
-});
-
-describe("describeWrite", () => {
-  it("says what the tracker had before", () => {
-    const target = { ids: {}, mediaType: "show" as const };
-    expect(
-      describeWrite({
-        tracker: "mal",
-        op: "remove",
-        target,
-        was: { status: "PLANNING", progress: 0, total: 1, rating: 80 },
-      }),
-    ).toBe("remove · was Plan to watch · 0/1 eps · rated 8/10");
-    expect(
-      describeWrite({
-        tracker: "trakt",
-        op: "episodes",
-        target,
-        add: [{ number: 3 }],
-        was: { episodes: 2 },
-      }),
-    ).toBe("+1 episode · had 2");
-    expect(describeWrite({ tracker: "trakt", op: "episodes", target, add: [{ number: 1 }] })).toBe(
-      "+1 episode · new",
-    );
-    expect(
-      describeWrite({
-        tracker: "mal",
-        op: "entry",
-        target,
-        create: false,
-        status: { from: "CURRENT", to: "DROPPED" },
-      }),
-    ).toBe("update · Watching → Dropped");
   });
 });

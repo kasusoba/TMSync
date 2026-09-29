@@ -1,6 +1,6 @@
 /** AniList's list for list sync: one cour entry per anime on the viewer's list. */
 import { z } from "zod";
-import { parseEach } from "../../sync/read";
+import { parseEach } from "../../sync/read-util";
 import type { ListEntry } from "../../sync/types";
 import type { CourStatus } from "../cour-plan";
 import type { ScoreFormat } from "../types";
@@ -14,6 +14,7 @@ const Entry = z.object({
   progress: z.number().nullish(),
   repeat: z.number().nullish(),
   private: z.boolean().nullish(),
+  hiddenFromStatusLists: z.boolean().nullish(),
   updatedAt: z.number().nullish(),
   score: z.number().nullish(),
   media: z.object({
@@ -38,7 +39,8 @@ export function anilistEntries(raw: unknown[]): ListEntry[] {
     ids: { anilist: e.mediaId, ...(e.media.idMal ? { mal: e.media.idMal } : {}) },
     rating: e.score ? e.score : null,
     updatedAt: e.updatedAt ? e.updatedAt * 1000 : undefined,
-    private: e.private ?? false,
+    // Hidden from status lists counts as private: the user keeps it out of view.
+    private: !!e.private || !!e.hiddenFromStatusLists,
     adult: e.media.isAdult ?? false,
     progress: e.progress ?? 0,
     total: e.media.episodes ?? null,

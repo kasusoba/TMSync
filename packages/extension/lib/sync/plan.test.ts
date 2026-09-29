@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Animap, type AnimapRow } from "../trackers/animap/index";
 import type { Tracker } from "../trackers/types";
-import { planSync, summarize, takesKind, withPicks } from "./plan";
+import { planSync, summarize, takesKind, withPicks } from "./plan/index";
 import { onScale } from "./score";
 import {
   DEFAULT_SYNC_SETTINGS,
@@ -581,6 +581,33 @@ describe("status and progress", () => {
     expect(writesFor(p, "mal")).toEqual([]);
   });
 
+  it("a picked completed needs every episode, as the planner does", () => {
+    const p = withPicks(
+      plan(
+        [
+          courEntry(
+            "anilist",
+            { anilist: 30, mal: 300 },
+            { status: "CURRENT", progress: 4, total: null, updatedAt: 200 },
+          ),
+          courEntry(
+            "mal",
+            { anilist: 30, mal: 300 },
+            { status: "DROPPED", progress: 4, total: null, updatedAt: 100 },
+          ),
+        ],
+        { trackers: ["anilist", "mal"] },
+      ),
+      { "status:anilist:30": "COMPLETED" },
+    );
+    // The length is unknown (airing), so "completed" cannot be checked: watching.
+    const statuses = p.items.flatMap((i) => i.writes).map((w) => w.op === "entry" && w.status?.to);
+    expect(statuses).not.toContain("COMPLETED");
+    expect(writesFor(p, "mal")).toEqual([
+      expect.objectContaining({ status: { from: "DROPPED", to: "CURRENT" } }),
+    ]);
+  });
+
   it("the most recent status wins, and the preview lists the conflict", () => {
     const p = plan(
       [
@@ -692,8 +719,26 @@ describe("summarize", () => {
   it("counts writes per tracker", () => {
     const p = plan([traktShow(1399, { 1: [1, 2] })], { trackers: ["trakt", "simkl"] });
     expect(summarize(p, ["trakt", "simkl"])).toEqual([
-      { tracker: "trakt", episodes: 0, movies: 0, created: 0, updated: 0, ratings: 0, removed: 0 },
-      { tracker: "simkl", episodes: 2, movies: 0, created: 0, updated: 0, ratings: 0, removed: 0 },
+      {
+        tracker: "trakt",
+        episodes: 0,
+        movies: 0,
+        created: 0,
+        updated: 0,
+        ratings: 0,
+        removed: 0,
+        unrated: 0,
+      },
+      {
+        tracker: "simkl",
+        episodes: 2,
+        movies: 0,
+        created: 0,
+        updated: 0,
+        ratings: 0,
+        removed: 0,
+        unrated: 0,
+      },
     ]);
   });
 });

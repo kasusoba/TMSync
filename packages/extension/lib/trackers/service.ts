@@ -1,14 +1,15 @@
 import type { ParsedMedia } from "@tmsync/shared";
-import type { ChunkOutcome, ListEntry, SyncKind, SyncWrite, WriteOutcome } from "../sync/types";
-
-/** Report some writes of a chunk as done, by their place in the chunk. */
-export type ApplyReport = (at: number[], outcome: WriteOutcome) => void;
+import type { ListCache, ListRead } from "../sync/list-cache";
+import type { ChunkOutcome, SyncKind, SyncWrite, WriteOutcome } from "../sync/types";
 import { anilistService } from "./anilist/service";
 import type { BoundCourPins } from "./cour-pins";
 import { malService } from "./mal/service";
 import { simklService } from "./simkl/service";
 import { traktService } from "./trakt/service";
-import type { CourTracker, RatingLevel, ScoreFormat, SearchOption, Tracker } from "./types";
+import type { CourTracker, RatingLevel, SearchOption, Tracker } from "./types";
+
+/** Report some writes of a chunk as done, by their place in the chunk. */
+export type ApplyReport = (at: number[], outcome: WriteOutcome) => void;
 
 type Ok = Promise<{ ok: boolean; error?: string }>;
 
@@ -61,14 +62,17 @@ export interface TrackerService {
    */
   pinPick?(media: ParsedMedia, pick: SearchOption): Promise<void>;
   /**
-   * Read the user's whole list for list sync (plans/list-sync.md). Read only: it
+   * Read the user's whole list for list sync (docs/ARCHITECTURE.md section 7). Read only: it
    * never writes. `kinds` are the kinds this tracker takes part in, so it can skip
-   * reads nobody needs. `scoreFormat` is the user's score scale where it is theirs
-   * to pick (AniList). Optional: a tracker without it takes no part in list sync.
+   * reads nobody needs. `saved` is the list this tracker saved at its last read,
+   * for a tracker with a cheap change check to reuse (`sync/list-cache.ts`); it
+   * returns the list to save next in `cache`. `timed` = the automatic daily run
+   * asks, not the user (Simkl never reads in full on a timer without its change
+   * check). Optional: a tracker without it takes no part in list sync.
    */
-  readList?(kinds: SyncKind[]): Promise<{ entries: ListEntry[]; scoreFormat?: ScoreFormat | null }>;
+  readList?(kinds: SyncKind[], saved: ListCache | null, timed: boolean): Promise<ListRead>;
   /**
-   * Write this tracker's part of a list sync plan (plans/list-sync.md, phase 2).
+   * Write this tracker's part of a list sync plan (docs/ARCHITECTURE.md section 7).
    * The runner sends the writes `chunk` at a time and saves its place after each,
    * so the tracker picks a size that suits its limits. `run` spaces its own
    * requests, answers one result per write, and never throws for one bad item.

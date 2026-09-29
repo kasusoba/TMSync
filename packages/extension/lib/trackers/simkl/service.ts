@@ -7,7 +7,7 @@ import { readSimklEntries } from "./list";
 import { simklDeleteNote, simklGetReview, simklRate, simklSaveNote, simklUnrate } from "./review";
 
 export const simklService: TrackerService = {
-  readList: async (kinds) => ({ entries: await readSimklEntries(kinds) }),
+  readList: readSimklEntries,
   applyList: { chunk: SIMKL_CHUNK, run: applySimkl },
   status: async () => ({
     connected: await isConnected(),

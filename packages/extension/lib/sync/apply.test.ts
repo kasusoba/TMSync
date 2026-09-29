@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { APPLY_FRESH_MS, APPLY_JOB_VERSION, type ApplyJob, applyBlock, applyQueues } from "./apply";
-import type { SyncPreview } from "./run";
+import type { SyncPreview } from "./preview";
 import type { SyncPlan, SyncWrite } from "./types";
 
 const target = { ids: { tmdb: 1 }, mediaType: "show" as const };

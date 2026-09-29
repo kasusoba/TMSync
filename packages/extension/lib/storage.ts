@@ -2,7 +2,10 @@ import type { BadgeStatus } from "@/messaging";
 import type { LinkTemplates, ParsedMedia, Recipe } from "@tmsync/shared";
 import { storage } from "wxt/utils/storage";
 import type { ApplyJob } from "./sync/apply";
-import type { SyncJob } from "./sync/run";
+import type { AutoRun } from "./sync/auto";
+import type { PendingBase, SyncBase } from "./sync/base";
+import type { ListCache } from "./sync/list-cache";
+import type { SyncJob } from "./sync/preview";
 import type { SyncPicks } from "./sync/types";
 import { DEFAULT_SYNC_SETTINGS, type ListSyncSettings } from "./sync/types";
 import type { AniListIdentity, AniListTokens } from "./trackers/anilist/types";
@@ -41,6 +44,14 @@ export const traktTokens = storage.defineItem<TraktTokens | null>("local:trakt_t
 export const anilistTokens = storage.defineItem<AniListTokens | null>("local:anilist_tokens", {
   fallback: null,
 });
+
+/** The AniList viewer id, for list sync's fresh reads. `at` is the token's
+ * `obtained_at`: a new sign-in has a new one, so an id of the old account is
+ * never used. */
+export const anilistViewer = storage.defineItem<{ at: number; id: number } | null>(
+  "local:anilist_viewer",
+  { fallback: null },
+);
 
 /** AniList resolution cache keyed by anilistCacheKey(media). */
 export const anilistResolutionCache = storage.defineItem<Record<string, Cached<AniListIdentity>>>(
@@ -443,11 +454,62 @@ export const badgePrefs = storage.defineItem<BadgePrefs>("sync:badge_prefs", {
   fallback: { mode: "full", position: null },
 });
 
-/** List sync choices (plans/list-sync.md): which kinds each tracker takes part in,
- * private and adult entries, and the items the user keeps out. */
-export const listSyncSettings = storage.defineItem<ListSyncSettings>("sync:list_sync_settings", {
+/** The list sync choices that follow the user across devices: which kinds each
+ * tracker takes part in, private and adult entries, and the main lists. Small, so
+ * `sync`. Older builds also kept `ignore` and `auto` here (read once, see below). */
+type SyncedSyncPrefs = Omit<ListSyncSettings, "ignore" | "auto"> &
+  Partial<Pick<ListSyncSettings, "ignore" | "auto">>;
+const listSyncPrefs = storage.defineItem<SyncedSyncPrefs>("sync:list_sync_settings", {
   fallback: DEFAULT_SYNC_SETTINGS,
 });
+
+/** The items the user keeps out of list sync. `local`, not `sync`: the list can
+ * grow past the 8 KB a synced item may hold. Null = not moved out of the synced
+ * item yet. */
+const listSyncIgnore = storage.defineItem<string[] | null>("local:list_sync_ignore", {
+  fallback: null,
+});
+
+/** Automatic list sync on this device. `local`, not `sync`: two browsers running
+ * the daily sync side by side would each send the same Trakt plays. */
+const listSyncAutoOn = storage.defineItem<boolean>("local:list_sync_auto_on", {
+  fallback: false,
+});
+
+/**
+ * List sync choices (docs/ARCHITECTURE.md section 7), as one value over three
+ * stored items: the synced prefs, and this device's ignore list and auto switch.
+ */
+export const listSyncSettings = {
+  async getValue(): Promise<ListSyncSettings> {
+    const [prefs, ignore, auto] = await Promise.all([
+      listSyncPrefs.getValue(),
+      listSyncIgnore.getValue(),
+      listSyncAutoOn.getValue(),
+    ]);
+    const { ignore: oldIgnore, auto: _synced, ...rest } = prefs;
+    // An ignore list an older build kept in the synced item: move it here once.
+    if (ignore === null && oldIgnore?.length)
+      await listSyncIgnore.setValue(oldIgnore).catch(() => {});
+    return { ...DEFAULT_SYNC_SETTINGS, ...rest, ignore: ignore ?? oldIgnore ?? [], auto };
+  },
+  async setValue(next: ListSyncSettings): Promise<void> {
+    const { ignore, auto, ...prefs } = next;
+    await Promise.all([
+      listSyncIgnore.setValue(ignore),
+      listSyncAutoOn.setValue(!!auto),
+      listSyncPrefs.setValue(prefs),
+    ]);
+  },
+  /** Call `cb` with the whole value when any part changes. Returns the unwatch. */
+  watch(cb: (next: ListSyncSettings) => void): () => void {
+    const fire = () => void listSyncSettings.getValue().then(cb, () => {});
+    const off = [listSyncPrefs.watch(fire), listSyncIgnore.watch(fire), listSyncAutoOn.watch(fire)];
+    return () => {
+      for (const u of off) u();
+    };
+  },
+};
 
 /** The last list sync preview job: its progress while it runs, then the plan. The
  * background saves it step by step; the options page watches it. */
@@ -465,6 +527,51 @@ export const listSyncApply = storage.defineItem<ApplyJob | null>("local:list_syn
  * saves never overwrite it. */
 export const listSyncCancelAt = storage.defineItem<number>("local:list_sync_cancel_at", {
   fallback: 0,
+});
+
+/** Each tracker's list as saved at its last list sync read (`sync/list-cache.ts`). One
+ * item per tracker: the reads run side by side, and a big list saves on its own. */
+const LIST_SYNC_CACHE: Record<Tracker, ReturnType<typeof listCacheItem>> = {
+  trakt: listCacheItem("trakt"),
+  anilist: listCacheItem("anilist"),
+  mal: listCacheItem("mal"),
+  simkl: listCacheItem("simkl"),
+};
+
+function listCacheItem(tracker: Tracker) {
+  return storage.defineItem<ListCache | null>(`local:list_sync_cache_${tracker}`, {
+    fallback: null,
+  });
+}
+
+export function listSyncCache(tracker: Tracker) {
+  return LIST_SYNC_CACHE[tracker];
+}
+
+/** Each tracker's list after the last clean list sync (`sync/base.ts`): id keys
+ * and rated flags only, for remembered removals. */
+export const listSyncBase = storage.defineItem<SyncBase | null>("local:list_sync_base", {
+  fallback: null,
+});
+
+/** The lists of the last preview, until its apply says whether they became the
+ * base (`sync/base-store.ts`). */
+export const listSyncBaseNext = storage.defineItem<PendingBase | null>(
+  "local:list_sync_base_next",
+  {
+    fallback: null,
+  },
+);
+
+/** The last automatic list sync run (`sync/auto.ts`). */
+export const listSyncAuto = storage.defineItem<AutoRun | null>("local:list_sync_auto", {
+  fallback: null,
+});
+
+/** The held items of the automatic run the user has seen in the pane, so the
+ * toolbar badge counts only new ones. */
+export const listSyncAutoSeen = storage.defineItem<string[]>("local:list_sync_auto_seen", {
+  fallback: [],
 });
 
 /** What the user picked where trackers disagree (a score 0 to 100, or a status),

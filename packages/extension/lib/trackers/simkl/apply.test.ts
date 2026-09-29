@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { inNotFound } from "../../sync/pace";
 import type { SyncWrite } from "../../sync/types";
+import { inNotFound } from "../../sync/write-util";
 import { simklBodies, simklItemIds } from "./apply";
 
 const anime = {
@@ -81,5 +81,21 @@ describe("inNotFound", () => {
     expect(inNotFound(reply, { mal: 300, anilist: 31 })).toBe(false);
     expect(inNotFound({ not_found: { shows: [] } }, { mal: 300 })).toBe(false);
     expect(inNotFound(undefined, { mal: 300 })).toBe(false);
+  });
+});
+
+describe("simklBodies: unrate", () => {
+  it("sends a cleared rating to its own body", () => {
+    const w: SyncWrite = {
+      tracker: "simkl",
+      op: "unrate",
+      level: "movie",
+      target: { id: 5, ids: { tmdb: 11 }, mediaType: "movie" },
+      was: 70,
+    };
+    const out = simklBodies([w]);
+    expect(out.unrate.at).toEqual([0]);
+    expect(out.ratings.at).toEqual([]);
+    expect(out.unrate.body.movies).toHaveLength(1);
   });
 });

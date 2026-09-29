@@ -496,7 +496,7 @@ export async function exportLetterboxd(): Promise<{ csv: string; count: number }
   return { csv: toLetterboxdCsv(rows), count: rows.length };
 }
 
-// --- list sync (reads the whole list; plans/list-sync.md) ---
+// --- list sync (reads the whole list; docs/ARCHITECTURE.md section 7) ---
 
 /** Everything list sync reads from Trakt, as Trakt returns it. */
 export interface TraktListDump {
@@ -525,11 +525,19 @@ export async function readTraktList(want: {
   return { shows, movies, showRatings, seasonRatings, movieRatings };
 }
 
-// --- list sync writes (plans/list-sync.md, phase 2) ---
+/** Trakt's change stamps (`/sync/last_activities`), unparsed. One GET, so a list
+ * sync can skip the full read when nothing moved (docs/ARCHITECTURE.md section 7, "Change checks"). */
+export async function readTraktActivity(): Promise<unknown> {
+  const res = await api("/sync/last_activities", {}, true);
+  if (!res.ok) throw new Error(`Trakt /sync/last_activities returned ${res.status}`);
+  return res.json();
+}
+
+// --- list sync writes (docs/ARCHITECTURE.md section 7) ---
 
 /** A Trakt sync POST: status, the JSON body when it worked, and a short error. */
 export async function syncPost(
-  path: "/sync/history" | "/sync/ratings",
+  path: "/sync/history" | "/sync/ratings" | "/sync/ratings/remove",
   body: unknown,
 ): Promise<{ status: number; data?: unknown; error?: string }> {
   const res = await api(path, { method: "POST", body: JSON.stringify(body) }, true);

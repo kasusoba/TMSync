@@ -1,5 +1,5 @@
 /**
- * List sync, background side (plans/list-sync.md): the preview. It reads and
+ * List sync, background side (docs/ARCHITECTURE.md section 7): the preview. It reads and
  * plans only; nothing here writes to a tracker (`apply.ts` does, from the plan
  * saved here).
  *
@@ -10,13 +10,14 @@
  * options page watches the storage item. If the worker is stopped anyway, the
  * last saved step says where (constraint #4: nothing lives only in memory).
  */
-import { browser } from "wxt/browser";
 import { errorMessage } from "../errors";
 import {
   animapOverrides,
   animeMap,
   listSyncApply,
+  listSyncCache,
   listSyncJob,
+  listSyncPicks,
   listSyncSettings,
 } from "../storage";
 import { Animap } from "../trackers/animap/index";
@@ -24,9 +25,12 @@ import { withOverrides } from "../trackers/animap/overrides";
 import { getAdapter } from "../trackers/index";
 import { getService } from "../trackers/service";
 import { ALL_TRACKERS, type Tracker } from "../trackers/types";
-import { planSync, summarize, syncKindsFor, takesKind } from "./plan";
+import { nextLists, settingsSig } from "./base";
+import { commitBase, loadBase, savePending } from "./base-store";
+import { exclusive, jobAlive, jobRunner, versioned } from "./job";
+import { planSync, summarize, syncKindsFor, takesKind } from "./plan/index";
 import type { ScoreScale } from "./score";
-import type { ListEntry, SyncPlan, SyncTotals } from "./types";
+import { type ListEntry, type SyncPlan, type SyncTotals, pickKey } from "./types";
 
 /** One tracker's part in a preview. */
 export interface TrackerRead {
@@ -36,6 +40,9 @@ export interface TrackerRead {
   state: "waiting" | "reading" | "read" | "not_connected" | "off" | "failed";
   /** How many entries its list has. */
   count?: number;
+  /** How much was read (see `ListRead.from`): `saved` = nothing changed since the
+   * last read, `changes` = only what changed. Missing = a full read. */
+  from?: "saved" | "changes";
   error?: string;
 }
 
@@ -52,6 +59,8 @@ export interface SyncPreview {
   plan: SyncPlan;
   /** Each tracker's score scale, to turn a picked score into its writes. */
   scales: Partial<Record<Tracker, ScoreScale>>;
+  /** The automatic daily run made it (`auto.ts`), and applied its additions. */
+  auto?: boolean;
 }
 
 /**
@@ -59,7 +68,7 @@ export interface SyncPreview {
  * `SyncPlan` changes shape: a job saved by an older build is then dropped on read,
  * instead of rendering (and crashing on) fields it does not have.
  */
-export const SYNC_JOB_VERSION = 5;
+export const SYNC_JOB_VERSION = 8;
 
 /** A preview job, as saved in storage. */
 export interface SyncJob {
@@ -76,64 +85,49 @@ export interface SyncJob {
   error?: string;
 }
 
-/** How often a running job saves a beat. Each save is an extension API call,
- * which also keeps the worker from being stopped as idle. */
-const BEAT_MS = 10_000;
-
-/** A running job with no beat for this long was stopped by the browser. */
-export const STALE_MS = 3 * BEAT_MS;
-
 /** A saved job, or null when it is missing or from an older build. Pure. */
-export function readJob(raw: unknown): SyncJob | null {
-  const job = raw as SyncJob | null;
-  return job && job.v === SYNC_JOB_VERSION ? job : null;
-}
-
-/** Whether a saved job is still really running. Pure. */
-export function jobAlive(
-  job: { state: string; beatAt: number } | null | undefined,
-  now: number,
-): boolean {
-  return job?.state === "running" && now - job.beatAt < STALE_MS;
-}
+export const readJob = versioned<SyncJob>(SYNC_JOB_VERSION);
 
 /**
  * Start a preview unless one is running. Returns at once; the job reports through
  * `listSyncJob`. Writes nothing to a tracker.
  */
 export async function startPreview(): Promise<{ started: boolean }> {
-  if (jobAlive(readJob(await listSyncJob.getValue()), Date.now())) return { started: false };
-  // A preview during an apply would plan from lists that are half written.
-  if (jobAlive(await listSyncApply.getValue(), Date.now())) return { started: false };
-  const now = Date.now();
-  await listSyncJob.setValue({
-    v: SYNC_JOB_VERSION,
-    state: "running",
-    startedAt: now,
-    beatAt: now,
-    reads: [],
-  });
-  void runPreview();
-  return { started: true };
+  return { started: (await beginPreview(false)) !== null };
 }
 
-async function runPreview(): Promise<void> {
-  // Save progress under one queue, so two steps never overwrite each other.
-  let job = (await listSyncJob.getValue()) as SyncJob;
-  let saving: Promise<void> = Promise.resolve();
-  const save = (patch: Partial<SyncJob>) => {
-    job = { ...job, ...patch, beatAt: Date.now() };
-    const snapshot = job;
-    saving = saving.then(() => listSyncJob.setValue(snapshot)).catch(() => {});
-    return saving;
-  };
-  const setRead = (r: TrackerRead) =>
-    save({ reads: [...job.reads.filter((x) => x.tracker !== r.tracker), r].sort(byTracker) });
+/**
+ * Start a preview job unless a preview or an apply is running. Resolves to the
+ * running job (which ends with the preview, or a failure), or null when it could
+ * not start. `auto` = the automatic run started it: it is on a timer, which some
+ * trackers treat differently (Simkl never reads in full on a timer).
+ */
+export async function beginPreview(auto: boolean): Promise<Promise<SyncJob> | null> {
+  const start = await exclusive(async () => {
+    if (jobAlive(readJob(await listSyncJob.getValue()), Date.now())) return null;
+    // A preview during an apply would plan from lists that are half written.
+    if (jobAlive(await listSyncApply.getValue(), Date.now())) return null;
+    const now = Date.now();
+    const job: SyncJob = {
+      v: SYNC_JOB_VERSION,
+      state: "running",
+      startedAt: now,
+      beatAt: now,
+      reads: [],
+    };
+    await listSyncJob.setValue(job);
+    return job;
+  });
+  return start ? runPreview(start, auto) : null;
+}
 
-  const beat = setInterval(() => {
-    void save({});
-    browser.runtime.getPlatformInfo().catch(() => {});
-  }, BEAT_MS);
+async function runPreview(start: SyncJob, auto: boolean): Promise<SyncJob> {
+  const run = jobRunner(listSyncJob, start);
+  const { save } = run;
+  const setRead = (r: TrackerRead) =>
+    save({
+      reads: [...run.get().reads.filter((x) => x.tracker !== r.tracker), r].sort(byTracker),
+    });
 
   try {
     const settings = await listSyncSettings.getValue();
@@ -152,12 +146,17 @@ async function runPreview(): Promise<void> {
         if (!connected) return setRead({ tracker, state: "not_connected" });
         await setRead({ tracker, state: "reading" });
         try {
+          const cache = listSyncCache(tracker);
+          const saved = await cache.getValue().catch(() => null);
           const list = await (
             getService(tracker).readList as NonNullable<ReturnType<typeof getService>["readList"]>
-          )(kinds);
-          entries.push(...list.entries);
+          )(kinds, saved, auto);
+          // Not `push(...)`: a spread of a very long list throws a RangeError.
+          for (const e of list.entries) entries.push(e);
           if (list.scoreFormat) scales[tracker] = list.scoreFormat;
-          await setRead({ tracker, state: "read", count: list.entries.length });
+          // A list too big to save is read in full next time; drop the old one.
+          if (list.cache) await cache.setValue(list.cache).catch(() => cache.removeValue());
+          await setRead({ tracker, state: "read", count: list.entries.length, from: list.from });
         } catch (e) {
           await setRead({ tracker, state: "failed", error: errorMessage(e) });
         }
@@ -165,7 +164,7 @@ async function runPreview(): Promise<void> {
     );
 
     await save({ planning: true });
-    const reads = job.reads;
+    const reads = run.get().reads;
     const trackers = reads.filter((r) => r.state === "read").map((r) => r.tracker);
     // The crosswalk with the user's fix-match pins over it, as scrobbling uses it.
     const [cached, overrides] = await Promise.all([
@@ -173,34 +172,53 @@ async function runPreview(): Promise<void> {
       animapOverrides.getValue(),
     ]);
     const animap = new Animap(withOverrides(cached?.rows ?? [], overrides));
-    const base = { at: Date.now(), reads, noCrosswalk: !cached?.rows.length, scales };
+    const head = {
+      at: Date.now(),
+      reads,
+      noCrosswalk: !cached?.rows.length,
+      scales,
+      ...(auto ? { auto } : {}),
+    };
     const empty: SyncPlan = { items: [], skips: [], conflicts: [], notices: [] };
+    // Plan against the base, so a removal on one list is not added back from another.
+    const sig = settingsSig(settings);
+    const last = await loadBase(sig);
     const preview: SyncPreview =
       trackers.length < 2
-        ? { ...base, reason: "too_few", totals: [], plan: empty }
+        ? { ...head, reason: "too_few", totals: [], plan: empty }
         : (() => {
-            const plan = planSync({ entries, trackers, settings, animap, scales });
-            return { ...base, totals: summarize(plan, trackers), plan };
+            const plan = planSync({ entries, trackers, settings, animap, scales, base: last });
+            return { ...head, totals: summarize(plan, trackers), plan };
           })();
+    // The lists as read, with the plan's removed marks, become the base once this
+    // plan is fully applied, or now when there is nothing to write.
+    if (!preview.reason) {
+      await savePending(preview.at, sig, nextLists(entries, trackers, preview.plan.removed));
+      if (!preview.plan.items.length) await commitBase(preview.at, []);
+      // Picks for disagreements this plan no longer has are done with.
+      const open = new Set(preview.plan.conflicts.map(pickKey));
+      const picks = await listSyncPicks.getValue().catch(() => ({}));
+      const kept = Object.fromEntries(Object.entries(picks).filter(([k]) => open.has(k)));
+      if (Object.keys(kept).length !== Object.keys(picks).length)
+        await listSyncPicks.setValue(kept).catch(() => {});
+    }
     await save({ state: "done", planning: false, preview });
   } catch (e) {
     await save({ state: "failed", planning: false, error: errorMessage(e) });
   } finally {
-    clearInterval(beat);
-    await saving;
-    // A plan too big for local storage fails to save; say so instead of hanging.
-    const saved = await listSyncJob.getValue();
-    if (saved?.state === "running") {
-      await listSyncJob
-        .setValue({
-          ...job,
-          state: "failed",
-          preview: undefined,
-          error: "The plan was too large to save.",
-        })
-        .catch(() => {});
-    }
+    await run.stop();
   }
+  // A plan too big for local storage fails to save; say so instead of hanging.
+  const saved = await listSyncJob.getValue();
+  if (saved?.state !== "running") return run.get();
+  const failed: SyncJob = {
+    ...run.get(),
+    state: "failed",
+    preview: undefined,
+    error: "The plan was too large to save.",
+  };
+  await listSyncJob.setValue(failed).catch(() => {});
+  return failed;
 }
 
 function byTracker(a: TrackerRead, b: TrackerRead): number {

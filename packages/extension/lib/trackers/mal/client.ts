@@ -380,7 +380,7 @@ export async function updateListStatus(
   }
 }
 
-// --- list sync (reads the whole list; plans/list-sync.md) ---
+// --- list sync (reads the whole list; docs/ARCHITECTURE.md section 7) ---
 
 const ANIMELIST_FIELDS =
   "list_status{status,score,num_episodes_watched,is_rewatching,num_times_rewatched,updated_at},num_episodes,media_type,nsfw,start_season";
@@ -402,7 +402,7 @@ export async function readMalList(): Promise<unknown[]> {
   return out;
 }
 
-// --- list sync writes (plans/list-sync.md, phase 2) ---
+// --- list sync writes (docs/ARCHITECTURE.md section 7) ---
 
 /** Write list-status fields for list sync. Throws on any failure (a 403 as
  * `MalRateLimitError`), so the caller can stop MAL instead of trying the rest. */

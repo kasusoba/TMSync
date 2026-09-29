@@ -175,10 +175,10 @@ How list sync reads and writes each tracker. How it plans is in
 
 | | **Reads (one preview)** | **Writes (apply)** | **Spacing and stops** |
 |---|---|---|---|
-| Trakt | up to 5 GETs: `/sync/watched/{shows,movies}`, `/sync/ratings/{shows,seasons,movies}` (paged) | `POST /sync/history` and `POST /sync/ratings`, up to 100 items each | 1.1 s between POSTs. 429 or 420 stops Trakt. |
-| AniList | `Viewer`, then `MediaListCollection` in chunks of 500 (custom lists skipped) | a fresh `Page.mediaList(mediaId_in)` read per 25 entries, then one `SaveMediaListEntry` or `DeleteMediaListEntry` per entry | 2.1 s between requests. A 429 waits out `Retry-After` once; a second one stops AniList. |
+| Trakt | `/sync/last_activities`, then (if it moved) up to 5 GETs: `/sync/watched/{shows,movies}`, `/sync/ratings/{shows,seasons,movies}` (paged) | `POST /sync/history`, `POST /sync/ratings`, and `POST /sync/ratings/remove`, up to 100 items each | 1.1 s between POSTs. 429 or 420 stops Trakt. |
+| AniList | `Viewer`, then `MediaListCollection` in chunks of 500 (custom lists too, one entry per media: an entry hidden from status lists is only there) | a fresh `Page.mediaList(mediaId_in)` read per 25 entries, then one `SaveMediaListEntry` or `DeleteMediaListEntry` per entry | 2.1 s between requests. A 429 waits out `Retry-After` once; a second one stops AniList. |
 | MyAnimeList | `/users/@me/animelist`, 1000 per page, one page at a time | per entry: `GET /anime/{id}` (`my_list_status`), then `PATCH` or `DELETE /anime/{id}/my_list_status` | 1.5 s between requests. A 403 stops MAL. |
-| Simkl | 1 to 3 of the daily quota: `/sync/all-items/{shows,anime,movies}` for the kinds in use | `POST /sync/history/remove`, `/sync/history`, `/sync/ratings`, up to 250 items per chunk | 1.1 s between POSTs. A 429 stops Simkl. |
+| Simkl | `/sync/activities`, then 0 to 3: `/sync/all-items/{shows,anime,movies}` for the types that moved, with `date_from` when nothing was removed | `POST /sync/history/remove`, `/sync/history`, `/sync/ratings`, `/sync/ratings/remove`, up to 250 items per chunk | 1.1 s between POSTs. A 429 stops Simkl. |
 
 - **Trakt.** Watches and ratings are separate lists, so an item that is rated but not watched is
   still read as an entry. A history write always adds a play, so the plan diffs against what
@@ -187,10 +187,11 @@ How list sync reads and writes each tracker. How it plans is in
   Trakt echoes items it could not match in `not_found`. Trakt has no list status and no list
   entries, so sync writes it no status and never removes from it.
 - **AniList.** Read scores with `score(format: POINT_100)`, so every score is 0 to 100, and write
-  with `scoreRaw`. A removal needs the LIST ENTRY id (`MediaList.id`), not the media id; the fresh
-  read before each write gives it. `private` entries and `isAdult` media are skipped by default.
+  with `scoreRaw` (0 clears a rating). A removal needs the LIST ENTRY id (`MediaList.id`), not the media id; the fresh
+  read before each write gives it. `private` entries, entries hidden from status lists (`hiddenFromStatusLists`), and `isAdult` media are skipped by default.
 - **MyAnimeList.** Read with `nsfw=true`, or adult entries are missing from the list. Rewatching is
-  `completed` plus `is_rewatching`, and `num_episodes: 0` means unknown. `DELETE` answers 404 when
+  `completed` plus `is_rewatching`, and `num_episodes: 0` means unknown. A score of 0 clears a
+  rating. `DELETE` answers 404 when
   the anime is not on the list, which counts as done.
 - **Simkl.** Anime goes under `shows[]` on every sync endpoint: `/sync/history/remove` ignores an
   `anime[]` array. An anime is named by its cour ids (`mal`, `anilist`) and its Simkl id only; a
@@ -199,9 +200,12 @@ How list sync reads and writes each tracker. How it plans is in
   `/sync/add-to-list` call, and a bare `status: "completed"` marks a whole item watched. A bare
   item on `/sync/history/remove` removes it from the library entirely. Simkl answers 201 even when
   it matched nothing, so `not_found` (a verbatim copy of what was sent) is the only signal. There is
-  no rewatch count. `watched_at` is omitted when the date is unknown (Simkl has no "released"). The
-  full read refreshes the local rating mirror. A scheduled sync must call `/sync/activities` first
-  and pass `date_from` (Simkl's rule for apps that sync on a timer).
+  no rewatch count. `watched_at` is omitted when the date is unknown (Simkl has no "released"). A
+  read refreshes the local rating mirror for the items it returns. Any sync on a timer must call
+  `/sync/activities` first and read only what changed, with `date_from` sent exactly as activities
+  returned it (Simkl suspends a `client_id` that polls without it). A delta never lists removed
+  items; `removed_from_list` only says that something was removed. A delta can come back with an
+  empty body. Source (2026-09-28): api.simkl.org/guides/sync; the Apiary docs are frozen.
 
 ## Adding a tracker
 
@@ -234,8 +238,10 @@ a fixed set:
 7. **Storage and backup.** Add token and connection keys in `lib/storage.ts` and to
    `lib/portability`.
 8. **List sync (optional).** Add `list.ts` (a pure normalizer to `ListEntry`) and `apply.ts`
-   (writes to API calls), and wire `readList` and `applyList` in the service. Without them the
-   tracker takes no part in list sync.
+   (writes to API calls, `unrate` included), and wire `readList` and `applyList` in the service.
+   Without them the tracker takes no part in list sync. If the API has a cheap change check, use
+   the saved list `readList` gets (`lib/sync/list-cache.ts`), and return the list to save. Add the
+   tracker to `LIST_SYNC_CACHE` in `lib/storage.ts`.
 9. **Docs.** Update the tracker table in `ARCHITECTURE.md`, `CLAUDE.md`, and the README, the facts
    for the new API in this file, and the store permission justification.
 10. **Tests.** Add family-level derive cases, and keep the existing derive and animap tests green.

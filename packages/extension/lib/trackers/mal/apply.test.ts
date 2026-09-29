@@ -12,6 +12,11 @@ describe("malFields", () => {
     expect(malFields({ repeat: 2 })).toEqual({ num_times_rewatched: 2 });
   });
 
+  it("clears a rating with a score of 0, never a 1", () => {
+    expect(malFields({ score: 0 })).toEqual({ score: 0 });
+    expect(malFields({ score: 3 })).toEqual({ score: 1 });
+  });
+
   it("writes a rewatch as a completed entry with the flag", () => {
     expect(malFields({ status: "REPEATING" })).toEqual({
       status: "completed",

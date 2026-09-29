@@ -1,7 +1,7 @@
 /**
  * Read before write, for the trackers that keep a count (AniList, MAL): the plan
  * was made from a read that may be minutes old, and scrobbling can change an
- * entry in between (plans/list-sync.md, edge case 35). So each write is merged
+ * entry in between (docs/ARCHITECTURE.md section 7, "Read before write"). So each write is merged
  * with a fresh read of the entry, by the scrobbling rules:
  *  - progress never goes down: `max(fresh, planned)`.
  *  - a completed entry (or a rewatch) is never moved. Only a higher rewatch count
@@ -9,6 +9,7 @@
  *  - a status goes in only if the entry still has the status the plan saw. If it
  *    changed, the user (or a scrobble) did that since, and it wins.
  *  - a rating fills an empty one, unless the user picked it in a disagreement.
+ *  - a rating the user removed elsewhere (`unrate`) is cleared, if there is one.
  * Pure.
  */
 import type { CourStatus } from "../trackers/cour-plan";
@@ -54,5 +55,7 @@ export function mergeCour(writes: SyncWrite[], fresh: FreshCour | null): CourAct
   if (rating?.op === "rating" && listed && (rating.picked || !fresh?.score)) {
     if (rating.score !== fresh?.score) out.score = rating.score;
   }
+  // A cleared rating is a score of 0 (AniList and MAL both read 0 as "none").
+  if (writes.some((w) => w.op === "unrate") && fresh?.score) out.score = 0;
   return Object.keys(out).length > 1 ? out : { kind: "none" };
 }

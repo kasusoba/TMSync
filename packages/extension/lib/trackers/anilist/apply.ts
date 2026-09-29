@@ -1,13 +1,13 @@
 /**
- * AniList's part of applying a list sync plan (plans/list-sync.md, phase 2). One
+ * AniList's part of applying a list sync plan (docs/ARCHITECTURE.md section 7). One
  * `SaveMediaListEntry` per entry (or `DeleteMediaListEntry` for a removal), each
  * merged with a fresh read of the entry first (`mergeCour`), so a scrobble that
  * landed since the preview is never undone.
  */
 import { errorMessage } from "../../errors";
 import { mergeCour } from "../../sync/merge";
-import { byTarget, outcomes, sleep } from "../../sync/pace";
 import type { ChunkOutcome, SyncWrite, TargetRef } from "../../sync/types";
+import { byTarget, outcomes, sleep } from "../../sync/write-util";
 import type { ApplyReport } from "../service";
 import {
   AniListHttpError,

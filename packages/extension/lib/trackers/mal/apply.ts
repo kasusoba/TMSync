@@ -1,13 +1,13 @@
 /**
- * MyAnimeList's part of applying a list sync plan (plans/list-sync.md, phase 2).
+ * MyAnimeList's part of applying a list sync plan (docs/ARCHITECTURE.md section 7).
  * One PATCH (or DELETE) per entry, after a fresh read of it (`mergeCour`), so a
  * scrobble that landed since the preview is never undone. MAL answers bursts with
  * 403, so calls are spaced, and a 403 stops MAL for this run: never a retry loop.
  */
 import { errorMessage } from "../../errors";
 import { mergeCour } from "../../sync/merge";
-import { byTarget, outcomes, sleep, toTen } from "../../sync/pace";
 import type { ChunkOutcome, SyncWrite, TargetRef } from "../../sync/types";
+import { byTarget, outcomes, sleep, toTen } from "../../sync/write-util";
 import type { CourStatus } from "../cour-plan";
 import type { ApplyReport } from "../service";
 import {
@@ -53,7 +53,8 @@ export function malFields(a: {
   }
   if (a.progress !== undefined) out.num_watched_episodes = a.progress;
   if (a.repeat !== undefined) out.num_times_rewatched = a.repeat;
-  if (a.score !== undefined) out.score = toTen(a.score);
+  // MAL reads a score of 0 as "not rated": that is how a rating is cleared.
+  if (a.score !== undefined) out.score = a.score === 0 ? 0 : toTen(a.score);
   return out;
 }
 

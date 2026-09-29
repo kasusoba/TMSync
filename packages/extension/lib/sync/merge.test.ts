@@ -91,3 +91,20 @@ describe("mergeCour", () => {
     expect(mergeCour([rm], null)).toEqual({ kind: "none" });
   });
 });
+
+describe("mergeCour: unrate", () => {
+  const unrate: SyncWrite = { tracker: "anilist", op: "unrate", level: "entry", target, was: 80 };
+  const fresh = (score: number | null): FreshCour => ({
+    status: "CURRENT",
+    progress: 3,
+    repeat: 0,
+    score,
+  });
+  it("clears a rating that is still there", () => {
+    expect(mergeCour([unrate], fresh(80))).toEqual({ kind: "save", score: 0 });
+  });
+  it("does nothing when the rating is gone already, or the entry is", () => {
+    expect(mergeCour([unrate], fresh(null))).toEqual({ kind: "none" });
+    expect(mergeCour([unrate], null)).toEqual({ kind: "none" });
+  });
+});

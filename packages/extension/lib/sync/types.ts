@@ -1,6 +1,6 @@
 /**
- * List sync types (plans/list-sync.md). Each tracker reads its whole list into
- * `ListEntry` values, the pure planner (`plan.ts`) groups them and decides what
+ * List sync types (docs/ARCHITECTURE.md section 7). Each tracker reads its whole list into
+ * `ListEntry` values, the pure planner (`plan/`) groups them and decides what
  * each tracker is missing, and the result is a `SyncPlan`. Nothing here talks to a
  * tracker: the readers live with each tracker (`lib/trackers/<tracker>/list.ts`).
  */
@@ -95,6 +95,9 @@ export interface ListSyncSettings {
    * history). The copies' progress still never goes down. Missing = union.
    */
   main?: Partial<Record<SyncKind, Tracker>>;
+  /** Sync once a day on its own, additions only (`auto.ts`). Off by default. Per
+   * device: it is kept in `local`, not synced (see `listSyncSettings`). */
+  auto?: boolean;
 }
 
 export const DEFAULT_SYNC_SETTINGS: ListSyncSettings = {
@@ -172,9 +175,13 @@ export type SyncWrite =
       /** The date new watches get, where the tracker keeps one (Simkl). */
       at?: number;
     }
-  /** Remove the entry from the tracker's list (a main list does not have it).
-   * Only list entries: Trakt watch history is never removed. */
+  /** Remove the entry from the tracker's list: a main list does not have it, or
+   * another list removed it since the last clean sync (`base.ts`). Only list
+   * entries: Trakt watch history is never removed. */
   | { tracker: Tracker; op: "remove"; target: TargetRef; was: EntryState }
+  /** Clear a rating: the user removed it from another list since the last clean
+   * sync (`base.ts`). `was` is the rating now, 0 to 100. */
+  | ({ tracker: Tracker; op: "unrate"; was: number } & RatingRef)
   /** Fill an empty rating. `score` is 0 to 100. */
   | ({ tracker: Tracker; op: "rating"; score: number } & RatingRef & {
         /** The user picked this score in a disagreement, so it replaces the
@@ -287,8 +294,8 @@ export interface SyncNotice {
   tracker: Tracker;
   reason: /** The copy is further than the main list. Sync never lowers progress. */
     | "ahead"
-    /** The main list does not have it, but this copy is Trakt watch history,
-     * which sync never removes. */
+    /** The main list does not have it (or another list removed it), but this
+     * copy is Trakt watch history, which sync never removes. */
     | "history_kept"
     /** The copy has a different rating. Sync only fills empty ratings. */
     | "rating_kept";
@@ -299,8 +306,11 @@ export interface SyncPlan {
   items: SyncItem[];
   skips: SyncSkip[];
   conflicts: SyncConflict[];
-  /** Copies of a main list left as they are (see `SyncNotice`). */
+  /** Copies left as they are (see `SyncNotice`). */
   notices: SyncNotice[];
+  /** Removed marks for the next base (`base.ts`): the lists that removed an item
+   * a kept copy (watch history) still has, with the item's id keys on that list. */
+  removed?: { tracker: Tracker; keys: string[] }[];
 }
 
 /** Per-tracker totals, for the preview header. */
@@ -312,6 +322,8 @@ export interface SyncTotals {
   updated: number;
   ratings: number;
   removed: number;
+  /** Ratings cleared. */
+  unrated: number;
 }
 
 /** What became of one write when sync applied it. */

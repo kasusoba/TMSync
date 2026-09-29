@@ -1,13 +1,14 @@
 /** List sync states for the gallery, with mock lists run through the REAL planner,
  * so the tiles show what the pane renders, not a hand-written imitation. */
 import { APPLY_JOB_VERSION, type ApplyJob, applyBlock, applyQueues } from "@/lib/sync/apply";
-import { planSync, summarize, syncKindsFor } from "@/lib/sync/plan";
-import type { SyncPreview } from "@/lib/sync/run";
+import { type BaseEntry, baseOf } from "@/lib/sync/base";
+import { planSync, summarize, syncKindsFor } from "@/lib/sync/plan/index";
+import type { SyncPreview } from "@/lib/sync/preview";
 import { DEFAULT_SYNC_SETTINGS, type ListEntry, type ListSyncSettings } from "@/lib/sync/types";
 import { Animap } from "@/lib/trackers/animap/index";
 import { ALL_TRACKERS, type Tracker } from "@/lib/trackers/types";
-import { ListSyncView } from "@/lib/ui/kit/ListSyncView";
 import { type Variant, tokens } from "@/lib/ui/kit/kit";
+import { ListSyncView } from "@/lib/ui/kit/list-sync/ListSyncView";
 import clsx from "clsx";
 
 const animap = new Animap([
@@ -116,8 +117,46 @@ const entries: ListEntry[] = [
   },
 ];
 
-function preview(settings: ListSyncSettings, trackers: Tracker[]): SyncPreview {
-  const plan = planSync({ entries, trackers, settings, animap, scales: { anilist: "POINT_100" } });
+const FROM: Partial<Record<Tracker, "saved" | "changes">> = { trakt: "saved", simkl: "changes" };
+
+/** The lists at the last clean sync, for remembered removals: AniList still had
+ * Akira (so MyAnimeList loses it now), and Simkl had rated Severance (so Trakt's
+ * rating is cleared). */
+function galleryBase(): Partial<Record<Tracker, BaseEntry[]>> {
+  const was: ListEntry[] = entries.map((e) =>
+    e.tracker === "simkl" && e.title === "Severance" ? { ...e, rating: 90 } : e,
+  );
+  was.push({
+    tracker: "anilist",
+    shape: "cour",
+    id: 47,
+    title: "Akira",
+    ids: { anilist: 47, mal: 47 },
+    rating: null,
+    progress: 0,
+    total: 1,
+    status: "PLANNING",
+    repeat: 0,
+    movie: true,
+  });
+  return Object.fromEntries(
+    ALL_TRACKERS.map((tk) => [tk, baseOf(was.filter((e) => e.tracker === tk))]),
+  );
+}
+
+function preview(
+  settings: ListSyncSettings,
+  trackers: Tracker[],
+  base?: Partial<Record<Tracker, BaseEntry[]>>,
+): SyncPreview {
+  const plan = planSync({
+    entries,
+    trackers,
+    settings,
+    animap,
+    scales: { anilist: "POINT_100" },
+    base,
+  });
   return {
     at: Date.UTC(2026, 8, 28, 9, 30),
     reads: ALL_TRACKERS.map((tracker) =>
@@ -126,6 +165,8 @@ function preview(settings: ListSyncSettings, trackers: Tracker[]): SyncPreview {
             tracker,
             state: "read" as const,
             count: entries.filter((e) => e.tracker === tracker).length,
+            // Show both short reads: Trakt did not change, Simkl read its changes.
+            from: FROM[tracker],
           }
         : { tracker, state: "not_connected" as const },
     ),
@@ -159,7 +200,9 @@ export function ListSyncTile({
     | "reading"
     | "stale"
     | "applying"
-    | "applied";
+    | "applied"
+    | "auto"
+    | "remembered";
 }) {
   const t = tokens(variant);
   const settings: ListSyncSettings =
@@ -167,7 +210,9 @@ export function ListSyncTile({
       ? { ...DEFAULT_SYNC_SETTINGS, kinds: { simkl: ["movie", "tv"] }, ignore: ["movie:tmdb:1"] }
       : state === "main-anilist"
         ? { ...DEFAULT_SYNC_SETTINGS, main: { anime: "anilist" } }
-        : DEFAULT_SYNC_SETTINGS;
+        : state === "auto"
+          ? { ...DEFAULT_SYNC_SETTINGS, auto: true }
+          : DEFAULT_SYNC_SETTINGS;
   const p =
     state === "preview" ||
     state === "no-simkl-anime" ||
@@ -176,15 +221,22 @@ export function ListSyncTile({
     state === "applying" ||
     state === "applied"
       ? preview(settings, ALL_TRACKERS)
-      : state === "too-few"
-        ? {
-            ...preview(settings, ["trakt"]),
-            reason: "too_few" as const,
-            totals: [],
-            plan: { items: [], skips: [], conflicts: [], notices: [] },
-          }
-        : null;
-  const job = p && (state === "applying" || state === "applied") ? applyJob(p.at, state) : null;
+      : state === "auto"
+        ? { ...preview(settings, ALL_TRACKERS), auto: true }
+        : state === "remembered"
+          ? preview(settings, ALL_TRACKERS, galleryBase())
+          : state === "too-few"
+            ? {
+                ...preview(settings, ["trakt"]),
+                reason: "too_few" as const,
+                totals: [],
+                plan: { items: [], skips: [], conflicts: [], notices: [] },
+              }
+            : null;
+  const job =
+    p && (state === "applying" || state === "applied" || state === "auto")
+      ? applyJob(p.at, state)
+      : null;
   // The gallery's "now": just after the preview, or long after it for "stale".
   const now = (p?.at ?? 0) + (state === "stale" ? 11 * 60_000 : 60_000);
   const blocked = p ? applyBlock(p, job, applyQueues(p, settings.ignore, {}), now) : null;
@@ -216,15 +268,29 @@ export function ListSyncTile({
         apply={job}
         applying={state === "applying"}
         blocked={blocked}
+        autoRun={
+          state === "auto" && p
+            ? {
+                at: p.at,
+                state: "done",
+                added: 31,
+                failed: 1,
+                held: ["anilist:1", "mal:5", "movie:tmdb:1"],
+                notes: ["MyAnimeList: not connected"],
+              }
+            : null
+        }
       />
     </div>
   );
 }
 
-/** A mock apply of the preview at `planAt`: part way, or finished with MAL stopped. */
-function applyJob(planAt: number, state: "applying" | "applied"): ApplyJob {
-  const done = state === "applied";
+/** A mock apply of the preview at `planAt`: part way, or finished with MAL stopped
+ * (`auto`: the same, as the automatic run). */
+function applyJob(planAt: number, state: "applying" | "applied" | "auto"): ApplyJob {
+  const done = state !== "applying";
   return {
+    ...(state === "auto" ? { auto: true } : {}),
     v: APPLY_JOB_VERSION,
     state: done ? "done" : "running",
     startedAt: planAt + 30_000,

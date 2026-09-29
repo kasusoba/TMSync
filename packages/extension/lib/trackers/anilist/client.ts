@@ -1,5 +1,10 @@
 import type { ParsedMedia } from "@tmsync/shared";
-import { anilistCorrections, anilistResolutionCache } from "../../storage";
+import {
+  anilistCorrections,
+  anilistResolutionCache,
+  anilistTokens,
+  anilistViewer,
+} from "../../storage";
 import { freshHit, stamp } from "../identity-cache";
 import type { CourSearchOption, ScoreFormat } from "../types";
 import { getValidAccessToken } from "./auth";
@@ -388,7 +393,7 @@ export async function saveNotes(
   }
 }
 
-// --- list sync (reads the whole list; plans/list-sync.md) ---
+// --- list sync (reads the whole list; docs/ARCHITECTURE.md section 7) ---
 
 const VIEWER_QUERY = `
 query { Viewer { id mediaListOptions { scoreFormat } } }`;
@@ -400,7 +405,7 @@ query ($userId: Int, $chunk: Int) {
     lists {
       isCustomList
       entries {
-        mediaId status progress repeat private updatedAt
+        mediaId status progress repeat private hiddenFromStatusLists updatedAt
         score(format: POINT_100)
         media { id idMal episodes format isAdult startDate { year } title { userPreferred } }
       }
@@ -418,6 +423,7 @@ export async function readAniListList(): Promise<{
     Viewer: { id: number; mediaListOptions?: { scoreFormat?: ScoreFormat } };
   }>(VIEWER_QUERY, {}, true);
   const entries: unknown[] = [];
+  const seen = new Set<unknown>();
   for (let chunk = 1; chunk < 100; chunk += 1) {
     const data = await gql<{
       MediaListCollection: {
@@ -425,16 +431,26 @@ export async function readAniListList(): Promise<{
         lists: { isCustomList: boolean; entries: unknown[] }[];
       };
     }>(COLLECTION_QUERY, { userId: viewer.Viewer.id, chunk }, true);
-    // Custom lists repeat entries that are already in a status list.
-    for (const list of data.MediaListCollection.lists) {
-      if (!list.isCustomList) entries.push(...list.entries);
+    // Custom lists repeat entries that are already in a status list, so keep one
+    // per media. Status lists come first: an entry "hidden from status lists" is
+    // only in a custom list, and must still be read (else it looks removed).
+    const lists = [...data.MediaListCollection.lists].sort(
+      (a, b) => Number(a.isCustomList) - Number(b.isCustomList),
+    );
+    for (const list of lists) {
+      for (const e of list.entries) {
+        const id = (e as { mediaId?: unknown } | null)?.mediaId;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        entries.push(e);
+      }
     }
     if (!data.MediaListCollection.hasNextChunk) break;
   }
   return { entries, scoreFormat: viewer.Viewer.mediaListOptions?.scoreFormat ?? null };
 }
 
-// --- list sync writes (plans/list-sync.md, phase 2) ---
+// --- list sync writes (docs/ARCHITECTURE.md section 7) ---
 
 const FRESH_QUERY = `
 query ($userId: Int, $ids: [Int]) {
@@ -456,15 +472,25 @@ export interface FreshAniListEntry {
   score: number;
 }
 
-/** The viewer's entries for up to 50 media, in two requests (the viewer, then the
- * entries). A media that is not on the list is missing from the map. */
+/** The viewer's id: saved for the signed-in token, else asked once. */
+async function viewerId(): Promise<number> {
+  const [tokens, saved] = await Promise.all([anilistTokens.getValue(), anilistViewer.getValue()]);
+  if (tokens && saved?.at === tokens.obtained_at) return saved.id;
+  const viewer = await gql<{ Viewer: { id: number } }>(VIEWER_QUERY, {}, true);
+  if (tokens)
+    await anilistViewer.setValue({ at: tokens.obtained_at, id: viewer.Viewer.id }).catch(() => {});
+  return viewer.Viewer.id;
+}
+
+/** The viewer's entries for up to 50 media, in one request (two the first time:
+ * the viewer's id is saved). A media that is not on the list is missing from the
+ * map. */
 export async function readFreshEntries(
   mediaIds: number[],
 ): Promise<Map<number, FreshAniListEntry>> {
-  const viewer = await gql<{ Viewer: { id: number } }>(VIEWER_QUERY, {}, true);
   const data = await gql<{
     Page: { mediaList: Partial<FreshAniListEntry>[] | null } | null;
-  }>(FRESH_QUERY, { userId: viewer.Viewer.id, ids: mediaIds.slice(0, 50) }, true);
+  }>(FRESH_QUERY, { userId: await viewerId(), ids: mediaIds.slice(0, 50) }, true);
   const out = new Map<number, FreshAniListEntry>();
   for (const e of data.Page?.mediaList ?? []) {
     if (e.id === undefined || e.mediaId === undefined) continue;

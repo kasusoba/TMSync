@@ -1,14 +1,15 @@
-import { errorMessage } from "../../errors";
 /**
- * Trakt's part of applying a list sync plan (plans/list-sync.md, phase 2): one
- * `POST /sync/history` for the watches and one `POST /sync/ratings` per chunk.
+ * Trakt's part of applying a list sync plan (docs/ARCHITECTURE.md section 7): one
+ * `POST /sync/history` for the watches, one `POST /sync/ratings` for the ratings,
+ * and one `POST /sync/ratings/remove` for the ratings to clear, per chunk.
  * Trakt keeps a new play for every history write, so the plan never sends one
  * twice (it diffs against what Trakt has). Trakt has no list entries and no
  * status, so it takes no `entry` or `remove` write.
  */
+import { errorMessage } from "../../errors";
 import { remoteRatings } from "../../storage";
-import { inNotFound, outcomes, sleep, toTen } from "../../sync/pace";
 import type { ChunkOutcome, SyncWrite, TargetRef, WriteOutcome } from "../../sync/types";
+import { inNotFound, outcomes, sleep, toTen } from "../../sync/write-util";
 import { TraktNotConnectedError, syncPost } from "./client";
 
 /** Writes per chunk (items per POST). */
@@ -64,9 +65,13 @@ export function historyBody(writes: SyncWrite[]): {
   return { body: { movies, shows }, at };
 }
 
-/** The `/sync/ratings` body for the rating writes, and which writes it holds. A
- * season rating nests in its show. Pure. */
-export function ratingsBody(writes: SyncWrite[]): {
+/** The `/sync/ratings` body for the rating writes (or, with `unrate`, the
+ * `/sync/ratings/remove` body for the ratings to clear), and which writes it
+ * holds. A season rating nests in its show. Pure. */
+export function ratingsBody(
+  writes: SyncWrite[],
+  op: "rating" | "unrate" = "rating",
+): {
   body: Record<string, unknown[]>;
   at: number[];
 } {
@@ -74,13 +79,14 @@ export function ratingsBody(writes: SyncWrite[]): {
   const shows: unknown[] = [];
   const at: number[] = [];
   writes.forEach((w, i) => {
-    if (w.op !== "rating") return;
-    const rating = toTen(w.score);
+    if (w.op !== op || (w.op !== "rating" && w.op !== "unrate")) return;
+    // A removal names the item only.
+    const rating = w.op === "rating" ? { rating: toTen(w.score) } : {};
     const ids = traktIds(w.target);
-    if (w.level === "movie") movies.push({ ids, rating });
-    else if (w.level === "show") shows.push({ ids, rating });
+    if (w.level === "movie") movies.push({ ids, ...rating });
+    else if (w.level === "show") shows.push({ ids, ...rating });
     else if (w.level === "season" && w.season !== undefined)
-      shows.push({ ids, seasons: [{ number: w.season, rating }] });
+      shows.push({ ids, seasons: [{ number: w.season, ...rating }] });
     else return;
     at.push(i);
   });
@@ -96,6 +102,7 @@ export async function applyTrakt(writes: SyncWrite[]): Promise<ChunkOutcome> {
   const parts = [
     { path: "/sync/history" as const, ...historyBody(writes) },
     { path: "/sync/ratings" as const, ...ratingsBody(writes) },
+    { path: "/sync/ratings/remove" as const, ...ratingsBody(writes, "unrate") },
   ].filter((p) => p.at.length);
   let stop: string | undefined;
   let rated = false;
@@ -126,7 +133,7 @@ export async function applyTrakt(writes: SyncWrite[]): Promise<ChunkOutcome> {
           ? { ok: false, reason: "not_found", error: "Trakt could not match it." }
           : { ok: true };
       }
-      if (part.path === "/sync/ratings") rated = true;
+      if (part.path !== "/sync/history") rated = true;
     } catch (e) {
       if (e instanceof TraktNotConnectedError) stop = "Trakt is not connected.";
       set({ ok: false, reason: "failed", error: errorMessage(e) });
