@@ -12,7 +12,6 @@ import {
   episodeOverrides,
   listSyncAuto,
   listSyncAutoSeen,
-  listSyncCache,
   listSyncSettings,
   manualContexts,
   manualSelections,
@@ -25,7 +24,7 @@ import {
 } from "@/lib/storage";
 import { startApply } from "@/lib/sync/apply";
 import { AUTO_ALARM, runAuto, showAutoBadge, syncAutoAlarm } from "@/lib/sync/auto";
-import { forgetBase } from "@/lib/sync/base-store";
+import { forgetLists } from "@/lib/sync/base-store";
 import { startPreview } from "@/lib/sync/run";
 import {
   ALL_TRACKERS,
@@ -185,10 +184,7 @@ export default defineBackground(() => {
   onMessage("connectTracker", async ({ data }) => {
     try {
       await getService(data).connect();
-      await listSyncCache(data)
-        .removeValue()
-        .catch(() => {});
-      await forgetBase(data).catch(() => {});
+      await forgetLists(data);
       return { ok: true };
     } catch (e) {
       return { ok: false, error: errorMessage(e) };
@@ -196,8 +192,7 @@ export default defineBackground(() => {
   });
 
   onMessage("disconnectTracker", async ({ data }) => {
-    await listSyncCache(data).removeValue();
-    await forgetBase(data);
+    await forgetLists(data);
     await getService(data).disconnect();
   });
 

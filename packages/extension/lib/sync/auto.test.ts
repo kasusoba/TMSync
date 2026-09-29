@@ -9,8 +9,10 @@ const { beginPreview, beginApply } = vi.hoisted(() => ({
 vi.mock("./run", async (orig) => ({ ...(await orig<typeof import("./run")>()), beginPreview }));
 vi.mock("./apply", async (orig) => ({ ...(await orig<typeof import("./apply")>()), beginApply }));
 
-import { listSyncAuto, listSyncSettings } from "../storage";
-import { AUTO_GAP_MS, additionsOnly, runAuto, unseen } from "./auto";
+import { listSyncApply, listSyncAuto, listSyncJob, listSyncSettings } from "../storage";
+import { APPLY_FRESH_MS, APPLY_JOB_VERSION } from "./apply";
+import { AUTO_GAP_MS, additionsOnly, previewWaiting, runAuto, unseen } from "./auto";
+import { SYNC_JOB_VERSION, type SyncJob } from "./run";
 import { DEFAULT_SYNC_SETTINGS } from "./types";
 
 const target = { id: 1, ids: {}, mediaType: "show" as const, anime: true };
@@ -102,6 +104,43 @@ describe("unseen", () => {
   });
 });
 
+describe("previewWaiting", () => {
+  const job = (p: Partial<NonNullable<SyncJob["preview"]>> = {}): SyncJob => ({
+    v: SYNC_JOB_VERSION,
+    state: "done",
+    startedAt: 0,
+    beatAt: 0,
+    reads: [],
+    preview: {
+      at: 1_000,
+      reads: [],
+      totals: [],
+      scales: {},
+      plan: plan("a", [{ tracker: "trakt", op: "movie", target }]),
+      ...p,
+    },
+  });
+  const applied = (planAt: number) => ({
+    v: APPLY_JOB_VERSION,
+    state: "done" as const,
+    startedAt: 0,
+    beatAt: 0,
+    planAt,
+    trackers: [],
+  });
+
+  it("a fresh preview made by hand, not applied yet, waits", () => {
+    expect(previewWaiting(job(), null, 1_000 + APPLY_FRESH_MS)).toBe(true);
+  });
+  it("a stale, applied, automatic, or empty preview does not", () => {
+    expect(previewWaiting(job(), null, 1_001 + APPLY_FRESH_MS)).toBe(false);
+    expect(previewWaiting(job(), applied(1_000), 1_000)).toBe(false);
+    expect(previewWaiting(job({ auto: true }), null, 1_000)).toBe(false);
+    expect(previewWaiting(job({ plan: { ...plan("a", []), items: [] } }), null, 1_000)).toBe(false);
+    expect(previewWaiting(null, null, 1_000)).toBe(false);
+  });
+});
+
 describe("runAuto", () => {
   beforeEach(() => {
     fakeBrowser.reset();
@@ -156,6 +195,46 @@ describe("runAuto", () => {
     const run = await listSyncAuto.getValue();
     expect(run).toMatchObject({ state: "done", added: 1, held: ["a"] });
     expect(run?.notes).toEqual(["MyAnimeList: not connected"]);
+  });
+
+  it("is skipped while a preview made by hand waits to be applied", async () => {
+    await listSyncSettings.setValue({ ...DEFAULT_SYNC_SETTINGS, auto: true });
+    await listSyncJob.setValue({
+      v: SYNC_JOB_VERSION,
+      state: "done",
+      startedAt: 0,
+      beatAt: 0,
+      reads: [],
+      preview: {
+        at: Date.now(),
+        reads: [],
+        totals: [],
+        scales: {},
+        plan: plan("a", [{ tracker: "trakt", op: "movie", target }]),
+      },
+    });
+    await listSyncApply.setValue(null);
+    await runAuto();
+    expect(beginPreview).not.toHaveBeenCalled();
+    expect(await listSyncAuto.getValue()).toMatchObject({
+      state: "skipped",
+      notes: ["A preview was waiting."],
+    });
+  });
+
+  it("is skipped when the apply cannot start", async () => {
+    await listSyncSettings.setValue({ ...DEFAULT_SYNC_SETTINGS, auto: true });
+    const preview = {
+      at: Date.now(),
+      reads: [],
+      totals: [],
+      scales: {},
+      plan: plan("a", [{ tracker: "trakt", op: "movie", target }]),
+    };
+    beginPreview.mockResolvedValue(Promise.resolve({ state: "done", reads: [], preview }));
+    beginApply.mockResolvedValue(null);
+    await runAuto();
+    expect((await listSyncAuto.getValue())?.state).toBe("skipped");
   });
 
   it("is skipped while the user's own sync runs", async () => {

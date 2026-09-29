@@ -27,6 +27,7 @@ import {
 import { getService } from "../trackers/service";
 import { ALL_TRACKERS, type Tracker } from "../trackers/types";
 import { commitBase } from "./base-store";
+import { exclusive } from "./lock";
 import { withPicks } from "./plan";
 import { STALE_MS, type SyncPreview, jobAlive, readJob } from "./run";
 import type { ChunkOutcome, SyncPicks, SyncWrite, WriteOutcome } from "./types";
@@ -140,23 +141,30 @@ export function applyBlock(
   return null;
 }
 
-/** Start applying the last preview, unless something blocks it. Returns at once;
- * the job reports through `listSyncApply`. */
+/** Start applying the last preview, unless something blocks it. Returns once the
+ * job is saved; the job reports through `listSyncApply`. A failed first save
+ * rejects, so the page shows it. */
 export async function startApply(): Promise<{ started: boolean; reason?: ApplyBlock }> {
-  const now = Date.now();
-  const job = readJob(await listSyncJob.getValue());
-  if (jobAlive(job, now)) return { started: false, reason: "previewing" };
-  const [last, settings, picks] = await Promise.all([
-    listSyncApply.getValue().then(readApply),
-    listSyncSettings.getValue(),
-    listSyncPicks.getValue(),
-  ]);
-  const preview = job?.preview;
-  const queues = preview ? applyQueues(preview, settings.ignore, picks) : new Map();
-  const reason = applyBlock(preview, last, queues, now);
-  if (reason || !preview) return { started: false, reason: reason ?? "no_plan" };
-  void beginApply(preview, queues, false, true);
-  return { started: true };
+  return exclusive(async () => {
+    const now = Date.now();
+    const job = readJob(await listSyncJob.getValue());
+    if (jobAlive(job, now)) return { started: false, reason: "previewing" as const };
+    const [last, settings, picks] = await Promise.all([
+      listSyncApply.getValue().then(readApply),
+      listSyncSettings.getValue(),
+      listSyncPicks.getValue(),
+    ]);
+    const preview = job?.preview;
+    const queues = preview ? applyQueues(preview, settings.ignore, picks) : new Map();
+    const reason = applyBlock(preview, last, queues, now);
+    if (reason || !preview) return { started: false, reason: reason ?? "no_plan" };
+    const start = newApply(preview, queues, false);
+    await listSyncApply.setValue(start);
+    // The run saves its own failure; this catch only keeps a rejection from going
+    // unhandled.
+    void finishApply(start, preview, queues, true).catch(() => {});
+    return { started: true };
+  });
 }
 
 /** Every write went in as planned: none failed, none was left out because the
@@ -169,17 +177,35 @@ export function cleanApply(job: ApplyJob): boolean {
 }
 
 /**
- * Save a new apply job for `preview` and run it. Resolves to the finished job.
- * The caller checks first that nothing blocks it (`applyBlock`). `full` = the
- * queues hold every removal the plan has (the automatic run may hold some back):
- * a clean apply of them makes the lists the new base (`base-store.ts`).
+ * Save a new apply job for `preview` and run it, unless a preview or an apply
+ * runs. Resolves to the finished job, or null when it could not start. The caller
+ * checks the rest first (`applyBlock`). `full` = the queues hold every removal
+ * the plan has (the automatic run may hold some back): a clean apply of them
+ * makes the lists the new base (`base-store.ts`).
  */
 export async function beginApply(
   preview: SyncPreview,
   queues: Map<Tracker, QueuedWrite[]>,
   auto: boolean,
   full: boolean,
-): Promise<ApplyJob> {
+): Promise<ApplyJob | null> {
+  const start = await exclusive(async () => {
+    const now = Date.now();
+    if (jobAlive(readJob(await listSyncJob.getValue()), now)) return null;
+    if (jobAlive(readApply(await listSyncApply.getValue()), now)) return null;
+    const job = newApply(preview, queues, auto);
+    await listSyncApply.setValue(job);
+    return job;
+  });
+  return start && finishApply(start, preview, queues, full);
+}
+
+/** A new, running apply job for `preview`. Pure. */
+function newApply(
+  preview: SyncPreview,
+  queues: Map<Tracker, QueuedWrite[]>,
+  auto: boolean,
+): ApplyJob {
   const now = Date.now();
   const trackers: ApplyTracker[] = ALL_TRACKERS.filter((tk) => queues.get(tk)?.length).map(
     (tracker) => ({
@@ -192,7 +218,7 @@ export async function beginApply(
       failed: [],
     }),
   );
-  const start: ApplyJob = {
+  return {
     v: APPLY_JOB_VERSION,
     state: "running",
     startedAt: now,
@@ -201,7 +227,15 @@ export async function beginApply(
     trackers,
     ...(auto ? { auto } : {}),
   };
-  await listSyncApply.setValue(start);
+}
+
+/** Run a saved apply job, then move the base if it was clean and `full`. */
+async function finishApply(
+  start: ApplyJob,
+  preview: SyncPreview,
+  queues: Map<Tracker, QueuedWrite[]>,
+  full: boolean,
+): Promise<ApplyJob> {
   const done = await runApply(start, queues);
   if (full && cleanApply(done)) {
     const writes = [...queues.values()].flatMap((q) => q.map((x) => x.w));

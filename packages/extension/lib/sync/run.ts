@@ -28,6 +28,7 @@ import { getService } from "../trackers/service";
 import { ALL_TRACKERS, type Tracker } from "../trackers/types";
 import { nextLists, settingsSig } from "./base";
 import { commitBase, loadBase, savePending } from "./base-store";
+import { exclusive } from "./lock";
 import { planSync, summarize, syncKindsFor, takesKind } from "./plan";
 import type { ScoreScale } from "./score";
 import { type ListEntry, type SyncPlan, type SyncTotals, pickKey } from "./types";
@@ -121,18 +122,21 @@ export async function startPreview(): Promise<{ started: boolean }> {
  * trackers treat differently (Simkl never reads in full on a timer).
  */
 export async function beginPreview(auto: boolean): Promise<Promise<SyncJob> | null> {
-  if (jobAlive(readJob(await listSyncJob.getValue()), Date.now())) return null;
-  // A preview during an apply would plan from lists that are half written.
-  if (jobAlive(await listSyncApply.getValue(), Date.now())) return null;
-  const now = Date.now();
-  await listSyncJob.setValue({
-    v: SYNC_JOB_VERSION,
-    state: "running",
-    startedAt: now,
-    beatAt: now,
-    reads: [],
+  const claimed = await exclusive(async () => {
+    if (jobAlive(readJob(await listSyncJob.getValue()), Date.now())) return false;
+    // A preview during an apply would plan from lists that are half written.
+    if (jobAlive(await listSyncApply.getValue(), Date.now())) return false;
+    const now = Date.now();
+    await listSyncJob.setValue({
+      v: SYNC_JOB_VERSION,
+      state: "running",
+      startedAt: now,
+      beatAt: now,
+      reads: [],
+    });
+    return true;
   });
-  return runPreview(auto);
+  return claimed ? runPreview(auto) : null;
 }
 
 async function runPreview(auto: boolean): Promise<SyncJob> {
@@ -175,7 +179,8 @@ async function runPreview(auto: boolean): Promise<SyncJob> {
           const list = await (
             getService(tracker).readList as NonNullable<ReturnType<typeof getService>["readList"]>
           )(kinds, saved, auto);
-          entries.push(...list.entries);
+          // Not `push(...)`: a spread of a very long list throws a RangeError.
+          for (const e of list.entries) entries.push(e);
           if (list.scoreFormat) scales[tracker] = list.scoreFormat;
           // A list too big to save is read in full next time; drop the old one.
           if (list.cache) await cache.setValue(list.cache).catch(() => cache.removeValue());

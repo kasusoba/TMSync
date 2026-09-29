@@ -18,9 +18,9 @@ import {
   listSyncSettings,
 } from "../storage";
 import { trackerLabel } from "../trackers/types";
-import { applyQueues, beginApply, readApply } from "./apply";
+import { APPLY_FRESH_MS, type ApplyJob, applyQueues, beginApply, readApply } from "./apply";
 import { commitBase } from "./base-store";
-import { beginPreview, jobAlive, readJob } from "./run";
+import { type SyncJob, beginPreview, jobAlive, readJob } from "./run";
 import type { SyncItem, SyncPlan, SyncWrite } from "./types";
 
 export const AUTO_ALARM = "tmsync-list-sync";
@@ -114,6 +114,17 @@ export function unseen(run: AutoRun | null, seen: string[]): number {
   return run.held.filter((k) => !saw.has(k)).length;
 }
 
+/**
+ * Whether the user has a preview open that they may still apply: made by hand, with
+ * writes, fresh, and not applied yet. The automatic run would replace it (and the
+ * user's picks with it), so it waits for the next day instead. Pure.
+ */
+export function previewWaiting(job: SyncJob | null, last: ApplyJob | null, now: number): boolean {
+  const p = job?.preview;
+  if (!p || p.auto || p.reason || !p.plan.items.length) return false;
+  return now - p.at <= APPLY_FRESH_MS && last?.planAt !== p.at;
+}
+
 /** Make the alarm match the setting: there while auto sync is on, gone when off.
  * A new alarm fires a minute later, so turning it on syncs soon. */
 export async function syncAutoAlarm(): Promise<void> {
@@ -144,7 +155,8 @@ export async function showAutoBadge(): Promise<void> {
 /**
  * One automatic run: read and plan (the preview job), then apply the additions
  * (the apply job). Skipped when auto sync is off, when it ran less than a day
- * ago, or while the user's own sync runs.
+ * ago, while the user's own sync runs, or while a preview they made waits to be
+ * applied.
  */
 export async function runAuto(): Promise<void> {
   const settings = await listSyncSettings.getValue();
@@ -155,9 +167,13 @@ export async function runAuto(): Promise<void> {
   const blank = { added: 0, failed: 0, held: last?.held ?? [], notes: [] as string[] };
 
   const now = Date.now();
-  const busy =
-    jobAlive(readJob(await listSyncJob.getValue()), now) ||
-    jobAlive(readApply(await listSyncApply.getValue()), now);
+  const [job, apply] = [
+    readJob(await listSyncJob.getValue()),
+    readApply(await listSyncApply.getValue()),
+  ];
+  if (previewWaiting(job, apply, now))
+    return save({ ...blank, state: "skipped", notes: ["A preview was waiting."] });
+  const busy = jobAlive(job, now) || jobAlive(apply, now);
   const running = busy ? null : await beginPreview(true);
   if (!running) return save({ ...blank, state: "skipped", notes: ["A sync was running."] });
 
@@ -184,6 +200,8 @@ export async function runAuto(): Promise<void> {
     }
 
     const applied = await beginApply(preview, queues, true, full);
+    if (!applied)
+      return save({ ...blank, notes, held, state: "skipped", error: "A sync was running." });
     for (const t of applied.trackers)
       if (t.error) notes.push(`${trackerLabel(t.tracker)}: ${t.error}`);
     return save({

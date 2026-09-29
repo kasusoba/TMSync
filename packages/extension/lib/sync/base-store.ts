@@ -4,7 +4,7 @@
  * apply of that preview took every write (then with the writes laid over). A run
  * that failed a write, or held a removal back for the user, leaves the old base.
  */
-import { listSyncBase, listSyncBaseNext } from "../storage";
+import { listSyncBase, listSyncBaseNext, listSyncCache } from "../storage";
 import type { Tracker } from "../trackers/types";
 import { BASE_VERSION, type BaseEntry, type SyncBase, afterWrites } from "./base";
 import type { SyncWrite } from "./types";
@@ -57,4 +57,14 @@ export async function forgetBase(tracker: Tracker): Promise<void> {
     const { [tracker]: _gone, ...rest } = next.trackers;
     await listSyncBaseNext.setValue({ ...next, trackers: rest });
   }
+}
+
+/** Forget what list sync saved for one tracker's account: its read cache and its
+ * base. Never throws, so a storage error cannot keep an account from connecting
+ * or disconnecting. */
+export async function forgetLists(tracker: Tracker): Promise<void> {
+  await listSyncCache(tracker)
+    .removeValue()
+    .catch(() => {});
+  await forgetBase(tracker).catch(() => {});
 }
