@@ -40,7 +40,14 @@ import { planWestern } from "./western";
 export type { PlanInput } from "./context";
 export { withPicks } from "./picks";
 export { summarize } from "./summary";
-export { normStatus, removesEntries, stateOf, syncKindsFor, takesKind } from "./util";
+export {
+  canBeMain,
+  normStatus,
+  removesEntries,
+  stateOf,
+  syncKindsFor,
+  takesKind,
+} from "./util";
 
 export function planSync(input: PlanInput): SyncPlan {
   const ctx = planContext(input);

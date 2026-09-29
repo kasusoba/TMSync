@@ -116,6 +116,7 @@ describe("previewWaiting", () => {
     reads: [],
     preview: {
       at: 1_000,
+      readAt: 900,
       reads: [],
       totals: [],
       scales: {},
@@ -210,6 +211,7 @@ describe("runAuto", () => {
       reads: [],
       preview: {
         at: Date.now(),
+        readAt: Date.now(),
         reads: [],
         totals: [],
         scales: {},

@@ -15,20 +15,24 @@
  * sync still reads it as removed there and does not add it back from that copy.
  * The mark goes when the user adds the item to that list again.
  */
-import type { Tracker } from "../trackers/types";
+import { type Tracker, trackerFamily } from "../trackers/types";
 import type { ListEntry, ListSyncSettings, SyncIds, SyncPlan, SyncWrite, TargetRef } from "./types";
 
 /** Bump when the saved shape changes: an older base is then ignored. */
-export const BASE_VERSION = 1;
+export const BASE_VERSION = 2;
 
 /** One entry of a tracker's list at the base: its id keys (`anilist:1`,
  * `tv:tmdb:1399`, ...), whether it was rated (`r`), and its rated seasons (`s`,
- * Trakt only). `x` = a removed mark: the user removed the item from this list,
- * and another list keeps a copy sync never deletes. */
+ * Trakt only). `o` = only ratings: the list has the item because it is rated, and
+ * nothing of it is watched (Trakt makes an entry from a rating alone). Then the entry
+ * goes away when the rating does, which is an unrate, not a removal. `x` = a removed
+ * mark: the user removed the item from this list, and another list keeps a copy sync
+ * never deletes. */
 export interface BaseEntry {
   k: string[];
   r?: 1;
   s?: number[];
+  o?: 1;
   x?: 1;
 }
 
@@ -42,10 +46,11 @@ export interface SyncBase {
 }
 
 /** The lists of a preview, kept until its apply says whether they became the
- * base. `planAt` is the preview's `at`. */
+ * base. `planAt` is the preview's `at`; `readAt` is when its reads started. */
 export interface PendingBase {
   v: number;
   planAt: number;
+  readAt: number;
   sig: string;
   trackers: Partial<Record<Tracker, BaseEntry[]>>;
 }
@@ -73,6 +78,18 @@ export function refKeys(t: TargetRef): string[] {
   return idKeys(t.ids, t.mediaType === "movie" ? "movie" : "tv");
 }
 
+/** Whether a tracker's list holds only watch history (Trakt): an entry there with
+ * nothing watched is there only for its ratings. Pure. */
+const historyOnly = (tk: Tracker) => trackerFamily(tk) === "seasoned";
+
+/** Whether an entry holds nothing but ratings (see `BaseEntry.o`). Pure. */
+function ratingsOnly(e: ListEntry): boolean {
+  if (!historyOnly(e.tracker)) return false;
+  if (e.shape === "movie") return !e.watched;
+  if (e.shape === "seasons") return Object.values(e.seasons).every((eps) => !eps.length);
+  return false;
+}
+
 /** A tracker's list as base entries. Pure. */
 export function baseOf(entries: ListEntry[]): BaseEntry[] {
   return entries.map((e) => {
@@ -82,6 +99,7 @@ export function baseOf(entries: ListEntry[]): BaseEntry[] {
       const s = Object.keys(e.seasonRatings).map(Number);
       if (s.length) b.s = s;
     }
+    if (ratingsOnly(e)) b.o = 1;
     return b;
   });
 }
@@ -134,8 +152,10 @@ export class BaseIndex {
 /**
  * The lists after an apply: the lists as read, with the applied writes laid over.
  * A write that adds makes (or marks rated) the entry and clears a removed mark,
- * a removal drops the entry, an unrate clears its rating. This is what the lists hold once every write is
- * taken, without reading them again. Pure.
+ * a removal drops the entry, an unrate clears its rating. A rating alone makes an
+ * only-ratings entry on a history list, a watch makes it a real one, and an unrate
+ * of its last rating drops it (as the tracker does). This is what the lists hold
+ * once every write is taken, without reading them again. Pure.
  */
 export function afterWrites(
   lists: Partial<Record<Tracker, BaseEntry[]>>,
@@ -159,10 +179,12 @@ export function afterWrites(
     let e = list[at];
     if (!e) {
       e = { k: keys };
+      if ((w.op === "rating" || w.op === "unrate") && historyOnly(w.tracker)) e.o = 1;
       list.push(e);
     } else {
       for (const k of keys) if (!e.k.includes(k)) e.k.push(k);
     }
+    if (w.op === "movie" || w.op === "episodes") e.o = undefined;
     if (w.op === "rating") {
       if (w.level === "season" && w.season !== undefined)
         e.s = [...new Set([...(e.s ?? []), w.season])];
@@ -172,6 +194,7 @@ export function afterWrites(
         e.s = (e.s ?? []).filter((n) => n !== w.season);
         if (!e.s.length) e.s = undefined;
       } else e.r = undefined;
+      if (e.o && !e.r && !e.s) list.splice(list.indexOf(e), 1);
     }
   }
   return out;

@@ -363,6 +363,31 @@ describe("ratings", () => {
     const ratings = writesFor(p, "trakt").filter((w) => w.op === "rating");
     expect(ratings).toEqual([expect.objectContaining({ level: "season", season: 1, score: 90 })]);
   });
+
+  it("never sends a season rating to Simkl, which rates only the whole show", () => {
+    // One cour's score would replace the show's, and plan again on every sync.
+    const p = plan(
+      [
+        courEntry("anilist", { anilist: 16498 }, { rating: 90 }),
+        simklShow({ tmdb: 1429 }, { 1: [1] }),
+      ],
+      { trackers: ["anilist", "simkl"] },
+    );
+    expect(writesFor(p, "simkl").filter((w) => w.op === "rating")).toEqual([]);
+  });
+
+  it("still sends a whole-show rating to Simkl", () => {
+    const p = plan(
+      [
+        courEntry("anilist", { anilist: 30, mal: 300 }, { rating: 90 }),
+        simklShow({ tmdb: 50 }, { 1: [1] }),
+      ],
+      { trackers: ["anilist", "simkl"] },
+    );
+    expect(writesFor(p, "simkl").filter((w) => w.op === "rating")).toEqual([
+      expect.objectContaining({ level: "show" }),
+    ]);
+  });
 });
 
 describe("anime across numbering families", () => {
@@ -851,7 +876,8 @@ describe("a main list", () => {
     expect(p.skips).toEqual([expect.objectContaining({ reason: "main_missing" })]);
   });
 
-  it("works for TV too: removes from Simkl, keeps its extra episodes", () => {
+  it("never takes Trakt as a main list: it holds only watch history", () => {
+    // With Trakt as main, Simkl would lose every show Trakt has not watched.
     const settings = { main: { tv: "trakt" as Tracker } };
     const p = plan(
       [
@@ -861,13 +887,14 @@ describe("a main list", () => {
       ],
       { settings, trackers: ["trakt", "simkl"] },
     );
-    expect(writesFor(p, "simkl")).toEqual([
-      expect.objectContaining({
-        op: "remove",
-        target: expect.objectContaining({ ids: { tmdb: 555 } }),
-      }),
-    ]);
-    expect(p.notices).toEqual([expect.objectContaining({ tracker: "simkl", reason: "ahead" })]);
+    expect(p.items.flatMap((i) => i.writes).filter((w) => w.op === "remove")).toEqual([]);
+    // A union: Trakt gets what Simkl has.
+    expect(
+      writesFor(p, "trakt")
+        .map((w) => w.target.ids.tmdb)
+        .sort(),
+    ).toEqual([1399, 555]);
+    expect(p.skips.filter((s) => s.reason === "main_missing")).toEqual([]);
   });
 
   it("converges", () => {

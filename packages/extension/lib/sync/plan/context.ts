@@ -18,7 +18,7 @@ import type {
   SyncSkip,
   SyncWrite,
 } from "../types";
-import { takesKind } from "./util";
+import { canBeMain, takesKind } from "./util";
 
 export interface PlanInput {
   /** Every entry read from the trackers taking part. */
@@ -56,6 +56,7 @@ export interface PlanContext {
   atBase: (tk: Tracker, keys: string[]) => BaseEntry | undefined;
   listedAtBase: (tk: Tracker, keys: string[]) => boolean;
   hasNow: (tk: Tracker, keys: string[]) => boolean;
+  unratedAway: (tk: Tracker, keys: string[]) => boolean;
   removedSince: (
     keys: string[],
     among: Tracker[],
@@ -95,7 +96,7 @@ export function planContext(input: PlanInput): PlanContext {
   /** The main list for a kind, when the user set one it can hold. */
   const mainFor = (kind: SyncKind): Tracker | undefined => {
     const m = settings.main?.[kind];
-    return m && takesKind(m, kind, settings) ? m : undefined;
+    return m && canBeMain(m) && takesKind(m, kind, settings) ? m : undefined;
   };
   // --- remembered removals (base.ts) ---
   const bases = new Map<Tracker, BaseIndex>();
@@ -130,6 +131,10 @@ export function planContext(input: PlanInput): PlanContext {
     ]),
   );
   const hasNow = (tk: Tracker, keys: string[]) => !!nows.get(tk)?.find(keys);
+  /** The tracker had the item only for its ratings at the base (`BaseEntry.o`), and
+   * has nothing of it now: the user removed the rating, not the item. Its rating
+   * counts as removed (`unratedSince`), and the item as still there. */
+  const unratedAway = (tk: Tracker, keys: string[]) => !hasNow(tk, keys) && !!atBase(tk, keys)?.o;
 
   /**
    * The trackers that removed an item: they had it at the base (or keep a removed
@@ -145,7 +150,9 @@ export function planContext(input: PlanInput): PlanContext {
   ): { gone: Tracker[]; fresh: boolean } => {
     const none = { gone: [], fresh: false };
     if (!bases.size || !holders.length) return none;
-    const gone = among.filter((tk) => !hasNow(tk, keys) && atBase(tk, keys));
+    const gone = among.filter(
+      (tk) => !hasNow(tk, keys) && atBase(tk, keys) && !unratedAway(tk, keys),
+    );
     if (!gone.length || !holders.every((tk) => listedAtBase(tk, keys))) return none;
     return { gone, fresh: gone.some((tk) => listedAtBase(tk, keys)) };
   };
@@ -191,6 +198,7 @@ export function planContext(input: PlanInput): PlanContext {
     atBase,
     listedAtBase,
     hasNow,
+    unratedAway,
     removedSince,
     unratedSince,
     mainMissing,

@@ -27,7 +27,7 @@ const plan: SyncPlan = {
   conflicts: [],
   notices: [],
 };
-const preview: SyncPreview = { at: 1_000, reads: [], totals: [], plan, scales: {} };
+const preview: SyncPreview = { at: 1_000, readAt: 900, reads: [], totals: [], plan, scales: {} };
 const job = (planAt: number, state: ApplyJob["state"] = "done"): ApplyJob => ({
   v: APPLY_JOB_VERSION,
   state,

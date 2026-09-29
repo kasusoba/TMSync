@@ -329,7 +329,9 @@ and nothing of it touches `extract()` or the scrobble path.
 - **A main list per kind (optional).** For movies, TV, or anime, one tracker can be the main list.
   Only it is a source; the others copy it, and a list entry it does not have is removed from them.
   Trakt watch history is never removed, since deleting plays cannot be undone. A copy that is
-  further than the main list keeps its progress, and the plan says so as a notice.
+  further than the main list keeps its progress, and the plan says so as a notice. Trakt cannot
+  be a main list: it holds only watch history, so every planned or unwatched entry on the
+  others would be removed (`canBeMain`). A saved Trakt main list reads as none.
 - **Remembered removals (always on).** In a union, an entry or a rating removed from one list
   since the last clean sync is removed from the others instead of added back (see "The base").
   There is no switch: the removal is always in the preview first, an automatic run holds it for
@@ -413,11 +415,16 @@ to write, or when the apply of that preview takes every write, with the writes l
 removal back leaves the old base: otherwise a write that did not happen would look like a removal
 next time. With no base yet (the first sync, or after a settings change), a union only adds. It
 is dropped when the settings that give it meaning change (`settingsSig`: kinds, main lists,
-private, adult) and per tracker when an account connects or disconnects. The planner reads an item
+private, adult) and per tracker when an account connects or disconnects. Each account change is
+stamped (`local:list_sync_account_at`). A list read before the stamp belongs to the old account, so
+a preview that ran across the change drops that read, the pending base never commits it, and its
+plan cannot be applied. The planner reads an item
 as removed from a list only when that list had it at the base and no entry of it now shares any id
 with it, so a crosswalk change is never a removal. If a list that has it now did not have it at the
 base (it was added since), the add wins and the item is added back. Clearing a rating is an
-`unrate` write.
+`unrate` write. Trakt makes an entry from a rating alone, so the base marks an entry with nothing
+watched as only ratings (`o`). When that entry goes, the user removed the rating, not the item: it
+is an `unrate` on the others, never a removal.
 
 **Removed marks.** A removal can leave a copy sync never deletes (Trakt watch history, or a Simkl
 show that holds other cours). Without more, the next base would have the item only in that copy,

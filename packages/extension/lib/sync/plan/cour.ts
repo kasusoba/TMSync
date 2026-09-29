@@ -1,6 +1,12 @@
 /** Anime, one cour at a time (one AniList entry). Pure. */
 import type { CourStatus } from "../../trackers/cour-plan";
-import { TRACKER_INFO, type Tracker, trackerFamily, trackerLabel } from "../../trackers/types";
+import {
+  TRACKER_INFO,
+  type Tracker,
+  trackerFamily,
+  trackerLabel,
+  trackerRates,
+} from "../../trackers/types";
 import { idKeys as baseKeys, entryKeys } from "../base";
 import { newest } from "../read-util";
 import type {
@@ -29,7 +35,8 @@ import {
 
 export function planCour(ctx: PlanContext, key: string, g: CourGroup): void {
   const { input, settings, animap, ignored, skips, conflicts, notices, removed } = ctx;
-  const { mainFor, mainMissing, removedSince, unreadHas, unratedSince, atBase, push } = ctx;
+  const { mainFor, mainMissing, removedSince, unreadHas, unratedSince, unratedAway, atBase, push } =
+    ctx;
   if (ignored.has(key)) {
     skips.push({ key, title: g.title, reason: "ignored" });
     return;
@@ -216,17 +223,19 @@ export function planCour(ctx: PlanContext, key: string, g: CourGroup): void {
     }
   }
   // A rating removed from one list since the last clean sync: clear it on the
-  // others. Only lists that have the entry now; a seasoned list's rating is the
-  // level the crosswalk maps the cour to (a season, or the show).
+  // others. Only lists that have the entry now, or had it only for its rating; a
+  // seasoned list's rating is the level the crosswalk maps the cour to (a season,
+  // or the show).
   const clear = main
     ? []
     : unratedSince(
-        [...ratingRefs.keys()].filter((tk) => own(tk) || part(tk)),
+        [...ratingRefs.keys()].filter((tk) => own(tk) || part(tk) || unratedAway(tk, keys)),
         (tk) => hasRating.has(tk),
         (tk) => {
           const b = atBase(tk, keys);
           if (!b) return false;
-          if (part(tk) && rt?.kind === "season") return !!b.s?.includes(rt.season);
+          if (rt?.kind === "season" && ratingRefs.get(tk)?.level === "season")
+            return !!b.s?.includes(rt.season);
           return b.r === 1;
         },
       );
@@ -408,7 +417,9 @@ export function planCour(ctx: PlanContext, key: string, g: CourGroup): void {
           ...(srcAt !== undefined ? { at: srcAt } : {}),
         });
     }
-    if (rt) {
+    // A season rating goes only to a list that rates seasons (Trakt). A Simkl show
+    // rates as a whole: one cour's score would replace the show's.
+    if (rt && (rt.kind !== "season" || trackerRates(tk) === "levels")) {
       ratingRefs.set(tk, {
         level: rt.kind,
         season: rt.kind === "season" ? rt.season : undefined,

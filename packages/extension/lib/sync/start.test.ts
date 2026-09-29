@@ -14,7 +14,7 @@ vi.mock("../trackers/index", () => ({
 import { listSyncApply, listSyncBase, listSyncCache, listSyncJob } from "../storage";
 import { startApply } from "./apply";
 import { BASE_VERSION } from "./base";
-import { forgetLists } from "./base-store";
+import { commitBase, forgetLists, savePending } from "./base-store";
 import { SYNC_JOB_VERSION, type SyncPreview, beginPreview } from "./preview";
 
 const entry = (n: number): ListEntry =>
@@ -23,6 +23,7 @@ const entry = (n: number): ListEntry =>
 const target = { ids: { tmdb: 1 }, mediaType: "movie" as const };
 const preview = (): SyncPreview => ({
   at: Date.now(),
+  readAt: Date.now(),
   reads: [],
   totals: [],
   scales: {},
@@ -67,6 +68,26 @@ describe("beginPreview", () => {
   });
 });
 
+describe("an account change during a preview", () => {
+  it("drops the list read from the old account, and does not save it", async () => {
+    readList.mockImplementation(async () => {
+      await forgetLists("trakt");
+      return { entries: [entry(1)], cache: { v: 1 } };
+    });
+    const job = await await beginPreview(false);
+    expect(job?.reads.find((r) => r.tracker === "trakt")?.state).toBe("failed");
+    expect(await listSyncCache("trakt").getValue()).toBeNull();
+  });
+
+  it("never makes the old account's list the base", async () => {
+    const readAt = Date.now();
+    await savePending(1, readAt, "", { trakt: [{ k: ["movie:tmdb:1"] }], simkl: [] });
+    await forgetLists("trakt");
+    await commitBase(1, []);
+    expect((await listSyncBase.getValue())?.trackers).toEqual({ simkl: [] });
+  });
+});
+
 describe("startApply", () => {
   const seed = () =>
     listSyncJob.setValue({
@@ -83,6 +104,19 @@ describe("startApply", () => {
     const out = await Promise.all([startApply(), startApply()]);
     expect(out.filter((o) => o.started)).toHaveLength(1);
     expect(out.find((o) => !o.started)?.reason).toBe("running");
+  });
+
+  it("refuses a plan read from an account that changed since", async () => {
+    await listSyncJob.setValue({
+      v: SYNC_JOB_VERSION,
+      state: "done",
+      startedAt: 0,
+      beatAt: 0,
+      reads: [],
+      preview: { ...preview(), reads: [{ tracker: "trakt", state: "read", count: 1 }] },
+    });
+    await forgetLists("trakt");
+    expect(await startApply()).toEqual({ started: false, reason: "stale" });
   });
 
   it("rejects when the job cannot be saved, instead of dropping the error", async () => {

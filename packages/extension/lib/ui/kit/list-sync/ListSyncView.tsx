@@ -9,6 +9,7 @@
  */
 import type { ApplyBlock, ApplyJob } from "@/lib/sync/apply";
 import type { AutoRun } from "@/lib/sync/auto";
+import { canBeMain } from "@/lib/sync/plan/index";
 import type { SyncPreview, TrackerRead } from "@/lib/sync/preview";
 import {
   type ListSyncSettings,
@@ -143,8 +144,11 @@ export function ListSyncView({
               <tr class={clsx("border-t", t.divider)}>
                 <td class={clsx("pt-2.5 font-medium", t.heading)}>Main list</td>
                 {KINDS.map((k) => {
-                  const able = rows.filter((r) => r.can.includes(k) && r.on.includes(k));
-                  const cur = settings.main?.[k];
+                  // Trakt holds only watch history, so it cannot be a main list.
+                  const able = rows.filter(
+                    (r) => canBeMain(r.tracker) && r.can.includes(k) && r.on.includes(k),
+                  );
+                  const cur = able.find((r) => r.tracker === settings.main?.[k])?.tracker;
                   return (
                     <td key={k} class="pt-2.5 text-center">
                       <select
@@ -172,8 +176,9 @@ export function ListSyncView({
           <p class={clsx("mt-2 text-[11px] leading-relaxed", t.sub)}>
             None: every list gets what the others have, and an entry or a rating you remove from one
             list is removed from the others. A main list: the others copy it, and lose list entries
-            it doesn’t have. Progress never goes down and Trakt history is never deleted. The
-            preview lists what stays as it is.
+            it doesn’t have. Trakt can’t be a main list: it holds only what you watched. Progress
+            never goes down and Trakt history is never deleted. The preview lists what stays as it
+            is.
           </p>
         </section>
 

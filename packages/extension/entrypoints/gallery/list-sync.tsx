@@ -159,6 +159,7 @@ function preview(
   });
   return {
     at: Date.UTC(2026, 8, 28, 9, 30),
+    readAt: Date.UTC(2026, 8, 28, 9, 29),
     reads: ALL_TRACKERS.map((tracker) =>
       trackers.includes(tracker)
         ? {
