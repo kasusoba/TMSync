@@ -1,5 +1,5 @@
 /**
- * List sync types (plans/list-sync.md). Each tracker reads its whole list into
+ * List sync types (docs/ARCHITECTURE.md section 7). Each tracker reads its whole list into
  * `ListEntry` values, the pure planner (`plan.ts`) groups them and decides what
  * each tracker is missing, and the result is a `SyncPlan`. Nothing here talks to a
  * tracker: the readers live with each tracker (`lib/trackers/<tracker>/list.ts`).
@@ -95,7 +95,8 @@ export interface ListSyncSettings {
    * history). The copies' progress still never goes down. Missing = union.
    */
   main?: Partial<Record<SyncKind, Tracker>>;
-  /** Sync once a day on its own, additions only (`auto.ts`). Off by default. */
+  /** Sync once a day on its own, additions only (`auto.ts`). Off by default. Per
+   * device: it is kept in `local`, not synced (see `listSyncSettings`). */
   auto?: boolean;
 }
 

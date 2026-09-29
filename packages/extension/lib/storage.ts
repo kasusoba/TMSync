@@ -454,11 +454,62 @@ export const badgePrefs = storage.defineItem<BadgePrefs>("sync:badge_prefs", {
   fallback: { mode: "full", position: null },
 });
 
-/** List sync choices (plans/list-sync.md): which kinds each tracker takes part in,
- * private and adult entries, and the items the user keeps out. */
-export const listSyncSettings = storage.defineItem<ListSyncSettings>("sync:list_sync_settings", {
+/** The list sync choices that follow the user across devices: which kinds each
+ * tracker takes part in, private and adult entries, and the main lists. Small, so
+ * `sync`. Older builds also kept `ignore` and `auto` here (read once, see below). */
+type SyncedSyncPrefs = Omit<ListSyncSettings, "ignore" | "auto"> &
+  Partial<Pick<ListSyncSettings, "ignore" | "auto">>;
+const listSyncPrefs = storage.defineItem<SyncedSyncPrefs>("sync:list_sync_settings", {
   fallback: DEFAULT_SYNC_SETTINGS,
 });
+
+/** The items the user keeps out of list sync. `local`, not `sync`: the list can
+ * grow past the 8 KB a synced item may hold. Null = not moved out of the synced
+ * item yet. */
+const listSyncIgnore = storage.defineItem<string[] | null>("local:list_sync_ignore", {
+  fallback: null,
+});
+
+/** Automatic list sync on this device. `local`, not `sync`: two browsers running
+ * the daily sync side by side would each send the same Trakt plays. */
+const listSyncAutoOn = storage.defineItem<boolean>("local:list_sync_auto_on", {
+  fallback: false,
+});
+
+/**
+ * List sync choices (docs/ARCHITECTURE.md section 7), as one value over three
+ * stored items: the synced prefs, and this device's ignore list and auto switch.
+ */
+export const listSyncSettings = {
+  async getValue(): Promise<ListSyncSettings> {
+    const [prefs, ignore, auto] = await Promise.all([
+      listSyncPrefs.getValue(),
+      listSyncIgnore.getValue(),
+      listSyncAutoOn.getValue(),
+    ]);
+    const { ignore: oldIgnore, auto: _synced, ...rest } = prefs;
+    // An ignore list an older build kept in the synced item: move it here once.
+    if (ignore === null && oldIgnore?.length)
+      await listSyncIgnore.setValue(oldIgnore).catch(() => {});
+    return { ...DEFAULT_SYNC_SETTINGS, ...rest, ignore: ignore ?? oldIgnore ?? [], auto };
+  },
+  async setValue(next: ListSyncSettings): Promise<void> {
+    const { ignore, auto, ...prefs } = next;
+    await Promise.all([
+      listSyncIgnore.setValue(ignore),
+      listSyncAutoOn.setValue(!!auto),
+      listSyncPrefs.setValue(prefs),
+    ]);
+  },
+  /** Call `cb` with the whole value when any part changes. Returns the unwatch. */
+  watch(cb: (next: ListSyncSettings) => void): () => void {
+    const fire = () => void listSyncSettings.getValue().then(cb, () => {});
+    const off = [listSyncPrefs.watch(fire), listSyncIgnore.watch(fire), listSyncAutoOn.watch(fire)];
+    return () => {
+      for (const u of off) u();
+    };
+  },
+};
 
 /** The last list sync preview job: its progress while it runs, then the plan. The
  * background saves it step by step; the options page watches it. */

@@ -743,7 +743,7 @@ export function App() {
   const [actError, setActError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [badge, setBadge] = useState<BadgePrefs>({ mode: "full", position: null });
-  // List sync (plans/list-sync.md): the user's choices, and the last preview.
+  // List sync (docs/ARCHITECTURE.md section 7): the user's choices, and the last preview.
   const [syncSettings, setSyncSettings] = useState<ListSyncSettings>(DEFAULT_SYNC_SETTINGS);
   const [syncJob, setSyncJob] = useState<SyncJob | null>(null);
   const [syncApply, setSyncApply] = useState<ApplyJob | null>(null);
@@ -930,6 +930,8 @@ export function App() {
       await listSyncSettings.setValue(next);
     } catch (e) {
       setSyncError(actionError(e));
+      // Show what was saved, not the choice that failed to save.
+      void listSyncSettings.getValue().then(setSyncSettings, () => {});
     }
   };
 
