@@ -32,8 +32,9 @@ import {
 } from "@/lib/storage";
 import { type ApplyJob, applyBlock, applyQueues, cancelApply, readApply } from "@/lib/sync/apply";
 import type { AutoRun } from "@/lib/sync/auto";
+import { jobAlive } from "@/lib/sync/job";
 import { syncKindsFor } from "@/lib/sync/plan/index";
-import { type SyncJob, jobAlive, readJob } from "@/lib/sync/run";
+import { type SyncJob, readJob } from "@/lib/sync/preview";
 import {
   DEFAULT_SYNC_SETTINGS,
   type ListSyncSettings,

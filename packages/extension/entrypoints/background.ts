@@ -25,7 +25,7 @@ import {
 import { startApply } from "@/lib/sync/apply";
 import { AUTO_ALARM, runAuto, showAutoBadge, syncAutoAlarm } from "@/lib/sync/auto";
 import { forgetLists } from "@/lib/sync/base-store";
-import { startPreview } from "@/lib/sync/run";
+import { startPreview } from "@/lib/sync/preview";
 import {
   ALL_TRACKERS,
   connectedTrackers,

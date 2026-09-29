@@ -3,7 +3,7 @@
 import { APPLY_JOB_VERSION, type ApplyJob, applyBlock, applyQueues } from "@/lib/sync/apply";
 import { type BaseEntry, baseOf } from "@/lib/sync/base";
 import { planSync, summarize, syncKindsFor } from "@/lib/sync/plan/index";
-import type { SyncPreview } from "@/lib/sync/run";
+import type { SyncPreview } from "@/lib/sync/preview";
 import { DEFAULT_SYNC_SETTINGS, type ListEntry, type ListSyncSettings } from "@/lib/sync/types";
 import { Animap } from "@/lib/trackers/animap/index";
 import { ALL_TRACKERS, type Tracker } from "@/lib/trackers/types";

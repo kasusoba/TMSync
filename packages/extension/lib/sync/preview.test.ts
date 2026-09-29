@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { STALE_MS, SYNC_JOB_VERSION, type SyncJob, jobAlive, readJob } from "./run";
+import { STALE_MS, jobAlive } from "./job";
+import { SYNC_JOB_VERSION, type SyncJob, readJob } from "./preview";
 
 const job = (state: SyncJob["state"], beatAt: number): SyncJob => ({
   v: SYNC_JOB_VERSION,

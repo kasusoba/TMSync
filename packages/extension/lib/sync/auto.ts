@@ -20,7 +20,8 @@ import {
 import { trackerLabel } from "../trackers/types";
 import { APPLY_FRESH_MS, type ApplyJob, applyQueues, beginApply, readApply } from "./apply";
 import { commitBase } from "./base-store";
-import { type SyncJob, beginPreview, jobAlive, readJob } from "./run";
+import { jobAlive } from "./job";
+import { type SyncJob, beginPreview, readJob } from "./preview";
 import type { SyncItem, SyncPlan, SyncWrite } from "./types";
 
 export const AUTO_ALARM = "tmsync-list-sync";

@@ -15,7 +15,6 @@
  * For the same reason a preview can be applied once, and only while it is fresh
  * (a plan from lists that changed since could undo a newer watch).
  */
-import { browser } from "wxt/browser";
 import { errorMessage } from "../errors";
 import {
   listSyncApply,
@@ -27,9 +26,9 @@ import {
 import { getService } from "../trackers/service";
 import { ALL_TRACKERS, type Tracker } from "../trackers/types";
 import { commitBase } from "./base-store";
-import { exclusive } from "./lock";
+import { exclusive, jobAlive, jobRunner, versioned } from "./job";
 import { withPicks } from "./plan/index";
-import { STALE_MS, type SyncPreview, jobAlive, readJob } from "./run";
+import { type SyncPreview, readJob } from "./preview";
 import type { ChunkOutcome, SyncPicks, SyncWrite, WriteOutcome } from "./types";
 
 /** How old a preview may be when it is applied. An older one is planned from lists
@@ -41,8 +40,6 @@ export const APPLY_JOB_VERSION = 1;
 
 /** Failed writes kept per tracker, for the summary. */
 const MAX_FAILED = 200;
-
-const BEAT_MS = STALE_MS / 3;
 
 /** One tracker's part in an apply. */
 export interface ApplyTracker {
@@ -90,10 +87,7 @@ export type ApplyBlock =
   | "nothing";
 
 /** A saved apply job, or null when missing or from an older build. Pure. */
-export function readApply(raw: unknown): ApplyJob | null {
-  const job = raw as ApplyJob | null;
-  return job && job.v === APPLY_JOB_VERSION ? job : null;
-}
+export const readApply = versioned<ApplyJob>(APPLY_JOB_VERSION);
 
 /** One write, with the item it belongs to (for the summary). */
 export interface QueuedWrite {
@@ -251,29 +245,18 @@ export async function cancelApply(): Promise<void> {
 }
 
 async function runApply(start: ApplyJob, queues: Map<Tracker, QueuedWrite[]>): Promise<ApplyJob> {
-  let job = start;
-  let saving: Promise<void> = Promise.resolve();
-  const save = (patch: Partial<ApplyJob>) => {
-    job = { ...job, ...patch, beatAt: Date.now() };
-    const snapshot = job;
-    saving = saving.then(() => listSyncApply.setValue(snapshot)).catch(() => {});
-    return saving;
-  };
+  const run = jobRunner(listSyncApply, start);
+  const { save } = run;
   const setTracker = (tk: Tracker, patch: Partial<ApplyTracker>) =>
     save({
-      trackers: job.trackers.map((t) => (t.tracker === tk ? { ...t, ...patch } : t)),
+      trackers: run.get().trackers.map((t) => (t.tracker === tk ? { ...t, ...patch } : t)),
     });
-  const get = (tk: Tracker) => job.trackers.find((t) => t.tracker === tk) as ApplyTracker;
+  const get = (tk: Tracker) => run.get().trackers.find((t) => t.tracker === tk) as ApplyTracker;
   const cancelled = async () => (await listSyncCancelAt.getValue()) > start.startedAt;
-
-  const beat = setInterval(() => {
-    void save({});
-    browser.runtime.getPlatformInfo().catch(() => {});
-  }, BEAT_MS);
 
   try {
     await Promise.all(
-      job.trackers.map(async ({ tracker }) => {
+      start.trackers.map(async ({ tracker }) => {
         const queue = queues.get(tracker) ?? [];
         const applier = getService(tracker).applyList;
         if (!applier) {
@@ -330,8 +313,7 @@ async function runApply(start: ApplyJob, queues: Map<Tracker, QueuedWrite[]>): P
   } catch (e) {
     await save({ state: "failed", error: errorMessage(e) });
   } finally {
-    clearInterval(beat);
-    await saving;
+    await run.stop();
   }
-  return job;
+  return run.get();
 }

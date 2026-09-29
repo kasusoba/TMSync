@@ -6,13 +6,16 @@ const { beginPreview, beginApply } = vi.hoisted(() => ({
   beginPreview: vi.fn(),
   beginApply: vi.fn(),
 }));
-vi.mock("./run", async (orig) => ({ ...(await orig<typeof import("./run")>()), beginPreview }));
+vi.mock("./preview", async (orig) => ({
+  ...(await orig<typeof import("./preview")>()),
+  beginPreview,
+}));
 vi.mock("./apply", async (orig) => ({ ...(await orig<typeof import("./apply")>()), beginApply }));
 
 import { listSyncApply, listSyncAuto, listSyncJob, listSyncSettings } from "../storage";
 import { APPLY_FRESH_MS, APPLY_JOB_VERSION } from "./apply";
 import { AUTO_GAP_MS, additionsOnly, previewWaiting, runAuto, unseen } from "./auto";
-import { SYNC_JOB_VERSION, type SyncJob } from "./run";
+import { SYNC_JOB_VERSION, type SyncJob } from "./preview";
 import { DEFAULT_SYNC_SETTINGS } from "./types";
 
 const target = { id: 1, ids: {}, mediaType: "show" as const, anime: true };

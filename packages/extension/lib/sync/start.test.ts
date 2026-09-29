@@ -15,7 +15,7 @@ import { listSyncApply, listSyncBase, listSyncCache, listSyncJob } from "../stor
 import { startApply } from "./apply";
 import { BASE_VERSION } from "./base";
 import { forgetLists } from "./base-store";
-import { SYNC_JOB_VERSION, type SyncPreview, beginPreview } from "./run";
+import { SYNC_JOB_VERSION, type SyncPreview, beginPreview } from "./preview";
 
 const entry = (n: number): ListEntry =>
   ({ tracker: "trakt", kind: "movie", ids: { tmdb: n }, title: String(n) }) as unknown as ListEntry;

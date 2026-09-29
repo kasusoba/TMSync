@@ -5,7 +5,7 @@ import type { ApplyJob } from "./sync/apply";
 import type { AutoRun } from "./sync/auto";
 import type { PendingBase, SyncBase } from "./sync/base";
 import type { ListCache } from "./sync/cache";
-import type { SyncJob } from "./sync/run";
+import type { SyncJob } from "./sync/preview";
 import type { SyncPicks } from "./sync/types";
 import { DEFAULT_SYNC_SETTINGS, type ListSyncSettings } from "./sync/types";
 import type { AniListIdentity, AniListTokens } from "./trackers/anilist/types";

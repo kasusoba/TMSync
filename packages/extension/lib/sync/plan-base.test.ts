@@ -120,7 +120,7 @@ describe("remembered removals: entries", () => {
 });
 
 /** Plan against `base`, then the base a clean apply of that plan leaves (as
- * `run.ts` and `base-store.ts` build it). */
+ * `preview.ts` and `base-store.ts` build it). */
 function syncOnce(
   entries: ListEntry[],
   base: Partial<Record<Tracker, BaseEntry[]>>,
