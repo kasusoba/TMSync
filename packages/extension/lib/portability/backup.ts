@@ -134,6 +134,9 @@ export async function buildBackup(): Promise<Backup> {
   const userQuickLinks = links.filter((l) => l.source !== "library");
   const libraryLinkToggles: Record<string, boolean> = {};
   for (const l of links) if (l.source === "library") libraryLinkToggles[l.id] = l.enabled;
+  // Automatic sync is per device: two browsers running it would each send the same
+  // Trakt plays. So it stays out of the backup.
+  const { auto: _device, ...listSyncPrefs } = listSync;
   return {
     app: "tmsync",
     version: BACKUP_VERSION,
@@ -146,7 +149,7 @@ export async function buildBackup(): Promise<Backup> {
       manualSelections: manual,
       badgePrefs: badge,
       quickLinksEnabled: linksOn,
-      listSync,
+      listSync: listSyncPrefs,
     },
   };
 }
@@ -196,11 +199,12 @@ export async function applyBackup(backup: Backup): Promise<ImportSummary> {
 
   if (d.badgePrefs) await badgePrefs.setValue(d.badgePrefs);
   if (d.quickLinksEnabled !== undefined) await quickLinksEnabled.setValue(d.quickLinksEnabled);
-  // A backup from before automatic sync has no `auto`: keep this device's.
+  // Automatic sync stays as this device has it, even when an older backup
+  // carries `auto`.
   if (d.listSync)
     await listSyncSettings.setValue({
-      auto: (await listSyncSettings.getValue()).auto,
       ...d.listSync,
+      auto: (await listSyncSettings.getValue()).auto,
     });
 
   return {

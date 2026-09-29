@@ -1,4 +1,5 @@
 /** MyAnimeList API types: only the fields TMSync uses. */
+import type { CourStatus } from "../cour-plan";
 
 /** OAuth token set. MAL rotates the refresh token on every refresh. */
 export interface MalTokens {
@@ -11,7 +12,29 @@ export interface MalTokens {
 }
 
 /** MAL's own list status values. */
-export type MalListStatusValue = "watching" | "completed" | "on_hold" | "dropped" | "plan_to_watch";
+export const MAL_STATUSES = [
+  "watching",
+  "completed",
+  "on_hold",
+  "dropped",
+  "plan_to_watch",
+] as const;
+export type MalListStatusValue = (typeof MAL_STATUSES)[number];
+
+/** A MAL status in cour terms. MAL has no rewatching status: a completed entry with
+ * `is_rewatching` set is REPEATING (`toCourEntry`). */
+export const MAL_TO_COUR: Record<MalListStatusValue, Exclude<CourStatus, "REPEATING">> = {
+  watching: "CURRENT",
+  completed: "COMPLETED",
+  on_hold: "PAUSED",
+  dropped: "DROPPED",
+  plan_to_watch: "PLANNING",
+};
+
+/** A cour status in MAL's words: `MAL_TO_COUR` the other way. */
+export const COUR_TO_MAL = Object.fromEntries(
+  Object.entries(MAL_TO_COUR).map(([mal, cour]) => [cour, mal]),
+) as Record<Exclude<CourStatus, "REPEATING">, MalListStatusValue>;
 
 /** `my_list_status` as MAL returns it (fields we read). */
 export interface MalListStatus {

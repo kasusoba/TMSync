@@ -449,8 +449,8 @@ value over three items. Kinds, main lists, private, and adult are small user pre
 (`sync:list_sync_settings`). The ignore list stays on the device (`local:list_sync_ignore`): it can
 grow past the 8 KB a synced item may hold. Automatic sync is per device too
 (`local:list_sync_auto_on`): two browsers running the daily sync side by side would each send the
-same Trakt plays. All of it goes into the backup, and an import sets automatic sync on the device
-that imports it. Picks (`local:list_sync_picks`) stay on the device.
+same Trakt plays. All of it but automatic sync goes into the backup, and an import keeps the
+importing device's own automatic sync. Picks (`local:list_sync_picks`) stay on the device.
 
 **Limits.** Before the first sync there is no base, so a union brings back what the user
 removed on one tracker, because another still has it. An item an apply did not finish stays at

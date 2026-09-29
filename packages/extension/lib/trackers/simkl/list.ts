@@ -33,6 +33,7 @@ const Media = z.object({
   }),
 });
 const SimklStatus = z.enum(["watching", "plantowatch", "hold", "dropped", "completed"]);
+type SimklStatusValue = z.infer<typeof SimklStatus>;
 const Base = z.object({
   status: SimklStatus.nullish(),
   user_rating: z.number().nullish(),
@@ -56,12 +57,22 @@ const Show = Base.extend({
 });
 const Movie = Base.extend({ movie: Media });
 
-const STATUS: Record<z.infer<typeof SimklStatus>, CourStatus> = {
+/** A Simkl status in cour terms. Simkl has no rewatching status. */
+export const SIMKL_TO_COUR: Record<SimklStatusValue, Exclude<CourStatus, "REPEATING">> = {
   watching: "CURRENT",
   plantowatch: "PLANNING",
   hold: "PAUSED",
   dropped: "DROPPED",
   completed: "COMPLETED",
+};
+
+/** A cour status in Simkl's words: `SIMKL_TO_COUR` the other way. A rewatch is a
+ * completed entry. */
+export const COUR_TO_SIMKL: Record<CourStatus, SimklStatusValue> = {
+  ...(Object.fromEntries(
+    Object.entries(SIMKL_TO_COUR).map(([simkl, cour]) => [cour, simkl]),
+  ) as Record<Exclude<CourStatus, "REPEATING">, SimklStatusValue>),
+  REPEATING: "completed",
 };
 
 // Simkl's "watched long ago, date unknown" placeholder sits near 1970.
@@ -94,7 +105,7 @@ function common(b: z.infer<typeof Base>, m: z.infer<typeof Media>) {
       realTime(b.added_to_watchlist_at),
     ),
     watchedAt: realTime(b.last_watched_at),
-    status: b.status ? STATUS[b.status] : null,
+    status: b.status ? SIMKL_TO_COUR[b.status] : null,
   };
 }
 

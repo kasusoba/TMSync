@@ -15,6 +15,7 @@ import type { ChunkOutcome, SyncWrite, TargetRef, WriteOutcome } from "../../syn
 import { inNotFound, outcomes, sleep, toTen } from "../../sync/write-util";
 import type { CourStatus } from "../cour-plan";
 import { SimklNotConnectedError, simklPost } from "./client";
+import { COUR_TO_SIMKL } from "./list";
 
 /** Writes per chunk. Bigger chunks cost less of the daily quota. */
 export const SIMKL_CHUNK = 250;
@@ -23,15 +24,6 @@ export const SIMKL_CHUNK = 250;
 const GAP_MS = 1_100;
 
 type Ids = Record<string, string | number>;
-
-const SIMKL_STATUS: Record<CourStatus, string> = {
-  CURRENT: "watching",
-  REPEATING: "completed",
-  PLANNING: "plantowatch",
-  PAUSED: "hold",
-  DROPPED: "dropped",
-  COMPLETED: "completed",
-};
 
 /** The ids Simkl matches an item by: its own id, else every id we have, as
  * strings. An anime sends only cour ids, since a TMDB show id names every cour
@@ -99,7 +91,7 @@ export function simklBodies(writes: SyncWrite[]): {
       }
       case "entry": {
         const item: Record<string, unknown> = {};
-        if (w.status?.to) item.status = SIMKL_STATUS[w.status.to];
+        if (w.status?.to) item.status = COUR_TO_SIMKL[w.status.to];
         if (w.progress && w.progress.to > w.progress.from) {
           // An anime movie is one item: "completed" marks it watched.
           if (w.target.mediaType === "movie") item.status ??= "completed";

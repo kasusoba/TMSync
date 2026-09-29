@@ -3,6 +3,7 @@ import { z } from "zod";
 import { finishedAt, ms, parseEach } from "../../sync/read-util";
 import type { ListEntry } from "../../sync/types";
 import { readMalList, toCourEntry } from "./client";
+import { MAL_STATUSES } from "./types";
 
 const Item = z.object({
   node: z.object({
@@ -14,7 +15,7 @@ const Item = z.object({
     start_season: z.object({ year: z.number().nullish() }).nullish(),
   }),
   list_status: z.object({
-    status: z.enum(["watching", "completed", "on_hold", "dropped", "plan_to_watch"]).nullish(),
+    status: z.enum(MAL_STATUSES).nullish(),
     score: z.number().nullish(),
     num_episodes_watched: z.number().nullish(),
     is_rewatching: z.boolean().nullish(),
