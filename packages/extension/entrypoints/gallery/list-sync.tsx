@@ -212,9 +212,7 @@ export function ListSyncTile({
         ? { ...DEFAULT_SYNC_SETTINGS, main: { anime: "anilist" } }
         : state === "auto"
           ? { ...DEFAULT_SYNC_SETTINGS, auto: true }
-          : state === "remembered"
-            ? { ...DEFAULT_SYNC_SETTINGS, removals: true }
-            : DEFAULT_SYNC_SETTINGS;
+          : DEFAULT_SYNC_SETTINGS;
   const p =
     state === "preview" ||
     state === "no-simkl-anime" ||

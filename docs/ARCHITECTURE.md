@@ -329,9 +329,11 @@ and nothing of it touches `extract()` or the scrobble path.
   Only it is a source; the others copy it, and a list entry it does not have is removed from them.
   Trakt watch history is never removed, since deleting plays cannot be undone. A copy that is
   further than the main list keeps its progress, and the plan says so as a notice.
-- **Remember removals (optional, off by default).** In a union, an entry or a rating removed from
-  one list since the last clean sync is removed from the others instead of added back (see "The
-  base"). Trakt watch history is still never removed; the plan says so as a notice.
+- **Remembered removals (always on).** In a union, an entry or a rating removed from one list
+  since the last clean sync is removed from the others instead of added back (see "The base").
+  There is no switch: the removal is always in the preview first, an automatic run holds it for
+  the user, and an item the user wants on one list only goes on the ignore list. Trakt watch
+  history is still never removed; the plan says so as a notice.
 - **Kinds per tracker.** The user picks which kinds each tracker takes part in. A kind that is off
   is off both ways: not read as a source and not written as a target.
 - **Status.** When the progress finishes an entry, it is completed. Otherwise the most recently
@@ -403,8 +405,8 @@ it was after the last clean sync. The base keeps only each entry's id keys and w
 to write, or when the apply of that preview takes every write, with the writes laid over
 (`afterWrites`). A failed or skipped write, a stopped tracker, or an automatic run that held a
 removal back leaves the old base: otherwise a write that did not happen would look like a removal
-next time. The base is kept up to date even with the switch off, so it works at once when turned
-on. It is dropped when the settings that give it meaning change (`settingsSig`: kinds, main lists,
+next time. With no base yet (the first sync, or after a settings change), a union only adds. It
+is dropped when the settings that give it meaning change (`settingsSig`: kinds, main lists,
 private, adult) and per tracker when an account connects or disconnects. The planner reads an item
 as removed from a list only when that list had it at the base and no entry of it now shares any id
 with it, so a crosswalk change is never a removal. If a list that has it now did not have it at the
@@ -412,11 +414,11 @@ base (it was added since), the add wins and the item is added back. Clearing a r
 `unrate` write.
 
 **Stored choices.** The settings (`sync:list_sync_settings`: kinds, main lists, private, adult,
-automatic sync, remember removals, and the ignore list) are small user prefs and go into the
+automatic sync, and the ignore list) are small user prefs and go into the
 backup. Picks (`local:list_sync_picks`) stay on the device.
 
-**Limits.** Without remembered removals, a union brings back what the user removed on one tracker,
-because another still has it. An automatic run that holds a removal does not move the base, so
+**Limits.** Before the first clean sync there is no base, so a union brings back what the user
+removed on one tracker, because another still has it. An automatic run that holds a removal does not move the base, so
 additions it applied meanwhile are not in the base yet: if one of them is then removed on another
 list, the add wins until a clean run. Un-watched episodes are never carried over (that would lower
 progress). The ignore list sits in one `sync` item (8 KB, about 400 keys).

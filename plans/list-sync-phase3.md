@@ -104,6 +104,9 @@ its list without reading it: see C.
    store episode sets as ranges if needed. Ask for the permission only if that is still too big
    (Chrome allows it as optional; Firefox is unverified). The saved lists also serve manual sync,
    so every user has them, not only those with auto sync on.
+6. **Remembered removals are always on (2026-09-29).** The switch is gone: a removal always shows
+   in the preview first, an automatic run holds it, and the ignore list covers "keep it on one
+   list only". A stored `removals` key from before is ignored.
 
 ## Edge cases to plan for
 

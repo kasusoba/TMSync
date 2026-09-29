@@ -97,12 +97,6 @@ export interface ListSyncSettings {
   main?: Partial<Record<SyncKind, Tracker>>;
   /** Sync once a day on its own, additions only (`auto.ts`). Off by default. */
   auto?: boolean;
-  /**
-   * Remember removals (`base.ts`): in union mode, an entry or a rating removed
-   * from one list since the last clean sync is removed from the others, instead
-   * of added back. Trakt watch history is still never removed. Off by default.
-   */
-  removals?: boolean;
 }
 
 export const DEFAULT_SYNC_SETTINGS: ListSyncSettings = {

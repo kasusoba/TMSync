@@ -202,9 +202,9 @@ async function runPreview(auto: boolean): Promise<SyncJob> {
       ...(auto ? { auto } : {}),
     };
     const empty: SyncPlan = { items: [], skips: [], conflicts: [], notices: [] };
-    // Remembered removals plan against the base, when the user turned them on.
+    // Plan against the base, so a removal on one list is not added back from another.
     const sig = settingsSig(settings);
-    const last = settings.removals ? await loadBase(sig) : undefined;
+    const last = await loadBase(sig);
     const preview: SyncPreview =
       trackers.length < 2
         ? { ...base, reason: "too_few", totals: [], plan: empty }

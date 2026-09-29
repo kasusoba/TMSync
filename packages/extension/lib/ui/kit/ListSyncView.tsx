@@ -179,7 +179,7 @@ export function ListSyncView({
   onPick?: (key: string, value: SyncPick | undefined) => void;
   onPreview: () => void;
   onKind: (tracker: Tracker, kind: SyncKind, on: boolean) => void;
-  onSetting: (key: "includePrivate" | "includeAdult" | "removals" | "auto", on: boolean) => void;
+  onSetting: (key: "includePrivate" | "includeAdult" | "auto", on: boolean) => void;
   /** The last automatic run (null = none yet). */
   autoRun?: AutoRun | null;
   /** Set (or clear, with undefined) the main list of a kind. */
@@ -192,16 +192,16 @@ export function ListSyncView({
     <div class="space-y-5">
       <p class={clsx("max-w-2xl text-[12px] leading-relaxed", t.sub)}>
         Keep your lists in sync. TMSync reads each connected list and works out what the others are
-        missing: watched episodes, list status, and ratings. By default it only adds. Pick a main
-        list for a kind to make the others copy it instead, removals included. Preview first:
-        nothing is written until you apply the plan.
+        missing: watched episodes, list status, and ratings. What you remove from one list after a
+        sync is removed from the others, not added back. Pick a main list for a kind to make the
+        others copy it instead. Preview first: nothing is written until you apply the plan.
       </p>
 
       <div class="grid gap-3 lg:grid-cols-[3fr_2fr]">
         <section class={clsx("rounded-lg p-3", t.card)}>
-          <h3 class={clsx("mb-2 text-[11px] font-semibold uppercase tracking-wider", t.faint)}>
+          <CardTitle t={t} class="mb-2">
             What each tracker syncs
-          </h3>
+          </CardTitle>
           <table class="w-full text-[12px]">
             <thead>
               <tr class={t.faint}>
@@ -269,48 +269,50 @@ export function ListSyncView({
             </tbody>
           </table>
           <p class={clsx("mt-2 text-[11px] leading-relaxed", t.sub)}>
-            None: every list gets what the others have. A main list: the others copy it, and lose
-            list entries it doesn’t have. Progress never goes down and Trakt history is never
-            deleted. The preview lists what stays as it is.
+            None: every list gets what the others have, and an entry or a rating you remove from one
+            list is removed from the others. A main list: the others copy it, and lose list entries
+            it doesn’t have. Progress never goes down and Trakt history is never deleted. The
+            preview lists what stays as it is.
           </p>
         </section>
 
-        <section class={clsx("flex flex-col gap-3 rounded-lg p-3", t.card)}>
-          <SettingRow
-            t={t}
-            label="Include private AniList entries"
-            hint="Off: an entry you made private stays off your other (maybe public) profiles."
-            on={settings.includePrivate}
-            onClick={() => onSetting("includePrivate", !settings.includePrivate)}
-          />
-          <SettingRow
-            t={t}
-            label="Include adult entries"
-            on={settings.includeAdult}
-            onClick={() => onSetting("includeAdult", !settings.includeAdult)}
-          />
-          <SettingRow
-            t={t}
-            label="Remember removals"
-            hint="With no main list: an entry or a rating you remove from one list since the last full sync is removed from the others, not added back. Trakt history is never deleted."
-            on={!!settings.removals}
-            onClick={() => onSetting("removals", !settings.removals)}
-          />
-          <SettingRow
-            t={t}
-            label="Sync automatically once a day"
-            hint="Adds only: episodes, movies, new entries, progress, and empty ratings. Removals and conflicts wait for you, and the toolbar icon counts them."
-            on={!!settings.auto}
-            onClick={() => onSetting("auto", !settings.auto)}
-          />
-          {settings.auto && autoRun && <AutoLine t={t} run={autoRun} />}
-          <div class="mt-auto flex items-center gap-3 pt-1">
-            <Btn t={t} tone="primary" disabled={busy || applying} onClick={onPreview}>
-              <Icon name="refresh" class="text-[12px]" />{" "}
-              {busy ? "Reading your lists…" : "Preview sync"}
-            </Btn>
-          </div>
-        </section>
+        <div class="flex flex-col gap-3">
+          <section class={clsx("flex flex-col gap-3 rounded-lg p-3", t.card)}>
+            <CardTitle t={t}>Include</CardTitle>
+            <SettingRow
+              t={t}
+              label="Private AniList entries"
+              hint="Off: an entry you made private stays off your other (maybe public) profiles."
+              on={settings.includePrivate}
+              onClick={() => onSetting("includePrivate", !settings.includePrivate)}
+            />
+            <SettingRow
+              t={t}
+              label="Adult entries"
+              on={settings.includeAdult}
+              onClick={() => onSetting("includeAdult", !settings.includeAdult)}
+            />
+          </section>
+
+          <section class={clsx("flex flex-col gap-3 rounded-lg p-3", t.card)}>
+            <CardTitle t={t}>Automatic sync</CardTitle>
+            <SettingRow
+              t={t}
+              label="Sync once a day"
+              hint="Adds only: episodes, movies, new entries, progress, and empty ratings. Removals and conflicts wait for you, and the toolbar icon counts them."
+              on={!!settings.auto}
+              onClick={() => onSetting("auto", !settings.auto)}
+            />
+            {settings.auto && autoRun && <AutoLine t={t} run={autoRun} />}
+          </section>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <Btn t={t} tone="primary" disabled={busy || applying} onClick={onPreview}>
+          <Icon name="refresh" class="text-[12px]" />{" "}
+          {busy ? "Reading your lists…" : "Preview sync"}
+        </Btn>
       </div>
 
       {error && <p class={clsx("rounded-md px-2.5 py-1.5 text-[11px]", t.badBox)}>{error}</p>}
@@ -352,6 +354,19 @@ export function ListSyncView({
         </section>
       )}
     </div>
+  );
+}
+
+/** The small uppercase title of a settings card. */
+function CardTitle({
+  t,
+  class: cls,
+  children,
+}: { t: Tokens; class?: string; children: ComponentChildren }) {
+  return (
+    <h3 class={clsx("text-[11px] font-semibold uppercase tracking-wider", t.faint, cls)}>
+      {children}
+    </h3>
   );
 }
 

@@ -57,9 +57,9 @@ idea, made general across trackers.
   "Rewatching?" prompt first, and TMSync never lowers the progress you already have.
 - Keeps your lists in sync. List sync reads every connected tracker, shows you the plan
   (episodes, status, ratings, and anything it would remove), and writes it only when you apply.
-  Pick one tracker as the main list, or let each list fill in what the others have. You can
-  turn on a daily automatic sync (it only adds; removals and conflicts wait for you), and have a
-  removal on one list carry over to the others.
+  Pick one tracker as the main list, or let each list fill in what the others have. A removal
+  on one list carries over to the others. You can turn on a daily automatic sync (it only adds;
+  removals and conflicts wait for you).
 - Adds "watch on..." links to trakt.tv and anilist.co pages that take you to your usual streaming
   sites at the right episode.
 - Backs up your sites, quick links, and corrections to a file, and exports your Trakt movie
