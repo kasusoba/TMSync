@@ -22,12 +22,42 @@ export function CardTitle({
   );
 }
 
+/** What the automatic sync does now: the step of a run in progress, and when the
+ * next run is due (the alarm's time). */
+export interface AutoNow {
+  running?: "reading" | "applying";
+  next?: number;
+}
+
+const WHEN: Intl.DateTimeFormatOptions = { dateStyle: "medium", timeStyle: "short" };
+
+/** One line with a status dot: running now, on and waiting, or off. The dot colours
+ * are the badge's (BadgeView). */
+export function AutoStatus({ t, on, now }: { t: Tokens; on: boolean; now?: AutoNow }) {
+  const running = now?.running;
+  const text = running
+    ? `Running now: ${running === "reading" ? "reading your lists" : "adding what each list is missing"}.`
+    : !on
+      ? "Off."
+      : now?.next
+        ? `On. Next run ${new Date(now.next).toLocaleString(undefined, WHEN)}.`
+        : "On. The first run starts in about a minute.";
+  return (
+    <p class={clsx("flex items-center gap-2 text-[12px]", running || on ? t.heading : t.sub)}>
+      <span
+        class={clsx(
+          "size-2 shrink-0 rounded-full",
+          running ? "animate-pulse bg-emerald-500" : on ? "bg-emerald-500" : "bg-zinc-400",
+        )}
+      />
+      {text}
+    </p>
+  );
+}
+
 /** What the last automatic run did, in a line or two. */
 export function AutoLine({ t, run }: { t: Tokens; run: AutoRun }) {
-  const when = new Date(run.at).toLocaleString(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
+  const when = new Date(run.at).toLocaleString(undefined, WHEN);
   const what =
     run.state === "skipped"
       ? `skipped. ${run.error ?? run.notes[0] ?? ""}`
@@ -44,7 +74,7 @@ export function AutoLine({ t, run }: { t: Tokens; run: AutoRun }) {
   return (
     <div class={clsx("text-[11px] leading-relaxed", t.sub)}>
       <p>
-        Last automatic sync, {when}: {what.trim()}
+        Last run {when}: {what.trim()}
       </p>
       {notes.map((n) => (
         <p key={n} class={t.faint}>

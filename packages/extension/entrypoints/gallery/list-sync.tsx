@@ -205,6 +205,7 @@ export function ListSyncTile({
     | "applying"
     | "applied"
     | "auto"
+    | "auto-running"
     | "remembered";
 }) {
   const t = tokens(variant);
@@ -213,7 +214,7 @@ export function ListSyncTile({
       ? { ...DEFAULT_SYNC_SETTINGS, kinds: { simkl: ["movie", "tv"] }, ignore: ["movie:tmdb:1"] }
       : state === "main-anilist"
         ? { ...DEFAULT_SYNC_SETTINGS, main: { anime: "anilist" } }
-        : state === "auto"
+        : state === "auto" || state === "auto-running"
           ? { ...DEFAULT_SYNC_SETTINGS, auto: true }
           : DEFAULT_SYNC_SETTINGS;
   const p =
@@ -250,9 +251,9 @@ export function ListSyncTile({
         rows={rows(settings)}
         settings={settings}
         preview={p}
-        busy={state === "reading"}
+        busy={state === "reading" || state === "auto-running"}
         progress={
-          state === "reading"
+          state === "reading" || state === "auto-running"
             ? [
                 { tracker: "trakt", state: "read", count: 412 },
                 { tracker: "anilist", state: "read", count: 236 },
@@ -271,6 +272,13 @@ export function ListSyncTile({
         apply={job}
         applying={state === "applying"}
         blocked={blocked}
+        autoNow={
+          state === "auto-running"
+            ? { running: "reading" }
+            : state === "auto" && p
+              ? { next: p.at + 24 * 60 * 60_000 }
+              : undefined
+        }
         autoRun={
           state === "auto" && p
             ? {

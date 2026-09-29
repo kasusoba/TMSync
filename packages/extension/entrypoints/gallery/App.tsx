@@ -850,6 +850,9 @@ export function App() {
             <Tile label="Automatic sync · additions applied, the rest waits" t={t}>
               <ListSyncTile variant={variant} state="auto" />
             </Tile>
+            <Tile label="Daily sync running now · reading the lists" t={t}>
+              <ListSyncTile variant={variant} state="auto-running" />
+            </Tile>
             <Tile label="Removed elsewhere · Akira and a rating removed elsewhere" t={t}>
               <ListSyncTile variant={variant} state="remembered" />
             </Tile>

@@ -22,7 +22,7 @@ import { type Tracker, trackerLabel } from "@/lib/trackers/types";
 import clsx from "clsx";
 import { Btn, Icon, Switch, type Tokens, TrackerMark } from "../kit";
 import { PreviewResult } from "./PreviewResult";
-import { AutoLine, CardTitle, SettingRow, TrackerCards } from "./cards";
+import { AutoLine, type AutoNow, AutoStatus, CardTitle, SettingRow, TrackerCards } from "./cards";
 import { KINDS, KIND_LABEL } from "./labels";
 
 /** The kinds a tracker can take, with the user's choice. */
@@ -57,6 +57,7 @@ export function ListSyncView({
   onCancelApply = () => {},
   onPick = () => {},
   autoRun = null,
+  autoNow,
 }: {
   t: Tokens;
   rows: KindRow[];
@@ -84,6 +85,8 @@ export function ListSyncView({
   onSetting: (key: "includePrivate" | "includeAdult" | "auto", on: boolean) => void;
   /** The last automatic run (null = none yet). */
   autoRun?: AutoRun | null;
+  /** What the automatic sync does now, and when it runs next. */
+  autoNow?: AutoNow;
   /** Set (or clear, with undefined) the main list of a kind. */
   onMain: (kind: SyncKind, tracker: Tracker | undefined) => void;
   onIgnore: (key: string) => void;
@@ -96,7 +99,7 @@ export function ListSyncView({
         Keep your lists in sync. TMSync reads each connected list and works out what the others are
         missing: watched episodes, list status, and ratings. What you remove from one list after a
         sync is removed from the others, not added back. Pick a main list for a kind to make the
-        others copy it instead. Preview first: nothing is written until you apply the plan.
+        others copy it instead. The settings below apply to both ways to sync: now, or once a day.
       </p>
 
       <div class="grid gap-3 lg:grid-cols-[3fr_2fr]">
@@ -182,43 +185,55 @@ export function ListSyncView({
           </p>
         </section>
 
-        <div class="flex flex-col gap-3">
-          <section class={clsx("flex flex-col gap-3 rounded-lg p-3", t.card)}>
-            <CardTitle t={t}>Include</CardTitle>
-            <SettingRow
-              t={t}
-              label="Private AniList entries"
-              hint="Off: an entry you made private stays off your other (maybe public) profiles."
-              on={settings.includePrivate}
-              onClick={() => onSetting("includePrivate", !settings.includePrivate)}
-            />
-            <SettingRow
-              t={t}
-              label="Adult entries"
-              on={settings.includeAdult}
-              onClick={() => onSetting("includeAdult", !settings.includeAdult)}
-            />
-          </section>
-
-          <section class={clsx("flex flex-col gap-3 rounded-lg p-3", t.card)}>
-            <CardTitle t={t}>Automatic sync</CardTitle>
-            <SettingRow
-              t={t}
-              label="Sync once a day"
-              hint="Adds only: episodes, movies, new entries, progress, and empty ratings. Removals and conflicts wait for you, and the toolbar icon counts them."
-              on={!!settings.auto}
-              onClick={() => onSetting("auto", !settings.auto)}
-            />
-            {settings.auto && autoRun && <AutoLine t={t} run={autoRun} />}
-          </section>
-        </div>
+        <section class={clsx("flex flex-col gap-3 self-start rounded-lg p-3", t.card)}>
+          <CardTitle t={t}>Include</CardTitle>
+          <SettingRow
+            t={t}
+            label="Private AniList entries"
+            hint="Off: an entry you made private stays off your other (maybe public) profiles."
+            on={settings.includePrivate}
+            onClick={() => onSetting("includePrivate", !settings.includePrivate)}
+          />
+          <SettingRow
+            t={t}
+            label="Adult entries"
+            on={settings.includeAdult}
+            onClick={() => onSetting("includeAdult", !settings.includeAdult)}
+          />
+        </section>
       </div>
 
-      <div class="flex items-center gap-3">
-        <Btn t={t} tone="primary" disabled={busy || applying} onClick={onPreview}>
-          <Icon name="refresh" class="text-[12px]" />{" "}
-          {busy ? "Reading your lists…" : "Preview sync"}
-        </Btn>
+      {/* Two ways to run the settings above, side by side: neither feeds the other. */}
+      <div class="grid gap-3 lg:grid-cols-2">
+        <section class={clsx("flex flex-col gap-2 rounded-lg p-3", t.card)}>
+          <CardTitle t={t}>Sync now</CardTitle>
+          <p class={clsx("text-[11px] leading-relaxed", t.sub)}>
+            Read every list and see what each one is missing. Nothing is written until you apply the
+            plan.
+          </p>
+          <div class="mt-auto flex items-center gap-3 pt-1">
+            <Btn t={t} tone="primary" disabled={busy || applying} onClick={onPreview}>
+              <Icon name="refresh" class="text-[12px]" />{" "}
+              {busy && !autoNow?.running ? "Reading your lists…" : "Preview sync"}
+            </Btn>
+            {autoNow?.running && (
+              <span class={clsx("text-[11px]", t.faint)}>Waits for the daily sync to finish.</span>
+            )}
+          </div>
+        </section>
+
+        <section class={clsx("flex flex-col gap-2 rounded-lg p-3", t.card)}>
+          <div class="flex items-center justify-between gap-3">
+            <CardTitle t={t}>Sync daily</CardTitle>
+            <Switch t={t} on={!!settings.auto} onClick={() => onSetting("auto", !settings.auto)} />
+          </div>
+          <p class={clsx("text-[11px] leading-relaxed", t.sub)}>
+            Adds only: episodes, movies, new entries, progress, and empty ratings. Removals and
+            conflicts wait for you, and the toolbar icon counts them.
+          </p>
+          <AutoStatus t={t} on={!!settings.auto} now={autoNow} />
+          {autoRun && (settings.auto || autoNow?.running) && <AutoLine t={t} run={autoRun} />}
+        </section>
       </div>
 
       {error && <p class={clsx("rounded-md px-2.5 py-1.5 text-[11px]", t.badBox)}>{error}</p>}
@@ -232,7 +247,13 @@ export function ListSyncView({
               t.faint,
             )}
           >
-            {busy ? "Reading your lists" : preview?.auto ? "Automatic sync" : "Preview"}
+            {busy
+              ? autoNow?.running
+                ? "Daily sync, reading your lists"
+                : "Reading your lists"
+              : preview?.auto
+                ? "Daily sync"
+                : "Preview"}
             {preview && !busy && (
               <span class="font-normal normal-case tracking-normal">
                 read {new Date(preview.at).toLocaleTimeString()}

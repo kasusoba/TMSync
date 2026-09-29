@@ -86,6 +86,8 @@ export interface SyncJob {
   planning?: boolean;
   preview?: SyncPreview;
   error?: string;
+  /** The automatic daily run started it (the options page says so while it runs). */
+  auto?: boolean;
 }
 
 /** A saved job, or null when it is missing or from an older build. Pure. */
@@ -117,6 +119,7 @@ export async function beginPreview(auto: boolean): Promise<Promise<SyncJob> | nu
       startedAt: now,
       beatAt: now,
       reads: [],
+      ...(auto ? { auto } : {}),
     };
     await listSyncJob.setValue(job);
     return job;

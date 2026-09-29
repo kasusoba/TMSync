@@ -8,7 +8,7 @@ import {
   listSyncSettings,
 } from "@/lib/storage";
 import { type ApplyJob, applyBlock, applyQueues, cancelApply, readApply } from "@/lib/sync/apply";
-import type { AutoRun } from "@/lib/sync/auto";
+import { AUTO_ALARM, type AutoRun } from "@/lib/sync/auto";
 import { jobAlive } from "@/lib/sync/job";
 import { syncKindsFor } from "@/lib/sync/plan/index";
 import { type SyncJob, readJob } from "@/lib/sync/preview";
@@ -24,6 +24,7 @@ import type { ListSyncView } from "@/lib/ui/kit/list-sync/ListSyncView";
 import { sendMessage } from "@/messaging";
 import type { ComponentProps } from "preact";
 import { useEffect, useMemo, useState } from "preact/hooks";
+import { browser } from "wxt/browser";
 
 /**
  * The List sync pane's state for the options page (docs/ARCHITECTURE.md section 7):
@@ -37,6 +38,8 @@ export function useListSync(open: boolean): Omit<ComponentProps<typeof ListSyncV
   const [syncApply, setSyncApply] = useState<ApplyJob | null>(null);
   const [syncPicks, setSyncPicks] = useState<SyncPicks>({});
   const [autoRun, setAutoRun] = useState<AutoRun | null>(null);
+  /** When the daily alarm fires next (ms), while automatic sync is on. */
+  const [autoNext, setAutoNext] = useState<number | undefined>();
   const [syncError, setSyncError] = useState<string | undefined>();
   /** Re-render while a job runs, so a job the browser stopped shows as stopped. */
   const [now, setNow] = useState(Date.now());
@@ -67,6 +70,20 @@ export function useListSync(open: boolean): Omit<ComponentProps<typeof ListSyncV
   useEffect(() => {
     if (open && autoRun?.held.length) void listSyncAutoSeen.setValue(autoRun.held).catch(() => {});
   }, [open, autoRun]);
+
+  // The next daily run, from the alarm. The background makes the alarm after the
+  // setting is saved, and moves it on each run, so read it again now and then.
+  useEffect(() => {
+    if (!open || !syncSettings.auto) return setAutoNext(undefined);
+    const read = () =>
+      void browser.alarms.get(AUTO_ALARM).then(
+        (a) => setAutoNext(a?.scheduledTime),
+        () => {},
+      );
+    read();
+    const id = setInterval(read, 15_000);
+    return () => clearInterval(id);
+  }, [open, syncSettings.auto]);
 
   // Tick often while a job runs (a job the browser stopped shows as stopped), and
   // now and then while a preview waits (it goes stale for apply).
@@ -205,5 +222,14 @@ export function useListSync(open: boolean): Omit<ComponentProps<typeof ListSyncV
     onCancelApply: () => void cancelApply().catch((e) => setSyncError(actionError(e))),
     onPick: pickConflict,
     autoRun,
+    autoNow: {
+      running:
+        previewing && syncJob?.auto
+          ? "reading"
+          : applying && syncApply?.auto
+            ? "applying"
+            : undefined,
+      next: autoNext,
+    },
   };
 }
