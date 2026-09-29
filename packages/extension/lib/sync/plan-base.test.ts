@@ -201,6 +201,22 @@ describe("remembered removals: later syncs", () => {
     expect(ops(second.p).sort()).toEqual(["anilist:entry", "mal:entry"]);
   });
 
+  it("keeps it removed when Trakt could not be read on the run that removed it", () => {
+    const settings = { ...DEFAULT_SYNC_SETTINGS, ...NO_SIMKL_ANIME };
+    const old = baseFrom([cour("anilist"), cour("mal"), traktAnime()]);
+    // Trakt's read failed: only the cour lists take part. The base keeps Trakt's
+    // old list, as `commitBase` does for a tracker that was not read.
+    const read: Tracker[] = ["anilist", "mal", "simkl"];
+    const entries = [cour("mal")];
+    const p = planSync({ entries, trackers: read, settings, animap, base: old });
+    expect(ops(p)).toEqual(["mal:remove"]);
+    const writes = p.items.flatMap((i) => i.writes);
+    const next = { ...old, ...afterWrites(nextLists(entries, read, p.removed), writes) };
+    // Trakt reads again and still has the show: the cour is not added back.
+    const second = syncOnce([traktAnime()], next, NO_SIMKL_ANIME);
+    expect(ops(second.plan)).toEqual([]);
+  });
+
   it("drops the marks once no list keeps a copy", () => {
     const first = syncOnce(
       [cour("mal"), traktAnime()],

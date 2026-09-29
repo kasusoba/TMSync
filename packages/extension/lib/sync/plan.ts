@@ -1,5 +1,5 @@
 /**
- * The list sync planner (plans/list-sync.md). Pure: lists in, a plan out, no I/O,
+ * The list sync planner (docs/ARCHITECTURE.md section 7). Pure: lists in, a plan out, no I/O,
  * so every edge case is a unit test.
  *
  * The rules, in short:
@@ -203,6 +203,19 @@ export function planSync(input: PlanInput): SyncPlan {
   const bases = new Map<Tracker, BaseIndex>();
   for (const [tk, list] of Object.entries(input.base ?? {}) as [Tracker, BaseEntry[]][])
     if (taking.has(tk)) bases.set(tk, new BaseIndex(list));
+  // Trackers in the base that this run could not read (a failed read, or an
+  // expired sign-in). They still hold what they held at the base.
+  const unread = Object.entries(input.base ?? {})
+    .filter(([tk]) => !taking.has(tk as Tracker))
+    .map(([, list]) => new BaseIndex(list as BaseEntry[]));
+  /** A tracker this run did not read had the item at the base. Its copy was not
+   * removed, so the lists that remove it now keep a removed mark: without one, the
+   * next run reads that copy and adds the item back. */
+  const unreadHas = (keys: string[]) =>
+    unread.some((b) => {
+      const e = b.find(keys);
+      return !!e && !e.x;
+    });
   /** A tracker's base entry for an item, a removed mark included. */
   const atBase = (tk: Tracker, keys: string[]) => bases.get(tk)?.find(keys);
   /** The tracker had the item itself at the base (not a removed mark). */
@@ -442,8 +455,9 @@ export function planSync(input: PlanInput): SyncPlan {
             detail: removedOn(gone),
           });
       }
-      // A kept copy (watch history) would add it back next time: mark it removed.
-      if (members.some((m) => !removesEntries(m.tracker)))
+      // A kept copy (watch history, or a list not read this run) would add it back
+      // next time: mark it removed.
+      if (members.some((m) => !removesEntries(m.tracker)) || unreadHas(keys))
         for (const tk of targets) if (removesEntries(tk)) removed.push({ tracker: tk, keys });
       push(key, kind, first.title, first.year, writes);
       return;
@@ -658,10 +672,11 @@ export function planSync(input: PlanInput): SyncPlan {
       : removedSince(keys, targets, holders);
     if (gone.length) {
       removeFromCopies(removedOn(gone), fresh);
-      // A kept copy (a seasoned list) would add it back next time: mark it removed
-      // on the cour lists, by the cour's own ids only (a show id names every cour).
+      // A kept copy (a seasoned list, or a list not read this run) would add it
+      // back next time: mark it removed on the cour lists, by the cour's own ids
+      // only (a show id names every cour).
       const kept = new Set(seasoned.filter((p) => p.local.size > 0).map((p) => p.entry.tracker));
-      if (kept.size)
+      if (kept.size || unreadHas(keys))
         for (const tk of targets)
           if (removesEntries(tk) && !kept.has(tk)) removed.push({ tracker: tk, keys: courKeys });
       return;
