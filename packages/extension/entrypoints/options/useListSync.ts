@@ -23,7 +23,7 @@ import { ALL_TRACKERS, type Tracker, trackerLabel } from "@/lib/trackers/types";
 import type { ListSyncView } from "@/lib/ui/kit/list-sync/ListSyncView";
 import { sendMessage } from "@/messaging";
 import type { ComponentProps } from "preact";
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useMemo, useState } from "preact/hooks";
 
 /**
  * The List sync pane's state for the options page (docs/ARCHITECTURE.md section 7):
@@ -80,14 +80,14 @@ export function useListSync(open: boolean): Omit<ComponentProps<typeof ListSyncV
   }, [jobRunning, hasPreview]);
   const previewing = jobAlive(syncJob, now);
   const applying = jobAlive(syncApply, now);
-  const syncBlocked = syncJob?.preview
-    ? applyBlock(
-        syncJob.preview,
-        syncApply,
-        applyQueues(syncJob.preview, syncSettings.ignore, syncPicks),
-        now,
-      )
-    : null;
+  // The queues change only with the plan, the ignore list, and the picks: not on
+  // every tick of the clock above.
+  const preview = syncJob?.preview;
+  const queues = useMemo(
+    () => (preview ? applyQueues(preview, syncSettings.ignore, syncPicks) : null),
+    [preview, syncSettings.ignore, syncPicks],
+  );
+  const syncBlocked = preview && queues ? applyBlock(preview, syncApply, queues, now) : null;
   // A job still "running" with no recent beat was stopped by the browser.
   // (An apply that stopped says so in its own panel.)
   const stoppedAt =

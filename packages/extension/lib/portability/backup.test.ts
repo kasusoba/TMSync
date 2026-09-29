@@ -7,20 +7,23 @@ import { applyBackup, buildBackup, parseBackup } from "./backup";
 describe("backup: list sync settings", () => {
   beforeEach(() => fakeBrowser.reset());
 
-  it("carries automatic sync through a backup", async () => {
+  it("leaves automatic sync out, and keeps the rest", async () => {
     await listSyncSettings.setValue({ ...DEFAULT_SYNC_SETTINGS, auto: true, ignore: ["mal:1"] });
-    const backup = parseBackup(JSON.parse(JSON.stringify(await buildBackup())));
+    const built = await buildBackup();
+    expect(built.data.listSync).not.toHaveProperty("auto");
+    const backup = parseBackup(JSON.parse(JSON.stringify(built)));
+    // A second browser, where automatic sync is off: it stays off.
     await listSyncSettings.setValue(DEFAULT_SYNC_SETTINGS);
     await applyBackup(backup as NonNullable<typeof backup>);
-    expect(await listSyncSettings.getValue()).toMatchObject({ auto: true, ignore: ["mal:1"] });
+    expect(await listSyncSettings.getValue()).toMatchObject({ auto: false, ignore: ["mal:1"] });
   });
 
-  it("keeps this device's automatic sync for a backup made before it existed", async () => {
-    await listSyncSettings.setValue({ ...DEFAULT_SYNC_SETTINGS, auto: true });
+  it("keeps this device's automatic sync when an older backup carries it", async () => {
+    await listSyncSettings.setValue({ ...DEFAULT_SYNC_SETTINGS, auto: false });
     const raw = JSON.parse(JSON.stringify(await buildBackup()));
-    raw.data.listSync.auto = undefined;
+    raw.data.listSync.auto = true;
     const backup = parseBackup(JSON.parse(JSON.stringify(raw)));
     await applyBackup(backup as NonNullable<typeof backup>);
-    expect((await listSyncSettings.getValue()).auto).toBe(true);
+    expect((await listSyncSettings.getValue()).auto).toBe(false);
   });
 });

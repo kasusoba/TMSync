@@ -9,7 +9,7 @@ import type { CourSearchOption } from "../types";
 import { hasMalAccess } from "./access";
 import { forgetGrant, getValidAccessToken, refreshAfterReject } from "./auth";
 import { MAL } from "./config";
-import type { MalAnimeNode, MalIdentity, MalListStatus } from "./types";
+import { MAL_TO_COUR, type MalAnimeNode, type MalIdentity, type MalListStatus } from "./types";
 
 export class MalNotConnectedError extends Error {
   constructor() {
@@ -294,15 +294,9 @@ export async function resolveViaAniList(anilistId: number): Promise<MalIdentity 
 /** MAL's status in the cour planner's words. Rewatching is a completed entry with
  * `is_rewatching` set. Pure. */
 export function toCourEntry(s: MalListStatus): CourEntry {
-  const status: Record<NonNullable<MalListStatus["status"]>, CourStatus> = {
-    watching: "CURRENT",
-    completed: s.is_rewatching ? "REPEATING" : "COMPLETED",
-    on_hold: "PAUSED",
-    dropped: "DROPPED",
-    plan_to_watch: "PLANNING",
-  };
+  const status: CourStatus | null = s.status ? MAL_TO_COUR[s.status] : null;
   return {
-    status: s.status ? status[s.status] : null,
+    status: status === "COMPLETED" && s.is_rewatching ? "REPEATING" : status,
     progress: s.num_episodes_watched ?? 0,
     repeat: s.num_times_rewatched ?? 0,
   };

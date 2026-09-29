@@ -1,8 +1,12 @@
 /**
  * What the preview job (`preview.ts`) and the apply job (`apply.ts`) share. Each job
- * lives in one storage item, not in memory (constraint #4): it saves each step,
- * and beats while it runs, so the options page can tell a running job from one
- * the browser stopped.
+ * lives in one storage item, not in memory: it saves each step, and beats while it
+ * runs, so the options page can tell a running job from one the browser stopped.
+ *
+ * The beat timer, a retry sleep, and the lists a preview reads live in memory
+ * while the job runs. That is the one scoped exception to constraint #4
+ * (CLAUDE.md): a job is bounded, and a worker stopped mid-job loses only time
+ * (the saved caches and the writes taken stay; the next preview plans the rest).
  */
 import { browser } from "wxt/browser";
 

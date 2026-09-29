@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { simklEntries } from "./list";
+import { COUR_TO_SIMKL, SIMKL_TO_COUR, simklEntries } from "./list";
 
 describe("simklEntries", () => {
   it("reads shows as seasons, anime as cours, and movies", () => {
@@ -72,5 +72,13 @@ describe("simklEntries", () => {
 
   it("reads an empty library", () => {
     expect(simklEntries({})).toEqual([]);
+  });
+});
+
+describe("Simkl status maps", () => {
+  it("map every status there and back, and a rewatch as completed", () => {
+    for (const [simkl, cour] of Object.entries(SIMKL_TO_COUR))
+      expect(COUR_TO_SIMKL[cour]).toBe(simkl);
+    expect(COUR_TO_SIMKL.REPEATING).toBe("completed");
   });
 });

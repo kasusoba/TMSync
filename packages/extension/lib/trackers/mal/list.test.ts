@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { malEntries } from "./list";
+import { COUR_TO_MAL, MAL_STATUSES, MAL_TO_COUR } from "./types";
 
 describe("malEntries", () => {
   it("reads the animelist in cour terms", () => {
@@ -55,5 +56,12 @@ describe("malEntries", () => {
     expect(done?.watchedAt).toBe(Date.UTC(2020, 4, 3, 12));
     expect(current?.watchedAt).toBe(Date.parse(updated_at));
     expect(partial?.watchedAt).toBe(Date.parse(updated_at));
+  });
+});
+
+describe("MAL status maps", () => {
+  it("map every status there and back", () => {
+    for (const m of MAL_STATUSES) expect(COUR_TO_MAL[MAL_TO_COUR[m]]).toBe(m);
+    expect(Object.keys(COUR_TO_MAL)).toHaveLength(MAL_STATUSES.length);
   });
 });

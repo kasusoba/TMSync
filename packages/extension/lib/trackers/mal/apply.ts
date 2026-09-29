@@ -19,6 +19,7 @@ import {
   syncListStatus,
   toCourEntry,
 } from "./client";
+import { COUR_TO_MAL } from "./types";
 
 /** Entries per chunk: the position is saved after each. */
 export const MAL_CHUNK = 10;
@@ -41,15 +42,7 @@ export function malFields(a: {
     out.status = "completed";
     out.is_rewatching = true;
   } else if (a.status) {
-    out.status = (
-      {
-        CURRENT: "watching",
-        PLANNING: "plan_to_watch",
-        COMPLETED: "completed",
-        PAUSED: "on_hold",
-        DROPPED: "dropped",
-      } as const
-    )[a.status];
+    out.status = COUR_TO_MAL[a.status];
   }
   if (a.progress !== undefined) out.num_watched_episodes = a.progress;
   if (a.repeat !== undefined) out.num_times_rewatched = a.repeat;
