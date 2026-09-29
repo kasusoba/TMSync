@@ -554,6 +554,14 @@ export const listSyncBase = storage.defineItem<SyncBase | null>("local:list_sync
   fallback: null,
 });
 
+/** When each tracker's account was last connected or disconnected (ms). A list read
+ * before that belongs to the old account: a preview, a base, or an apply that
+ * started before it must not use it (`sync/base-store.ts`). */
+export const listSyncAccountAt = storage.defineItem<Partial<Record<Tracker, number>>>(
+  "local:list_sync_account_at",
+  { fallback: {} },
+);
+
 /** The lists of the last preview, until its apply says whether they became the
  * base (`sync/base-store.ts`). */
 export const listSyncBaseNext = storage.defineItem<PendingBase | null>(

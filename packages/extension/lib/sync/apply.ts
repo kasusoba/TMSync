@@ -25,7 +25,7 @@ import {
 } from "../storage";
 import { getService } from "../trackers/service";
 import { ALL_TRACKERS, type Tracker } from "../trackers/types";
-import { commitBase } from "./base-store";
+import { accountsChangedSince, commitBase } from "./base-store";
 import { exclusive, jobAlive, jobRunner, versioned } from "./job";
 import { withPicks } from "./plan/index";
 import { type SyncPreview, readJob } from "./preview";
@@ -152,6 +152,8 @@ export async function startApply(): Promise<{ started: boolean; reason?: ApplyBl
     const queues = preview ? applyQueues(preview, settings.ignore, picks) : new Map();
     const reason = applyBlock(preview, last, queues, now);
     if (reason || !preview) return { started: false, reason: reason ?? "no_plan" };
+    // A plan read from an account that changed since would write to the new one.
+    if (await planAccountChanged(preview)) return { started: false, reason: "stale" as const };
     const start = newApply(preview, queues, false);
     await listSyncApply.setValue(start);
     // The run saves its own failure; this catch only keeps a rejection from going
@@ -187,11 +189,19 @@ export async function beginApply(
     const now = Date.now();
     if (jobAlive(readJob(await listSyncJob.getValue()), now)) return null;
     if (jobAlive(readApply(await listSyncApply.getValue()), now)) return null;
+    if (await planAccountChanged(preview)) return null;
     const job = newApply(preview, queues, auto);
     await listSyncApply.setValue(job);
     return job;
   });
   return start && finishApply(start, preview, queues, full);
+}
+
+/** An account of a tracker in the plan was connected or disconnected after the
+ * preview started to read it: its plan is the old account's. */
+async function planAccountChanged(preview: SyncPreview): Promise<boolean> {
+  const changed = await accountsChangedSince(preview.readAt);
+  return preview.reads.some((r) => r.state === "read" && changed.includes(r.tracker));
 }
 
 /** A new, running apply job for `preview`. Pure. */

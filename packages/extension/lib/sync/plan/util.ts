@@ -31,6 +31,16 @@ export function removesEntries(tracker: Tracker): boolean {
   return trackerFamily(tracker) !== "seasoned";
 }
 
+/**
+ * Whether a tracker can be a kind's main list. A main list's copies lose every
+ * entry it does not have, so it must hold every kind of entry: a list that holds
+ * only watch history (Trakt) has no planned, paused, or unwatched entries, and
+ * with it as main every such entry on the others would be removed. Pure.
+ */
+export function canBeMain(tracker: Tracker): boolean {
+  return trackerFamily(tracker) !== "seasoned";
+}
+
 /** What an entry holds now, for the preview's "was ...". Pure. */
 export function stateOf(e: ListEntry): EntryState {
   if (e.shape === "cour") {

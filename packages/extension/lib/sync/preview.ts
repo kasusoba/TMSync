@@ -26,7 +26,7 @@ import { getAdapter } from "../trackers/index";
 import { getService } from "../trackers/service";
 import { ALL_TRACKERS, type Tracker } from "../trackers/types";
 import { nextLists, settingsSig } from "./base";
-import { commitBase, loadBase, savePending } from "./base-store";
+import { accountsChangedSince, commitBase, loadBase, savePending } from "./base-store";
 import { exclusive, jobAlive, jobRunner, versioned } from "./job";
 import { planSync, summarize, syncKindsFor, takesKind } from "./plan/index";
 import type { ScoreScale } from "./score";
@@ -49,6 +49,9 @@ export interface TrackerRead {
 export interface SyncPreview {
   /** When the lists were read (ms). */
   at: number;
+  /** When the reads started (ms). An account connected or disconnected since then
+   * makes this plan stale (`accountsChangedSince`). */
+  readAt: number;
   reads: TrackerRead[];
   /** Why there is no plan (fewer than two lists read). */
   reason?: "too_few";
@@ -68,7 +71,7 @@ export interface SyncPreview {
  * `SyncPlan` changes shape: a job saved by an older build is then dropped on read,
  * instead of rendering (and crashing on) fields it does not have.
  */
-export const SYNC_JOB_VERSION = 8;
+export const SYNC_JOB_VERSION = 9;
 
 /** A preview job, as saved in storage. */
 export interface SyncJob {
@@ -151,6 +154,9 @@ async function runPreview(start: SyncJob, auto: boolean): Promise<SyncJob> {
           const list = await (
             getService(tracker).readList as NonNullable<ReturnType<typeof getService>["readList"]>
           )(kinds, saved, auto);
+          // The account changed during the read: the list is the old account's.
+          if ((await accountsChangedSince(start.startedAt)).includes(tracker))
+            throw new Error("The account changed during the read. Preview again.");
           // Not `push(...)`: a spread of a very long list throws a RangeError.
           for (const e of list.entries) entries.push(e);
           if (list.scoreFormat) scales[tracker] = list.scoreFormat;
@@ -174,6 +180,7 @@ async function runPreview(start: SyncJob, auto: boolean): Promise<SyncJob> {
     const animap = new Animap(withOverrides(cached?.rows ?? [], overrides));
     const head = {
       at: Date.now(),
+      readAt: start.startedAt,
       reads,
       noCrosswalk: !cached?.rows.length,
       scales,
@@ -193,7 +200,12 @@ async function runPreview(start: SyncJob, auto: boolean): Promise<SyncJob> {
     // The lists as read, with the plan's removed marks, become the base once this
     // plan is fully applied, or now when there is nothing to write.
     if (!preview.reason) {
-      await savePending(preview.at, sig, nextLists(entries, trackers, preview.plan.removed));
+      await savePending(
+        preview.at,
+        preview.readAt,
+        sig,
+        nextLists(entries, trackers, preview.plan.removed),
+      );
       if (!preview.plan.items.length) await commitBase(preview.at, []);
       // Picks for disagreements this plan no longer has are done with.
       const open = new Set(preview.plan.conflicts.map(pickKey));

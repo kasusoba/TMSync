@@ -71,6 +71,7 @@ function show(
   });
   const preview: SyncPreview = {
     at: 0,
+    readAt: 0,
     reads: ALL_TRACKERS.map((tracker) => ({ tracker, state: "read", count: 1 })),
     totals: summarize(plan, trackers),
     plan,

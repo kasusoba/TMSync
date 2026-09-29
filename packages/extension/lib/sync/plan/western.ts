@@ -17,7 +17,8 @@ import {
 
 export function planWestern(ctx: PlanContext, all: SeasonedEntry[], kind: SyncKind): void {
   const { input, settings, ignored, skips, notices, removed } = ctx;
-  const { mainFor, mainMissing, removedSince, unreadHas, unratedSince, atBase, push } = ctx;
+  const { mainFor, mainMissing, removedSince, unreadHas, unratedSince, unratedAway, atBase, push } =
+    ctx;
   const first = all[0] as SeasonedEntry;
   const ids = mergeIds(all);
   const key = sharedKeys(ids, kind === "movie")[0] ?? `${first.tracker}:${first.id}`;
@@ -196,10 +197,11 @@ export function planWestern(ctx: PlanContext, all: SeasonedEntry[], kind: SyncKi
     );
   }
   // A rating removed from one list since the last clean sync: clear it on the others.
+  // A list that had the item only for its rating has no entry now, and still counts.
   const clear = main
     ? []
     : unratedSince(
-        targets.filter((tk) => own(tk)),
+        targets.filter((tk) => own(tk) || unratedAway(tk, keys)),
         (tk) => own(tk)?.rating != null,
         (tk) => atBase(tk, keys)?.r === 1,
       );

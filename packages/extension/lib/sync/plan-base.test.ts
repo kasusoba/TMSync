@@ -253,6 +253,53 @@ describe("remembered removals: ratings", () => {
   });
 });
 
+describe("remembered removals: an entry that was only a rating", () => {
+  // Trakt makes an entry from a rating alone. Removing that rating removes the
+  // entry, which is an unrate, not a removal of the item.
+  type Movie = Extract<ListEntry, { shape: "movie" }>;
+  const traktRated = (): ListEntry => ({ ...(movie("trakt", 70) as Movie), watched: false });
+  const simklPlanned = (rating: number | null): ListEntry => ({
+    ...(movie("simkl", rating) as Movie),
+    watched: false,
+    status: "PLANNING",
+  });
+
+  it("clears the rating on the others and keeps the item", () => {
+    const p = plan([simklPlanned(70)], [traktRated(), simklPlanned(70)]);
+    expect(ops(p)).toEqual(["simkl:unrate"]);
+  });
+
+  it("keeps a cour and clears its rating when a Trakt show rating goes", () => {
+    const show = traktAnime() as Extract<ListEntry, { shape: "seasons" }>;
+    const traktShowRated: ListEntry = { ...show, rating: 70, seasons: {} };
+    const planned = cour("anilist", { status: "PLANNING", progress: 0, rating: 70 });
+    const p = plan([planned], [traktShowRated, planned]);
+    expect(ops(p).filter((o) => o.endsWith(":remove"))).toEqual([]);
+    expect(rateOps(p)).toEqual(["anilist:unrate"]);
+  });
+
+  it("still removes an item whose watch history went", () => {
+    const p = plan([simklPlanned(null)], [movie("trakt"), simklPlanned(null)]);
+    expect(ops(p)).toEqual(["simkl:remove"]);
+  });
+
+  it("marks a rating-only entry in the base, and drops it when its rating goes", () => {
+    const rated = baseOf([traktRated()]);
+    expect(rated).toEqual([{ k: ["movie:tmdb:11", "movie:imdb:tt11"], r: 1, o: 1 }]);
+    const target = { id: 1, ids: { tmdb: 11 }, mediaType: "movie" as const };
+    const gone = afterWrites({ trakt: rated }, [
+      { tracker: "trakt", op: "unrate", level: "movie", target, was: 70 },
+    ]);
+    expect(gone.trakt).toEqual([]);
+    const made = afterWrites({ trakt: [] }, [
+      { tracker: "trakt", op: "rating", level: "movie", target, score: 70 },
+    ]);
+    expect(made.trakt).toEqual([{ k: ["movie:tmdb:11"], r: 1, o: 1 }]);
+    const watched = afterWrites({ trakt: rated }, [{ tracker: "trakt", op: "movie", target }]);
+    expect(watched.trakt?.[0]?.o).toBeUndefined();
+  });
+});
+
 describe("afterWrites", () => {
   it("lays the applied writes over the lists", () => {
     const lists = { anilist: baseOf([cour("anilist", { rating: 80 })]), mal: [] as BaseEntry[] };
