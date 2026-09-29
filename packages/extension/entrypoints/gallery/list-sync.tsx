@@ -2,7 +2,7 @@
  * so the tiles show what the pane renders, not a hand-written imitation. */
 import { APPLY_JOB_VERSION, type ApplyJob, applyBlock, applyQueues } from "@/lib/sync/apply";
 import { type BaseEntry, baseOf } from "@/lib/sync/base";
-import { planSync, summarize, syncKindsFor } from "@/lib/sync/plan";
+import { planSync, summarize, syncKindsFor } from "@/lib/sync/plan/index";
 import type { SyncPreview } from "@/lib/sync/run";
 import { DEFAULT_SYNC_SETTINGS, type ListEntry, type ListSyncSettings } from "@/lib/sync/types";
 import { Animap } from "@/lib/trackers/animap/index";

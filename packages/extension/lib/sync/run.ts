@@ -29,7 +29,7 @@ import { ALL_TRACKERS, type Tracker } from "../trackers/types";
 import { nextLists, settingsSig } from "./base";
 import { commitBase, loadBase, savePending } from "./base-store";
 import { exclusive } from "./lock";
-import { planSync, summarize, syncKindsFor, takesKind } from "./plan";
+import { planSync, summarize, syncKindsFor, takesKind } from "./plan/index";
 import type { ScoreScale } from "./score";
 import { type ListEntry, type SyncPlan, type SyncTotals, pickKey } from "./types";
 

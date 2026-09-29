@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Animap, type AnimapRow } from "../trackers/animap/index";
 import type { Tracker } from "../trackers/types";
-import { planSync, summarize, takesKind, withPicks } from "./plan";
+import { planSync, summarize, takesKind, withPicks } from "./plan/index";
 import { onScale } from "./score";
 import {
   DEFAULT_SYNC_SETTINGS,

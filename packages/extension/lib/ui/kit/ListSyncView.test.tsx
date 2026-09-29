@@ -1,6 +1,6 @@
 import { render } from "preact";
 import { describe, expect, it } from "vitest";
-import { planSync, summarize, syncKindsFor } from "../../sync/plan";
+import { planSync, summarize, syncKindsFor } from "../../sync/plan/index";
 import type { SyncPreview } from "../../sync/run";
 import { DEFAULT_SYNC_SETTINGS, type ListEntry, type ListSyncSettings } from "../../sync/types";
 import { Animap } from "../../trackers/animap/index";

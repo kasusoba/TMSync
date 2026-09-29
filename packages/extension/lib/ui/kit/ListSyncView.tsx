@@ -9,7 +9,7 @@
  */
 import { type ApplyBlock, type ApplyJob, type ApplyTracker, cleanApply } from "@/lib/sync/apply";
 import type { AutoRun } from "@/lib/sync/auto";
-import { normStatus, summarize, withPicks } from "@/lib/sync/plan";
+import { normStatus, summarize, withPicks } from "@/lib/sync/plan/index";
 import type { SyncPreview, TrackerRead } from "@/lib/sync/run";
 import { outOfTen } from "@/lib/sync/score";
 import type {

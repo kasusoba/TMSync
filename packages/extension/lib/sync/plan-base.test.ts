@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { Animap } from "../trackers/animap/index";
 import type { Tracker } from "../trackers/types";
 import { type BaseEntry, afterWrites, baseOf, nextLists, settingsSig } from "./base";
-import { planSync } from "./plan";
+import { planSync } from "./plan/index";
 import {
   DEFAULT_SYNC_SETTINGS,
   type ListEntry,

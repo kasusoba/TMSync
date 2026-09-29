@@ -28,7 +28,7 @@ import { getService } from "../trackers/service";
 import { ALL_TRACKERS, type Tracker } from "../trackers/types";
 import { commitBase } from "./base-store";
 import { exclusive } from "./lock";
-import { withPicks } from "./plan";
+import { withPicks } from "./plan/index";
 import { STALE_MS, type SyncPreview, jobAlive, readJob } from "./run";
 import type { ChunkOutcome, SyncPicks, SyncWrite, WriteOutcome } from "./types";
 
