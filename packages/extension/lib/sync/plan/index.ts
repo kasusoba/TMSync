@@ -25,6 +25,11 @@
  *    it at the base too: a list that added it since wins, and it is added back.
  *    Where a copy is kept (Trakt watch history), the plan leaves removed marks, so
  *    the next sync does not add the item back from that copy.
+ *
+ * The files: `context.ts` (what one run shares, and the plan it builds), `group.ts`
+ * (entries into cour groups, through the crosswalk), `western.ts` (movies and
+ * non-anime TV), `cour.ts` (anime, per cour), `ratings.ts`, `picks.ts` (`withPicks`),
+ * `summary.ts` (`summarize`), and `util.ts`.
  */
 import type { SyncPlan } from "../types";
 import { type PlanInput, planContext } from "./context";

@@ -8,8 +8,8 @@
  */
 import { errorMessage } from "../../errors";
 import { remoteRatings } from "../../storage";
-import { inNotFound, outcomes, sleep, toTen } from "../../sync/pace";
 import type { ChunkOutcome, SyncWrite, TargetRef, WriteOutcome } from "../../sync/types";
+import { inNotFound, outcomes, sleep, toTen } from "../../sync/write-util";
 import { TraktNotConnectedError, syncPost } from "./client";
 
 /** Writes per chunk (items per POST). */

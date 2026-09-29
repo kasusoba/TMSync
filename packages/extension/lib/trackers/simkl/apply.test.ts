@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { inNotFound } from "../../sync/pace";
 import type { SyncWrite } from "../../sync/types";
+import { inNotFound } from "../../sync/write-util";
 import { simklBodies, simklItemIds } from "./apply";
 
 const anime = {

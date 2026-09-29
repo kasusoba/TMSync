@@ -1,7 +1,7 @@
 /** Movies and non-anime TV (Trakt, Simkl; no crosswalk). Pure. */
 import { type Tracker, trackerFamily, trackerLabel } from "../../trackers/types";
 import { entryKeys } from "../base";
-import { newest } from "../read";
+import { newest } from "../read-util";
 import type { EpisodeRef, SyncKind, SyncWrite, TargetRef } from "../types";
 import { type PlanContext, type SeasonedEntry, removedOn } from "./context";
 import { fillRatings, ratingNotices } from "./ratings";

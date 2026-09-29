@@ -4,7 +4,7 @@ import { storage } from "wxt/utils/storage";
 import type { ApplyJob } from "./sync/apply";
 import type { AutoRun } from "./sync/auto";
 import type { PendingBase, SyncBase } from "./sync/base";
-import type { ListCache } from "./sync/cache";
+import type { ListCache } from "./sync/list-cache";
 import type { SyncJob } from "./sync/preview";
 import type { SyncPicks } from "./sync/types";
 import { DEFAULT_SYNC_SETTINGS, type ListSyncSettings } from "./sync/types";
@@ -529,7 +529,7 @@ export const listSyncCancelAt = storage.defineItem<number>("local:list_sync_canc
   fallback: 0,
 });
 
-/** Each tracker's list as saved at its last list sync read (`sync/cache.ts`). One
+/** Each tracker's list as saved at its last list sync read (`sync/list-cache.ts`). One
  * item per tracker: the reads run side by side, and a big list saves on its own. */
 const LIST_SYNC_CACHE: Record<Tracker, ReturnType<typeof listCacheItem>> = {
   trakt: listCacheItem("trakt"),

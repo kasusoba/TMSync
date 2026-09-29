@@ -1,6 +1,6 @@
 /**
  * List sync types (docs/ARCHITECTURE.md section 7). Each tracker reads its whole list into
- * `ListEntry` values, the pure planner (`plan.ts`) groups them and decides what
+ * `ListEntry` values, the pure planner (`plan/`) groups them and decides what
  * each tracker is missing, and the result is a `SyncPlan`. Nothing here talks to a
  * tracker: the readers live with each tracker (`lib/trackers/<tracker>/list.ts`).
  */

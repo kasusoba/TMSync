@@ -6,8 +6,8 @@
  */
 import { errorMessage } from "../../errors";
 import { mergeCour } from "../../sync/merge";
-import { byTarget, outcomes, sleep, toTen } from "../../sync/pace";
 import type { ChunkOutcome, SyncWrite, TargetRef } from "../../sync/types";
+import { byTarget, outcomes, sleep, toTen } from "../../sync/write-util";
 import type { CourStatus } from "../cour-plan";
 import type { ApplyReport } from "../service";
 import {

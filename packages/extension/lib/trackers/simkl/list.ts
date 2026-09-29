@@ -13,8 +13,8 @@ import {
   newCache,
   readFrom,
   savedParts,
-} from "../../sync/cache";
-import { ms, newest, num, parseEach } from "../../sync/read";
+} from "../../sync/list-cache";
+import { ms, newest, num, parseEach } from "../../sync/read-util";
 import type { ListEntry, SyncIds, SyncKind } from "../../sync/types";
 import type { CourStatus } from "../cour-plan";
 import { type SimklListType, readSimklActivity, readSimklList } from "./client";
@@ -189,7 +189,7 @@ export function simklReadPlan(
  * Read only the Simkl types the chosen kinds need. Anime Simkl files under
  * `shows` is still read when TV or anime is on. `/sync/activities` comes first,
  * as Simkl asks: with a saved list, an unmoved type is not read at all, and a
- * moved one reads only its changes (see `sync/cache.ts`). On a timer (`timed`),
+ * moved one reads only its changes (see `sync/list-cache.ts`). On a timer (`timed`),
  * a failed check stops the read: Simkl suspends apps that poll without it.
  */
 export async function readSimklEntries(

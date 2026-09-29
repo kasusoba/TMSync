@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ListCache } from "../../sync/cache";
+import type { ListCache } from "../../sync/list-cache";
 
 const { readTraktActivity, readTraktList } = vi.hoisted(() => ({
   readTraktActivity: vi.fn(),

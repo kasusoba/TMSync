@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LIST_CACHE_VERSION, mergeById, newCache, readFrom, savedParts } from "./cache";
+import { LIST_CACHE_VERSION, mergeById, newCache, readFrom, savedParts } from "./list-cache";
 import type { ListEntry } from "./types";
 
 const movie = (id: number, watched = true): ListEntry => ({

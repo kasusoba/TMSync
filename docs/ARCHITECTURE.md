@@ -310,7 +310,7 @@ and nothing of it touches `extract()` or the scrobble path.
    AniList, MAL, Simkl anime). The readers live in `lib/trackers/<tracker>/list.ts`, each a pure
    normalizer (Zod per item, a bad item is dropped) plus a fetch in its `client.ts`. A tracker with
    a change check reuses its saved list (see "Change checks").
-2. **Plan.** `planSync` (`plan.ts`, pure) groups entries that are the same thing, by id only, never
+2. **Plan.** `planSync` (`plan/`, pure; `plan/index.ts` names each file's part) groups entries that are the same thing, by id only, never
    by title. Movies and non-anime TV move between Trakt and Simkl by tmdb, imdb, or tvdb. Anime is
    planned per cour. A seasoned list reaches a cour through the crosswalk, with the user's fix-match
    pins folded in (`withOverrides`). A crosswalk miss or ambiguity is a skip, reported, never a
@@ -351,7 +351,10 @@ and nothing of it touches `extract()` or the scrobble path.
 each step with a beat every 10 seconds, and the options page watches the storage item. Closing the
 page does not stop a job. A job whose beat is older than 30 seconds was stopped by the browser, and
 the pane says so. Bump `SYNC_JOB_VERSION` or `APPLY_JOB_VERSION` when a saved shape changes: a job
-from an older build is dropped on read, not rendered.
+from an older build is dropped on read, not rendered. The preview job is `preview.ts`, the apply job
+`apply.ts`, and what they share (the saves, the beat, the start lock) is `job.ts`. The lock makes
+the check "no job runs" and the first save one step, so an alarm and a click at the same time start
+one job, not two.
 
 **Apply.** Trackers run side by side. Each writes in chunks of its own size and spaces its own
 requests. The counts are saved after each chunk, and AniList and MAL also report each entry as it is
@@ -374,7 +377,7 @@ the status the preview saw, and a rating fills an empty one unless the user pick
 large first sync does not put hundreds of watches on one day. When the date is unknown, Trakt uses
 the air date and Simkl uses the time of the write.
 
-**Change checks (`cache.ts`).** Trakt (`/sync/last_activities`) and Simkl (`/sync/activities`)
+**Change checks (`list-cache.ts`).** Trakt (`/sync/last_activities`) and Simkl (`/sync/activities`)
 can say whether a list changed. Each saves the list it read with the stamps from BEFORE the read
 (`local:list_sync_cache_<tracker>`), so a change during the read is seen next time. A part whose
 stamp did not move is reused, not read. Trakt uses the `all` stamp, per part (shows, movies): its
@@ -395,7 +398,9 @@ a disputed status, and every conflict wait for the user. The toolbar badge count
 the user has not seen; opening the pane marks them seen. A tab's own badge text is cleared with
 `null`, not `""`, or it would hide the count. A run within 20 hours of the last one is skipped,
 since alarms can fire again on a browser start. A running manual job skips the run, and the
-automatic jobs block manual ones the same way. On a timer, Simkl is left out when its change check
+automatic jobs block manual ones the same way. A preview the user made and has not applied yet
+(with writes, under 10 minutes old) skips the run too, so the run never replaces a preview, and its
+picks, while the user reads it. On a timer, Simkl is left out when its change check
 fails: Simkl suspends apps that read without it. The result is `local:list_sync_auto`.
 
 **The base (`base.ts`, `base-store.ts`).** For remembered removals, the planner needs each list as

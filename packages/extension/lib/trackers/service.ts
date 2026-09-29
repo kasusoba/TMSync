@@ -1,5 +1,5 @@
 import type { ParsedMedia } from "@tmsync/shared";
-import type { ListCache, ListRead } from "../sync/cache";
+import type { ListCache, ListRead } from "../sync/list-cache";
 import type { ChunkOutcome, SyncKind, SyncWrite, WriteOutcome } from "../sync/types";
 import { anilistService } from "./anilist/service";
 import type { BoundCourPins } from "./cour-pins";
@@ -65,7 +65,7 @@ export interface TrackerService {
    * Read the user's whole list for list sync (docs/ARCHITECTURE.md section 7). Read only: it
    * never writes. `kinds` are the kinds this tracker takes part in, so it can skip
    * reads nobody needs. `saved` is the list this tracker saved at its last read,
-   * for a tracker with a cheap change check to reuse (`sync/cache.ts`); it
+   * for a tracker with a cheap change check to reuse (`sync/list-cache.ts`); it
    * returns the list to save next in `cache`. `timed` = the automatic daily run
    * asks, not the user (Simkl never reads in full on a timer without its change
    * check). Optional: a tracker without it takes no part in list sync.

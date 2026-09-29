@@ -2,7 +2,7 @@
 import type { CourStatus } from "../../trackers/cour-plan";
 import { TRACKER_INFO, type Tracker, trackerFamily, trackerLabel } from "../../trackers/types";
 import { idKeys as baseKeys, entryKeys } from "../base";
-import { newest } from "../read";
+import { newest } from "../read-util";
 import type {
   EntryState,
   EpisodeRef,

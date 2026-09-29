@@ -11,8 +11,8 @@
  */
 import { errorMessage } from "../../errors";
 import { simklRatings } from "../../storage";
-import { inNotFound, outcomes, sleep, toTen } from "../../sync/pace";
 import type { ChunkOutcome, SyncWrite, TargetRef, WriteOutcome } from "../../sync/types";
+import { inNotFound, outcomes, sleep, toTen } from "../../sync/write-util";
 import type { CourStatus } from "../cour-plan";
 import { SimklNotConnectedError, simklPost } from "./client";
 

@@ -63,7 +63,7 @@ const NOTICE_LABEL: Record<SyncNotice["reason"], string> = {
   rating_kept: "A different rating. Sync only fills empty ratings.",
 };
 
-/** A short read, for a tracker that can tell what changed (`sync/cache.ts`). */
+/** A short read, for a tracker that can tell what changed (`sync/list-cache.ts`). */
 const FROM_LABEL: Record<NonNullable<TrackerRead["from"]>, string> = {
   saved: "No changes since the last read",
   changes: "Read only what changed",

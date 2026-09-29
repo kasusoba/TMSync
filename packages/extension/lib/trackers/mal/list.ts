@@ -1,6 +1,6 @@
 /** MyAnimeList's list for list sync: one cour entry per anime on the user's list. */
 import { z } from "zod";
-import { ms, parseEach } from "../../sync/read";
+import { ms, parseEach } from "../../sync/read-util";
 import type { ListEntry } from "../../sync/types";
 import { readMalList, toCourEntry } from "./client";
 

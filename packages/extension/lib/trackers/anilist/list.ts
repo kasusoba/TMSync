@@ -1,6 +1,6 @@
 /** AniList's list for list sync: one cour entry per anime on the viewer's list. */
 import { z } from "zod";
-import { parseEach } from "../../sync/read";
+import { parseEach } from "../../sync/read-util";
 import type { ListEntry } from "../../sync/types";
 import type { CourStatus } from "../cour-plan";
 import type { ScoreFormat } from "../types";

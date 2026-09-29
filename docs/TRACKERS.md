@@ -240,7 +240,7 @@ a fixed set:
 8. **List sync (optional).** Add `list.ts` (a pure normalizer to `ListEntry`) and `apply.ts`
    (writes to API calls, `unrate` included), and wire `readList` and `applyList` in the service.
    Without them the tracker takes no part in list sync. If the API has a cheap change check, use
-   the saved list `readList` gets (`lib/sync/cache.ts`), and return the list to save. Add the
+   the saved list `readList` gets (`lib/sync/list-cache.ts`), and return the list to save. Add the
    tracker to `LIST_SYNC_CACHE` in `lib/storage.ts`.
 9. **Docs.** Update the tracker table in `ARCHITECTURE.md`, `CLAUDE.md`, and the README, the facts
    for the new API in this file, and the store permission justification.

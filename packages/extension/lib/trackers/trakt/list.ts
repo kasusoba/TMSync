@@ -5,8 +5,14 @@
  * list status: completion is derived from episodes.
  */
 import { z } from "zod";
-import { type ListCache, type ListRead, newCache, readFrom, savedParts } from "../../sync/cache";
-import { ms, newest, num, parseEach } from "../../sync/read";
+import {
+  type ListCache,
+  type ListRead,
+  newCache,
+  readFrom,
+  savedParts,
+} from "../../sync/list-cache";
+import { ms, newest, num, parseEach } from "../../sync/read-util";
 import type { ListEntry, SeasonEpisodes, SyncIds, SyncKind } from "../../sync/types";
 import { type TraktListDump, readTraktActivity, readTraktList } from "./client";
 
@@ -132,7 +138,7 @@ export function traktStamp(raw: unknown): string | null {
 /**
  * Read only what the chosen kinds need (anime can be a show or a movie). With a
  * saved list, ask Trakt's activity stamp first and reuse the parts it covers
- * when the stamp did not move (see `sync/cache.ts`).
+ * when the stamp did not move (see `sync/list-cache.ts`).
  */
 export async function readTraktEntries(
   kinds: SyncKind[],

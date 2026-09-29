@@ -366,7 +366,7 @@ export type SimklListType = "shows" | "anime" | "movies";
  * (anime is a count per cour). A type in `since` reads only the items changed
  * after that stamp (`date_from`, sent exactly as `/sync/activities` returned it).
  * Simkl asks apps not to call this on a timer without checking
- * `/sync/activities` first (see `sync/cache.ts`).
+ * `/sync/activities` first (see `sync/list-cache.ts`).
  */
 export async function readSimklList(
   types: SimklListType[],
