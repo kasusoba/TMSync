@@ -15,6 +15,18 @@ import type {
 import type { ParsedMedia } from "@tmsync/shared";
 import { defineExtensionMessaging } from "@webext-core/messaging";
 
+/** What `finishSiteGrant` did, for the popup's note. */
+export interface SiteGrantOutcome {
+  /** False when there was nothing left to do (the background already did it). */
+  done: boolean;
+  ok: boolean;
+  /** The page runs the content script (or the picker) now; no reload needed. */
+  live?: boolean;
+  /** adopt: the site the domain was added to. */
+  siteName?: string;
+  error?: string;
+}
+
 export interface ScrobbleRequest {
   action: RecordPhase;
   media: ParsedMedia;
@@ -250,6 +262,9 @@ export interface ProtocolMap {
   /** Register the content script for an origin the user just granted access to. */
   registerSite(origin: string): { ok: boolean; error?: string };
   unregisterSite(origin: string): { ok: boolean };
+  /** Run the step after a site-access grant the popup asked for (`siteGrantIntent`).
+   * `done: false` when the background already ran it (on `permissions.onAdded`). */
+  finishSiteGrant(): SiteGrantOutcome;
   listEnabledSites(): string[];
   /** Reconcile content-script registrations against permissions + recipes — call
    * after toggling the broad "enable all sites" grant or importing a backup, so

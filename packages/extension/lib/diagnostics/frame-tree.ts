@@ -15,6 +15,7 @@
  *
  * Pure (no DOM, no browser APIs) so it unit-tests against fixture data.
  */
+import type { FrameDiag } from "./why";
 
 export interface VideoInfo {
   paused: boolean;
@@ -41,6 +42,8 @@ export interface RawFrame {
   videos: VideoInfo[];
   /** Absolute http(s) URLs of this frame's direct child `<iframe>`s. */
   iframeSrcs: string[];
+  /** The content script's last check here; null when none runs in this frame. */
+  diag?: FrameDiag | null;
 }
 
 export interface FrameNode {
@@ -63,6 +66,8 @@ export interface FrameNode {
   children: FrameNode[];
   /** Nesting depth from the top frame (0 = top). */
   depth: number;
+  /** Reached frames: the content script's last check (null = none runs here). */
+  diag?: FrameDiag | null;
 }
 
 /** A muted, looping video is a background trailer on a landing page, not the player. */
@@ -104,6 +109,7 @@ function reachedNode(f: RawFrame, enabled: Set<string>, broad: boolean): FrameNo
     hasActiveVideo: reals.some((v) => !v.paused && v.readyState >= 2),
     children: [],
     depth: 0,
+    diag: f.diag ?? null,
   };
 }
 

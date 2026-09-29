@@ -1,7 +1,7 @@
 import { ANIME_MAP, RECIPES } from "@/config";
 import { errorMessage } from "@/lib/errors";
 import { bundledLinks } from "@/lib/recipes";
-import { addedHosts } from "@/lib/recipes/sites";
+import { addedHosts, findMovedSite, groupSites, withSiteHosts } from "@/lib/recipes/sites";
 import { statusDotColor } from "@/lib/scrobble/action-badge";
 import {
   type QuickLinkSite,
@@ -18,6 +18,7 @@ import {
   newPendingSites,
   quickLinks,
   remoteRecipes,
+  siteGrantIntent,
   tabFrameOrigins,
   tabSessions,
   tabStatus,
@@ -53,6 +54,7 @@ import {
   type ReviewTarget,
   type ScrobbleReply,
   type ScrobbleRequest,
+  type SiteGrantOutcome,
   type TrackerResolution,
   type WatchStanding,
   onMessage,
@@ -62,11 +64,14 @@ import {
   type LibraryLink,
   type ParsedMedia,
   type Recipe,
+  hostText,
   parseLibrary,
   primaryId,
   recipeHosts,
 } from "@tmsync/shared";
 import { browser } from "wxt/browser";
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * Whether the tab's episode already played past `WATCHED_THRESHOLD`, read from
@@ -162,6 +167,16 @@ export default defineBackground(() => {
     if (alarm.name === "tmsync-anime-map") void fetchAnimeMap(true);
     if (alarm.name === AUTO_ALARM) void runAuto();
     for (const service of allServices()) void service.alarms?.[alarm.name]?.();
+  });
+
+  // A site grant from the popup. If the prompt closed the popup, nothing asks us
+  // to finish it, so finish it here. Wait a moment first: a popup that is still
+  // open asks right away and shows the result.
+  browser.permissions.onAdded.addListener(async (granted) => {
+    const intent = await siteGrantIntent.getValue();
+    if (!intent || !granted.origins?.includes(`${intent.origin}/*`)) return;
+    await sleep(SITE_GRANT_WAIT_MS);
+    await finishSiteGrant();
   });
 
   // Each tracker's own listeners, set up again on each wake (constraint #4).
@@ -294,6 +309,7 @@ export default defineBackground(() => {
   });
 
   onMessage("registerSite", ({ data }) => registerSite(data));
+  onMessage("finishSiteGrant", () => finishSiteGrant());
   onMessage("unregisterSite", ({ data }) => unregisterSite(data));
   onMessage("listEnabledSites", () => enabledOrigins.getValue());
   // Reconcile after a broad-grant toggle or a backup import (the caller changed
@@ -1530,6 +1546,83 @@ async function ensureRegistered(origin: string): Promise<void> {
   } catch {
     await new Promise((r) => setTimeout(r, 200));
     await registerScript(origin);
+  }
+}
+
+/** How long a popup's site-grant intent stays valid. */
+const SITE_GRANT_TTL_MS = 2 * 60_000;
+/** How long `permissions.onAdded` waits for a popup that is still open to finish. */
+const SITE_GRANT_WAIT_MS = 1_500;
+
+/**
+ * Run the step after a site-access grant the popup asked for (`siteGrantIntent`),
+ * so one click is always enough, also when the prompt closed the popup. The
+ * intent is cleared first, so the popup and `permissions.onAdded` never both run it.
+ */
+async function finishSiteGrant(): Promise<SiteGrantOutcome> {
+  const intent = await siteGrantIntent.getValue();
+  if (!intent || Date.now() - intent.at > SITE_GRANT_TTL_MS) return { done: false, ok: true };
+  await siteGrantIntent.setValue(null);
+  const { action, origin, tabId, frameId } = intent;
+  try {
+    let siteName: string | undefined;
+    if (action === "adopt") {
+      // Written before the content script is injected, so it loads them.
+      const url = (await browser.tabs.get(tabId)).url ?? "";
+      const custom = await customRecipes.getValue();
+      const library = (await remoteRecipes.getValue())?.recipes ?? [];
+      const moved = findMovedSite(groupSites(custom, library), url);
+      if (!moved) return { done: true, ok: false, error: "This page no longer matches a site." };
+      const host = hostText(new URL(origin).hostname);
+      await customRecipes.setValue(withSiteHosts(moved, [...moved.hosts, host], custom));
+      siteName = moved.name;
+    }
+    const res = await registerSite(origin);
+    if (!res.ok) return { done: true, ok: false, error: res.error };
+    if (action === "setup" || action === "setupFrame") {
+      const live = await injectWithRetry(() =>
+        browser.scripting.executeScript({
+          target: { tabId, ...(frameId !== undefined ? { frameIds: [frameId] } : {}) },
+          files: ["/content-scripts/picker.js"],
+        }),
+      );
+      return live
+        ? { done: true, ok: true, live }
+        : { done: true, ok: false, error: "The page did not let the picker in." };
+    }
+    // Under the broad grant the catch-all script already runs here (and reloads its
+    // recipes on the write above); injecting it again would scrobble twice.
+    const live =
+      (await hasAllSites()) ||
+      (await injectWithRetry(() =>
+        browser.scripting.executeScript({
+          target: { tabId, allFrames: true },
+          files: ["/content-scripts/content.js"],
+        }),
+      ));
+    return { done: true, ok: true, live, siteName };
+  } catch (e) {
+    return { done: true, ok: false, error: errorMessage(e) };
+  }
+}
+
+/**
+ * Inject into the open tab now (a registration covers only later loads). Right
+ * after a grant the new host permission can lag reaching the scripting API, so
+ * retry once. False when it still fails (e.g. a restricted page): reload to start.
+ */
+async function injectWithRetry(run: () => Promise<unknown>): Promise<boolean> {
+  try {
+    await run();
+    return true;
+  } catch {
+    await sleep(250);
+    try {
+      await run();
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
 

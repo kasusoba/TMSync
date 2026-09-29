@@ -233,6 +233,36 @@ export function App() {
               movedSite={{ name: "Cinejoy", host: "cinejoy.pk" }}
             />
           </Tile>
+          <Tile label="Why no badge? · recipe marker not on the page (click to open)" t={t}>
+            <PopupView
+              variant={variant}
+              connected
+              origins={[{ origin: "https://cinejoy.pk", isTop: true, enabled: true }]}
+              frameTree={[
+                {
+                  frameId: 0,
+                  url: "https://cinejoy.pk/tv/2604",
+                  origin: "https://cinejoy.pk",
+                  isTop: true,
+                  reached: true,
+                  enabled: true,
+                  title: "Cinejoy",
+                  videos: [],
+                  hasVideo: false,
+                  hasActiveVideo: false,
+                  children: [],
+                  depth: 0,
+                  diag: {
+                    at: Date.now() - 4000,
+                    checks: 6,
+                    recipes: 42,
+                    step: "no-match",
+                    candidates: [{ name: "Cinejoy", url: true, marker: false }],
+                  },
+                },
+              ]}
+            />
+          </Tile>
           <Tile label="Connected · no streaming page" t={t}>
             <PopupView variant={variant} connected origins={[]} />
           </Tile>

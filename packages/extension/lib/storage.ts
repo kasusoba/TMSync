@@ -89,6 +89,29 @@ export const malConnectIntent = storage.defineItem<number>("session:mal_connect_
   fallback: 0,
 });
 
+/**
+ * What the popup asked site access FOR, so the step after the grant still runs when
+ * the permission prompt closes the popup (Firefox always, Chrome sometimes). The
+ * popup writes it before the prompt. After the grant the popup asks the background
+ * to finish it, and the background also finishes it on `permissions.onAdded`, so
+ * one click is always enough. Whichever runs first clears it. In storage, not
+ * memory: the background is stateless.
+ */
+export interface SiteGrantIntent {
+  /** enable: turn the origin on. adopt: add this page's domain to the site that
+   * moved here, then turn it on. setup / setupFrame: turn it on and open the picker
+   * (in the top frame, or in the player frame `frameId`). */
+  action: "enable" | "adopt" | "setup" | "setupFrame";
+  origin: string;
+  tabId: number;
+  frameId?: number;
+  at: number;
+}
+export const siteGrantIntent = storage.defineItem<SiteGrantIntent | null>(
+  "session:site_grant_intent",
+  { fallback: null },
+);
+
 /** MAL resolution cache keyed by malCacheKey(media). */
 export const malResolutionCache = storage.defineItem<Record<string, Cached<MalIdentity>>>(
   "local:mal_resolution_cache",

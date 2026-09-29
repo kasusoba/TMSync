@@ -39,7 +39,16 @@ import {
 import { type Accounts, loadAccounts } from "@/lib/ui/accounts";
 import { BadgeModeToggle } from "@/lib/ui/kit/PopupView";
 import { TrackerTab } from "@/lib/ui/kit/TrackerTab";
-import { Btn, Icon, IconBtn, type IconName, Switch, TrackerMark, tokens } from "@/lib/ui/kit/kit";
+import {
+  Btn,
+  Icon,
+  IconBtn,
+  type IconName,
+  Switch,
+  type Tokens,
+  TrackerMark,
+  tokens,
+} from "@/lib/ui/kit/kit";
 import { ListSyncView } from "@/lib/ui/kit/list-sync/ListSyncView";
 import { type AccountStatus, sendMessage } from "@/messaging";
 import {
@@ -582,6 +591,44 @@ function useSettled(on: boolean, ms: number): boolean {
   return settled;
 }
 
+/**
+ * The shared library's freshness, at the foot of the panes it feeds (Sites and
+ * Quick links). The library updates itself in the background, so "Update now" sits
+ * here, next to what it updates, and not in the page header.
+ */
+function LibraryFooter({
+  t,
+  busy,
+  msg,
+  onUpdate,
+  children,
+}: {
+  t: Tokens;
+  busy: boolean;
+  msg: string | null;
+  onUpdate: () => void;
+  children: preact.ComponentChildren;
+}) {
+  return (
+    <div class={clsx("flex items-start gap-3 px-1 pt-3 text-[11px]", t.faint)}>
+      <div class="min-w-0 flex-1 space-y-0.5">
+        {children}
+        {msg && <p class={t.sub}>{msg}</p>}
+      </div>
+      <Btn
+        t={t}
+        tone="ghost"
+        class="shrink-0 px-2 py-1 text-[11px]"
+        disabled={busy}
+        onClick={onUpdate}
+        title="Get the latest recipes and quick links from the shared library now"
+      >
+        <Icon name="refresh" class="text-[11px]" /> Update now
+      </Btn>
+    </div>
+  );
+}
+
 const SECTIONS: { id: string; label: string; icon: IconName }[] = [
   { id: "account", label: "Account", icon: "play" },
   { id: "listsync", label: "List sync", icon: "refresh" },
@@ -701,7 +748,7 @@ export function App() {
   };
   /** The one expanded quick-link row (accordion) — editing another collapses this. */
   const [openLinkId, setOpenLinkId] = useState<string | null>(null);
-  /** The single unsaved quick-link draft (from "Add blank"), if any — cleared on save. */
+  /** The single unsaved quick-link draft (from "Add"), if any. Cleared on save. */
   const [draftId, setDraftId] = useState<string | null>(null);
   const [active, setActive] = useState("account");
   /** The site whose "add a domain" input is open, if any. */
@@ -850,7 +897,7 @@ export function App() {
     setBusy(true);
     setSyncMsg(null);
     const out = await sendMessage("refreshRecipes", undefined);
-    setSyncMsg(out.ok ? `Synced · ${out.count} recipes` : `Couldn’t sync: ${out.error}`);
+    setSyncMsg(out.ok ? `Updated · ${out.count} recipes` : `Couldn’t sync: ${out.error}`);
     setRemote(await remoteRecipes.getValue());
     setMapCache(await animeMap.getValue());
     setBusy(false);
@@ -1166,7 +1213,7 @@ export function App() {
           <span class={clsx("block text-[13px] font-medium", t.heading)}>Export to Letterboxd</span>
           <span class={clsx("block text-[11px] leading-relaxed", t.sub)}>
             Your Trakt movie history, ratings &amp; reviews as a Letterboxd-import CSV (rewatches
-            included). Trakt only · AniList isn’t included.
+            included).
           </span>
         </span>
         <Btn t={t} tone="ghost" disabled={exporting} onClick={exportLetterboxd}>
@@ -1326,17 +1373,7 @@ export function App() {
       <header class={clsx("flex items-center gap-3 border-b px-5 py-3.5", t.divider)}>
         <span class={clsx("text-[15px] font-semibold tracking-tight", t.heading)}>TMSync</span>
         <div class="ml-auto flex items-center gap-2.5">
-          {syncMsg && <span class={clsx("text-[12px]", t.sub)}>{syncMsg}</span>}
           {contribNote && <span class={clsx("text-[12px]", t.sub)}>{contribNote}</span>}
-          <Btn
-            t={t}
-            tone="ghost"
-            disabled={busy}
-            onClick={syncLibrary}
-            title="Pull the latest recipes and quick links from the shared library"
-          >
-            <Icon name="refresh" class="text-[12px]" /> Sync library
-          </Btn>
         </div>
       </header>
 
@@ -1557,8 +1594,8 @@ export function App() {
                 )}
 
                 {/* Where the shared recipes and the anime map come from, and how fresh
-                    they are. Both ride the same CDN and the same "Sync library". */}
-                <div class={clsx("space-y-0.5 px-1 pt-3 text-[11px]", t.faint)}>
+                    they are. Both ride the same CDN and the same library update. */}
+                <LibraryFooter t={t} busy={busy} msg={syncMsg} onUpdate={syncLibrary}>
                   <p>
                     {remote
                       ? `Library · ${remote.recipes.length} shared recipes · updated ${new Date(remote.fetchedAt).toLocaleString()}`
@@ -1571,7 +1608,7 @@ export function App() {
                         } · updated ${new Date(mapCache.fetchedAt).toLocaleString()}`
                       : "Anime map · not fetched yet · anime multi-tracking waits for it."}
                   </p>
-                </div>
+                </LibraryFooter>
               </>
             )}
 
@@ -1586,7 +1623,7 @@ export function App() {
                         <Switch on={linksOn} t={t} onClick={() => void toggleLinksOn()} />
                       </span>
                       <Btn t={t} tone="ghost" disabled={busy} onClick={addLink}>
-                        <Icon name="plus" class="text-[12px]" /> Add blank
+                        <Icon name="plus" class="text-[12px]" /> Add
                       </Btn>
                     </div>
                   }
@@ -1647,6 +1684,15 @@ export function App() {
                     ))}
                   </div>
                 )}
+                <LibraryFooter t={t} busy={busy} msg={syncMsg} onUpdate={syncLibrary}>
+                  <p>
+                    {remote
+                      ? `Links marked “library” come from the shared library · ${
+                          links.filter((l) => l.source === "library").length
+                        } shared links · updated ${new Date(remote.fetchedAt).toLocaleString()}`
+                      : "Links marked “library” come from the shared library · not fetched yet · it syncs automatically in the background."}
+                  </p>
+                </LibraryFooter>
               </>
             )}
 

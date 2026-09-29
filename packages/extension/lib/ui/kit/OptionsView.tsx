@@ -431,7 +431,7 @@ export function OptionsView({
                         <Switch on t={t} />
                       </span>
                       <Btn t={t} tone="ghost">
-                        <Icon name="plus" class="text-[12px]" /> Add blank
+                        <Icon name="plus" class="text-[12px]" /> Add
                       </Btn>
                     </div>
                   }
