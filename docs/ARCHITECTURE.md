@@ -357,7 +357,10 @@ the pane says so. Bump `SYNC_JOB_VERSION` or `APPLY_JOB_VERSION` when a saved sh
 from an older build is dropped on read, not rendered. The preview job is `preview.ts`, the apply job
 `apply.ts`, and what they share (the saves, the beat, the start lock) is `job.ts`. The lock makes
 the check "no job runs" and the first save one step, so an alarm and a click at the same time start
-one job, not two.
+one job, not two. A running job keeps its beat timer, a retry sleep, and the lists it reads in
+memory. That is the one scoped exception to constraint #4 (CLAUDE.md): a job is one bounded run, and
+a worker stopped mid-job loses only time, since the read caches and the writes already taken stay
+and the next preview plans what is left.
 
 **Apply.** Trackers run side by side. Each writes in chunks of its own size and spaces its own
 requests. The counts are saved after each chunk, and AniList and MAL also report each entry as it is

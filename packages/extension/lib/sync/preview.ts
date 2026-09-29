@@ -8,7 +8,7 @@
  * sit on one request, and a worker stopped mid-request gives the page no answer at
  * all. So the start message returns at once, the job saves each step, and the
  * options page watches the storage item. If the worker is stopped anyway, the
- * last saved step says where (constraint #4: nothing lives only in memory).
+ * last saved step says where (nothing a later run needs lives only in memory; the scoped exception to constraint #4 is in `job.ts`).
  */
 import { errorMessage } from "../errors";
 import {
