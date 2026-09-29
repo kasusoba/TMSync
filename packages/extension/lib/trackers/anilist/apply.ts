@@ -91,14 +91,23 @@ export async function applyAniList(
     const action = mergeCour(
       g.at.map((i) => writes[i] as SyncWrite),
       f
-        ? { status: f.status, progress: f.progress, repeat: f.repeat, score: f.score || null }
+        ? {
+            status: f.status,
+            progress: f.progress,
+            repeat: f.repeat,
+            score: f.score || null,
+            startedOn: f.startedOn,
+            finishedOn: f.finishedOn,
+          }
         : null,
     );
     try {
       if (action.kind === "delete" && f) await call(() => deleteListEntry(f.id));
       else if (action.kind === "save") {
-        const { progress, status, repeat, score } = action;
-        await call(() => syncSaveEntry(id, { progress, status, repeat, scoreRaw: score }));
+        const { progress, status, repeat, score, startedOn, finishedOn } = action;
+        await call(() =>
+          syncSaveEntry(id, { progress, status, repeat, scoreRaw: score, startedOn, finishedOn }),
+        );
       } else {
         set({ ok: true, reason: "changed" });
         continue;

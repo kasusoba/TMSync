@@ -155,6 +155,8 @@ function apply(entries: ListEntry[], p: SyncPlan): ListEntry[] {
         if (w.progress) e.progress = w.progress.to;
         if (w.status) e.status = w.status.to;
         if (w.repeat) e.repeat = w.repeat.to;
+        if (w.startedOn) e.startedOn = w.startedOn;
+        if (w.finishedOn) e.finishedOn = w.finishedOn;
       }
     } else if (w.op === "rating") {
       // A rating lists the item on its own (Trakt keeps ratings apart from history,
@@ -514,6 +516,83 @@ describe("anime across numbering families", () => {
       courEntry("mal", { mal: 35760 }, { progress: 4 }),
       courEntry("simkl", { anilist: 104578, mal: 38524 }, { progress: 3, status: "CURRENT" }),
     ]);
+  });
+});
+
+describe("start and finish days", () => {
+  const ids = { anilist: 30, mal: 300 };
+  const days = (p: SyncPlan, tk: Tracker) =>
+    writesFor(p, tk).map((w) =>
+      w.op === "entry" ? { startedOn: w.startedOn, finishedOn: w.finishedOn } : null,
+    );
+
+  it("gives a watching MAL entry the start day its AniList main list has", () => {
+    // The case from a live test: AniList main, MAL watching with no start day.
+    const p = plan(
+      [
+        courEntry("anilist", ids, { progress: 4, startedOn: "2026-09-01" }),
+        courEntry("mal", ids, { progress: 4 }),
+      ],
+      { trackers: ["anilist", "mal"], settings: { main: { anime: "anilist" } } },
+    );
+    expect(days(p, "mal")).toEqual([{ startedOn: "2026-09-01", finishedOn: undefined }]);
+  });
+
+  it("never changes a day the copy has", () => {
+    const p = plan(
+      [
+        courEntry("anilist", ids, { progress: 4, startedOn: "2026-09-01" }),
+        courEntry("mal", ids, { progress: 4, startedOn: "2026-08-30" }),
+      ],
+      { trackers: ["anilist", "mal"] },
+    );
+    expect(writesFor(p, "mal")).toEqual([]);
+    expect(writesFor(p, "anilist")).toEqual([]);
+  });
+
+  it("fills a finish day only on a finished entry, also a completed one", () => {
+    const done = { status: "COMPLETED" as const, progress: 12 };
+    const p = plan(
+      [
+        courEntry("anilist", ids, { ...done, startedOn: "2026-01-01", finishedOn: "2026-03-01" }),
+        courEntry("mal", ids, done),
+      ],
+      { trackers: ["anilist", "mal"] },
+    );
+    expect(days(p, "mal")).toEqual([{ startedOn: "2026-01-01", finishedOn: "2026-03-01" }]);
+    const watching = plan(
+      [
+        courEntry("anilist", ids, { progress: 4, finishedOn: "2026-03-01" }),
+        courEntry("mal", ids, { progress: 4 }),
+      ],
+      { trackers: ["anilist", "mal"] },
+    );
+    expect(writesFor(watching, "mal")).toEqual([]);
+  });
+
+  it("leaves days both lists keep, and never sends days to Simkl", () => {
+    const done = { status: "COMPLETED" as const, progress: 12 };
+    const p = plan(
+      [
+        courEntry("anilist", ids, { ...done, startedOn: "2026-02-01", finishedOn: "2026-03-01" }),
+        courEntry("mal", ids, { ...done, startedOn: "2026-01-01", finishedOn: "2026-04-01" }),
+        courEntry("simkl", ids, done),
+      ],
+      { trackers: ["anilist", "mal", "simkl"] },
+    );
+    expect(writesFor(p, "anilist")).toEqual([]);
+    expect(writesFor(p, "mal")).toEqual([]);
+    expect(writesFor(p, "simkl")).toEqual([]);
+  });
+
+  it("converges", () => {
+    expectConverges(
+      [
+        courEntry("anilist", ids, { progress: 4, startedOn: "2026-09-01" }),
+        courEntry("mal", ids, { progress: 2 }),
+      ],
+      { trackers: ["anilist", "mal"] },
+    );
   });
 });
 

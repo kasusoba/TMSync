@@ -10,9 +10,12 @@
  *    changed, the user (or a scrobble) did that since, and it wins.
  *  - a rating fills an empty one, unless the user picked it in a disagreement.
  *  - a rating the user removed elsewhere (`unrate`) is cleared, if there is one.
+ *  - a start or finish day fills an empty one, never changes one, also on a
+ *    completed entry (a day is not a move).
  * Pure.
  */
 import type { CourStatus } from "../trackers/cour-plan";
+import type { Day } from "./read-util";
 import type { SyncWrite } from "./types";
 
 /** An entry as it is now on the tracker. `score` is 0 to 100, null = not rated. */
@@ -21,10 +24,20 @@ export interface FreshCour {
   progress: number;
   repeat: number;
   score: number | null;
+  startedOn?: Day;
+  finishedOn?: Day;
 }
 
 export type CourAction =
-  | { kind: "save"; progress?: number; status?: CourStatus; repeat?: number; score?: number }
+  | {
+      kind: "save";
+      progress?: number;
+      status?: CourStatus;
+      repeat?: number;
+      score?: number;
+      startedOn?: Day;
+      finishedOn?: Day;
+    }
   | { kind: "delete" }
   | { kind: "none" };
 
@@ -50,8 +63,12 @@ export function mergeCour(writes: SyncWrite[], fresh: FreshCour | null): CourAct
         out.status = status;
     }
   }
-  // A rating needs an entry: rating an unlisted item would add it to the list.
+  // A rating or a day needs an entry: either on an unlisted item would add it.
   const listed = !!fresh || out.progress !== undefined || out.status !== undefined;
+  if (entry?.op === "entry" && listed) {
+    if (entry.startedOn && !fresh?.startedOn) out.startedOn = entry.startedOn;
+    if (entry.finishedOn && !fresh?.finishedOn) out.finishedOn = entry.finishedOn;
+  }
   if (rating?.op === "rating" && listed && (rating.picked || !fresh?.score)) {
     if (rating.score !== fresh?.score) out.score = rating.score;
   }

@@ -1,11 +1,12 @@
+import type { CourStatus } from "../trackers/cour-plan";
+import type { Tracker } from "../trackers/types";
 /**
  * List sync types (docs/ARCHITECTURE.md section 7). Each tracker reads its whole list into
  * `ListEntry` values, the pure planner (`plan/`) groups them and decides what
  * each tracker is missing, and the result is a `SyncPlan`. Nothing here talks to a
  * tracker: the readers live with each tracker (`lib/trackers/<tracker>/list.ts`).
  */
-import type { CourStatus } from "../trackers/cour-plan";
-import type { Tracker } from "../trackers/types";
+import type { Day } from "./read-util";
 
 /** What an item is. A tracker can be kept out of a kind (Simkl without anime). */
 export type SyncKind = "movie" | "tv" | "anime";
@@ -81,6 +82,9 @@ export type ListEntry =
       repeat: number;
       /** An anime movie (one episode). */
       movie?: boolean;
+      /** The start and finish days the user keeps on the entry (AniList, MAL). */
+      startedOn?: Day;
+      finishedOn?: Day;
     });
 
 /** What the user chose for list sync. Stored in `sync` storage. */
@@ -180,6 +184,10 @@ export type SyncWrite =
       repeat?: Change<number>;
       /** The date new watches get, where the tracker keeps one (Simkl). */
       at?: number;
+      /** A start or finish day for an entry that has none (AniList, MAL). Sync
+       * only fills an empty day, never changes one. */
+      startedOn?: Day;
+      finishedOn?: Day;
     }
   /** Remove the entry from the tracker's list: a main list does not have it, or
    * another list removed it since the last sync (`base.ts`). Only list

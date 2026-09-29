@@ -91,7 +91,7 @@ function addition(w: SyncWrite, contested: boolean): SyncWrite | null {
       const follows = up && (w.status?.to === "CURRENT" || w.status?.to === "COMPLETED");
       if (!w.status || follows) return w;
       const { status: _held, ...rest } = w;
-      return rest.progress || rest.repeat ? rest : null;
+      return rest.progress || rest.repeat || rest.startedOn || rest.finishedOn ? rest : null;
     }
   }
 }

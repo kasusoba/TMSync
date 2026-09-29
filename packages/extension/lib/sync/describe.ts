@@ -50,6 +50,8 @@ export function describeWrite(w: SyncWrite): string {
         );
       }
       if (w.repeat) parts.push(`${w.repeat.to} rewatches`);
+      if (w.startedOn) parts.push(`started ${w.startedOn}`);
+      if (w.finishedOn) parts.push(`finished ${w.finishedOn}`);
       return parts.join(" · ");
     }
   }

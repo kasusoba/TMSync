@@ -5,6 +5,7 @@ import {
   anilistTokens,
   anilistViewer,
 } from "../../storage";
+import { type Day, dayOf, dayParts } from "../../sync/read-util";
 import { freshHit, stamp } from "../identity-cache";
 import type { CourSearchOption, ScoreFormat } from "../types";
 import { getValidAccessToken } from "./auth";
@@ -406,7 +407,7 @@ query ($userId: Int, $chunk: Int) {
       isCustomList
       entries {
         mediaId status progress repeat private hiddenFromStatusLists updatedAt
-        completedAt { year month day }
+        startedAt { year month day } completedAt { year month day }
         score(format: POINT_100)
         media { id idMal episodes format isAdult startDate { year } title { userPreferred } }
       }
@@ -459,6 +460,7 @@ query ($userId: Int, $ids: [Int]) {
     mediaList(userId: $userId, type: ANIME, mediaId_in: $ids) {
       id mediaId status progress repeat
       score(format: POINT_100)
+      startedAt { year month day } completedAt { year month day }
     }
   }
 }`;
@@ -471,7 +473,12 @@ export interface FreshAniListEntry {
   progress: number;
   repeat: number;
   score: number;
+  /** Start and finish days, when full dates. */
+  startedOn?: Day;
+  finishedOn?: Day;
 }
+
+type FuzzyDate = { year?: number | null; month?: number | null; day?: number | null } | null;
 
 /** The viewer's id: saved for the signed-in token, else asked once. */
 async function viewerId(): Promise<number> {
@@ -490,7 +497,11 @@ export async function readFreshEntries(
   mediaIds: number[],
 ): Promise<Map<number, FreshAniListEntry>> {
   const data = await gql<{
-    Page: { mediaList: Partial<FreshAniListEntry>[] | null } | null;
+    Page: {
+      mediaList:
+        | (Partial<FreshAniListEntry> & { startedAt?: FuzzyDate; completedAt?: FuzzyDate })[]
+        | null;
+    } | null;
   }>(FRESH_QUERY, { userId: await viewerId(), ids: mediaIds.slice(0, 50) }, true);
   const out = new Map<number, FreshAniListEntry>();
   for (const e of data.Page?.mediaList ?? []) {
@@ -502,15 +513,21 @@ export async function readFreshEntries(
       progress: e.progress ?? 0,
       repeat: e.repeat ?? 0,
       score: e.score ?? 0,
+      startedOn: dayOf(e.startedAt),
+      finishedOn: dayOf(e.completedAt),
     });
   }
   return out;
 }
 
 const SYNC_SAVE_QUERY = `
-mutation ($mediaId: Int, $progress: Int, $status: MediaListStatus, $repeat: Int, $scoreRaw: Int) {
+mutation (
+  $mediaId: Int, $progress: Int, $status: MediaListStatus, $repeat: Int, $scoreRaw: Int,
+  $startedAt: FuzzyDateInput, $completedAt: FuzzyDateInput
+) {
   SaveMediaListEntry(
-    mediaId: $mediaId, progress: $progress, status: $status, repeat: $repeat, scoreRaw: $scoreRaw
+    mediaId: $mediaId, progress: $progress, status: $status, repeat: $repeat, scoreRaw: $scoreRaw,
+    startedAt: $startedAt, completedAt: $completedAt
   ) { id }
 }`;
 
@@ -518,9 +535,19 @@ mutation ($mediaId: Int, $progress: Int, $status: MediaListStatus, $repeat: Int,
  * any failure, so the caller can tell a limit (429) from a bad item. */
 export async function syncSaveEntry(
   mediaId: number,
-  fields: SaveEntryFields & { scoreRaw?: number },
+  fields: SaveEntryFields & { scoreRaw?: number; startedOn?: Day; finishedOn?: Day },
 ): Promise<void> {
-  await gql(SYNC_SAVE_QUERY, { mediaId, ...fields }, true);
+  const { startedOn, finishedOn, ...rest } = fields;
+  await gql(
+    SYNC_SAVE_QUERY,
+    {
+      mediaId,
+      ...rest,
+      ...(startedOn ? { startedAt: dayParts(startedOn) } : {}),
+      ...(finishedOn ? { completedAt: dayParts(finishedOn) } : {}),
+    },
+    true,
+  );
 }
 
 const DELETE_QUERY = `
