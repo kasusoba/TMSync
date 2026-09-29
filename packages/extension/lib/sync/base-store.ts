@@ -1,13 +1,13 @@
 /**
  * Saving the list sync base (`base.ts`). A preview keeps the lists it read as a
- * PENDING base. They become the base when nothing was left to write, or when the
- * apply of that preview took every write (then with the writes laid over). A run
- * that failed a write, or held a removal back for the user, leaves the old base.
+ * PENDING base. They become the base when nothing was left to write, or once the
+ * apply of that preview ends: with the writes it took laid over, and each item it
+ * did not finish kept as the old base had it (`keepOpen`).
  */
 import { listSyncAccountAt, listSyncBase, listSyncBaseNext, listSyncCache } from "../storage";
 import type { Tracker } from "../trackers/types";
-import { BASE_VERSION, type BaseEntry, type SyncBase, afterWrites } from "./base";
-import type { SyncWrite } from "./types";
+import { BASE_VERSION, type BaseEntry, type SyncBase, afterWrites, keepOpen } from "./base";
+import type { SyncItem, SyncWrite } from "./types";
 
 /** The base, when it was taken under these settings. */
 export async function loadBase(sig: string): Promise<SyncBase["trackers"] | undefined> {
@@ -37,9 +37,14 @@ export async function accountsChangedSince(since: number): Promise<Tracker[]> {
     .map(([tk]) => tk);
 }
 
-/** Make the pending lists of preview `planAt` the base, with `writes` laid over.
- * A tracker that was not read keeps its old base. */
-export async function commitBase(planAt: number, writes: SyncWrite[]): Promise<void> {
+/** Make the pending lists of preview `planAt` the base, with the `taken` writes
+ * laid over, and the `open` items (a write not taken) as the old base had them. A
+ * tracker that was not read keeps its old base. */
+export async function commitBase(
+  planAt: number,
+  taken: SyncWrite[],
+  open: SyncItem[] = [],
+): Promise<void> {
   const next = await listSyncBaseNext.getValue();
   if (!next || next.v !== BASE_VERSION || next.planAt !== planAt) return;
   const old = await listSyncBase.getValue().catch(() => null);
@@ -47,7 +52,7 @@ export async function commitBase(planAt: number, writes: SyncWrite[]): Promise<v
   // A list read from an account that changed since is not this account's list.
   // A preview that ran across the change saved it after `forgetBase` dropped it.
   const changed = await accountsChangedSince(next.readAt);
-  const lists = afterWrites(next.trackers, writes);
+  const lists = keepOpen(afterWrites(next.trackers, taken), keep, open);
   for (const tk of changed) delete lists[tk];
   await listSyncBase
     .setValue({

@@ -9,6 +9,7 @@ describe("simklEntries", () => {
           status: "watching",
           user_rating: 8,
           last_watched_at: "2026-05-15T00:35:15Z",
+          user_rated_at: "2026-06-01T00:00:00Z",
           show: {
             title: "The Walking Dead",
             year: 2010,
@@ -46,6 +47,9 @@ describe("simklEntries", () => {
         seasons: { 1: [1, 2] },
         rating: 80,
         status: "CURRENT",
+        // The rating moves the last change, not the watch date.
+        updatedAt: Date.parse("2026-06-01T00:00:00Z"),
+        watchedAt: Date.parse("2026-05-15T00:35:15Z"),
       }),
       expect.objectContaining({
         shape: "cour",

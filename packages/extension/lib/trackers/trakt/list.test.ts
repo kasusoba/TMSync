@@ -41,6 +41,8 @@ describe("traktEntries", () => {
         rating: 90,
         seasonRatings: { 1: 70 },
         updatedAt: Date.parse("2024-02-01T00:00:00.000Z"),
+        // The rating is newer, but the watch date is the watch.
+        watchedAt: Date.parse("2024-01-02T00:00:00.000Z"),
       }),
       expect.objectContaining({ shape: "movie", id: 1, watched: true, rating: null }),
       expect.objectContaining({ shape: "movie", id: 2, watched: false, rating: 80 }),

@@ -95,11 +95,13 @@ export function traktEntries(dump: TraktListDump): ListEntry[] {
     for (const s of w.seasons) seasons[s.number] = s.episodes.map((x) => x.number);
     e.seasons = seasons;
     e.updatedAt = ms(w.last_watched_at);
+    e.watchedAt = ms(w.last_watched_at);
   }
   for (const w of parseEach(WatchedMovie, dump.movies)) {
     const e = movie(w.movie);
     e.watched = true;
     e.updatedAt = ms(w.last_watched_at);
+    e.watchedAt = ms(w.last_watched_at);
   }
   for (const r of parseEach(Rated, dump.showRatings)) {
     if (!r.show) continue;

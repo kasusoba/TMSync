@@ -96,18 +96,6 @@ function addition(w: SyncWrite, contested: boolean): SyncWrite | null {
   }
 }
 
-/** Whether a held item removes something (an entry or a rating). Pure. */
-export function holdsRemoval(plan: SyncPlan, held: string[], ignore: string[] = []): boolean {
-  const h = new Set(held);
-  const out = new Set(ignore);
-  return plan.items.some(
-    (i) =>
-      h.has(i.key) &&
-      !out.has(i.key) &&
-      i.writes.some((w) => w.op === "remove" || w.op === "unrate"),
-  );
-}
-
 /** How many held items the user has not seen yet (the badge count). Pure. */
 export function unseen(run: AutoRun | null, seen: string[]): number {
   if (!run) return 0;
@@ -192,15 +180,15 @@ export async function runAuto(): Promise<void> {
 
     const { plan, held } = additionsOnly(preview.plan);
     const queues = applyQueues({ ...preview, plan }, settings.ignore, {});
-    // A removal held for the user must stay "removed since the base", so the base
-    // moves only when none is held (`base-store.ts`).
-    const full = !holdsRemoval(preview.plan, held, settings.ignore);
+    // A held item stays in the base as it was, so a removal held for the user is
+    // still "removed since the base" next time (`base-store.ts`).
+    // Nothing to write: every item is held or kept out.
     if (![...queues.values()].some((q) => q.length)) {
-      if (full) await commitBase(preview.at, []).catch(() => {});
+      await commitBase(preview.at, [], preview.plan.items).catch(() => {});
       return save({ ...blank, notes, held, state: "done" });
     }
 
-    const applied = await beginApply(preview, queues, true, full);
+    const applied = await beginApply(preview, queues, true, held);
     if (!applied)
       return save({ ...blank, notes, held, state: "skipped", error: "A sync was running." });
     for (const t of applied.trackers)

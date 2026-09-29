@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { APPLY_FRESH_MS, APPLY_JOB_VERSION, type ApplyJob, applyBlock, applyQueues } from "./apply";
+import {
+  APPLY_FRESH_MS,
+  APPLY_JOB_VERSION,
+  type ApplyJob,
+  applied,
+  applyBlock,
+  applyQueues,
+} from "./apply";
 import type { SyncPreview } from "./preview";
 import type { SyncPlan, SyncWrite } from "./types";
 
@@ -37,11 +44,35 @@ const job = (planAt: number, state: ApplyJob["state"] = "done"): ApplyJob => ({
   trackers: [],
 });
 
+describe("applied", () => {
+  const keys = (items: { key: string }[]) => items.map((i) => i.key);
+
+  it("keeps an item open when one of its writes was not taken", () => {
+    const q = applyQueues(preview, [], {});
+    // Trakt took both; Simkl's rating for One failed.
+    const out = applied(preview, q, new Set(["trakt:0", "trakt:1"]), []);
+    expect(keys(out.open)).toEqual(["tv:tmdb:1"]);
+    expect(out.writes).toHaveLength(2);
+  });
+
+  it("closes every item when every write was taken", () => {
+    const q = applyQueues(preview, [], {});
+    const out = applied(preview, q, new Set(["trakt:0", "trakt:1", "simkl:0"]), []);
+    expect(out.open).toEqual([]);
+  });
+
+  it("keeps held and kept-out items open", () => {
+    const q = applyQueues(preview, ["tv:tmdb:2"], {});
+    const out = applied(preview, q, new Set(["trakt:0", "simkl:0"]), ["tv:tmdb:1"]);
+    expect(keys(out.open)).toEqual(["tv:tmdb:1", "tv:tmdb:2"]);
+  });
+});
+
 describe("applyQueues", () => {
   it("splits the plan per tracker, in plan order, with the item's title", () => {
     const q = applyQueues(preview, [], {});
     expect(q.get("trakt")?.map((x) => x.title)).toEqual(["One", "Two"]);
-    expect(q.get("simkl")).toEqual([{ w: rate("simkl", 80), title: "One" }]);
+    expect(q.get("simkl")).toEqual([{ w: rate("simkl", 80), key: "tv:tmdb:1", title: "One" }]);
   });
 
   it("leaves out the items the user keeps out", () => {

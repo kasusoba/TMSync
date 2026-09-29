@@ -383,7 +383,7 @@ export async function updateListStatus(
 // --- list sync (reads the whole list; docs/ARCHITECTURE.md section 7) ---
 
 const ANIMELIST_FIELDS =
-  "list_status{status,score,num_episodes_watched,is_rewatching,num_times_rewatched,updated_at},num_episodes,media_type,nsfw,start_season";
+  "list_status{status,score,num_episodes_watched,is_rewatching,num_times_rewatched,updated_at,finish_date},num_episodes,media_type,nsfw,start_season";
 const PAGE = 1000;
 
 /** Read the user's whole anime list, 1000 entries per request, one request at a

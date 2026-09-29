@@ -406,6 +406,7 @@ query ($userId: Int, $chunk: Int) {
       isCustomList
       entries {
         mediaId status progress repeat private hiddenFromStatusLists updatedAt
+        completedAt { year month day }
         score(format: POINT_100)
         media { id idMal episodes format isAdult startDate { year } title { userPreferred } }
       }

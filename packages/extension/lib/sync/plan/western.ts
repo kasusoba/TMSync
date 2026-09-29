@@ -42,7 +42,7 @@ export function planWestern(ctx: PlanContext, all: SeasonedEntry[], kind: SyncKi
   const mainEntry = main ? own(main) : undefined;
   const keys = [...new Set(all.flatMap(entryKeys))];
 
-  // Removed from one list since the last clean sync: remove it from the others.
+  // Removed from one list since the last sync: remove it from the others.
   const { gone, fresh } = main
     ? { gone: [], fresh: false }
     : removedSince(
@@ -105,7 +105,7 @@ export function planWestern(ctx: PlanContext, all: SeasonedEntry[], kind: SyncKi
   if (kind === "movie") {
     const seen = sources.filter((m) => m.shape === "movie" && m.watched);
     const watched = seen.length > 0;
-    const at = newest(...seen.map((m) => m.updatedAt));
+    const at = newest(...seen.map((m) => m.watchedAt));
     if (main && !watched) {
       for (const m of members) {
         if (m.tracker !== main && m.shape === "movie" && m.watched) {
@@ -137,7 +137,7 @@ export function planWestern(ctx: PlanContext, all: SeasonedEntry[], kind: SyncKi
     let at: number | undefined;
     for (const m of sources) {
       if (m.shape !== "seasons") continue;
-      if (Object.values(m.seasons).some((eps) => eps.length)) at = newest(at, m.updatedAt);
+      if (Object.values(m.seasons).some((eps) => eps.length)) at = newest(at, m.watchedAt);
       for (const [s, eps] of Object.entries(m.seasons)) {
         for (const n of eps) union.set(`${s}:${n}`, { season: Number(s), number: n });
       }
@@ -196,7 +196,7 @@ export function planWestern(ctx: PlanContext, all: SeasonedEntry[], kind: SyncKi
       ),
     );
   }
-  // A rating removed from one list since the last clean sync: clear it on the others.
+  // A rating removed from one list since the last sync: clear it on the others.
   // A list that had the item only for its rating has no entry now, and still counts.
   const clear = main
     ? []

@@ -1,13 +1,15 @@
 /**
  * The list sync base (docs/ARCHITECTURE.md section 7, "The base"): what each tracker's list
- * held after the last CLEAN sync. With it, union mode can tell "removed on one
+ * held after the last sync. With it, union mode can tell "removed on one
  * list" (in the base, gone now) from "never there" (not in the base), and remove
  * the entry (or the rating) from the others instead of adding it back.
  *
  * The base keeps only what that needs: each entry's id keys, and whether it was
- * rated. So it stays small even for a big Trakt library. It is valid only after a
- * clean run (every write taken, no removal held back): after a failed write, the
- * item would look removed next time. It is dropped when the sync settings change
+ * rated. So it stays small even for a big Trakt library. It moves after every
+ * apply, with only the writes that were taken laid over. An item with a write that
+ * was not taken (it failed, was left out, or was held back) keeps its entries from
+ * the old base (`keepOpen`): read as it is now, a failed removal would look like
+ * "never there" and be added back. It is dropped when the sync settings change
  * (`settingsSig`) or an account is connected or disconnected.
  *
  * A removal can leave a copy that sync never deletes (Trakt watch history). Then
@@ -16,7 +18,15 @@
  * The mark goes when the user adds the item to that list again.
  */
 import { type Tracker, trackerFamily } from "../trackers/types";
-import type { ListEntry, ListSyncSettings, SyncIds, SyncPlan, SyncWrite, TargetRef } from "./types";
+import type {
+  ListEntry,
+  ListSyncSettings,
+  SyncIds,
+  SyncItem,
+  SyncPlan,
+  SyncWrite,
+  TargetRef,
+} from "./types";
 
 /** Bump when the saved shape changes: an older base is then ignored. */
 export const BASE_VERSION = 2;
@@ -197,5 +207,31 @@ export function afterWrites(
       if (e.o && !e.r && !e.s) list.splice(list.indexOf(e), 1);
     }
   }
+  return out;
+}
+
+/**
+ * The lists after an apply, with each OPEN item (one with a write that was not
+ * taken) put back as the old base had it, on every list. So the next sync sees it
+ * as this one did: a removal that did not go through is still a removal, and an
+ * add that did not go through is added again. An item is found by its key, its
+ * writes' ids, and the ids of every entry that shares one of those. Pure.
+ */
+export function keepOpen(
+  lists: Partial<Record<Tracker, BaseEntry[]>>,
+  old: Partial<Record<Tracker, BaseEntry[]>>,
+  open: SyncItem[],
+): Partial<Record<Tracker, BaseEntry[]>> {
+  if (!open.length) return lists;
+  const seed = new Set(open.flatMap((i) => [i.key, ...i.writes.flatMap((w) => refKeys(w.target))]));
+  const keys = new Set(seed);
+  for (const src of [lists, old])
+    for (const list of Object.values(src))
+      for (const e of list ?? [])
+        if (e.k.some((k) => seed.has(k))) for (const k of e.k) keys.add(k);
+  const touches = (e: BaseEntry) => e.k.some((k) => keys.has(k));
+  const out: Partial<Record<Tracker, BaseEntry[]>> = {};
+  for (const [tk, list] of Object.entries(lists) as [Tracker, BaseEntry[]][])
+    out[tk] = [...list.filter((e) => !touches(e)), ...(old[tk] ?? []).filter(touches)];
   return out;
 }

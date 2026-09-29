@@ -43,4 +43,17 @@ describe("malEntries", () => {
       expect.objectContaining({ status: "PLANNING", rating: null, total: null, adult: true }),
     );
   });
+
+  it("dates the watch of a completed entry by its finish day, else by its last change", () => {
+    const node = { id: 1, title: "A", num_episodes: 12, media_type: "tv" };
+    const updated_at = "2026-01-01T00:00:00+00:00";
+    const [done, current, partial] = malEntries([
+      { node, list_status: { status: "completed", finish_date: "2020-05-03", updated_at } },
+      { node, list_status: { status: "watching", finish_date: "2020-05-03", updated_at } },
+      { node, list_status: { status: "completed", finish_date: "2020-05", updated_at } },
+    ]);
+    expect(done?.watchedAt).toBe(Date.UTC(2020, 4, 3, 12));
+    expect(current?.watchedAt).toBe(Date.parse(updated_at));
+    expect(partial?.watchedAt).toBe(Date.parse(updated_at));
+  });
 });

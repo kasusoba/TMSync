@@ -194,8 +194,8 @@ describe("runAuto", () => {
     expect(beginPreview).toHaveBeenCalledWith(true);
     const queues = beginApply.mock.calls[0]?.[1] as Map<string, { w: SyncWrite }[]>;
     expect([...queues.keys()]).toEqual(["trakt"]);
-    // A removal was held, so this run must not move the base.
-    expect(beginApply.mock.calls[0]?.[3]).toBe(false);
+    // The held item goes to the apply, so the base keeps it as it was.
+    expect(beginApply.mock.calls[0]?.[3]).toEqual(["a"]);
     const run = await listSyncAuto.getValue();
     expect(run).toMatchObject({ state: "done", added: 1, held: ["a"] });
     expect(run?.notes).toEqual(["MyAnimeList: not connected"]);

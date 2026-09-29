@@ -333,7 +333,7 @@ and nothing of it touches `extract()` or the scrobble path.
   be a main list: it holds only watch history, so every planned or unwatched entry on the
   others would be removed (`canBeMain`). A saved Trakt main list reads as none.
 - **Remembered removals (always on).** In a union, an entry or a rating removed from one list
-  since the last clean sync is removed from the others instead of added back (see "The base").
+  since the last sync is removed from the others instead of added back (see "The base").
   There is no switch: the removal is always in the preview first, an automatic run holds it for
   the user, and an item the user wants on one list only goes on the ignore list. Trakt watch
   history is still never removed; the plan says so as a notice.
@@ -376,9 +376,13 @@ apply. So each write is merged with a fresh read of the entry (`merge.ts`, pure)
 `max(fresh, planned)`, a completed entry is never moved, a status goes in only if the entry still has
 the status the preview saw, and a rating fills an empty one unless the user picked it.
 
-**Dates.** A backfilled watch on Trakt or Simkl gets the date the source list last changed, so a
-large first sync does not put hundreds of watches on one day. When the date is unknown, Trakt uses
-the air date and Simkl uses the time of the write.
+**Dates.** A backfilled watch on Trakt or Simkl gets the date the source list was last watched
+(`watchedAt`), so a large first sync does not put hundreds of watches on one day. It is never the
+last change of the entry: a rating or a watchlist add years after the watch would date the play by
+it. Trakt and Simkl give the last watch. AniList and MAL give the finish day of a finished entry,
+else only the last change, which can be later than the watch but never earlier. Every episode of
+one backfill gets the same date. When the date is unknown, Trakt uses the air date and Simkl uses
+the time of the write.
 
 **Change checks (`list-cache.ts`).** Trakt (`/sync/last_activities`) and Simkl (`/sync/activities`)
 can say whether a list changed. Each saves the list it read with the stamps from BEFORE the read
@@ -407,13 +411,15 @@ picks, while the user reads it. On a timer, Simkl is left out when its change ch
 fails: Simkl suspends apps that read without it. The result is `local:list_sync_auto`.
 
 **The base (`base.ts`, `base-store.ts`).** For remembered removals, the planner needs each list as
-it was after the last clean sync. The base keeps only each entry's id keys and whether it was rated
+it was after the last sync. The base keeps only each entry's id keys and whether it was rated
 (and Trakt's rated seasons), so it stays small. A preview saves the lists it read as pending
 (`local:list_sync_base_next`). They become the base (`local:list_sync_base`) when there is nothing
-to write, or when the apply of that preview takes every write, with the writes laid over
-(`afterWrites`). A failed or skipped write, a stopped tracker, or an automatic run that held a
-removal back leaves the old base: otherwise a write that did not happen would look like a removal
-next time. With no base yet (the first sync, or after a settings change), a union only adds. It
+to write, or when the apply of that preview ends, with the writes it took laid over
+(`afterWrites`). An item it did not finish (a write failed, was left out because the entry changed,
+was never sent, or was held back by an automatic run) keeps its entries from the old base on every
+list (`keepOpen`). Read as it is now, a removal that did not go through would look like "never
+there" and be added back, and a write that did not happen would look like a removal. So one write
+that keeps failing holds back only its own item, never the rest of the base. With no base yet (the first sync, or after a settings change), a union only adds. It
 is dropped when the settings that give it meaning change (`settingsSig`: kinds, main lists,
 private, adult) and per tracker when an account connects or disconnects. Each account change is
 stamped (`local:list_sync_account_at`). A list read before the stamp belongs to the old account, so
@@ -446,10 +452,10 @@ grow past the 8 KB a synced item may hold. Automatic sync is per device too
 same Trakt plays. All of it goes into the backup, and an import sets automatic sync on the device
 that imports it. Picks (`local:list_sync_picks`) stay on the device.
 
-**Limits.** Before the first clean sync there is no base, so a union brings back what the user
-removed on one tracker, because another still has it. An automatic run that holds a removal does not move the base, so
-additions it applied meanwhile are not in the base yet: if one of them is then removed on another
-list, the add wins until a clean run. Un-watched episodes are never carried over (that would lower
+**Limits.** Before the first sync there is no base, so a union brings back what the user
+removed on one tracker, because another still has it. An item an apply did not finish stays at
+the old base until an apply finishes it: an add to it that went through is not in the base yet, so
+if it is then removed on another list, the add wins. Un-watched episodes are never carried over (that would lower
 progress). The ignore list does not follow the user to another browser (the backup carries it).
 
 ---

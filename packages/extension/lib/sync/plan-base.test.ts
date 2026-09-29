@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { Animap } from "../trackers/animap/index";
 import type { Tracker } from "../trackers/types";
-import { type BaseEntry, afterWrites, baseOf, nextLists, settingsSig } from "./base";
+import { type BaseEntry, afterWrites, baseOf, keepOpen, nextLists, settingsSig } from "./base";
 import { planSync } from "./plan/index";
 import {
   DEFAULT_SYNC_SETTINGS,
@@ -297,6 +297,43 @@ describe("remembered removals: an entry that was only a rating", () => {
     expect(made.trakt).toEqual([{ k: ["movie:tmdb:11"], r: 1, o: 1 }]);
     const watched = afterWrites({ trakt: rated }, [{ tracker: "trakt", op: "movie", target }]);
     expect(watched.trakt?.[0]?.o).toBeUndefined();
+  });
+});
+
+describe("an apply that did not take every write", () => {
+  const baseOfAll = (entries: ListEntry[]) =>
+    Object.fromEntries(ALL.map((tk) => [tk, baseOf(entries.filter((e) => e.tracker === tk))]));
+  const planOn = (entries: ListEntry[], base: Partial<Record<Tracker, BaseEntry[]>>) =>
+    planSync({
+      entries,
+      trackers: ALL,
+      settings: DEFAULT_SYNC_SETTINGS,
+      animap,
+      scales: { anilist: "POINT_100" },
+      base,
+    });
+
+  it("keeps a failed removal a removal on the next sync", () => {
+    const old = baseOfAll([cour("anilist"), cour("mal")]);
+    const now = [cour("mal"), movie("trakt"), movie("simkl")];
+    const p = planOn(now, old);
+    expect(ops(p)).toEqual(["mal:remove"]);
+    // The removal failed: nothing was taken.
+    const next = keepOpen(afterWrites(nextLists(now, ALL, p.removed), []), old, p.items);
+    expect(ops(planOn(now, next))).toEqual(["mal:remove"]);
+    // Read as it is now instead, the cour would be added back to AniList.
+    const asRead = afterWrites(nextLists(now, ALL, p.removed), []);
+    expect(ops(planOn(now, asRead))).toContain("anilist:entry");
+  });
+
+  it("still moves the base for every other item", () => {
+    const old = baseOfAll([cour("anilist"), cour("mal")]);
+    const now = [cour("mal"), movie("trakt"), movie("simkl")];
+    const p = planOn(now, old);
+    const next = keepOpen(afterWrites(nextLists(now, ALL, p.removed), []), old, p.items);
+    // The movie is new since the old base, and in the new one.
+    expect(next.simkl).toEqual(baseOf([movie("simkl")]));
+    expect(next.anilist).toEqual(old.anilist);
   });
 });
 

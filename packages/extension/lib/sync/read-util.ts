@@ -26,6 +26,20 @@ export function parseEach<S extends z.ZodTypeAny>(schema: S, items: unknown[]): 
   return out;
 }
 
+/**
+ * When a finished entry was watched: its finish day (a date with no time), at noon
+ * UTC so no time zone moves it to another day. Never after `edited` (the entry's
+ * last change): the watch came first. Undefined when the day is not a full date.
+ */
+export function finishedAt(
+  day: { year?: number | null; month?: number | null; day?: number | null } | null | undefined,
+  edited: number | undefined,
+): number | undefined {
+  if (!day?.year || !day.month || !day.day) return undefined;
+  const t = Date.UTC(day.year, day.month - 1, day.day, 12);
+  return edited !== undefined ? Math.min(t, edited) : t;
+}
+
 /** The newest of several times. */
 export function newest(...t: (number | undefined)[]): number | undefined {
   const known = t.filter((x): x is number => x !== undefined);

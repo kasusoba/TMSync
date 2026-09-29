@@ -33,8 +33,14 @@ interface EntryBase {
   ids: SyncIds;
   /** The user's score, 0 to 100 (null = not rated). */
   rating: number | null;
-  /** When the entry last changed (ms), for "most recent wins". */
+  /** When the entry last changed (ms), for "most recent wins". A rating or a
+   * watchlist add moves it too, so it is not a watch date. */
   updatedAt?: number;
+  /** When the user last watched some of it (ms), as near as the tracker says: the
+   * date a backfilled watch gets. Trakt and Simkl give the last watch. AniList and
+   * MAL give the finish day of a finished entry, else only the last change, which
+   * can be later than the watch but never earlier. Missing = unknown. */
+  watchedAt?: number;
   /** The user hid the entry (AniList `private` or hidden from status lists). */
   private?: boolean;
   /** Adult content (AniList `isAdult`, MAL `nsfw: black`). */
@@ -176,10 +182,10 @@ export type SyncWrite =
       at?: number;
     }
   /** Remove the entry from the tracker's list: a main list does not have it, or
-   * another list removed it since the last clean sync (`base.ts`). Only list
+   * another list removed it since the last sync (`base.ts`). Only list
    * entries: Trakt watch history is never removed. */
   | { tracker: Tracker; op: "remove"; target: TargetRef; was: EntryState }
-  /** Clear a rating: the user removed it from another list since the last clean
+  /** Clear a rating: the user removed it from another list since the last
    * sync (`base.ts`). `was` is the rating now, 0 to 100. */
   | ({ tracker: Tracker; op: "unrate"; was: number } & RatingRef)
   /** Fill an empty rating. `score` is 0 to 100. */
