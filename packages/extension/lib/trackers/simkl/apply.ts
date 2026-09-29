@@ -1,8 +1,9 @@
 /**
  * Simkl's part of applying a list sync plan (plans/list-sync.md, phase 2). Per
- * chunk, at most three POSTs of the user's daily quota: `/sync/history` (watches,
- * and an anime entry's episodes and status), `/sync/ratings`, and
- * `/sync/history/remove`. Never the scrobble endpoints, so no 20 s lock.
+ * chunk, at most four POSTs of the user's daily quota: `/sync/history/remove`,
+ * `/sync/history` (watches, and an anime entry's episodes and status),
+ * `/sync/ratings`, and `/sync/ratings/remove`. Never the scrobble endpoints, so
+ * no 20 s lock.
  *
  * Anime goes under `shows[]` on every sync endpoint (Simkl's docs:
  * `/sync/history/remove` ignores an `anime[]` array), with its cour ids, and

@@ -180,12 +180,15 @@ export default defineBackground(() => {
   // Accounts: one set of handlers for every tracker, through its service.
   onMessage("getTrackerStatus", ({ data }) => getService(data).status());
 
-  // A saved list sync read and base belong to one account; a new sign-in drops them.
+  // A saved list sync read and base belong to one account; a new sign-in drops
+  // them (only once it succeeds: a cancelled sign-in keeps the old account).
   onMessage("connectTracker", async ({ data }) => {
     try {
-      await listSyncCache(data).removeValue();
-      await forgetBase(data);
       await getService(data).connect();
+      await listSyncCache(data)
+        .removeValue()
+        .catch(() => {});
+      await forgetBase(data).catch(() => {});
       return { ok: true };
     } catch (e) {
       return { ok: false, error: errorMessage(e) };

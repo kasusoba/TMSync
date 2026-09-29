@@ -174,8 +174,9 @@ export type SyncWrite =
       /** The date new watches get, where the tracker keeps one (Simkl). */
       at?: number;
     }
-  /** Remove the entry from the tracker's list (a main list does not have it).
-   * Only list entries: Trakt watch history is never removed. */
+  /** Remove the entry from the tracker's list: a main list does not have it, or
+   * another list removed it since the last clean sync (`base.ts`). Only list
+   * entries: Trakt watch history is never removed. */
   | { tracker: Tracker; op: "remove"; target: TargetRef; was: EntryState }
   /** Clear a rating: the user removed it from another list since the last clean
    * sync (`base.ts`). `was` is the rating now, 0 to 100. */
@@ -304,8 +305,11 @@ export interface SyncPlan {
   items: SyncItem[];
   skips: SyncSkip[];
   conflicts: SyncConflict[];
-  /** Copies of a main list left as they are (see `SyncNotice`). */
+  /** Copies left as they are (see `SyncNotice`). */
   notices: SyncNotice[];
+  /** Removed marks for the next base (`base.ts`): the lists that removed an item
+   * a kept copy (watch history) still has, with the item's id keys on that list. */
+  removed?: { tracker: Tracker; keys: string[] }[];
 }
 
 /** Per-tracker totals, for the preview header. */

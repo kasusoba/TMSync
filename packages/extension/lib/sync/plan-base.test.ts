@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { Animap } from "../trackers/animap/index";
 import type { Tracker } from "../trackers/types";
-import { type BaseEntry, afterWrites, baseOf, settingsSig } from "./base";
+import { type BaseEntry, afterWrites, baseOf, nextLists, settingsSig } from "./base";
 import { planSync } from "./plan";
 import {
   DEFAULT_SYNC_SETTINGS,
@@ -116,6 +116,100 @@ describe("remembered removals: entries", () => {
       [cour("anilist"), cour("mal"), traktAnime()],
     );
     expect(ops(p).filter((o) => o.endsWith("remove"))).toEqual([]);
+  });
+});
+
+/** Plan against `base`, then the base a clean apply of that plan leaves (as
+ * `run.ts` and `base-store.ts` build it). */
+function syncOnce(
+  entries: ListEntry[],
+  base: Partial<Record<Tracker, BaseEntry[]>>,
+  settings: Partial<ListSyncSettings> = {},
+): { plan: SyncPlan; next: Partial<Record<Tracker, BaseEntry[]>> } {
+  const p = planSync({
+    entries,
+    trackers: ALL,
+    settings: { ...DEFAULT_SYNC_SETTINGS, ...settings },
+    animap,
+    scales: { anilist: "POINT_100" },
+    base,
+  });
+  const writes = p.items.flatMap((i) => i.writes);
+  return { plan: p, next: afterWrites(nextLists(entries, ALL, p.removed), writes) };
+}
+const baseFrom = (entries: ListEntry[]) => nextLists(entries, ALL);
+const NO_SIMKL_ANIME = { kinds: { simkl: ["movie", "tv"] as ("movie" | "tv")[] } };
+
+describe("remembered removals: later syncs", () => {
+  it("keeps an anime removed while Trakt history still has it", () => {
+    const first = syncOnce(
+      [cour("mal"), traktAnime()],
+      baseFrom([cour("anilist"), cour("mal"), traktAnime()]),
+      NO_SIMKL_ANIME,
+    );
+    expect(ops(first.plan)).toEqual(["mal:remove"]);
+    // The next syncs read Trakt alone: nothing comes back, and nothing is said again.
+    const second = syncOnce([traktAnime()], first.next, NO_SIMKL_ANIME);
+    expect(ops(second.plan)).toEqual([]);
+    expect(second.plan.notices).toEqual([]);
+    const third = syncOnce([traktAnime()], second.next, NO_SIMKL_ANIME);
+    expect(ops(third.plan)).toEqual([]);
+  });
+
+  it("keeps a movie removed on Simkl while Trakt history still has it", () => {
+    const first = syncOnce([movie("trakt")], baseFrom([movie("trakt"), movie("simkl")]));
+    expect(first.plan.notices).toMatchObject([{ tracker: "trakt", reason: "history_kept" }]);
+    const second = syncOnce([movie("trakt")], first.next);
+    expect(ops(second.plan)).toEqual([]);
+    expect(second.plan.notices).toEqual([]);
+  });
+
+  it("adds it back everywhere once the user adds it to a list again", () => {
+    const first = syncOnce(
+      [cour("mal"), traktAnime()],
+      baseFrom([cour("anilist"), cour("mal"), traktAnime()]),
+      NO_SIMKL_ANIME,
+    );
+    const back = syncOnce([cour("anilist"), traktAnime()], first.next, NO_SIMKL_ANIME);
+    expect(ops(back.plan)).toContain("mal:entry");
+    expect(ops(back.plan).filter((o) => o.endsWith("remove"))).toEqual([]);
+  });
+
+  it("marks only the removed cour, not the other cours of the show", () => {
+    // Two cours of one TMDB show: AniList 30 = season 1, AniList 31 = season 2.
+    const two = new Animap([
+      { a: 30, m: 300, t: 50, k: "tv", s: 1, o: null },
+      { a: 31, m: 310, t: 50, k: "tv", s: 2, o: null },
+    ]);
+    const settings = { ...DEFAULT_SYNC_SETTINGS, ...NO_SIMKL_ANIME };
+    const run = (entries: ListEntry[], base: Partial<Record<Tracker, BaseEntry[]>>) => {
+      const p = planSync({ entries, trackers: ALL, settings, animap: two, base });
+      const writes = p.items.flatMap((i) => i.writes);
+      return { p, next: afterWrites(nextLists(entries, ALL, p.removed), writes) };
+    };
+    // Season 1 removed on AniList.
+    const first = run(
+      [cour("mal"), traktAnime()],
+      nextLists([cour("anilist"), cour("mal"), traktAnime()], ALL),
+    );
+    expect(ops(first.p)).toEqual(["mal:remove"]);
+    // Then the user watches season 2 on Trakt: it goes to AniList and MAL, and
+    // season 1 stays removed (the mark names the cour, not the show).
+    const watched = { ...traktAnime(), seasons: { 1: [1, 2, 3, 4], 2: [1, 2] } };
+    const second = run([watched], first.next);
+    expect(second.p.items.map((i) => i.key)).toEqual(["anilist:31"]);
+    expect(ops(second.p).sort()).toEqual(["anilist:entry", "mal:entry"]);
+  });
+
+  it("drops the marks once no list keeps a copy", () => {
+    const first = syncOnce(
+      [cour("mal"), traktAnime()],
+      baseFrom([cour("anilist"), cour("mal"), traktAnime()]),
+      NO_SIMKL_ANIME,
+    );
+    // Trakt history cleared too: nothing holds it, so no mark is carried on.
+    const second = syncOnce([], first.next, NO_SIMKL_ANIME);
+    expect(second.plan.removed).toBeUndefined();
   });
 });
 

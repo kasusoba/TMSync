@@ -42,10 +42,19 @@ export async function commitBase(planAt: number, writes: SyncWrite[]): Promise<v
   await listSyncBaseNext.removeValue().catch(() => {});
 }
 
-/** Forget one tracker's base (its account was connected or disconnected). */
+/** Forget one tracker's base, and its lists in the pending one (its account was
+ * connected or disconnected: they belong to the old account). */
 export async function forgetBase(tracker: Tracker): Promise<void> {
-  const base = await listSyncBase.getValue().catch(() => null);
-  if (!base?.trackers[tracker]) return;
-  const { [tracker]: _gone, ...rest } = base.trackers;
-  await listSyncBase.setValue({ ...base, trackers: rest });
+  const [base, next] = await Promise.all([
+    listSyncBase.getValue().catch(() => null),
+    listSyncBaseNext.getValue().catch(() => null),
+  ]);
+  if (base?.trackers[tracker]) {
+    const { [tracker]: _gone, ...rest } = base.trackers;
+    await listSyncBase.setValue({ ...base, trackers: rest });
+  }
+  if (next?.trackers[tracker]) {
+    const { [tracker]: _gone, ...rest } = next.trackers;
+    await listSyncBaseNext.setValue({ ...next, trackers: rest });
+  }
 }

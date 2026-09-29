@@ -12,7 +12,7 @@ import {
 import type { ListSyncSettings } from "@/lib/sync/types";
 import type { ResolvedIdentity } from "@/lib/trackers/trakt/types";
 import type { ParsedMedia, Recipe } from "@tmsync/shared";
-import { LinkTemplates, RecipeSchema } from "@tmsync/shared";
+import { LinkTemplates, RecipeSchema, TrackerId } from "@tmsync/shared";
 import { z } from "zod";
 
 /**
@@ -65,6 +65,8 @@ const BadgePrefsSchema: z.ZodType<BadgePrefs> = z.object({
     .nullable(),
 });
 
+// Objects, not records: a tracker or kind a newer build added is dropped, and the
+// rest of the backup still imports.
 const SyncKindSchema = z.enum(["movie", "tv", "anime"]);
 const ListSyncSettingsSchema: z.ZodType<ListSyncSettings> = z.object({
   kinds: z.object({
@@ -78,11 +80,12 @@ const ListSyncSettingsSchema: z.ZodType<ListSyncSettings> = z.object({
   ignore: z.array(z.string()),
   main: z
     .object({
-      movie: z.enum(["trakt", "anilist", "mal", "simkl"]).optional(),
-      tv: z.enum(["trakt", "anilist", "mal", "simkl"]).optional(),
-      anime: z.enum(["trakt", "anilist", "mal", "simkl"]).optional(),
+      movie: TrackerId.optional(),
+      tv: TrackerId.optional(),
+      anime: TrackerId.optional(),
     })
     .optional(),
+  auto: z.boolean().optional(),
 });
 
 const BackupSchema = z.object({
@@ -193,7 +196,12 @@ export async function applyBackup(backup: Backup): Promise<ImportSummary> {
 
   if (d.badgePrefs) await badgePrefs.setValue(d.badgePrefs);
   if (d.quickLinksEnabled !== undefined) await quickLinksEnabled.setValue(d.quickLinksEnabled);
-  if (d.listSync) await listSyncSettings.setValue(d.listSync);
+  // A backup from before automatic sync has no `auto`: keep this device's.
+  if (d.listSync)
+    await listSyncSettings.setValue({
+      auto: (await listSyncSettings.getValue()).auto,
+      ...d.listSync,
+    });
 
   return {
     recipes: validRecipes.length,

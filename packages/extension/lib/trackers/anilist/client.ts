@@ -1,5 +1,10 @@
 import type { ParsedMedia } from "@tmsync/shared";
-import { anilistCorrections, anilistResolutionCache } from "../../storage";
+import {
+  anilistCorrections,
+  anilistResolutionCache,
+  anilistTokens,
+  anilistViewer,
+} from "../../storage";
 import { freshHit, stamp } from "../identity-cache";
 import type { CourSearchOption, ScoreFormat } from "../types";
 import { getValidAccessToken } from "./auth";
@@ -456,15 +461,25 @@ export interface FreshAniListEntry {
   score: number;
 }
 
-/** The viewer's entries for up to 50 media, in two requests (the viewer, then the
- * entries). A media that is not on the list is missing from the map. */
+/** The viewer's id: saved for the signed-in token, else asked once. */
+async function viewerId(): Promise<number> {
+  const [tokens, saved] = await Promise.all([anilistTokens.getValue(), anilistViewer.getValue()]);
+  if (tokens && saved?.at === tokens.obtained_at) return saved.id;
+  const viewer = await gql<{ Viewer: { id: number } }>(VIEWER_QUERY, {}, true);
+  if (tokens)
+    await anilistViewer.setValue({ at: tokens.obtained_at, id: viewer.Viewer.id }).catch(() => {});
+  return viewer.Viewer.id;
+}
+
+/** The viewer's entries for up to 50 media, in one request (two the first time:
+ * the viewer's id is saved). A media that is not on the list is missing from the
+ * map. */
 export async function readFreshEntries(
   mediaIds: number[],
 ): Promise<Map<number, FreshAniListEntry>> {
-  const viewer = await gql<{ Viewer: { id: number } }>(VIEWER_QUERY, {}, true);
   const data = await gql<{
     Page: { mediaList: Partial<FreshAniListEntry>[] | null } | null;
-  }>(FRESH_QUERY, { userId: viewer.Viewer.id, ids: mediaIds.slice(0, 50) }, true);
+  }>(FRESH_QUERY, { userId: await viewerId(), ids: mediaIds.slice(0, 50) }, true);
   const out = new Map<number, FreshAniListEntry>();
   for (const e of data.Page?.mediaList ?? []) {
     if (e.id === undefined || e.mediaId === undefined) continue;

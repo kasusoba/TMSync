@@ -1,4 +1,3 @@
-import { errorMessage } from "../../errors";
 /**
  * Trakt's part of applying a list sync plan (plans/list-sync.md, phase 2): one
  * `POST /sync/history` for the watches, one `POST /sync/ratings` for the ratings,
@@ -7,6 +6,7 @@ import { errorMessage } from "../../errors";
  * twice (it diffs against what Trakt has). Trakt has no list entries and no
  * status, so it takes no `entry` or `remove` write.
  */
+import { errorMessage } from "../../errors";
 import { remoteRatings } from "../../storage";
 import { inNotFound, outcomes, sleep, toTen } from "../../sync/pace";
 import type { ChunkOutcome, SyncWrite, TargetRef, WriteOutcome } from "../../sync/types";

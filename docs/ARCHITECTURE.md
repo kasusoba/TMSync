@@ -413,6 +413,16 @@ with it, so a crosswalk change is never a removal. If a list that has it now did
 base (it was added since), the add wins and the item is added back. Clearing a rating is an
 `unrate` write.
 
+**Removed marks.** A removal can leave a copy sync never deletes (Trakt watch history, or a Simkl
+show that holds other cours). Without more, the next base would have the item only in that copy,
+and the sync after it would add the item back from there. So the plan lists the lists that lose
+the item (`SyncPlan.removed`), and the next base keeps a REMOVED mark for it on each (`x`). A mark
+counts as "had it at the base", so the item stays removed there, but not as a list that holds it,
+so it never blocks a removal. An anime's mark names the cour by its AniList and MAL ids only,
+never the TMDB show, which names every cour. The plan says "history kept" only when the removal
+is new, not on every later sync. A mark goes when the user adds the item to that list again (the
+add wins), and when no list keeps a copy any more (the plan stops carrying it).
+
 **Stored choices.** The settings (`sync:list_sync_settings`: kinds, main lists, private, adult,
 automatic sync, and the ignore list) are small user prefs and go into the
 backup. Picks (`local:list_sync_picks`) stay on the device.

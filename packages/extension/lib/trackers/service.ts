@@ -1,15 +1,15 @@
 import type { ParsedMedia } from "@tmsync/shared";
 import type { ListCache, ListRead } from "../sync/cache";
 import type { ChunkOutcome, SyncKind, SyncWrite, WriteOutcome } from "../sync/types";
-
-/** Report some writes of a chunk as done, by their place in the chunk. */
-export type ApplyReport = (at: number[], outcome: WriteOutcome) => void;
 import { anilistService } from "./anilist/service";
 import type { BoundCourPins } from "./cour-pins";
 import { malService } from "./mal/service";
 import { simklService } from "./simkl/service";
 import { traktService } from "./trakt/service";
 import type { CourTracker, RatingLevel, SearchOption, Tracker } from "./types";
+
+/** Report some writes of a chunk as done, by their place in the chunk. */
+export type ApplyReport = (at: number[], outcome: WriteOutcome) => void;
 
 type Ok = Promise<{ ok: boolean; error?: string }>;
 

@@ -7,10 +7,11 @@
  * long plan reads row by row. Tabs split changes, disagreements, skips, and the
  * items the user keeps out (which can be brought back from there).
  */
-import type { ApplyBlock, ApplyJob, ApplyTracker } from "@/lib/sync/apply";
+import { type ApplyBlock, type ApplyJob, type ApplyTracker, cleanApply } from "@/lib/sync/apply";
 import type { AutoRun } from "@/lib/sync/auto";
-import { summarize, withPicks } from "@/lib/sync/plan";
+import { normStatus, summarize, withPicks } from "@/lib/sync/plan";
 import type { SyncPreview, TrackerRead } from "@/lib/sync/run";
+import { outOfTen } from "@/lib/sync/score";
 import type {
   EntryState,
   ListSyncSettings,
@@ -58,7 +59,7 @@ const SKIP_LABEL: Record<SkipReason, string> = {
 
 const NOTICE_LABEL: Record<SyncNotice["reason"], string> = {
   ahead: "Further than the main list. Sync never lowers progress.",
-  history_kept: "Not on the main list, but this is watch history. Sync never deletes it.",
+  history_kept: "Watch history. Sync never deletes it.",
   rating_kept: "A different rating. Sync only fills empty ratings.",
 };
 
@@ -84,7 +85,7 @@ export function describeState(s: EntryState): string {
   if (s.progress !== undefined) parts.push(`${s.progress}/${s.total ?? "?"} eps`);
   if (s.episodes !== undefined) parts.push(`${s.episodes} watched`);
   if (s.watched !== undefined && !s.status) parts.push(s.watched ? "watched" : "not watched");
-  if (s.rating != null) parts.push(`rated ${Math.round(s.rating) / 10}/10`);
+  if (s.rating != null) parts.push(`rated ${outOfTen(s.rating)}/10`);
   return parts.join(" · ") || "on the list";
 }
 
@@ -101,9 +102,9 @@ export function describeWrite(w: SyncWrite): string {
     case "remove":
       return `remove · was ${describeState(w.was)}`;
     case "rating":
-      return `rate ${Math.round(w.score) / 10}/10${w.level === "season" ? ` (season ${w.season})` : ""}${w.picked ? " · your pick" : ""}`;
+      return `rate ${outOfTen(w.score)}/10${w.level === "season" ? ` (season ${w.season})` : ""}${w.picked ? " · your pick" : ""}`;
     case "unrate":
-      return `remove rating${w.level === "season" ? ` (season ${w.season})` : ""} · was ${Math.round(w.was) / 10}/10`;
+      return `remove rating${w.level === "season" ? ` (season ${w.season})` : ""} · was ${outOfTen(w.was)}/10`;
     case "entry": {
       const parts: string[] = [w.create ? "add" : "update"];
       if (w.progress) parts.push(`${w.progress.from} → ${w.progress.to} eps`);
@@ -174,7 +175,6 @@ export function ListSyncView({
   blocked?: ApplyBlock | null;
   onApply?: () => void;
   onCancelApply?: () => void;
-  /** Pick a score for a rating disagreement (undefined = leave it alone). */
   /** Pick in a disagreement, by `pickKey` (undefined = no pick). */
   onPick?: (key: string, value: SyncPick | undefined) => void;
   onPreview: () => void;
@@ -559,8 +559,7 @@ function ApplyProgress({
   const dead = job.state === "running" && !running;
   const failed = job.trackers.flatMap((x) => x.failed.map((f) => ({ ...f, tracker: x.tracker })));
   const failedCount = job.trackers.reduce((n, x) => n + x.failedCount, 0);
-  const clean =
-    job.state === "done" && !failedCount && job.trackers.every((x) => x.state === "done");
+  const clean = cleanApply(job);
   const title = running
     ? "Applying…"
     : dead
@@ -755,6 +754,8 @@ function PreviewResult({
   for (const s of plan.skips) if (s.title) titles.set(s.key, s.title);
   const keptRows = ignore.map((key) => ({ key, title: titles.get(key) ?? key }));
 
+  const more = () => setShown(shown + PAGE * 5);
+
   const keepOut = (item: SyncItem) => {
     onIgnore(item.key);
     setUndo({ key: item.key, title: item.title });
@@ -881,19 +882,16 @@ function PreviewResult({
       {tab === "changes" && (
         <ChangesTable t={t} trackers={trackers} items={items.slice(0, shown)} onKeepOut={keepOut} />
       )}
-      {tab === "changes" && items.length > shown && (
-        <Btn t={t} tone="ghost" onClick={() => setShown(shown + PAGE * 5)}>
-          Show more ({items.length - shown} left)
-        </Btn>
-      )}
+      {tab === "changes" && <ShowMore t={t} left={items.length - shown} onMore={more} />}
       {tab === "changes" && !items.length && <Empty t={t} text="Nothing to change." />}
 
       {tab === "removals" && (
         <>
           {removals.length > 0 && (
             <p class={clsx("text-[11px] leading-relaxed", t.sub)}>
-              Your main list doesn’t have these, so sync would remove them from the other lists.
-              Keep one out of sync to leave it where it is.
+              Sync would remove these from your other lists: your main list doesn’t have them, or
+              you removed them from one list since the last sync. Keep one out of sync to leave it
+              where it is.
             </p>
           )}
           <ChangesTable
@@ -902,14 +900,13 @@ function PreviewResult({
             items={removals.slice(0, shown)}
             onKeepOut={keepOut}
           />
+          <ShowMore t={t} left={removals.length - shown} onMore={more} />
           {!removals.length && <Empty t={t} text="Nothing to remove." />}
         </>
       )}
 
       {tab === "notices" && <NoticeTable t={t} notices={notices} />}
-      {tab === "notices" && !notices.length && (
-        <Empty t={t} text="Every copy matches its main list, or there is no main list." />
-      )}
+      {tab === "notices" && !notices.length && <Empty t={t} text="Nothing is left as is." />}
 
       {tab === "conflicts" && (
         <ConflictTable t={t} trackers={trackers} conflicts={conflicts} onPick={onPick} />
@@ -936,6 +933,16 @@ function Th({ t, children }: { t: Tokens; children?: ComponentChildren }) {
     <th class={clsx("sticky top-0 z-10 p-0 align-bottom font-medium", t.cardSolid)}>
       <div class={clsx("flex h-9 items-center border-b px-3", t.divider)}>{children}</div>
     </th>
+  );
+}
+
+/** "Show more" under a long table, while rows are left. */
+function ShowMore({ t, left, onMore }: { t: Tokens; left: number; onMore: () => void }) {
+  if (left <= 0) return null;
+  return (
+    <Btn t={t} tone="ghost" onClick={onMore}>
+      Show more ({left} left)
+    </Btn>
   );
 }
 
@@ -1030,8 +1037,9 @@ function NoticeTable({ t, notices }: { t: Tokens; notices: SyncNotice[] }) {
   return (
     <div class="space-y-2">
       <p class={clsx("text-[11px] leading-relaxed", t.sub)}>
-        These copies differ from your main list, and sync leaves them as they are. Fix them by hand
-        on the tracker if you want them to match.
+        Sync leaves these copies as they are, because changing them would lower progress, delete
+        watch history, or replace a rating. Fix them by hand on the tracker if you want them to
+        match.
       </p>
       <div class={clsx("overflow-x-clip rounded-lg", t.card)}>
         <table class="w-full table-fixed text-[12px]">
@@ -1074,7 +1082,7 @@ function NoticeTable({ t, notices }: { t: Tokens; notices: SyncNotice[] }) {
 }
 
 function conflictValue(c: SyncConflict, v: string | number): string {
-  return c.field === "status" ? STATUS_LABEL[v as CourStatus] : `${Math.round(Number(v)) / 10}/10`;
+  return c.field === "status" ? STATUS_LABEL[v as CourStatus] : `${outOfTen(Number(v))}/10`;
 }
 
 function ConflictTable({
@@ -1178,7 +1186,7 @@ function RatingPick({
       <option value="">Leave alone</option>
       {scores.map((s) => (
         <option key={s} value={s}>
-          {Math.round(s) / 10}/10
+          {outOfTen(s)}/10
         </option>
       ))}
     </select>
@@ -1193,8 +1201,7 @@ function StatusPick({
   onPick,
 }: { t: Tokens; c: SyncConflict; onPick: (key: string, value: SyncPick | undefined) => void }) {
   // A rewatch reads as completed across trackers, as the planner compares them.
-  const norm = (s: CourStatus): CourStatus => (s === "REPEATING" ? "COMPLETED" : s);
-  const statuses = [...new Set(c.values.map((v) => norm(v.value as CourStatus)))];
+  const statuses = [...new Set(c.values.map((v) => normStatus(v.value as CourStatus)))];
   const picked = typeof c.picked === "string" ? c.picked : undefined;
   return (
     <select

@@ -136,7 +136,7 @@ plain read cache for the trackers that did not change.
 1. Cheap checks + the snapshot as a read cache (B, C without the merge). Manual sync gets faster.
    **Built** (see "Phase 1 as built").
 2. The daily alarm with additions-only apply and the badge (A).
-3. The three-way merge (C) behind a setting, then on by default once it has run clean for a while.
+3. The three-way merge (C). Built behind a setting, then made always on (decision 6).
 
 ## Phase 1 as built
 

@@ -18,6 +18,7 @@ import {
   listSyncApply,
   listSyncCache,
   listSyncJob,
+  listSyncPicks,
   listSyncSettings,
 } from "../storage";
 import { Animap } from "../trackers/animap/index";
@@ -25,11 +26,11 @@ import { withOverrides } from "../trackers/animap/overrides";
 import { getAdapter } from "../trackers/index";
 import { getService } from "../trackers/service";
 import { ALL_TRACKERS, type Tracker } from "../trackers/types";
-import { baseOf, settingsSig } from "./base";
+import { nextLists, settingsSig } from "./base";
 import { commitBase, loadBase, savePending } from "./base-store";
 import { planSync, summarize, syncKindsFor, takesKind } from "./plan";
 import type { ScoreScale } from "./score";
-import type { ListEntry, SyncPlan, SyncTotals } from "./types";
+import { type ListEntry, type SyncPlan, type SyncTotals, pickKey } from "./types";
 
 /** One tracker's part in a preview. */
 export interface TrackerRead {
@@ -67,7 +68,7 @@ export interface SyncPreview {
  * `SyncPlan` changes shape: a job saved by an older build is then dropped on read,
  * instead of rendering (and crashing on) fields it does not have.
  */
-export const SYNC_JOB_VERSION = 7;
+export const SYNC_JOB_VERSION = 8;
 
 /** A preview job, as saved in storage. */
 export interface SyncJob {
@@ -194,7 +195,7 @@ async function runPreview(auto: boolean): Promise<SyncJob> {
       animapOverrides.getValue(),
     ]);
     const animap = new Animap(withOverrides(cached?.rows ?? [], overrides));
-    const base = {
+    const head = {
       at: Date.now(),
       reads,
       noCrosswalk: !cached?.rows.length,
@@ -207,21 +208,22 @@ async function runPreview(auto: boolean): Promise<SyncJob> {
     const last = await loadBase(sig);
     const preview: SyncPreview =
       trackers.length < 2
-        ? { ...base, reason: "too_few", totals: [], plan: empty }
+        ? { ...head, reason: "too_few", totals: [], plan: empty }
         : (() => {
             const plan = planSync({ entries, trackers, settings, animap, scales, base: last });
-            return { ...base, totals: summarize(plan, trackers), plan };
+            return { ...head, totals: summarize(plan, trackers), plan };
           })();
-    // The lists as read become the base once this plan is fully applied, or now
-    // when there is nothing to write. Kept up to date even with removals off, so
-    // turning them on works at once.
+    // The lists as read, with the plan's removed marks, become the base once this
+    // plan is fully applied, or now when there is nothing to write.
     if (!preview.reason) {
-      const lists = Object.fromEntries(
-        trackers.map((tk) => [tk, baseOf(entries.filter((e) => e.tracker === tk))]),
-      );
-      await savePending(preview.at, sig, lists);
-      const ignored = new Set(settings.ignore);
-      if (!preview.plan.items.some((i) => !ignored.has(i.key))) await commitBase(preview.at, []);
+      await savePending(preview.at, sig, nextLists(entries, trackers, preview.plan.removed));
+      if (!preview.plan.items.length) await commitBase(preview.at, []);
+      // Picks for disagreements this plan no longer has are done with.
+      const open = new Set(preview.plan.conflicts.map(pickKey));
+      const picks = await listSyncPicks.getValue().catch(() => ({}));
+      const kept = Object.fromEntries(Object.entries(picks).filter(([k]) => open.has(k)));
+      if (Object.keys(kept).length !== Object.keys(picks).length)
+        await listSyncPicks.setValue(kept).catch(() => {});
     }
     await save({ state: "done", planning: false, preview });
   } catch (e) {

@@ -1,4 +1,5 @@
 /** Small helpers the per-tracker writers share (plans/list-sync.md, phase 2). */
+import { onScale } from "./score";
 import type { SyncWrite, TargetRef, WriteOutcome } from "./types";
 
 export const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -20,9 +21,10 @@ export function byTarget(writes: SyncWrite[]): { target: TargetRef; at: number[]
   return [...groups.values()];
 }
 
-/** A 0 to 100 score as a whole 1 to 10 (Trakt, MAL, Simkl). Pure. */
+/** A 0 to 100 score as a whole 1 to 10 (Trakt, MAL, Simkl). Never 0: a rating
+ * to clear is its own write (`unrate`), not a score. Pure. */
 export function toTen(score: number): number {
-  return Math.min(10, Math.max(1, Math.round(score / 10)));
+  return onScale(score, "ten") / 10;
 }
 
 /** Results for a chunk, all the same until set one by one. */

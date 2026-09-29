@@ -1,6 +1,6 @@
 /**
- * List sync, the automatic run (plans/list-sync-phase3.md, phase 2). Optional and
- * off by default (`ListSyncSettings.auto`). Once a day an alarm runs the same
+ * List sync, the automatic run (plans/list-sync-phase3.md, phase 2: the daily run).
+ * Optional and off by default (`ListSyncSettings.auto`). Once a day an alarm runs the same
  * preview and apply jobs the user runs by hand, but applies only the ADDITIONS:
  * what cannot lose anything. Everything else (removals, status changes, conflicts)
  * waits for the user, and the toolbar badge counts it.
@@ -54,8 +54,8 @@ export interface AutoRun {
  * In: watched episodes and movies, rating fills (never a picked score), new list
  * entries, progress up, a higher rewatch count, and the status that progress
  * brings with it (watching, or completed at the last episode).
- * Held: removals (of entries and ratings), a status change with no progress, a new entry whose status the
- * trackers disagree on, and every conflict.
+ * Held: removals (of entries and ratings), a status change with no progress, a
+ * new entry whose status the trackers disagree on, and every conflict.
  */
 export function additionsOnly(plan: SyncPlan): { plan: SyncPlan; held: string[] } {
   const held = new Set(plan.conflicts.map((c) => c.key));

@@ -870,7 +870,10 @@ export function App() {
     void listSyncApply.getValue().then((job) => setSyncApply(readApply(job)));
     void listSyncPicks.getValue().then(setSyncPicks);
     void listSyncAuto.getValue().then(setAutoRun);
+    // Settings too: a backup import or another options tab can change them, and a
+    // stale copy here would be saved back over them on the next toggle.
     const unwatch = [
+      listSyncSettings.watch((next) => setSyncSettings(next ?? DEFAULT_SYNC_SETTINGS)),
       listSyncAuto.watch((run) => setAutoRun(run ?? null)),
       listSyncJob.watch((job) => setSyncJob(readJob(job))),
       listSyncApply.watch((job) => setSyncApply(readApply(job))),
@@ -890,8 +893,8 @@ export function App() {
 
   // Tick often while a job runs (a job the browser stopped shows as stopped), and
   // now and then while a preview waits (it goes stale for apply).
-  const previewSaved = syncJob?.state === "running";
-  const jobRunning = previewSaved || syncApply?.state === "running";
+  const previewRunning = syncJob?.state === "running";
+  const jobRunning = previewRunning || syncApply?.state === "running";
   const hasPreview = !!syncJob?.preview;
   useEffect(() => {
     if (!jobRunning && !hasPreview) return;
@@ -911,7 +914,7 @@ export function App() {
   // A job still "running" with no recent beat was stopped by the browser.
   // (An apply that stopped says so in its own panel.)
   const stoppedAt =
-    previewSaved && !previewing
+    previewRunning && !previewing
       ? syncJob?.reads.filter((r) => r.state === "reading").map((r) => trackerLabel(r.tracker))
       : undefined;
   const syncProblem =
@@ -931,8 +934,8 @@ export function App() {
   };
 
   const setSyncKind = (tk: Tracker, kind: SyncKind, on: boolean) => {
-    const now = syncSettings.kinds[tk] ?? syncKindsFor(tk);
-    const next = on ? [...new Set([...now, kind])] : now.filter((k) => k !== kind);
+    const cur = syncSettings.kinds[tk] ?? syncKindsFor(tk);
+    const next = on ? [...new Set([...cur, kind])] : cur.filter((k) => k !== kind);
     // A tracker that stops taking a kind cannot be its main list any more.
     const main = { ...syncSettings.main };
     if (!on && main[kind] === tk) delete main[kind];

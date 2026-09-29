@@ -3,8 +3,8 @@
  * so every edge case is a unit test.
  *
  * The rules, in short:
- *  - Union: each tracker gets what the others have. Nothing is ever removed, and
- *    progress never goes down.
+ *  - Union: each tracker gets what the others have, and progress never goes down.
+ *    Only what the user removed from one list is removed from the others (below).
  *  - Items are matched by id only, never by title.
  *  - Movies and non-anime TV move between the trackers that take seasons (Trakt,
  *    Simkl) by their shared tmdb / imdb / tvdb ids. No crosswalk.
@@ -23,13 +23,15 @@
  *    removed since the last clean sync is removed from the others instead of
  *    added back, and so is a rating. Only when every list that still has it had
  *    it at the base too: a list that added it since wins, and it is added back.
+ *    Where a copy is kept (Trakt watch history), the plan leaves removed marks, so
+ *    the next sync does not add the item back from that copy.
  */
 import type { Animap } from "../trackers/animap/index";
 import type { CourStatus } from "../trackers/cour-plan";
 import { TRACKER_INFO, type Tracker, trackerFamily, trackerLabel } from "../trackers/types";
 import { type BaseEntry, BaseIndex, idKeys as baseKeys, baseOf, entryKeys } from "./base";
 import { newest } from "./read";
-import { type ScoreScale, onScale } from "./score";
+import { type ScoreScale, onScale, outOfTen } from "./score";
 import { pickKey } from "./types";
 import type {
   EntryState,
@@ -104,8 +106,8 @@ const keepsRepeat = (tk: Tracker) => trackerFamily(tk) === "cour";
 /** COMPLETED and REPEATING both mean "finished at least once". */
 const finished = (s: CourStatus | null | undefined) => s === "COMPLETED" || s === "REPEATING";
 
-/** Status as compared across trackers: a rewatch is a completed entry. */
-const norm = (s: CourStatus): CourStatus => (s === "REPEATING" ? "COMPLETED" : s);
+/** Status as compared across trackers: a rewatch is a completed entry. Pure. */
+export const normStatus = (s: CourStatus): CourStatus => (s === "REPEATING" ? "COMPLETED" : s);
 
 /** Episodes a cour entry counts as watched. A finished entry counts in full, even
  * mid-rewatch (AniList REPEATING at 3 of 12 still means 12 were watched). */
@@ -132,13 +134,9 @@ interface CourGroup {
 
 // --- small helpers ---
 
-function idKeys(e: SeasonedEntry): string[] {
-  const t = e.shape === "movie" ? "movie" : "tv";
-  const out: string[] = [];
-  if (e.ids.tmdb !== undefined) out.push(`${t}:tmdb:${e.ids.tmdb}`);
-  if (e.ids.imdb) out.push(`${t}:imdb:${e.ids.imdb}`);
-  if (e.ids.tvdb !== undefined) out.push(`${t}:tvdb:${e.ids.tvdb}`);
-  return out;
+/** The keys Trakt and Simkl share for a show or movie (tmdb, imdb, tvdb). Pure. */
+function sharedKeys(ids: SyncIds, movie: boolean): string[] {
+  return baseKeys({ tmdb: ids.tmdb, imdb: ids.imdb, tvdb: ids.tvdb }, movie ? "movie" : "tv");
 }
 
 function mergeIds(entries: { ids: SyncIds }[]): SyncIds {
@@ -165,7 +163,7 @@ function groupSeasoned(entries: SeasonedEntry[]): SeasonedEntry[][] {
   };
   const byKey = new Map<string, number>();
   entries.forEach((e, i) => {
-    for (const k of idKeys(e)) {
+    for (const k of sharedKeys(e.ids, e.shape === "movie")) {
       const j = byKey.get(k);
       if (j === undefined) byKey.set(k, i);
       else parent[find(i)] = find(j);
@@ -194,6 +192,7 @@ export function planSync(input: PlanInput): SyncPlan {
   const skips: SyncSkip[] = [];
   const conflicts: SyncConflict[] = [];
   const notices: SyncNotice[] = [];
+  const removed: NonNullable<SyncPlan["removed"]> = [];
 
   /** The main list for a kind, when the user set one it can hold. */
   const mainFor = (kind: SyncKind): Tracker | undefined => {
@@ -204,7 +203,13 @@ export function planSync(input: PlanInput): SyncPlan {
   const bases = new Map<Tracker, BaseIndex>();
   for (const [tk, list] of Object.entries(input.base ?? {}) as [Tracker, BaseEntry[]][])
     if (taking.has(tk)) bases.set(tk, new BaseIndex(list));
+  /** A tracker's base entry for an item, a removed mark included. */
   const atBase = (tk: Tracker, keys: string[]) => bases.get(tk)?.find(keys);
+  /** The tracker had the item itself at the base (not a removed mark). */
+  const listedAtBase = (tk: Tracker, keys: string[]) => {
+    const b = atBase(tk, keys);
+    return !!b && !b.x;
+  };
   // What each tracker has now, by id key: a tracker "lacks" an item only when no
   // entry of it shares an id, so a crosswalk change never looks like a removal.
   const nows = new Map<Tracker, BaseIndex>(
@@ -215,14 +220,23 @@ export function planSync(input: PlanInput): SyncPlan {
   );
   const hasNow = (tk: Tracker, keys: string[]) => !!nows.get(tk)?.find(keys);
 
-  /** The trackers that removed an item since the last clean sync: they had it at
-   * the base and have nothing of it now. Only when every tracker that has it now
-   * had it at the base too (else it was added since, and the add wins). */
-  const removedSince = (keys: string[], among: Tracker[], holders: Tracker[]): Tracker[] => {
-    if (!bases.size || !holders.length) return [];
+  /**
+   * The trackers that removed an item: they had it at the base (or keep a removed
+   * mark for it) and have nothing of it now. Only when every tracker that has it
+   * now had it at the base too (else it was added since, and the add wins).
+   * `fresh` = one of them removed it since the last sync (not only an old mark),
+   * so the plan tells the user about the copies it keeps.
+   */
+  const removedSince = (
+    keys: string[],
+    among: Tracker[],
+    holders: Tracker[],
+  ): { gone: Tracker[]; fresh: boolean } => {
+    const none = { gone: [], fresh: false };
+    if (!bases.size || !holders.length) return none;
     const gone = among.filter((tk) => !hasNow(tk, keys) && atBase(tk, keys));
-    if (!gone.length || !holders.every((tk) => atBase(tk, keys))) return [];
-    return gone;
+    if (!gone.length || !holders.every((tk) => listedAtBase(tk, keys))) return none;
+    return { gone, fresh: gone.some((tk) => listedAtBase(tk, keys)) };
   };
 
   /** The trackers whose rating to clear: some tracker that has the item had a
@@ -309,7 +323,7 @@ export function planSync(input: PlanInput): SyncPlan {
     }
     if (tmdb === undefined) {
       skips.push({
-        key: idKeys(first)[0] ?? `${first.tracker}:${first.id}`,
+        key: sharedKeys(first.ids, isMovie)[0] ?? `${first.tracker}:${first.id}`,
         title: first.title,
         reason: "not_mapped",
         detail: "anime with no TMDB id",
@@ -374,13 +388,13 @@ export function planSync(input: PlanInput): SyncPlan {
 
   for (const [key, g] of cours) planCour(key, g);
 
-  return { items, skips, conflicts, notices };
+  return { items, skips, conflicts, notices, ...(removed.length ? { removed } : {}) };
 
   // --- movies and non-anime TV (Trakt, Simkl; no crosswalk) ---
   function planWestern(all: SeasonedEntry[], kind: SyncKind): void {
     const first = all[0] as SeasonedEntry;
     const ids = mergeIds(all);
-    const key = idKeys({ ...first, ids } as SeasonedEntry)[0] ?? `${first.tracker}:${first.id}`;
+    const key = sharedKeys(ids, kind === "movie")[0] ?? `${first.tracker}:${first.id}`;
     if (ignored.has(key)) {
       skips.push({ key, title: first.title, reason: "ignored" });
       return;
@@ -402,8 +416,8 @@ export function planSync(input: PlanInput): SyncPlan {
     const keys = [...new Set(all.flatMap(entryKeys))];
 
     // Removed from one list since the last clean sync: remove it from the others.
-    const gone = main
-      ? []
+    const { gone, fresh } = main
+      ? { gone: [], fresh: false }
       : removedSince(
           keys,
           targets,
@@ -418,7 +432,7 @@ export function planSync(input: PlanInput): SyncPlan {
             target: ref(m.tracker),
             was: stateOf(m),
           });
-        else
+        else if (fresh)
           notices.push({
             key,
             title: first.title,
@@ -428,6 +442,9 @@ export function planSync(input: PlanInput): SyncPlan {
             detail: removedOn(gone),
           });
       }
+      // A kept copy (watch history) would add it back next time: mark it removed.
+      if (members.some((m) => !removesEntries(m.tracker)))
+        for (const tk of targets) if (removesEntries(tk)) removed.push({ tracker: tk, keys });
       push(key, kind, first.title, first.year, writes);
       return;
     }
@@ -605,23 +622,27 @@ export function planSync(input: PlanInput): SyncPlan {
       ? seasoned.filter((p) => p.entry.tracker === main && p.local.size > 0)
       : seasoned;
     if (main && !srcCour.length && !srcSeasoned.length) {
-      removeFromCopies(`${trackerLabel(main)} does not have it`);
+      removeFromCopies(`${trackerLabel(main)} does not have it`, true);
       return;
     }
+
+    // Where the cour starts in TMDB numbering (its first episode).
+    const ns = g.anilist !== undefined ? "anilist" : "mal";
+    const cid = g.anilist ?? g.mal;
+    const first = cid === undefined ? null : animap.reverse(ns, cid, 1);
 
     // Removed from one list since the last clean sync: remove it from the others.
     // The keys: the cour's ids, the show or movie the crosswalk maps it to, and
     // each seasoned list's own ids.
-    const cid = g.anilist ?? g.mal;
-    const back =
-      cid === undefined
-        ? null
-        : animap.reverse(g.anilist !== undefined ? "anilist" : "mal", cid, 1);
+    const courKeys = baseKeys({ anilist: g.anilist, mal: g.mal }, "tv");
     const keys = [
       ...new Set([
-        ...baseKeys({ anilist: g.anilist, mal: g.mal }, "tv"),
-        ...(back?.kind === "resolved"
-          ? baseKeys({ tmdb: back.value.tmdbId }, back.value.tmdbKind === "movie" ? "movie" : "tv")
+        ...courKeys,
+        ...(first?.kind === "resolved"
+          ? baseKeys(
+              { tmdb: first.value.tmdbId },
+              first.value.tmdbKind === "movie" ? "movie" : "tv",
+            )
           : []),
         ...seasoned.flatMap((p) => entryKeys(p.entry)),
       ]),
@@ -632,9 +653,17 @@ export function planSync(input: PlanInput): SyncPlan {
         ...seasoned.filter((p) => p.local.size > 0).map((p) => p.entry.tracker),
       ]),
     ];
-    const gone = main ? [] : removedSince(keys, targets, holders);
+    const { gone, fresh } = main
+      ? { gone: [], fresh: false }
+      : removedSince(keys, targets, holders);
     if (gone.length) {
-      removeFromCopies(removedOn(gone));
+      removeFromCopies(removedOn(gone), fresh);
+      // A kept copy (a seasoned list) would add it back next time: mark it removed
+      // on the cour lists, by the cour's own ids only (a show id names every cour).
+      const kept = new Set(seasoned.filter((p) => p.local.size > 0).map((p) => p.entry.tracker));
+      if (kept.size)
+        for (const tk of targets)
+          if (removesEntries(tk) && !kept.has(tk)) removed.push({ tracker: tk, keys: courKeys });
       return;
     }
 
@@ -659,12 +688,12 @@ export function planSync(input: PlanInput): SyncPlan {
     let desired: CourStatus | null = done
       ? "COMPLETED"
       : latest
-        ? norm(latest.status)
+        ? normStatus(latest.status)
         : progress > 0
           ? "CURRENT"
           : null;
     if (desired === "PLANNING" && progress > 0) desired = "CURRENT";
-    const distinct = new Set(withStatus.map((e) => norm(e.status)));
+    const distinct = new Set(withStatus.map((e) => normStatus(e.status)));
     // The disagreement, if any: each cour target adds itself below, so a status the
     // user picks can go to all of them (`withPicks`).
     let statusConflict: SyncConflict | undefined;
@@ -675,7 +704,7 @@ export function planSync(input: PlanInput): SyncPlan {
         kind: "anime",
         field: "status",
         values: withStatus.map((e) => ({ tracker: e.tracker, value: e.status, at: e.updatedAt })),
-        chosen: { tracker: latest.tracker, value: norm(latest.status) },
+        chosen: { tracker: latest.tracker, value: normStatus(latest.status) },
         targets: [],
       };
       conflicts.push(statusConflict);
@@ -790,8 +819,9 @@ export function planSync(input: PlanInput): SyncPlan {
 
     /** The main list does not have this cour, or another list removed it (`why`):
      * remove each copy's list entry. A seasoned list (Trakt, or a Simkl show) is
-     * kept: it is watch history, or a whole show that holds other cours too. */
-    function removeFromCopies(why: string): void {
+     * kept: it is watch history, or a whole show that holds other cours too. It is
+     * said so only when the removal is new (`tell`), not on every later sync. */
+    function removeFromCopies(why: string, tell: boolean): void {
       const out: SyncWrite[] = [];
       for (const e of cour) {
         if (removesEntries(e.tracker)) {
@@ -804,7 +834,7 @@ export function planSync(input: PlanInput): SyncPlan {
         }
       }
       for (const p of seasoned) {
-        if (p.local.size > 0) {
+        if (tell && p.local.size > 0) {
           notices.push({
             key,
             title,
@@ -900,10 +930,7 @@ export function planSync(input: PlanInput): SyncPlan {
       const wanted = new Set<number>();
       for (let n = 1; n <= courMax; n += 1) wanted.add(n);
       for (const other of srcSeasoned) if (other !== p) for (const n of other.local) wanted.add(n);
-      const ns = g.anilist !== undefined ? "anilist" : "mal";
-      const cid = g.anilist ?? g.mal;
-      if (cid === undefined) return;
-      const first = animap.reverse(ns, cid, 1);
+      if (cid === undefined || !first) return;
       if (first.kind !== "resolved") {
         if (wanted.size) {
           skips.push({
@@ -1030,7 +1057,7 @@ export function planSync(input: PlanInput): SyncPlan {
           kind,
           tracker: c.tracker,
           reason: "rating_kept",
-          detail: `${Math.round(c.value) / 10} here, ${Math.round(m.value) / 10} on the main list`,
+          detail: `${outOfTen(c.value)} here, ${outOfTen(m.value)} on the main list`,
         });
       }
     }
@@ -1136,7 +1163,7 @@ export function withPicks(
         for (const t of c.targets ?? []) {
           let to: CourStatus = pick;
           if (t.total !== null && t.progress >= t.total && t.progress > 0) to = "COMPLETED";
-          else if (to === "COMPLETED" && t.total !== null) to = "CURRENT";
+          else if (to === "COMPLETED") to = "CURRENT";
           if (to === "PLANNING" && t.progress > 0) to = "CURRENT";
           const status = to !== t.status ? { from: t.status, to } : undefined;
           const at = out.findIndex((w) => w.tracker === t.tracker && w.op === "entry");

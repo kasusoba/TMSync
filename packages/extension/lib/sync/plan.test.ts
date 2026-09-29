@@ -581,6 +581,33 @@ describe("status and progress", () => {
     expect(writesFor(p, "mal")).toEqual([]);
   });
 
+  it("a picked completed needs every episode, as the planner does", () => {
+    const p = withPicks(
+      plan(
+        [
+          courEntry(
+            "anilist",
+            { anilist: 30, mal: 300 },
+            { status: "CURRENT", progress: 4, total: null, updatedAt: 200 },
+          ),
+          courEntry(
+            "mal",
+            { anilist: 30, mal: 300 },
+            { status: "DROPPED", progress: 4, total: null, updatedAt: 100 },
+          ),
+        ],
+        { trackers: ["anilist", "mal"] },
+      ),
+      { "status:anilist:30": "COMPLETED" },
+    );
+    // The length is unknown (airing), so "completed" cannot be checked: watching.
+    const statuses = p.items.flatMap((i) => i.writes).map((w) => w.op === "entry" && w.status?.to);
+    expect(statuses).not.toContain("COMPLETED");
+    expect(writesFor(p, "mal")).toEqual([
+      expect.objectContaining({ status: { from: "DROPPED", to: "CURRENT" } }),
+    ]);
+  });
+
   it("the most recent status wins, and the preview lists the conflict", () => {
     const p = plan(
       [

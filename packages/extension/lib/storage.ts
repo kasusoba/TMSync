@@ -45,6 +45,14 @@ export const anilistTokens = storage.defineItem<AniListTokens | null>("local:ani
   fallback: null,
 });
 
+/** The AniList viewer id, for list sync's fresh reads. `at` is the token's
+ * `obtained_at`: a new sign-in has a new one, so an id of the old account is
+ * never used. */
+export const anilistViewer = storage.defineItem<{ at: number; id: number } | null>(
+  "local:anilist_viewer",
+  { fallback: null },
+);
+
 /** AniList resolution cache keyed by anilistCacheKey(media). */
 export const anilistResolutionCache = storage.defineItem<Record<string, Cached<AniListIdentity>>>(
   "local:anilist_resolution_cache",

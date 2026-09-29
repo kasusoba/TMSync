@@ -9,20 +9,27 @@
  * clean run (every write taken, no removal held back): after a failed write, the
  * item would look removed next time. It is dropped when the sync settings change
  * (`settingsSig`) or an account is connected or disconnected.
+ *
+ * A removal can leave a copy that sync never deletes (Trakt watch history). Then
+ * the lists that removed the item keep a REMOVED mark for it (`x`), so the next
+ * sync still reads it as removed there and does not add it back from that copy.
+ * The mark goes when the user adds the item to that list again.
  */
 import type { Tracker } from "../trackers/types";
-import type { ListEntry, ListSyncSettings, SyncIds, SyncWrite, TargetRef } from "./types";
+import type { ListEntry, ListSyncSettings, SyncIds, SyncPlan, SyncWrite, TargetRef } from "./types";
 
 /** Bump when the saved shape changes: an older base is then ignored. */
 export const BASE_VERSION = 1;
 
 /** One entry of a tracker's list at the base: its id keys (`anilist:1`,
  * `tv:tmdb:1399`, ...), whether it was rated (`r`), and its rated seasons (`s`,
- * Trakt only). */
+ * Trakt only). `x` = a removed mark: the user removed the item from this list,
+ * and another list keeps a copy sync never deletes. */
 export interface BaseEntry {
   k: string[];
   r?: 1;
   s?: number[];
+  x?: 1;
 }
 
 export interface SyncBase {
@@ -79,6 +86,24 @@ export function baseOf(entries: ListEntry[]): BaseEntry[] {
   });
 }
 
+/** The lists a preview read, as the next base: each tracker's entries, plus the
+ * plan's removed marks for it. Pure. */
+export function nextLists(
+  entries: ListEntry[],
+  trackers: Tracker[],
+  removed: SyncPlan["removed"] = [],
+): Partial<Record<Tracker, BaseEntry[]>> {
+  return Object.fromEntries(
+    trackers.map((tk) => [
+      tk,
+      [
+        ...baseOf(entries.filter((e) => e.tracker === tk)),
+        ...removed.filter((r) => r.tracker === tk).map((r) => ({ k: r.keys, x: 1 as const })),
+      ],
+    ]),
+  );
+}
+
 /** What of the settings changes the meaning of a base. Anything else (the ignore
  * list, auto sync) does not. Pure. */
 export function settingsSig(s: ListSyncSettings): string {
@@ -89,11 +114,13 @@ export function settingsSig(s: ListSyncSettings): string {
   return JSON.stringify([kinds, main, s.includePrivate, s.includeAdult]);
 }
 
-/** Find a tracker's base entry by any of its id keys. */
+/** Find a tracker's base entry by any of its id keys. An entry wins over a
+ * removed mark with the same key. */
 export class BaseIndex {
   private byKey = new Map<string, BaseEntry>();
   constructor(entries: BaseEntry[]) {
-    for (const e of entries) for (const k of e.k) this.byKey.set(k, e);
+    for (const e of entries)
+      for (const k of e.k) if (!this.byKey.get(k) || this.byKey.get(k)?.x) this.byKey.set(k, e);
   }
   find(keys: string[]): BaseEntry | undefined {
     for (const k of keys) {
@@ -106,8 +133,8 @@ export class BaseIndex {
 
 /**
  * The lists after an apply: the lists as read, with the applied writes laid over.
- * A write that adds makes (or marks rated) the entry, a removal drops it, an
- * unrate clears its rating. This is what the lists hold once every write is
+ * A write that adds makes (or marks rated) the entry and clears a removed mark,
+ * a removal drops the entry, an unrate clears its rating. This is what the lists hold once every write is
  * taken, without reading them again. Pure.
  */
 export function afterWrites(
@@ -121,11 +148,14 @@ export function afterWrites(
     const list = out[w.tracker];
     if (!list) continue;
     const keys = refKeys(w.target);
-    const at = list.findIndex((e) => e.k.some((k) => keys.includes(k)));
+    const at = list.findIndex((e) => !e.x && e.k.some((k) => keys.includes(k)));
     if (w.op === "remove") {
       if (at >= 0) list.splice(at, 1);
       continue;
     }
+    // The item is on this list again: it is no longer removed here.
+    for (let i = list.length - 1; i >= 0; i -= 1)
+      if (list[i]?.x && list[i]?.k.some((k) => keys.includes(k))) list.splice(i, 1);
     let e = list[at];
     if (!e) {
       e = { k: keys };

@@ -8,6 +8,7 @@ export {
   RecipeSchema,
   recipeTrackers,
   SCHEMA_VERSION,
+  TrackerId,
   Transform,
 } from "./schema";
 export type { Tracker } from "./schema";

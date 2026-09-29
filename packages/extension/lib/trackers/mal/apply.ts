@@ -53,7 +53,8 @@ export function malFields(a: {
   }
   if (a.progress !== undefined) out.num_watched_episodes = a.progress;
   if (a.repeat !== undefined) out.num_times_rewatched = a.repeat;
-  if (a.score !== undefined) out.score = toTen(a.score);
+  // MAL reads a score of 0 as "not rated": that is how a rating is cleared.
+  if (a.score !== undefined) out.score = a.score === 0 ? 0 : toTen(a.score);
   return out;
 }
 
