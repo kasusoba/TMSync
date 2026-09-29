@@ -55,10 +55,10 @@ import {
   trackerLabel,
 } from "@/lib/trackers/types";
 import { type Accounts, loadAccounts } from "@/lib/ui/accounts";
-import { ListSyncView } from "@/lib/ui/kit/ListSyncView";
 import { BadgeModeToggle } from "@/lib/ui/kit/PopupView";
 import { TrackerTab } from "@/lib/ui/kit/TrackerTab";
 import { Btn, Icon, IconBtn, type IconName, Switch, TrackerMark, tokens } from "@/lib/ui/kit/kit";
+import { ListSyncView } from "@/lib/ui/kit/list-sync/ListSyncView";
 import { type AccountStatus, sendMessage } from "@/messaging";
 import {
   ANILIST_PLACEHOLDERS,

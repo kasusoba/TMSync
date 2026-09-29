@@ -7,8 +7,8 @@ import type { SyncPreview } from "@/lib/sync/preview";
 import { DEFAULT_SYNC_SETTINGS, type ListEntry, type ListSyncSettings } from "@/lib/sync/types";
 import { Animap } from "@/lib/trackers/animap/index";
 import { ALL_TRACKERS, type Tracker } from "@/lib/trackers/types";
-import { ListSyncView } from "@/lib/ui/kit/ListSyncView";
 import { type Variant, tokens } from "@/lib/ui/kit/kit";
+import { ListSyncView } from "@/lib/ui/kit/list-sync/ListSyncView";
 import clsx from "clsx";
 
 const animap = new Animap([

@@ -316,8 +316,9 @@ and nothing of it touches `extract()` or the scrobble path.
    pins folded in (`withOverrides`). A crosswalk miss or ambiguity is a skip, reported, never a
    guess. The result is a `SyncPlan`: per-item writes (`SyncWrite`, which describe intent, not API
    calls), skips with reasons, conflicts, and notices.
-3. **Preview.** The Options "List sync" pane (`ListSyncView`) shows the plan as a table with one
-   column per tracker, and tabs for removals, conflicts, skips, and items the user keeps out.
+3. **Preview.** The Options "List sync" pane (`lib/ui/kit/list-sync/`) shows the plan as a table
+   with one column per tracker, and tabs for removals, conflicts, skips, and items the user keeps
+   out. The text of each write (`describeWrite`) is pure, in `lib/sync/describe.ts`.
 4. **Apply.** Each service has `applyList`, a chunk size and a `run(writes)` that turns writes
    into that tracker's API calls (`lib/trackers/<tracker>/apply.ts`).
 
@@ -584,6 +585,6 @@ regex/number/title chip builders, `buildRecipe` (assembles + Zod-validates), and
 | Change rating / notes behaviour | `lib/trackers/trakt/review.ts`, `lib/trackers/anilist/review.ts`, `lib/trackers/mal/review.ts` |
 | Debug anime double-tracking | `lib/trackers/animap/` + `recordDerivedTrackers` in `background.ts` |
 | Change the badge / picker / popup UI | `lib/ui/kit/` (+ `entrypoints/gallery/` to preview) |
-| Change list sync (plan, apply, the pane) | `lib/sync/` + `lib/trackers/<tracker>/list.ts` and `apply.ts` + `lib/ui/kit/ListSyncView.tsx` |
+| Change list sync (plan, apply, the pane) | `lib/sync/` + `lib/trackers/<tracker>/list.ts` and `apply.ts` + `lib/ui/kit/list-sync/` |
 | Change stored data or add a cache | `lib/storage.ts` |
 | Add a message between parts | `packages/extension/messaging.ts` |
