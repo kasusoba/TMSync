@@ -157,3 +157,23 @@ describe("ListSyncView apply", () => {
     expect(text).toContain("Stop");
   });
 });
+
+describe("ListSyncView daily sync", () => {
+  it("says it is off", () => {
+    expect(show(DEFAULT_SYNC_SETTINGS)).toContain("Off.");
+  });
+
+  it("says when it runs next", () => {
+    const text = show({ ...DEFAULT_SYNC_SETTINGS, auto: true }, { autoNow: { next: 1 } });
+    expect(text).toContain("On. Next run");
+  });
+
+  it("says it runs now, and the preview waits for it", () => {
+    const text = show(
+      { ...DEFAULT_SYNC_SETTINGS, auto: true },
+      { busy: true, autoNow: { running: "reading" } },
+    );
+    expect(text).toContain("Running now: reading your lists.");
+    expect(text).toContain("Waits for the daily sync to finish.");
+  });
+});
