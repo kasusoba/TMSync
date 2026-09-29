@@ -22,7 +22,7 @@ export {
   primaryId,
   readField,
 } from "./extract";
-export { matchRecipe, matchesUrl, selectRecipe } from "./match";
+export { explainMatch, matchRecipe, matchesUrl, selectRecipe } from "./match";
 export {
   escapeRegex,
   hostOf,

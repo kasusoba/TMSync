@@ -2,6 +2,8 @@ import type { NumberPart } from "@/lib/picker/recipe-builder";
 import type { Chip, PickSource } from "@/lib/picker/sources";
 import { type Tracker, isSeasonless, trackerLabel } from "@/lib/trackers/types";
 import clsx from "clsx";
+import type { ComponentChildren } from "preact";
+import { useEffect, useRef, useState } from "preact/hooks";
 import {
   AniListMark,
   Btn,
@@ -56,7 +58,7 @@ export interface PickerPanelProps {
   /** Name of a recipe that exists for this site but doesn't cover the current URL. */
   siteRecipeNote?: string | null;
   status?: string | null;
-  /** Override the save/copy enabled state (default: title currently resolves). */
+  /** Override the save enabled state (default: title currently resolves). */
   canSave?: boolean;
   /** No tracker is connected, so a recipe would have nowhere to record: the panel
    * asks the user to connect one instead of showing the setup. */
@@ -75,7 +77,6 @@ export interface PickerPanelProps {
   onClear?: (key: FieldKey) => void;
   onClose?: () => void;
   onSave?: () => void;
-  onCopy?: () => void;
   onNameChange?: (name: string) => void;
   onUrlPatternChange?: (pattern: string) => void;
   onMediaTypeChange?: (type: "auto" | "movie" | "show") => void;
@@ -188,6 +189,54 @@ function ChipView({
   );
 }
 
+/** How close (px) the cursor may come to the hint before it moves out of the way. */
+const HINT_DODGE_PX = 48;
+
+/**
+ * The "click to pick" hint, pinned to the center of the VIEWPORT (not the panel)
+ * so it stays visible while picking even when the panel is tall. It takes no
+ * pointer events, so clicks pass through it, but it still hides what is under it
+ * (a site's top bar is a common target). So when the cursor comes near it, it
+ * moves to the other edge of the screen (top or bottom), and it stays there until
+ * the cursor comes near it again.
+ */
+function PickHint({ children }: { children: ComponentChildren }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [atBottom, setAtBottom] = useState(false);
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      const r = ref.current?.getBoundingClientRect();
+      if (!r) return;
+      const near =
+        e.clientX > r.left - HINT_DODGE_PX &&
+        e.clientX < r.right + HINT_DODGE_PX &&
+        e.clientY > r.top - HINT_DODGE_PX &&
+        e.clientY < r.bottom + HINT_DODGE_PX;
+      // Go to the half of the screen away from the cursor. Set, not toggled, so a
+      // second move before the re-render can't send it back under the cursor.
+      if (near) setAtBottom(e.clientY < window.innerHeight / 2);
+    };
+    window.addEventListener("mousemove", onMove, true);
+    return () => window.removeEventListener("mousemove", onMove, true);
+  }, []);
+  return (
+    // Exactly as wide as its text and no pointer events: a full-width band here
+    // sat over the whole top of the page and ate every click to the left and
+    // right of the hint, including the elements the user is asked to pick.
+    <div
+      ref={ref}
+      class={clsx(
+        "pointer-events-none fixed left-1/2 z-10 w-max max-w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2",
+        atBottom ? "bottom-4" : "top-4",
+      )}
+    >
+      <span class="inline-flex items-center justify-center gap-2 rounded-2xl bg-ikura px-3.5 py-1.5 text-center text-[12px] font-medium leading-snug text-white shadow-lg shadow-black/20">
+        {children}
+      </span>
+    </div>
+  );
+}
+
 export function PickerPanel(p: PickerPanelProps) {
   const t = tokens(p.variant);
   const fieldVal: FieldVal = (key) => p.fields.find((f) => f.key === key)?.value;
@@ -225,18 +274,10 @@ export function PickerPanel(p: PickerPanelProps) {
     // shove the panel sideways every time you press Pick.
     <div class="relative w-[320px]">
       {p.picking && (
-        // Pinned to the top-center of the VIEWPORT (not the panel) so it stays
-        // visible while picking even when the panel is tall. It must be exactly
-        // as wide as its text and must not take pointer events: a full-width
-        // band here (inset-x-0) sat over the whole top of the page and ate every
-        // click to the left and right of the pill, including the elements the
-        // user is being asked to pick.
-        <div class="pointer-events-none fixed top-4 left-1/2 z-10 w-max max-w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2">
-          <span class="inline-flex items-center justify-center gap-2 rounded-2xl bg-ikura px-3.5 py-1.5 text-center text-[12px] font-medium leading-snug text-white shadow-lg shadow-black/20">
-            <Icon name="target" class="shrink-0 text-[14px]" />
-            Click the {p.picking} on the page · or choose a value in the panel · Esc to cancel
-          </span>
-        </div>
+        <PickHint>
+          <Icon name="target" class="shrink-0 text-[14px]" />
+          Click the {p.picking} on the page · or choose a value in the panel · Esc to cancel
+        </PickHint>
       )}
 
       <div
@@ -635,10 +676,6 @@ export function PickerPanel(p: PickerPanelProps) {
         <div class={clsx("mt-3 flex shrink-0 gap-2 border-t pt-3", t.divider)}>
           <Btn t={t} tone="primary" class="flex-1" disabled={!hasTitle} onClick={p.onSave}>
             {saveLabel}
-          </Btn>
-          <Btn t={t} tone="ghost" disabled={!hasTitle} onClick={p.onCopy} title="Copy recipe JSON">
-            <Icon name="copy" class="text-[13px]" />
-            JSON
           </Btn>
         </div>
 

@@ -359,17 +359,6 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
     setStatus("Saved! Reload the page to start scrobbling.");
   }
 
-  async function copyJson() {
-    const built = buildRecipe(draft, { id: slugifyHost(location.hostname), name });
-    if (!built.ok) return setStatus(built.error);
-    try {
-      await navigator.clipboard.writeText(JSON.stringify(built.recipe, null, 2));
-      setStatus("Recipe JSON copied to clipboard.");
-    } catch {
-      setStatus("Couldn't access the clipboard.");
-    }
-  }
-
   const preview = previewDraft(draft, ctx);
   const previewName = preview.ok
     ? preview.media.title ||
@@ -485,7 +474,6 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
           }}
           onClose={onClose}
           onSave={save}
-          onCopy={copyJson}
           onNameChange={setName}
           onUrlPatternChange={(v) =>
             setDraft((d) => ({ ...d, match: { ...d.match, urlPattern: v } }))

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { matchRecipe, matchesUrl, selectRecipe } from "./match";
+import { explainMatch, matchRecipe, matchesUrl, selectRecipe } from "./match";
 import type { Recipe } from "./schema";
 
 function parse(html: string): Document {
@@ -84,5 +84,34 @@ describe("selectRecipe", () => {
 
   it("returns null when nothing matches", () => {
     expect(selectRecipe([recipe({ match: { urlPattern: "zzz" } })], ctx)).toBeNull();
+  });
+});
+
+describe("explainMatch", () => {
+  const doc = parse('<html><body><div id="player"></div></body></html>');
+  const url = "https://cinejoy.pk/tv/123";
+
+  it("reports each check for recipes scoped to the host", () => {
+    const r = recipe({
+      name: "Cinejoy",
+      match: { hostnames: ["cinejoy.pk"], urlPattern: "/watch/", domFingerprint: "#player" },
+    });
+    const [c] = explainMatch([r], { document: doc, url });
+    expect(c).toMatchObject({ url: false, marker: true });
+  });
+
+  it("skips recipes for other hosts, and host-free ones whose pattern does not fit", () => {
+    const other = recipe({ match: { hostnames: ["other.tld"], urlPattern: ".*" } });
+    const loose = recipe({ match: { urlPattern: "nothere" } });
+    expect(explainMatch([other, loose], { document: doc, url })).toEqual([]);
+  });
+
+  it("marks a missing page marker, and null when there is none", () => {
+    const a = recipe({
+      match: { hostnames: ["cinejoy.pk"], urlPattern: "/tv/", domFingerprint: "#x" },
+    });
+    const b = recipe({ match: { hostnames: ["cinejoy.pk"], urlPattern: "/tv/" } });
+    const out = explainMatch([a, b], { document: doc, url });
+    expect(out.map((c) => c.marker)).toEqual([false, null]);
   });
 });

@@ -4,13 +4,13 @@ import {
   buildFrameTree,
   flattenFrameTree,
 } from "@/lib/diagnostics/frame-tree";
-import { actionError } from "@/lib/errors";
 import { deriveQuickLink } from "@/lib/picker/recipe-builder";
 import { linkOnHost, removeLinkOnHost, saveLinkOnHost } from "@/lib/recipes/quick-link-edit";
-import { type SiteGroup, findMovedSite, groupSites, withSiteHosts } from "@/lib/recipes/sites";
+import { type SiteGroup, findMovedSite, groupSites } from "@/lib/recipes/sites";
 import {
   type BadgePrefs,
   type QuickLinkSite,
+  type SiteGrantIntent,
   badgePrefs,
   customRecipes,
   malConnectIntent,
@@ -19,6 +19,7 @@ import {
   optionsIntent,
   quickLinks,
   remoteRecipes,
+  siteGrantIntent,
   tabFrameOrigins,
   tabSessions,
   tabStatus,
@@ -30,9 +31,9 @@ import { PopupView } from "@/lib/ui/kit/PopupView";
 import type { QuickLinkValue } from "@/lib/ui/kit/QuickLinkEditor";
 import { tokens } from "@/lib/ui/kit/kit";
 import { NowPlaying } from "@/lib/ui/scrobble-panels";
-import type { BadgeStatus } from "@/messaging";
+import type { BadgeStatus, SiteGrantOutcome } from "@/messaging";
 import { sendMessage } from "@/messaging";
-import { type ParsedMedia, hostText, matchesUrl } from "@tmsync/shared";
+import { type ParsedMedia, matchesUrl } from "@tmsync/shared";
 import { useEffect, useState } from "preact/hooks";
 import { browser } from "wxt/browser";
 
@@ -54,34 +55,6 @@ function httpOrigin(url: string | null): string | null {
 async function activeTabId(): Promise<number | null> {
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
   return tab?.id ?? null;
-}
-
-/**
- * Inject the content script into the active tab NOW — registration only takes
- * effect on FUTURE loads, so the already-open page needs a direct inject to start
- * scrobbling without a reload. Right after the permission prompt is accepted, the
- * new host permission can lag reaching the scripting API, so the first inject may
- * throw ("Cannot access contents of the page") — retry once. Returns whether a
- * content script is now running on the page.
- */
-async function injectContentNow(tabId: number): Promise<boolean> {
-  const run = () =>
-    browser.scripting.executeScript({
-      target: { tabId, allFrames: true },
-      files: ["/content-scripts/content.js"],
-    });
-  try {
-    await run();
-    return true;
-  } catch {
-    await new Promise((r) => setTimeout(r, 250));
-    try {
-      await run();
-      return true;
-    } catch {
-      return false; // e.g. a restricted page — fall back to asking for a reload
-    }
-  }
 }
 
 /**
@@ -153,6 +126,10 @@ async function collectFrames(tabId: number): Promise<RawFrame[]> {
           title: document.title,
           videos,
           iframeSrcs,
+          // This runs in the content script's isolated world, so it can read the
+          // record the content script keeps here (FRAME_DIAG_KEY in
+          // lib/diagnostics/why.ts; a literal, the injected function cannot import).
+          diag: (globalThis as unknown as Record<string, unknown>).__tmsyncDiag ?? null,
         };
       },
     });
@@ -167,6 +144,8 @@ async function collectFrames(tabId: number): Promise<RawFrame[]> {
 export function App() {
   const [accounts, setAccounts] = useState<Accounts>({});
   const [topOrigin, setTopOrigin] = useState<string | null>(null);
+  /** The active tab, read on open: a grant must not await anything before its prompt. */
+  const [tabId, setTabId] = useState<number | null>(null);
   const [origins, setOrigins] = useState<string[]>([]); // top + every iframe origin on the page
   const [enabled, setEnabled] = useState<string[]>([]);
   // Sites a sync or import added that still need access (until reviewed or dismissed).
@@ -211,6 +190,7 @@ export function App() {
 
   const refresh = async () => {
     const tabId = await activeTabId();
+    setTabId(tabId);
     const [acc, url, found, sites, links, badge, custom, remote, pending, fresh] =
       await Promise.all([
         loadAccounts(),
@@ -332,63 +312,74 @@ export function App() {
     setBusy(false);
   };
 
+  /**
+   * Ask for access to an origin, then run the step it was asked for. The background
+   * runs that step (`finishSiteGrant`), from a stored intent, so it still happens
+   * when the permission prompt closes the popup: one click is always enough.
+   */
+  const grantAndFinish = async (
+    intent: Omit<SiteGrantIntent, "at" | "tabId">,
+  ): Promise<SiteGrantOutcome | "denied" | "noTab"> => {
+    if (tabId === null) return "noTab";
+    // Nothing is awaited before the request: Firefox accepts permissions.request
+    // only while it still handles the click. The intent write starts first, so it
+    // is on its way even when the prompt closes the popup.
+    const saved = siteGrantIntent.setValue({ ...intent, tabId, at: Date.now() });
+    let granted = false;
+    try {
+      granted = await browser.permissions.request({ origins: [`${intent.origin}/*`] });
+    } catch {
+      granted = false;
+    }
+    await saved;
+    if (!granted) {
+      await siteGrantIntent.setValue(null);
+      return "denied";
+    }
+    return sendMessage("finishSiteGrant", undefined);
+  };
+
+  /** The note for a grant that failed, or null when it went through. */
+  const grantError = (out: SiteGrantOutcome | "denied" | "noTab"): string | null =>
+    out === "denied"
+      ? "Permission denied"
+      : out === "noTab"
+        ? "No active tab"
+        : out.ok
+          ? null
+          : (out.error ?? "Failed");
+
   const enableOrigin = async (origin: string) => {
     setBusy(true);
     setNote(null);
-    // permissions.request must run in the user-gesture (popup click) context.
-    const granted = await browser.permissions.request({ origins: [`${origin}/*`] });
-    if (granted) {
-      const res = await sendMessage("registerSite", origin);
-      if (res.ok) {
-        // Granting access is a clear intent to use it now, so inject into the open
-        // tab immediately (registration alone only covers future loads) — no reload,
-        // and it keeps the video where it is. Retries past the post-grant lag.
-        const tabId = await activeTabId();
-        const injected = tabId !== null && (await injectContentNow(tabId));
-        setNote(injected ? "Allowed · now scrobbling on this page." : "Allowed · reload to start.");
-      } else {
-        setNote(res.error ?? "Failed");
-      }
-    } else {
-      setNote("Permission denied");
-    }
+    const out = await grantAndFinish({ action: "enable", origin });
+    // Granting access is a clear intent to use it now, so the background injects
+    // into the open tab at once (no reload, the video stays where it is).
+    setNote(
+      grantError(out) ??
+        (typeof out === "object" && out.done && !out.live
+          ? "Allowed · reload to start."
+          : "Allowed · now scrobbling on this page."),
+    );
     // refresh() re-runs the cheap frame map, so a newly-enabled frame (now
     // reachable) shows its video state and children automatically.
     await refresh();
     setBusy(false);
   };
 
-  // The site moved here: add this domain to all its recipes, then turn it on. The
-  // recipes are written before the content script is injected, so it loads them.
-  // Under the broad grant the script already runs here and reloads its recipes on
-  // the write; injecting it again would scrobble twice.
+  // The site moved here: add this domain to all its recipes, then turn it on.
   const adoptMovedSite = async () => {
     if (!movedSite || !topOrigin) return;
     setBusy(true);
     setNote(null);
-    const granted = await browser.permissions.request({ origins: [`${topOrigin}/*`] });
-    if (granted) {
-      const host = hostText(new URL(topOrigin).hostname);
-      const custom = await customRecipes.getValue();
-      try {
-        await customRecipes.setValue(withSiteHosts(movedSite, [...movedSite.hosts, host], custom));
-      } catch (e) {
-        setNote(actionError(e));
-        setBusy(false);
-        return;
-      }
-      const res = await sendMessage("registerSite", topOrigin);
-      const broad = await browser.permissions.contains({ origins: ["*://*/*"] });
-      const tabId = await activeTabId();
-      const injected = res.ok && (broad || (tabId !== null && (await injectContentNow(tabId))));
-      setNote(
-        injected
-          ? `Added to ${movedSite.name} · now scrobbling on this page.`
-          : `Added to ${movedSite.name} · reload to start.`,
-      );
-    } else {
-      setNote("Permission denied");
-    }
+    const out = await grantAndFinish({ action: "adopt", origin: topOrigin });
+    const name = (typeof out === "object" && out.siteName) || movedSite.name;
+    setNote(
+      grantError(out) ??
+        (typeof out === "object" && out.done && !out.live
+          ? `Added to ${name} · reload to start.`
+          : `Added to ${name} · now scrobbling on this page.`),
+    );
     await refresh();
     setBusy(false);
   };
@@ -410,23 +401,12 @@ export function App() {
     if (!topOrigin) return;
     setBusy(true);
     setNote(null);
-    const tabId = await activeTabId();
-    if (tabId === null) {
-      setNote("No active tab");
+    const err = grantError(await grantAndFinish({ action: "setup", origin: topOrigin }));
+    if (err) {
+      setNote(err);
       setBusy(false);
       return;
     }
-    const granted = await browser.permissions.request({ origins: [`${topOrigin}/*`] });
-    if (!granted) {
-      setNote("Permission denied");
-      setBusy(false);
-      return;
-    }
-    await sendMessage("registerSite", topOrigin);
-    await browser.scripting.executeScript({
-      target: { tabId },
-      files: ["/content-scripts/picker.js"],
-    });
     window.close(); // get out of the way so the picker is visible
   };
 
@@ -437,29 +417,18 @@ export function App() {
   const setupFrame = async (origin: string, frameId: number) => {
     setBusy(true);
     setNote(null);
-    const granted = await browser.permissions.request({ origins: [`${origin}/*`] });
-    if (!granted) {
-      setNote("Permission denied");
+    const out = await grantAndFinish({ action: "setupFrame", origin, frameId });
+    const err = grantError(out);
+    if (err) {
+      setNote(
+        out === "denied" || out === "noTab"
+          ? err
+          : `Couldn't open the picker in that frame: ${err}`,
+      );
       setBusy(false);
       return;
     }
-    await sendMessage("registerSite", origin);
-    const tabId = await activeTabId();
-    if (tabId === null) {
-      setNote("No active tab");
-      setBusy(false);
-      return;
-    }
-    try {
-      await browser.scripting.executeScript({
-        target: { tabId, frameIds: [frameId] },
-        files: ["/content-scripts/picker.js"],
-      });
-      window.close(); // the picker now renders inside the player frame
-    } catch (e) {
-      setNote(`Couldn't open the picker in that frame: ${e instanceof Error ? e.message : e}`);
-      setBusy(false);
-    }
+    window.close(); // the picker now renders inside the player frame
   };
 
   return (

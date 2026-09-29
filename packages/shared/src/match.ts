@@ -51,6 +51,26 @@ function matchesFingerprint(recipe: Recipe, document: Document): boolean {
 }
 
 /**
+ * Why a page does or does not match: for each recipe whose host scope covers the
+ * URL (a host-free recipe counts only when its URL pattern fits), whether its URL
+ * pattern and its page marker pass. `marker` is null when the recipe has none. For
+ * the popup's "Why no badge?" check, not for matching.
+ */
+export function explainMatch(
+  recipes: Recipe[],
+  ctx: EngineContext,
+): { recipe: Recipe; url: boolean; marker: boolean | null }[] {
+  return recipes
+    .filter((r) => r.schemaVersion <= SCHEMA_VERSION && inHostScope(r, ctx.url))
+    .map((recipe) => ({
+      recipe,
+      url: matchesUrl(recipe, ctx.url),
+      marker: recipe.match.domFingerprint ? matchesFingerprint(recipe, ctx.document) : null,
+    }))
+    .filter((c) => hostScope(c.recipe).length > 0 || c.url);
+}
+
+/**
  * Pick the first recipe that both (a) targets a schema version this engine
  * understands and (b) matches the page. Returns `null` when nothing matches.
  */

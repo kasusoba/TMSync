@@ -1,3 +1,4 @@
+import { noteFrameDiag } from "@/lib/diagnostics/why";
 import { quickLinkSlugs } from "@/lib/storage";
 import { inferNativeTracker } from "@/lib/trackers";
 import { type Tracker, isSeasonless, trackerLabel } from "@/lib/trackers/types";
@@ -13,6 +14,7 @@ import {
 import {
   type ParsedMedia,
   type Recipe,
+  explainMatch,
   extract,
   isManualRecipe,
   primaryId,
@@ -379,6 +381,8 @@ export class SessionManager {
   private controller: ScrobbleController | null = null;
   private abort: AbortController | null = null;
   private reconcileTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Recipe checks run in this frame, for the popup's "Why no badge?". */
+  private diagChecks = 0;
   /** Latest time the currently pending reconcile may be postponed to. */
   private reconcileDeadline = 0;
   private videoObserver: MutationObserver | null = null;
@@ -537,8 +541,17 @@ export class SessionManager {
       this.episodeOverrideUrl = null;
     }
 
+    this.diagChecks += 1;
+    noteFrameDiag({ at: Date.now(), checks: this.diagChecks, recipes: this.recipes.length });
+
     const recipe = selectRecipe(this.recipes, engineCtx);
     if (!recipe) {
+      const candidates = explainMatch(this.recipes, engineCtx).map((c) => ({
+        name: c.recipe.name,
+        url: c.url,
+        marker: c.marker,
+      }));
+      noteFrameDiag({ step: candidates.length ? "no-match" : "no-recipe", candidates });
       this.localMedia = null;
       this.awaitingMetadata = true;
       this.manualAwaiting = false;
@@ -566,6 +579,7 @@ export class SessionManager {
     // Manual recipe: nothing to scrape. The top frame derives the page key,
     // looks up a remembered pick, and otherwise prompts the user via the badge.
     if (isManualRecipe(recipe)) {
+      noteFrameDiag({ step: "manual", recipe: recipe.name });
       this.episodeAwaiting = false;
       if (this.isTop) await this.handleManual(recipe, engineCtx);
       else this.localMedia = null; // a player iframe consumes the published media
@@ -575,6 +589,7 @@ export class SessionManager {
     this.manualAwaiting = false;
     const result = extract(recipe, engineCtx);
     if (!result.ok) {
+      noteFrameDiag({ step: "read-failed", recipe: recipe.name, detail: result.error });
       this.localMedia = null;
       return;
     }
@@ -594,6 +609,7 @@ export class SessionManager {
         // re-reconcile below) do we stop the tab session — otherwise the still-
         // playing player iframe keeps reporting the previous episode and the
         // prompt never sticks. The guard also prevents a recheck → reconcile loop.
+        noteFrameDiag({ step: "needs-episode", recipe: recipe.name, media: label(media) });
         if (!this.episodeAwaiting) {
           this.episodeAwaiting = true;
           await sendMessage("stopTabSession", undefined);
@@ -637,6 +653,7 @@ export class SessionManager {
     // (and the dedup key would lock the badge there). Wait for the title instead —
     // a later reconcile (head/title mutation) re-runs this with the real title.
     if (isSeasonless(this.tracker) && !media.title) {
+      noteFrameDiag({ step: "waiting-title", recipe: recipe.name });
       this.localMedia = null;
       return;
     }
@@ -648,6 +665,7 @@ export class SessionManager {
     const key = `${mediaKey(media)}|${this.tracker}|${this.trackers.join(",")}`;
     if (key === this.lastPublishedKey) return;
     this.lastPublishedKey = key;
+    noteFrameDiag({ step: "resolving", recipe: recipe.name, media: label(media) });
 
     await sendMessage("publishMedia", {
       media,
@@ -667,6 +685,17 @@ export class SessionManager {
     this.tracker = resolved.tracker;
     const trackerName = trackerLabel(this.tracker);
     const seasonless = isSeasonless(this.tracker); // per-cour trackers have no seasons
+    noteFrameDiag(
+      resolved.resolved && resolved.title
+        ? { step: "resolved", media: resolved.title }
+        : {
+            step: "not-found",
+            detail:
+              resolved.reason === "not_connected"
+                ? `${trackerName} is not connected`
+                : `${trackerName} did not match it`,
+          },
+    );
     if (!(resolved.resolved && resolved.title)) {
       await sendMessage("reportScrobble", {
         state: "error",
@@ -845,15 +874,17 @@ export class SessionManager {
     let media = this.localMedia;
     if (!media) {
       const tab = await this.pullTabMedia();
-      if (!tab) return;
+      if (!tab) return noteFrameDiag({ player: "no-media" });
       media = tab.media;
     }
 
     const video = this.findVideo();
     if (!video) {
+      noteFrameDiag({ player: "no-video" });
       this.observeForVideo();
       return;
     }
+    noteFrameDiag({ player: "running" });
 
     const key = mediaKey(media);
     if (this.abort && key === this.currentKey && this.currentVideo === video) return; // already running
@@ -1092,6 +1123,7 @@ export class SessionManager {
 
   private teardownSession(): void {
     this.metadataNudges = 0;
+    noteFrameDiag({ player: undefined }); // no session runs here now
     // Emit a stop for the outgoing session (SPA episode swap, nav away) before
     // dropping its listeners. ScrobbleController.leave() is idempotent.
     this.controller?.leave();

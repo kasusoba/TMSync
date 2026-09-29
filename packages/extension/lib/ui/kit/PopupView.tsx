@@ -1,4 +1,5 @@
 import type { FrameNode } from "@/lib/diagnostics/frame-tree";
+import { type DiagLine, explainBadge } from "@/lib/diagnostics/why";
 import {
   ALL_TRACKERS,
   QUICK_LINK_TRACKERS,
@@ -114,6 +115,48 @@ export function BadgeModeToggle({
   );
 }
 
+/**
+ * "Why no badge?": a folded checklist of where this page's check stopped (access,
+ * script running, recipe match, page read, tracker match, player). Answers the
+ * question without DevTools, which gray-market sites often block.
+ */
+function WhyNoBadge({ t, lines }: { t: Tokens; lines: DiagLine[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div class={clsx("rounded-xl px-3 py-2 text-[11px]", t.card)}>
+      <button
+        type="button"
+        class="flex w-full items-center gap-2 text-left"
+        onClick={() => setOpen(!open)}
+      >
+        <Icon name={open ? "down" : "chevron"} class={clsx("text-[12px]", t.faint)} />
+        <span class={clsx("flex-1", t.heading)}>Why no badge?</span>
+      </button>
+      {open && (
+        <ul class="mt-1.5 space-y-1 pl-5">
+          {lines.map((l, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: a fixed list, rebuilt on each open
+            <li key={i} class="flex gap-1.5 leading-snug">
+              <Icon
+                name={l.tone === "ok" ? "check" : l.tone === "bad" ? "x" : "refresh"}
+                class={clsx(
+                  "mt-px shrink-0 text-[11px]",
+                  l.tone === "ok"
+                    ? "text-emerald-400"
+                    : l.tone === "bad"
+                      ? "text-rose-400"
+                      : t.faint,
+                )}
+              />
+              <span class={t.sub}>{l.text}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function SubLabel({ t, children }: { t: Tokens; children: preact.ComponentChildren }) {
   return (
     <span class={clsx("block px-1 text-[10px] font-semibold uppercase tracking-wide", t.faint)}>
@@ -221,6 +264,16 @@ export function PopupView(p: PopupViewProps) {
                 onEnable={p.onEnable}
                 onSetupFrame={p.onSetupFrame}
               />
+              {topRow.enabled && (
+                <WhyNoBadge
+                  t={t}
+                  lines={explainBadge({
+                    frames: frameNodes,
+                    badgeHidden: p.badgeMode === "off",
+                    now: Date.now(),
+                  })}
+                />
+              )}
             </div>
 
             <div class="space-y-1.5">
