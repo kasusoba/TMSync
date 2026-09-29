@@ -548,7 +548,7 @@ export function listSyncCache(tracker: Tracker) {
   return LIST_SYNC_CACHE[tracker];
 }
 
-/** Each tracker's list after the last clean list sync (`sync/base.ts`): id keys
+/** Each tracker's list after the last list sync (`sync/base.ts`): id keys
  * and rated flags only, for remembered removals. */
 export const listSyncBase = storage.defineItem<SyncBase | null>("local:list_sync_base", {
   fallback: null,

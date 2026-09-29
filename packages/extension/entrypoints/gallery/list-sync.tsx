@@ -119,7 +119,7 @@ const entries: ListEntry[] = [
 
 const FROM: Partial<Record<Tracker, "saved" | "changes">> = { trakt: "saved", simkl: "changes" };
 
-/** The lists at the last clean sync, for remembered removals: AniList still had
+/** The lists at the last sync, for remembered removals: AniList still had
  * Akira (so MyAnimeList loses it now), and Simkl had rated Severance (so Trakt's
  * rating is cleared). */
 function galleryBase(): Partial<Record<Tracker, BaseEntry[]>> {

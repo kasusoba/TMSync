@@ -74,7 +74,7 @@ export function planCour(ctx: PlanContext, key: string, g: CourGroup): void {
   const cid = g.anilist ?? g.mal;
   const first = cid === undefined ? null : animap.reverse(ns, cid, 1);
 
-  // Removed from one list since the last clean sync: remove it from the others.
+  // Removed from one list since the last sync: remove it from the others.
   // The keys: the cour's ids, the show or movie the crosswalk maps it to, and
   // each seasoned list's own ids.
   const courKeys = baseKeys({ anilist: g.anilist, mal: g.mal }, "tv");
@@ -112,10 +112,10 @@ export function planCour(ctx: PlanContext, key: string, g: CourGroup): void {
   const seasonedMax = Math.max(0, ...srcSeasoned.map((p) => Math.max(0, ...p.local)));
   const progress = Math.max(courMax, seasonedMax);
   const repeat = Math.max(0, ...srcCour.map((e) => e.repeat));
-  // The date backfilled watches get: when the sources last changed.
+  // The date backfilled watches get: when the sources were last watched.
   const srcAt = newest(
-    ...srcCour.filter((e) => courCount(e) > 0).map((e) => e.updatedAt),
-    ...srcSeasoned.filter((p) => p.local.size > 0).map((p) => p.entry.updatedAt),
+    ...srcCour.filter((e) => courCount(e) > 0).map((e) => e.watchedAt),
+    ...srcSeasoned.filter((p) => p.local.size > 0).map((p) => p.entry.watchedAt),
   );
 
   // Status: finished by progress, else the most recent entry.
@@ -222,7 +222,7 @@ export function planCour(ctx: PlanContext, key: string, g: CourGroup): void {
       }
     }
   }
-  // A rating removed from one list since the last clean sync: clear it on the
+  // A rating removed from one list since the last sync: clear it on the
   // others. Only lists that have the entry now, or had it only for its rating; a
   // seasoned list's rating is the level the crosswalk maps the cour to (a season,
   // or the show).

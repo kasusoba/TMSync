@@ -93,6 +93,7 @@ function common(b: z.infer<typeof Base>, m: z.infer<typeof Media>) {
       realTime(b.user_rated_at),
       realTime(b.added_to_watchlist_at),
     ),
+    watchedAt: realTime(b.last_watched_at),
     status: b.status ? STATUS[b.status] : null,
   };
 }

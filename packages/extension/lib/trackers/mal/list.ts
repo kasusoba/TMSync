@@ -1,6 +1,6 @@
 /** MyAnimeList's list for list sync: one cour entry per anime on the user's list. */
 import { z } from "zod";
-import { ms, parseEach } from "../../sync/read-util";
+import { finishedAt, ms, parseEach } from "../../sync/read-util";
 import type { ListEntry } from "../../sync/types";
 import { readMalList, toCourEntry } from "./client";
 
@@ -20,6 +20,7 @@ const Item = z.object({
     is_rewatching: z.boolean().nullish(),
     num_times_rewatched: z.number().nullish(),
     updated_at: z.string().nullish(),
+    finish_date: z.string().nullish(),
   }),
 });
 
@@ -42,6 +43,10 @@ export function malEntries(raw: unknown[]): ListEntry[] {
       ids: { mal: node.id },
       rating: s.score ? s.score * 10 : null,
       updatedAt: ms(s.updated_at),
+      watchedAt:
+        (s.status === "completed"
+          ? finishedAt(malDay(s.finish_date), ms(s.updated_at))
+          : undefined) ?? ms(s.updated_at),
       adult: node.nsfw === "black",
       progress: entry.progress,
       total: node.num_episodes ? node.num_episodes : null,
@@ -54,4 +59,10 @@ export function malEntries(raw: unknown[]): ListEntry[] {
 
 export async function readMalEntries(): Promise<ListEntry[]> {
   return malEntries(await readMalList());
+}
+
+/** A MAL date (`2024-03-09`, or only `2024-03` or `2024`) as its parts. Pure. */
+function malDay(v: string | null | undefined) {
+  const m = v?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? { year: Number(m[1]), month: Number(m[2]), day: Number(m[3]) } : null;
 }

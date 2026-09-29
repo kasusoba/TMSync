@@ -49,6 +49,34 @@ describe("anilistEntries", () => {
       expect.objectContaining({ rating: null, movie: true, ids: { anilist: 1 } }),
     );
   });
+
+  it("dates the watch of a finished entry by its finish day, else by its last change", () => {
+    const media = { format: "TV", episodes: 12 };
+    const edited = Date.UTC(2026, 0, 1) / 1000;
+    const [done, current, early] = anilistEntries([
+      {
+        mediaId: 1,
+        status: "COMPLETED",
+        progress: 12,
+        updatedAt: edited,
+        completedAt: { year: 2020, month: 5, day: 3 },
+        media,
+      },
+      { mediaId: 2, status: "CURRENT", progress: 4, updatedAt: edited, media },
+      // A finish day with no full date: the last change it is.
+      {
+        mediaId: 3,
+        status: "COMPLETED",
+        progress: 12,
+        updatedAt: edited,
+        completedAt: { year: 2020, month: null, day: null },
+        media,
+      },
+    ]);
+    expect(done?.watchedAt).toBe(Date.UTC(2020, 4, 3, 12));
+    expect(current?.watchedAt).toBe(edited * 1000);
+    expect(early?.watchedAt).toBe(edited * 1000);
+  });
 });
 
 vi.mock("./auth", () => ({ getValidAccessToken: async () => "token" }));

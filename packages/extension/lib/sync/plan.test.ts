@@ -198,14 +198,47 @@ function expectConverges(entries: ListEntry[], opts: Parameters<typeof plan>[1] 
 }
 
 describe("dates on backfilled watches", () => {
-  it("gives new watches the date the source last changed", () => {
+  it("gives new watches the date the source was last watched", () => {
     const p = plan([
-      traktShow(1399, { 1: [1, 2] }, { updatedAt: 1_600_000_000_000 }),
+      traktShow(1399, { 1: [1, 2] }, { watchedAt: 1_600_000_000_000 }),
       simklShow({ tmdb: 1399 }, {}),
     ]);
     expect(writesFor(p, "simkl")).toEqual([
       expect.objectContaining({ op: "episodes", at: 1_600_000_000_000 }),
     ]);
+  });
+
+  it("never dates a watch by a later rating or list edit", () => {
+    // Watched in 2020, rated in 2026: the play on Trakt is from 2020.
+    const watched = Date.UTC(2020, 0, 1);
+    const p = plan(
+      [
+        {
+          tracker: "simkl",
+          shape: "movie",
+          id: 7,
+          title: "Film",
+          ids: { tmdb: 11 },
+          rating: 80,
+          watched: true,
+          watchedAt: watched,
+          updatedAt: Date.UTC(2026, 0, 1),
+        },
+        courEntry(
+          "anilist",
+          { anilist: 30, mal: 300 },
+          {
+            progress: 2,
+            watchedAt: watched,
+            updatedAt: Date.UTC(2026, 0, 1),
+          },
+        ),
+      ],
+      { trackers: ["trakt", "anilist", "simkl"] },
+    );
+    const dated = writesFor(p, "trakt").filter((w) => w.op === "movie" || w.op === "episodes");
+    expect(dated).toHaveLength(2);
+    for (const w of dated) expect(w).toMatchObject({ at: watched });
   });
 
   it("leaves the date out when the source has none (the air date is used)", () => {

@@ -20,7 +20,7 @@
  *    never go down, and never lose Trakt watch history: where the main list is
  *    behind, the plan says so (a notice) instead of acting.
  *  - Remembered removals (with a base, `base.ts`): in a union, an entry one list
- *    removed since the last clean sync is removed from the others instead of
+ *    removed since the last sync is removed from the others instead of
  *    added back, and so is a rating. Only when every list that still has it had
  *    it at the base too: a list that added it since wins, and it is added back.
  *    Where a copy is kept (Trakt watch history), the plan leaves removed marks, so

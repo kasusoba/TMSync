@@ -29,7 +29,7 @@ import { accountsChangedSince, commitBase } from "./base-store";
 import { exclusive, jobAlive, jobRunner, versioned } from "./job";
 import { withPicks } from "./plan/index";
 import { type SyncPreview, readJob } from "./preview";
-import type { ChunkOutcome, SyncPicks, SyncWrite, WriteOutcome } from "./types";
+import type { ChunkOutcome, SyncItem, SyncPicks, SyncWrite, WriteOutcome } from "./types";
 
 /** How old a preview may be when it is applied. An older one is planned from lists
  * that may have changed, so the user previews again. */
@@ -89,9 +89,10 @@ export type ApplyBlock =
 /** A saved apply job, or null when missing or from an older build. Pure. */
 export const readApply = versioned<ApplyJob>(APPLY_JOB_VERSION);
 
-/** One write, with the item it belongs to (for the summary). */
+/** One write, with the item it belongs to (its key, and its title for the summary). */
 export interface QueuedWrite {
   w: SyncWrite;
+  key: string;
   title: string;
 }
 
@@ -112,7 +113,7 @@ export function applyQueues(
     if (kept.has(item.key)) continue;
     for (const w of item.writes) {
       const q = out.get(w.tracker) ?? [];
-      q.push({ w, title: item.title });
+      q.push({ w, key: item.key, title: item.title });
       out.set(w.tracker, q);
     }
   }
@@ -158,7 +159,7 @@ export async function startApply(): Promise<{ started: boolean; reason?: ApplyBl
     await listSyncApply.setValue(start);
     // The run saves its own failure; this catch only keeps a rejection from going
     // unhandled.
-    void finishApply(start, preview, queues, true).catch(() => {});
+    void finishApply(start, preview, queues, []).catch(() => {});
     return { started: true };
   });
 }
@@ -175,15 +176,14 @@ export function cleanApply(job: ApplyJob): boolean {
 /**
  * Save a new apply job for `preview` and run it, unless a preview or an apply
  * runs. Resolves to the finished job, or null when it could not start. The caller
- * checks the rest first (`applyBlock`). `full` = the queues hold every removal
- * the plan has (the automatic run may hold some back): a clean apply of them
- * makes the lists the new base (`base-store.ts`).
+ * checks the rest first (`applyBlock`). `held` = the items the automatic run held
+ * back for the user: the base keeps them as they were (`base-store.ts`).
  */
 export async function beginApply(
   preview: SyncPreview,
   queues: Map<Tracker, QueuedWrite[]>,
   auto: boolean,
-  full: boolean,
+  held: string[] = [],
 ): Promise<ApplyJob | null> {
   const start = await exclusive(async () => {
     const now = Date.now();
@@ -194,7 +194,7 @@ export async function beginApply(
     await listSyncApply.setValue(job);
     return job;
   });
-  return start && finishApply(start, preview, queues, full);
+  return start && finishApply(start, preview, queues, held);
 }
 
 /** An account of a tracker in the plan was connected or disconnected after the
@@ -233,19 +233,45 @@ function newApply(
   };
 }
 
-/** Run a saved apply job, then move the base if it was clean and `full`. */
+/** Run a saved apply job, then move the base: with the writes it took, and each
+ * item it did not finish (a write failed, left out, not sent, or `held`) as the old
+ * base had it. So one write that keeps failing never stops the base. */
 async function finishApply(
   start: ApplyJob,
   preview: SyncPreview,
   queues: Map<Tracker, QueuedWrite[]>,
-  full: boolean,
+  held: string[],
 ): Promise<ApplyJob> {
-  const done = await runApply(start, queues);
-  if (full && cleanApply(done)) {
-    const writes = [...queues.values()].flatMap((q) => q.map((x) => x.w));
-    await commitBase(preview.at, writes).catch(() => {});
-  }
-  return done;
+  const { job, taken } = await runApply(start, queues);
+  const { writes, open } = applied(preview, queues, taken, held);
+  await commitBase(preview.at, writes, open).catch(() => {});
+  return job;
+}
+
+/** The writes an apply took, and the plan's items it did not finish: one with a
+ * write not taken, none queued (kept out), or `held`. `taken` holds
+ * `tracker:index` into the queues. Pure. */
+export function applied(
+  preview: SyncPreview,
+  queues: Map<Tracker, QueuedWrite[]>,
+  taken: Set<string>,
+  held: string[],
+): { writes: SyncWrite[]; open: SyncItem[] } {
+  const writes: SyncWrite[] = [];
+  const queued = new Map<string, number>();
+  const done = new Map<string, number>();
+  for (const [tk, q] of queues)
+    q.forEach((x, n) => {
+      queued.set(x.key, (queued.get(x.key) ?? 0) + 1);
+      if (!taken.has(`${tk}:${n}`)) return;
+      done.set(x.key, (done.get(x.key) ?? 0) + 1);
+      writes.push(x.w);
+    });
+  const h = new Set(held);
+  const open = preview.plan.items.filter(
+    (i) => h.has(i.key) || !queued.get(i.key) || done.get(i.key) !== queued.get(i.key),
+  );
+  return { writes, open };
 }
 
 /** Ask a running apply to stop after the chunk in flight. What was written stays:
@@ -254,8 +280,13 @@ export async function cancelApply(): Promise<void> {
   await listSyncCancelAt.setValue(Date.now());
 }
 
-async function runApply(start: ApplyJob, queues: Map<Tracker, QueuedWrite[]>): Promise<ApplyJob> {
+async function runApply(
+  start: ApplyJob,
+  queues: Map<Tracker, QueuedWrite[]>,
+): Promise<{ job: ApplyJob; taken: Set<string> }> {
   const run = jobRunner(listSyncApply, start);
+  // `tracker:index` of each write the tracker took, for the base.
+  const taken = new Set<string>();
   const { save } = run;
   const setTracker = (tk: Tracker, patch: Partial<ApplyTracker>) =>
     save({
@@ -288,8 +319,10 @@ async function runApply(start: ApplyJob, queues: Map<Tracker, QueuedWrite[]>): P
               if (!r || counted.has(n)) return;
               counted.add(n);
               if (r.ok && r.reason === "changed") tally.changed += 1;
-              else if (r.ok) tally.done += 1;
-              else {
+              else if (r.ok) {
+                tally.done += 1;
+                taken.add(`${tracker}:${i + n}`);
+              } else {
                 tally.failedCount += 1;
                 if (failed.length < MAX_FAILED)
                   failed.push({ title: chunk[n]?.title ?? "", error: r.error ?? "Failed." });
@@ -325,5 +358,5 @@ async function runApply(start: ApplyJob, queues: Map<Tracker, QueuedWrite[]>): P
   } finally {
     await run.stop();
   }
-  return run.get();
+  return { job: run.get(), taken };
 }

@@ -29,7 +29,7 @@ export interface PlanInput {
   animap: Animap;
   /** Each tracker's score scale. A missing tracker rates 1 to 10. */
   scales?: Partial<Record<Tracker, ScoreScale>>;
-  /** Each tracker's list at the last clean sync (`base.ts`), for remembered
+  /** Each tracker's list at the last sync (`base.ts`), for remembered
    * removals. Missing = none: a union adds everything back. */
   base?: Partial<Record<Tracker, BaseEntry[]>>;
 }
