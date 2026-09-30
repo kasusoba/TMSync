@@ -408,9 +408,15 @@ disconnects. The tracker cards say "No changes since the last read" or "Read onl
 `browser.alarms` alarm (`tmsync-list-sync`, daily) runs the preview job, then an apply job of the
 ADDITIONS only (`additionsOnly`): watched episodes and movies, new entries, progress up, a higher
 rewatch count, empty rating fills, and the status progress brings (watching, or completed at the
-last episode). Removals (of entries and ratings), status changes without progress, a new entry with
-a disputed status, and every conflict wait for the user. The toolbar badge counts the held items
-the user has not seen; opening the pane marks them seen. A tab's own badge text is cleared with
+last episode). A watching or planned AniList or MAL entry that is at its last episode already also
+goes in as completed: the tracker did not know the episode count when the last episode was
+recorded. Removals (of entries and ratings), other status changes without progress (a paused or
+dropped entry, any Simkl status), a new entry with a disputed status, and every conflict wait for
+the user. The toolbar badge counts the held items the user has not seen; opening the pane marks
+them seen. The daily plan is too old to apply by the time the user sees it, so the pane shows a
+"Review held changes" button in place of Apply. It previews again, and the new preview opens on
+the held items only (a "Held by daily sync" filter the user can turn off). Apply still writes the
+whole new plan. A tab's own badge text is cleared with
 `null`, not `""`, or it would hide the count. A run within 20 hours of the last one is skipped,
 since alarms can fire again on a browser start. A running manual job skips the run, and the
 automatic jobs block manual ones the same way. A preview the user made and has not applied yet

@@ -83,6 +83,24 @@ describe("additionsOnly", () => {
     expect(part.held).toEqual(["c"]);
   });
 
+  it("keeps a watching or planned entry that catches up with its progress", () => {
+    const lag = entry({ tracker: "mal", status: { from: "CURRENT", to: "COMPLETED" } });
+    const planned = entry({ status: { from: "PLANNING", to: "COMPLETED" } });
+    const out = additionsOnly(plan("a", [lag, planned]));
+    expect(out.plan.items[0]?.writes).toEqual([lag, planned]);
+    expect(out.held).toEqual([]);
+
+    // The user paused or dropped it: that waits for them.
+    for (const from of ["PAUSED", "DROPPED"] as const) {
+      const held = additionsOnly(plan("b", [entry({ status: { from, to: "COMPLETED" } })]));
+      expect(held.plan.items).toEqual([]);
+      expect(held.held).toEqual(["b"]);
+    }
+    // Simkl keeps no rewatch state: a watching entry there may be a rewatch.
+    const simkl = entry({ tracker: "simkl", status: { from: "CURRENT", to: "COMPLETED" } });
+    expect(additionsOnly(plan("c", [simkl])).held).toEqual(["c"]);
+  });
+
   it("holds a new entry whose status the trackers disagree on, and every conflict", () => {
     const create = entry({ create: true, status: { from: null, to: "DROPPED" } });
     const conflict = {

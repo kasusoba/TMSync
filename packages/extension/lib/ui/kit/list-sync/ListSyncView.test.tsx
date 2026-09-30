@@ -61,6 +61,7 @@ const entries: ListEntry[] = [
 function show(
   settings: ListSyncSettings,
   extra: Partial<Parameters<typeof ListSyncView>[0]> = {},
+  auto = false,
 ): string {
   const trackers: Tracker[] = ["trakt", "anilist", "mal", "simkl"];
   const plan = planSync({
@@ -76,6 +77,7 @@ function show(
     totals: summarize(plan, trackers),
     plan,
     scales: {},
+    ...(auto ? { auto: true } : {}),
   };
   const root = document.createElement("div");
   render(
@@ -103,6 +105,18 @@ function show(
   return root.textContent ?? "";
 }
 
+/** The key the planner gives the item titled `title`. */
+function plannedKey(title: string): string {
+  const trackers: Tracker[] = ["trakt", "anilist", "mal", "simkl"];
+  const plan = planSync({
+    entries,
+    trackers,
+    settings: DEFAULT_SYNC_SETTINGS,
+    animap: new Animap([{ a: 30, m: 300, t: 50, k: "tv", s: 1 }]),
+  });
+  return [...plan.items, ...plan.conflicts].find((x) => x.title === title)?.key ?? "";
+}
+
 describe("ListSyncView", () => {
   it("renders a union preview", () => {
     const text = show(DEFAULT_SYNC_SETTINGS);
@@ -122,6 +136,31 @@ describe("ListSyncView", () => {
 describe("ListSyncView apply", () => {
   it("offers Apply on a fresh preview", () => {
     expect(show(DEFAULT_SYNC_SETTINGS)).toContain("Apply changes");
+  });
+
+  it("offers to review what the daily run held, instead of the old-plan note", () => {
+    const run = {
+      at: 0,
+      state: "done" as const,
+      added: 0,
+      failed: 0,
+      held: [] as string[],
+      notes: [],
+    };
+    const held = show(DEFAULT_SYNC_SETTINGS, { blocked: "stale", autoRun: run }, true);
+    expect(held).not.toContain("Review held changes");
+    const key = plannedKey("Show");
+    const text = show(
+      { ...DEFAULT_SYNC_SETTINGS, auto: true },
+      { blocked: "stale", autoRun: { ...run, held: [key] } },
+      true,
+    );
+    expect(text).toContain("held 1 change for you");
+    expect(text).toContain("Review held changes");
+    expect(text).not.toContain("more than 10 minutes old");
+    // A fresh preview offers the held items as a filter.
+    const fresh = show(DEFAULT_SYNC_SETTINGS, { autoRun: { ...run, held: [key] } });
+    expect(fresh).toContain("Held by daily sync1");
   });
 
   it("asks for a new preview when this one is old", () => {
