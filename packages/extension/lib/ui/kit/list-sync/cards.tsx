@@ -66,7 +66,7 @@ export function AutoLine({ t, run }: { t: Tokens; run: AutoRun }) {
         : [
             run.added ? `added ${plural(run.added, "change")}` : "nothing to add",
             run.failed ? `${run.failed} failed` : "",
-            run.held.length ? `${run.held.length} wait for review (preview to see them)` : "",
+            run.held.length ? `${run.held.length} wait for you` : "",
           ]
             .filter(Boolean)
             .join(", ");

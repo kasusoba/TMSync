@@ -206,6 +206,7 @@ export function ListSyncTile({
     | "applied"
     | "auto"
     | "auto-running"
+    | "held-review"
     | "remembered";
 }) {
   const t = tokens(variant);
@@ -223,7 +224,8 @@ export function ListSyncTile({
     state === "main-anilist" ||
     state === "stale" ||
     state === "applying" ||
-    state === "applied"
+    state === "applied" ||
+    state === "held-review"
       ? preview(settings, ALL_TRACKERS)
       : state === "auto"
         ? { ...preview(settings, ALL_TRACKERS), auto: true }
@@ -280,7 +282,7 @@ export function ListSyncTile({
               : undefined
         }
         autoRun={
-          state === "auto" && p
+          (state === "auto" || state === "held-review") && p
             ? {
                 at: p.at,
                 state: "done",

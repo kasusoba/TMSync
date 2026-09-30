@@ -11,7 +11,7 @@ import { ApplyBar } from "./ApplyBar";
 import { ApplyProgress } from "./ApplyProgress";
 import { ChangesTable, Empty, ShowMore } from "./ChangesTable";
 import { TrackerCards } from "./cards";
-import { KINDS, KIND_LABEL } from "./labels";
+import { KINDS, KIND_LABEL, plural } from "./labels";
 import { ConflictTable, KeptList, NoticeTable, SkipGroups } from "./tables";
 
 type Tab = "changes" | "removals" | "notices" | "conflicts" | "skipped" | "kept";
@@ -34,6 +34,9 @@ export function PreviewResult({
   onApply,
   onCancelApply,
   onPick,
+  held = [],
+  heldFirst = false,
+  onPreview = () => {},
 }: {
   t: Tokens;
   preview: SyncPreview;
@@ -48,8 +51,15 @@ export function PreviewResult({
   onApply: () => void;
   onCancelApply: () => void;
   onPick: (key: string, value: SyncPick | undefined) => void;
+  /** The items the last daily run held for the user (`AutoRun.held`). */
+  held?: string[];
+  /** Open on the held items only: the user previewed to review them. */
+  heldFirst?: boolean;
+  /** Preview again, to review the held items (`heldFirst` on the next preview). */
+  onPreview?: () => void;
 }) {
-  const [tab, setTab] = useState<Tab>("changes");
+  /** The tab the user picked (null = the first that fits, see `tab`). */
+  const [picked, setTab] = useState<Tab | null>(null);
   const [q, setQ] = useState("");
   const [kind, setKind] = useState<SyncKind | "all">("all");
   const [shown, setShown] = useState(PAGE);
@@ -66,15 +76,45 @@ export function PreviewResult({
   );
   // This preview's apply, if it had one (a new preview starts clean).
   const ran = apply?.planAt === preview.at ? apply : null;
-  const match = (title: string, k?: SyncKind) =>
-    title.toLowerCase().includes(q.trim().toLowerCase()) && (kind === "all" || k === kind);
+  // The held items this plan still has. The daily plan can no longer be applied
+  // by the time the user sees it, so it asks for a new preview, and a new preview
+  // can show only them.
+  const heldHere = new Set(
+    [...plan.items, ...plan.conflicts].map((x) => x.key).filter((k) => held.includes(k)),
+  );
+  for (const k of kept) heldHere.delete(k);
+  const [heldOnly, setHeldOnly] = useState(heldFirst && !preview.auto);
+  const onlyHeld = heldOnly && heldHere.size > 0;
+  const inView = (key: string) => !onlyHeld || heldHere.has(key);
+  const match = (x: { key: string; title: string; kind?: SyncKind }) =>
+    x.title.toLowerCase().includes(q.trim().toLowerCase()) &&
+    (kind === "all" || x.kind === kind) &&
+    inView(x.key);
 
   const live = plan.items.filter((i) => !kept.has(i.key));
-  const items = live.filter((i) => !isRemoval(i) && match(i.title, i.kind));
-  const removals = live.filter((i) => isRemoval(i) && match(i.title, i.kind));
-  const notices = plan.notices.filter((n) => !kept.has(n.key) && match(n.title, n.kind));
-  const conflicts = plan.conflicts.filter((c) => !kept.has(c.key) && match(c.title));
-  const skips = plan.skips.filter((s) => s.reason !== "ignored" && match(s.title));
+  const items = live.filter((i) => !isRemoval(i) && match(i));
+  const removals = live.filter((i) => isRemoval(i) && match(i));
+  const notices = plan.notices.filter((n) => !kept.has(n.key) && match(n));
+  const conflicts = plan.conflicts.filter(
+    (c) => !kept.has(c.key) && match({ ...c, kind: undefined }),
+  );
+  const skips = plan.skips.filter(
+    (s) => s.reason !== "ignored" && match({ ...s, kind: undefined }),
+  );
+  // Only once this daily plan cannot be applied: a fresh one keeps its Apply.
+  const heldBar = preview.auto &&
+    heldHere.size > 0 &&
+    (ran || blocked === "stale" || blocked === "spent") && (
+      <div class={clsx("flex items-center gap-3 rounded-lg p-3", t.card)}>
+        <span class={clsx("flex-1 text-[12px]", t.sub)}>
+          The daily sync held {plural(heldHere.size, "change")} for you: removals, conflicts, and
+          statuses you set. Preview again to review them against your lists as they are now.
+        </span>
+        <Btn t={t} tone="primary" disabled={applying} onClick={onPreview}>
+          <Icon name="refresh" class="text-[12px]" /> Review held changes
+        </Btn>
+      </div>
+    );
   // A kept-out item's name: from this plan when it is there, else its key.
   const titles = new Map<string, string>();
   for (const i of plan.items) titles.set(i.key, i.title);
@@ -88,25 +128,45 @@ export function PreviewResult({
     setUndo({ key: item.key, title: item.title });
   };
 
+  // The counts follow the held-only filter, so a held removal or conflict is
+  // found from the tab row.
+  const shownLive = live.filter((i) => inView(i.key));
   const tabs: { id: Tab; label: string; n: number }[] = [
-    { id: "changes", label: "Changes", n: live.filter((i) => !isRemoval(i)).length },
-    { id: "removals", label: "Removals", n: live.filter(isRemoval).length },
-    { id: "notices", label: "Left as is", n: plan.notices.filter((n) => !kept.has(n.key)).length },
+    { id: "changes", label: "Changes", n: shownLive.filter((i) => !isRemoval(i)).length },
+    { id: "removals", label: "Removals", n: shownLive.filter(isRemoval).length },
+    {
+      id: "notices",
+      label: "Left as is",
+      n: plan.notices.filter((n) => !kept.has(n.key) && inView(n.key)).length,
+    },
     {
       id: "conflicts",
       label: "Conflicts",
-      n: plan.conflicts.filter((c) => !kept.has(c.key)).length,
+      n: plan.conflicts.filter((c) => !kept.has(c.key) && inView(c.key)).length,
     },
-    { id: "skipped", label: "Skipped", n: plan.skips.filter((s) => s.reason !== "ignored").length },
+    {
+      id: "skipped",
+      label: "Skipped",
+      n: plan.skips.filter((s) => s.reason !== "ignored" && inView(s.key)).length,
+    },
     { id: "kept", label: "Kept out", n: ignore.length },
   ];
+  // Held only: open on the first tab with a held item (most are removals or
+  // conflicts, not changes).
+  const tab =
+    picked ?? (onlyHeld ? tabs.find((x) => x.id !== "kept" && x.n > 0)?.id : null) ?? "changes";
 
   return (
     <div class="space-y-4">
       <TrackerCards t={t} reads={preview.reads} totals={totals} />
 
       {ran ? (
-        <ApplyProgress t={t} job={ran} running={applying} onCancel={onCancelApply} />
+        <>
+          <ApplyProgress t={t} job={ran} running={applying} onCancel={onCancelApply} />
+          {heldBar}
+        </>
+      ) : heldBar ? (
+        heldBar
       ) : (
         !preview.reason && (
           <ApplyBar
@@ -157,6 +217,22 @@ export function PreviewResult({
         </div>
         {tab !== "kept" && (
           <div class="ml-auto flex items-center gap-2">
+            {!preview.auto && heldHere.size > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setHeldOnly(!heldOnly);
+                  setTab(null);
+                }}
+                class={clsx(
+                  "rounded-lg px-2.5 py-1.5 text-[11px]",
+                  onlyHeld ? clsx(t.chip, t.heading) : clsx(t.card, t.sub),
+                )}
+              >
+                Held by daily sync
+                <span class="ml-1.5 tabular-nums">{heldHere.size}</span>
+              </button>
+            )}
             {tab !== "conflicts" && tab !== "skipped" && (
               <div class={clsx("flex gap-0.5 rounded-lg p-0.5", t.card)}>
                 {(["all", ...KINDS] as const).map((k) => (

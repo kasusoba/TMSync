@@ -21,6 +21,7 @@ import { trackerLabel } from "../trackers/types";
 import { APPLY_FRESH_MS, type ApplyJob, applyQueues, beginApply, readApply } from "./apply";
 import { commitBase } from "./base-store";
 import { jobAlive } from "./job";
+import { keepsRepeat } from "./plan/util";
 import { type SyncJob, beginPreview, readJob } from "./preview";
 import type { SyncItem, SyncPlan, SyncWrite } from "./types";
 
@@ -53,10 +54,11 @@ export interface AutoRun {
  * back for the user. Pure.
  *
  * In: watched episodes and movies, rating fills (never a picked score), new list
- * entries, progress up, a higher rewatch count, and the status that progress
- * brings with it (watching, or completed at the last episode).
- * Held: removals (of entries and ratings), a status change with no progress, a
- * new entry whose status the trackers disagree on, and every conflict.
+ * entries, progress up, a higher rewatch count, the status that progress
+ * brings with it (watching, or completed at the last episode), and a watching or
+ * planned entry that is at its last episode already (`catchesUp`).
+ * Held: removals (of entries and ratings), any other status change with no
+ * progress, a new entry whose status the trackers disagree on, and every conflict.
  */
 export function additionsOnly(plan: SyncPlan): { plan: SyncPlan; held: string[] } {
   const held = new Set(plan.conflicts.map((c) => c.key));
@@ -89,11 +91,31 @@ function addition(w: SyncWrite, contested: boolean): SyncWrite | null {
       if (w.create) return contested ? null : w;
       const up = !!w.progress && w.progress.to > w.progress.from;
       const follows = up && (w.status?.to === "CURRENT" || w.status?.to === "COMPLETED");
-      if (!w.status || follows) return w;
+      if (!w.status || follows || catchesUp(w)) return w;
       const { status: _held, ...rest } = w;
       return rest.progress || rest.repeat || rest.startedOn || rest.finishedOn ? rest : null;
     }
   }
+}
+
+/**
+ * A status that only catches up with the entry's own progress: a watching or
+ * planned entry at its last episode becomes completed. The planner writes
+ * COMPLETED only where the tracker's progress reaches its own episode count
+ * (`plan/cour.ts`), so the progress is there already. This happens when the
+ * tracker did not know the count yet when the last episode was recorded.
+ * Only AniList and MAL: they keep a rewatch as its own state, so a watching
+ * entry there is never a rewatch. A paused or dropped entry stays held: the
+ * user set that. Pure.
+ */
+function catchesUp(w: Extract<SyncWrite, { op: "entry" }>): boolean {
+  const from = w.status?.from;
+  return (
+    !w.create &&
+    keepsRepeat(w.tracker) &&
+    w.status?.to === "COMPLETED" &&
+    (from === "CURRENT" || from === "PLANNING")
+  );
 }
 
 /** How many held items the user has not seen yet (the badge count). Pure. */

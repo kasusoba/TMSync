@@ -20,6 +20,7 @@ import {
 } from "@/lib/sync/types";
 import { type Tracker, trackerLabel } from "@/lib/trackers/types";
 import clsx from "clsx";
+import { useState } from "preact/hooks";
 import { Btn, Icon, Switch, type Tokens, TrackerMark } from "../kit";
 import { PreviewResult } from "./PreviewResult";
 import { AutoLine, type AutoNow, AutoStatus, CardTitle, SettingRow, TrackerCards } from "./cards";
@@ -93,6 +94,8 @@ export function ListSyncView({
   onRestore: (key: string) => void;
   onClearIgnored: () => void;
 }) {
+  /** The last preview was started to review what the daily run held. */
+  const [reviewHeld, setReviewHeld] = useState(false);
   return (
     <div class="space-y-5">
       <p class={clsx("max-w-2xl text-[12px] leading-relaxed", t.sub)}>
@@ -212,7 +215,15 @@ export function ListSyncView({
             plan.
           </p>
           <div class="mt-auto flex items-center gap-3 pt-1">
-            <Btn t={t} tone="primary" disabled={busy || applying} onClick={onPreview}>
+            <Btn
+              t={t}
+              tone="primary"
+              disabled={busy || applying}
+              onClick={() => {
+                setReviewHeld(false);
+                onPreview();
+              }}
+            >
               <Icon name="refresh" class="text-[12px]" />{" "}
               {busy && !autoNow?.running ? "Reading your lists…" : "Preview sync"}
             </Btn>
@@ -276,6 +287,12 @@ export function ListSyncView({
               onApply={onApply}
               onCancelApply={onCancelApply}
               onPick={onPick}
+              held={autoRun?.held}
+              heldFirst={reviewHeld}
+              onPreview={() => {
+                setReviewHeld(true);
+                onPreview();
+              }}
             />
           )}
         </section>
