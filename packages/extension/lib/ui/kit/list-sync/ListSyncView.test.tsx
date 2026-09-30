@@ -158,6 +158,14 @@ describe("ListSyncView apply", () => {
     expect(text).toContain("held 1 change for you");
     expect(text).toContain("Review held changes");
     expect(text).not.toContain("more than 10 minutes old");
+    // A daily plan that can still be applied keeps its Apply.
+    const fresh0 = show(
+      { ...DEFAULT_SYNC_SETTINGS, auto: true },
+      { autoRun: { ...run, held: [key] } },
+      true,
+    );
+    expect(fresh0).toContain("Apply changes");
+    expect(fresh0).not.toContain("Review held changes");
     // A fresh preview offers the held items as a filter.
     const fresh = show(DEFAULT_SYNC_SETTINGS, { autoRun: { ...run, held: [key] } });
     expect(fresh).toContain("Held by daily sync1");
