@@ -59,7 +59,7 @@ and add a log line in the same commit.
   the wetrakr.com URL shapes first (search results give `url: "/movies/483"`).
 - [ ] **7. Letterboxd export from WeTrakr, and docs.** Export source picker (Trakt or WeTrakr).
   Move the API facts below into `TRACKERS.md`; update `ARCHITECTURE.md`, `CLAUDE.md`, README,
-  store permission text. **Delete this file and the "Work in progress" entry in `CLAUDE.md`.**
+  store permission text. **Delete this file.** Check that `docs/plans/` is empty before the merge.
 
 ## Log
 
