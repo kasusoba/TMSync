@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Animap, type AnimapRow } from "../trackers/animap/index";
 import type { Tracker } from "../trackers/types";
 import { planSync, summarize, takesKind, withPicks } from "./plan/index";
+import { givesStatus } from "./plan/status";
 import { onScale } from "./score";
 import {
   DEFAULT_SYNC_SETTINGS,
@@ -157,6 +158,36 @@ function apply(entries: ListEntry[], p: SyncPlan): ListEntry[] {
         if (w.repeat) e.repeat = w.repeat.to;
         if (w.startedOn) e.startedOn = w.startedOn;
         if (w.finishedOn) e.finishedOn = w.finishedOn;
+      }
+    } else if (w.op === "status") {
+      const shape = w.target.mediaType === "movie" ? "movie" : "show";
+      if (!e) {
+        e =
+          shape === "movie"
+            ? {
+                tracker: w.tracker,
+                shape: "movie",
+                id: 900 + out.length,
+                title: "new",
+                ids: w.target.ids,
+                rating: null,
+                watched: false,
+              }
+            : {
+                tracker: w.tracker,
+                shape: "seasons",
+                id: 900 + out.length,
+                title: "new",
+                ids: w.target.ids,
+                rating: null,
+                seasons: {},
+              };
+        out.push(e);
+      }
+      if (e.shape !== "cour") {
+        const to = w.status.to;
+        e.status = to && givesStatus(w.tracker, shape, to) ? to : null;
+        e.updatedAt = 10_000;
       }
     } else if (w.op === "rating") {
       // A rating lists the item on its own (Trakt keeps ratings apart from history,
@@ -1046,5 +1077,94 @@ describe("remembered misses", () => {
     expect(p.skips).toMatchObject([
       { tracker: "simkl", reason: "not_on_tracker", detail: "1 episode" },
     ]);
+  });
+});
+
+describe("statuses on movies and TV", () => {
+  const W: Tracker[] = ["trakt", "wetrakr", "simkl"];
+  const show = (tracker: Tracker, seasons: Record<number, number[]>, extra = {}): ListEntry => ({
+    tracker,
+    shape: "seasons",
+    id: tracker.length,
+    title: "Show",
+    ids: { tmdb: 5 },
+    rating: null,
+    seasons,
+    ...extra,
+  });
+  const film = (tracker: Tracker, extra = {}): ListEntry => ({
+    tracker,
+    shape: "movie",
+    id: tracker.length,
+    title: "Film",
+    ids: { tmdb: 6 },
+    rating: null,
+    watched: false,
+    ...extra,
+  });
+  const statusOps = (p: SyncPlan) =>
+    p.items
+      .flatMap((i) => i.writes)
+      .flatMap((w) => (w.op === "status" ? [`${w.tracker}:${w.status.from}>${w.status.to}`] : []));
+
+  it("copies a planned movie to every watchlist, and converges", () => {
+    const p = expectConverges([film("trakt", { status: "PLANNING", updatedAt: 1 })], {
+      trackers: W,
+    });
+    expect(statusOps(p)).toEqual(["wetrakr:null>PLANNING", "simkl:null>PLANNING"]);
+  });
+
+  it("gives a watched movie no status: its watch makes it complete", () => {
+    const p = plan([film("trakt", { status: "PLANNING" }), film("simkl", { watched: true })], {
+      trackers: W,
+    });
+    expect(statusOps(p)).toEqual([]);
+  });
+
+  it("drops a show everywhere it is, Trakt included, and converges", () => {
+    const p = expectConverges(
+      [
+        show("trakt", { 1: [1] }, { watchedAt: 1, updatedAt: 1 }),
+        show("simkl", { 1: [1] }, { status: "DROPPED", updatedAt: 5, watchedAt: 1 }),
+      ],
+      { trackers: W },
+    );
+    expect(statusOps(p)).toEqual(["trakt:null>DROPPED", "wetrakr:null>DROPPED"]);
+  });
+
+  it("takes a planned show off the Trakt watchlist once it is watched", () => {
+    const p = expectConverges(
+      [
+        show("trakt", {}, { status: "PLANNING", updatedAt: 1 }),
+        show("wetrakr", { 1: [1] }, { status: "CURRENT", updatedAt: 2, watchedAt: 2 }),
+      ],
+      { trackers: W },
+    );
+    expect(statusOps(p)).toEqual(["trakt:PLANNING>CURRENT", "simkl:null>CURRENT"]);
+  });
+
+  it("resumes a dropped show watched since, without a conflict", () => {
+    const p = plan(
+      [
+        show("trakt", { 1: [1, 2] }, { watchedAt: 9, updatedAt: 9 }),
+        show("wetrakr", { 1: [1] }, { status: "DROPPED", updatedAt: 3, watchedAt: 1 }),
+      ],
+      { trackers: W },
+    );
+    expect(statusOps(p)).toEqual(["wetrakr:DROPPED>CURRENT", "simkl:null>CURRENT"]);
+    expect(p.conflicts).toEqual([]);
+  });
+
+  it("lists paused against dropped as a conflict, and a pick goes everywhere", () => {
+    const entries = [
+      show("wetrakr", { 1: [1] }, { status: "PAUSED", updatedAt: 2, watchedAt: 1 }),
+      show("simkl", { 1: [1] }, { status: "DROPPED", updatedAt: 3, watchedAt: 1 }),
+    ];
+    const p = plan(entries, { trackers: W });
+    expect(p.conflicts).toMatchObject([
+      { field: "status", kind: "tv", chosen: { value: "DROPPED" } },
+    ]);
+    const picked = withPicks(p, { "status:tv:tmdb:5": "PAUSED" });
+    expect(statusOps(picked)).toEqual(["simkl:DROPPED>PAUSED"]);
   });
 });

@@ -189,6 +189,17 @@ export type SyncWrite =
       startedOn?: Day;
       finishedOn?: Day;
     }
+  /** Set the status of a movie or a whole show on a tracker that keeps watches
+   * by episode (`plan/status.ts`): Trakt's watchlist or dropped list, a WeTrakr
+   * tracking list, a Simkl list. `to` can be a status the tracker cannot hold:
+   * then the write only leaves `from` (Trakt leaves the watchlist). */
+  | {
+      tracker: Tracker;
+      op: "status";
+      target: TargetRef;
+      status: Change<CourStatus | null>;
+      was?: EntryState;
+    }
   /** Remove the entry from the tracker's list: a main list does not have it, or
    * another list removed it since the last sync (`base.ts`). Only list
    * entries: Trakt watch history is never removed. */
@@ -285,6 +296,9 @@ export interface StatusTarget {
   status: CourStatus | null;
   progress: number;
   total: number | null;
+  /** A tracker that keeps watches by episode: the pick is a `status` write on
+   * this movie or show (`plan/status.ts`), not a list entry. */
+  shape?: "movie" | "show";
 }
 
 /** A choice in a disagreement: a score (0 to 100) for a rating, a status for a

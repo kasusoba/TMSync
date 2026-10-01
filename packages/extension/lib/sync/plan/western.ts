@@ -1,10 +1,11 @@
-/** Movies and non-anime TV (Trakt, Simkl; no crosswalk). Pure. */
+/** Movies and non-anime TV (Trakt, WeTrakr, Simkl; no crosswalk). Pure. */
 import { type Tracker, trackerFamily, trackerLabel } from "../../trackers/types";
 import { entryKeys } from "../base";
 import { newest } from "../read-util";
-import type { EpisodeRef, SyncKind, SyncWrite, TargetRef } from "../types";
+import type { EpisodeRef, SyncConflict, SyncKind, SyncWrite, TargetRef } from "../types";
 import { type PlanContext, type SeasonedEntry, removedOn } from "./context";
 import { fillRatings, ratingNotices } from "./ratings";
+import { statusChange, wantedStatus } from "./status";
 import {
   hasEpisode,
   mergeIds,
@@ -177,6 +178,55 @@ export function planWestern(ctx: PlanContext, all: SeasonedEntry[], kind: SyncKi
         }
       }
     }
+  }
+
+  // Status: the movie's, or the whole show's (`status.ts`).
+  const shape = kind === "movie" ? "movie" : "show";
+  const want = wantedStatus(sources, shape);
+  const adds = (tk: Tracker) =>
+    writes.some((w) => w.tracker === tk && (w.op === "episodes" || w.op === "movie"));
+  const seen = sources.some((m) =>
+    m.shape === "movie" ? m.watched : Object.values(m.seasons).some((eps) => eps.length),
+  );
+  const statusConflict: SyncConflict | undefined =
+    want.conflict && want.latest
+      ? {
+          key,
+          title: first.title,
+          kind,
+          field: "status",
+          values: sources
+            .filter((m) => m.status)
+            .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+            .map((m) => ({ tracker: m.tracker, value: m.status as string, at: m.updatedAt })),
+          chosen: { tracker: want.latest.tracker, value: want.desired as string },
+          targets: [],
+        }
+      : undefined;
+  if (statusConflict) ctx.conflicts.push(statusConflict);
+  for (const tk of targets) {
+    const mine = own(tk);
+    const from = mine?.status ?? null;
+    // Only a plan goes to a list that has nothing of the item and gets nothing now.
+    const gets = mine || adds(tk) || want.desired === "PLANNING";
+    statusConflict?.targets?.push({
+      tracker: tk,
+      target: ref(tk),
+      exists: !!mine,
+      status: from,
+      progress: seen ? 1 : 0,
+      total: null,
+      shape,
+    });
+    const status = gets ? statusChange(tk, shape, from, want.desired) : undefined;
+    if (status)
+      writes.push({
+        tracker: tk,
+        op: "status",
+        target: ref(tk),
+        status,
+        was: mine && stateOf(mine),
+      });
   }
 
   // Ratings: the movie, or the whole show.

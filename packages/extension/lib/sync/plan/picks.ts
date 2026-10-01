@@ -3,6 +3,7 @@ import type { Tracker } from "../../trackers/types";
 import { type ScoreScale, onScale } from "../score";
 import { pickKey } from "../types";
 import type { SyncConflict, SyncPicks, SyncPlan, SyncWrite } from "../types";
+import { statusChange } from "./status";
 
 /**
  * The plan with the user's picks in disagreements (keyed by `pickKey`). Pure.
@@ -15,6 +16,9 @@ import type { SyncConflict, SyncPicks, SyncPlan, SyncWrite } from "../types";
  * disagreement gets the picked status, by the same rules the planner keeps (an
  * entry that sync finishes is completed, "completed" needs every episode, and an
  * entry with progress is not "plan to watch").
+ *
+ * On a tracker that keeps watches by episode, a status pick is a `status` write
+ * of the movie or show, with the same rules (`status.ts`).
  *
  * Without a pick the plan is as planned.
  */
@@ -54,6 +58,18 @@ export function withPicks(
       setWrites(c, (ws) => {
         const out = [...ws];
         for (const t of c.targets ?? []) {
+          if (t.shape) {
+            // A movie or show on a tracker that keeps watches by episode.
+            const shape = t.shape;
+            let to: CourStatus | null = pick;
+            if (t.progress > 0 && (to === "PLANNING" || shape === "movie"))
+              to = shape === "movie" ? null : "CURRENT";
+            const status = statusChange(t.tracker, shape, t.status, to);
+            const at = out.findIndex((w) => w.tracker === t.tracker && w.op === "status");
+            if (at >= 0) out.splice(at, 1);
+            if (status) out.push({ tracker: t.tracker, op: "status", target: t.target, status });
+            continue;
+          }
           let to: CourStatus = pick;
           if (t.total !== null && t.progress >= t.total && t.progress > 0) to = "COMPLETED";
           else if (to === "COMPLETED") to = "CURRENT";
