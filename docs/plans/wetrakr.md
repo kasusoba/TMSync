@@ -1,5 +1,9 @@
 # Plan: add WeTrakr as the fifth tracker
 
+> **Temporary file. Delete it in the last step (step 7).** Docs describe the current state only.
+> A plan and its log are not permanent docs. The facts that stay true move to `docs/TRACKERS.md`,
+> and the history stays in the merged PRs.
+
 Status file for a multi-PR job. A new session (any device) starts here: read this file, find the
 first unchecked step, and continue. Update the checklist and the log in the same PR as the work.
 When the last step merges, move the API facts into `docs/TRACKERS.md` and delete this file.
@@ -54,7 +58,7 @@ When the last step merges, move the API facts into `docs/TRACKERS.md` and delete
   the wetrakr.com URL shapes first (search results give `url: "/movies/483"`).
 - [ ] **7. Letterboxd export from WeTrakr, and docs.** Export source picker (Trakt or WeTrakr).
   Move the API facts below into `TRACKERS.md`; update `ARCHITECTURE.md`, `CLAUDE.md`, README,
-  store permission text. Delete this file.
+  store permission text. **Delete this file and the "Work in progress" entry in `CLAUDE.md`.**
 
 ## Log
 
