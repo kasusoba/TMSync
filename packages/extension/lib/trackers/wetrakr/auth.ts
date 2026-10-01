@@ -109,6 +109,10 @@ export async function connect(): Promise<void> {
  * later try.
  */
 const refresh = singleFlight(async (tokens: WetrakrTokens): Promise<WetrakrTokens | null> => {
+  // A caller that read the tokens before another refresh finished holds the old
+  // ones: the stored token already changed, so use it instead of refreshing again.
+  const stored = await wetrakrTokens.getValue();
+  if (stored && stored.access_token !== tokens.access_token) return stored;
   try {
     const next = await tokenRequest("/oauth/token/refresh", {
       refresh_token: tokens.refresh_token,

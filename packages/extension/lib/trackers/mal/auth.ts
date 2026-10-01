@@ -96,6 +96,10 @@ export async function connect(): Promise<MalTokens> {
  * later try.
  */
 const refresh = singleFlight(async (tokens: MalTokens): Promise<MalTokens | null> => {
+  // A caller that read the tokens before another refresh finished holds the old
+  // ones: the stored token already changed, so use it instead of refreshing again.
+  const stored = await malTokens.getValue();
+  if (stored && stored.access_token !== tokens.access_token) return stored;
   try {
     const next = await tokenRequest({
       grant_type: "refresh_token",

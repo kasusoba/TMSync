@@ -135,6 +135,10 @@ export function staleRefresh(old: SimklTokens | null, fresh: string): string | n
  * error) keeps it for a later try.
  */
 const refresh = singleFlight(async (tokens: SimklTokens): Promise<SimklTokens | null> => {
+  // A caller that read the tokens before another refresh finished holds the old
+  // ones: the stored token already changed, so use it instead of refreshing again.
+  const stored = await simklTokens.getValue();
+  if (stored && stored.access_token !== tokens.access_token) return stored;
   try {
     const out = await tokenRequest({
       grant_type: "refresh_token",
