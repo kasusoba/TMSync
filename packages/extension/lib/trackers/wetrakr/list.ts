@@ -1,8 +1,9 @@
 /**
- * WeTrakr's list for list sync: shows with watched episodes, watched movies, and
- * ratings, as `ListEntry` values. Like Trakt, an item that is rated but not watched
- * is still an entry. Sync treats WeTrakr as a seasoned tracker: watches and ratings
- * only (no status written, nothing removed), so its plays are never deleted.
+ * WeTrakr's list for list sync: shows with their status and watched episodes,
+ * movies watched, planned, or dropped, and ratings, as `ListEntry` values. Like
+ * Trakt, an item that is only rated or planned is still an entry. Sync treats
+ * WeTrakr as a seasoned tracker: nothing is removed, so its plays are never
+ * deleted.
  */
 import { z } from "zod";
 import {
@@ -14,7 +15,19 @@ import {
 } from "../../sync/list-cache";
 import { ms, newest, num, parseEach } from "../../sync/read-util";
 import type { ListEntry, SyncIds, SyncKind } from "../../sync/types";
+import type { CourStatus } from "../cour-plan";
 import { type WetrakrListDump, readWetrakrActivity, readWetrakrList, yearOf } from "./client";
+
+/** A WeTrakr tracking list as a status. `waiting` (caught up, the show still
+ * airing) is watching too. */
+export const WETRAKR_TO_COUR: Record<string, CourStatus> = {
+  watching: "CURRENT",
+  waiting: "CURRENT",
+  watched: "COMPLETED",
+  paused: "PAUSED",
+  dropped: "DROPPED",
+  planning: "PLANNING",
+};
 
 const Ids = z
   .object({
@@ -43,6 +56,9 @@ const Media = z
     release_date: z.string().nullish(),
     first_air_date: z.string().nullish(),
     watched_at: z.string().nullish(),
+    /** The tracking list the row came from (the reader adds it). */
+    list: z.string().nullish(),
+    tracked_at: z.string().nullish(),
   })
   .merge(UserRating);
 
@@ -117,8 +133,20 @@ export function wetrakrEntries(dump: WetrakrListDump): ListEntry[] {
     return e;
   };
 
+  // A caught-up show can sit in both `waiting` and `watched`: any list but
+  // `watched` is its status.
+  const setStatus = (
+    e: { status?: CourStatus | null; updatedAt?: number },
+    m: z.infer<typeof Media>,
+  ) => {
+    const status = m.list ? WETRAKR_TO_COUR[m.list] : undefined;
+    if (!status || (e.status && status === "COMPLETED")) return;
+    e.status = status;
+    e.updatedAt = newest(e.updatedAt, ms(m.tracked_at));
+  };
   for (const m of parseEach(Media, dump.shows)) {
-    show(m.id, m.title, m.ids, yearOf(m.first_air_date ?? m.release_date ?? undefined));
+    const e = show(m.id, m.title, m.ids, yearOf(m.first_air_date ?? m.release_date ?? undefined));
+    setStatus(e, m);
   }
   for (const p of parseEach(EpisodePlay, dump.episodePlays)) {
     const e = show(p.show_id, undefined, p.show_ids);
@@ -130,9 +158,11 @@ export function wetrakrEntries(dump: WetrakrListDump): ListEntry[] {
   for (const m of parseEach(Media, dump.movies)) {
     const e = movie(m);
     e.watched = true;
+    e.status ??= "COMPLETED";
     e.updatedAt = newest(e.updatedAt, ms(m.watched_at));
     e.watchedAt = newest(e.watchedAt, ms(m.watched_at));
   }
+  for (const m of parseEach(Media, dump.movieStatus ?? [])) setStatus(movie(m), m);
   for (const m of parseEach(Media, dump.showRatings)) {
     const r = m.interactions?.user?.rating;
     if (!r) continue;

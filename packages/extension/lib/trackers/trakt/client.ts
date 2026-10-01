@@ -509,25 +509,52 @@ export interface TraktListDump {
   showRatings: unknown[];
   seasonRatings: unknown[];
   movieRatings: unknown[];
+  /** The watchlist ("plan to watch"). Missing = not read. */
+  showWatchlist?: unknown[];
+  movieWatchlist?: unknown[];
+  /** Dropped shows (`/users/hidden/dropped`). */
+  dropped?: unknown[];
 }
 
-/** Read the user's watched shows and movies, and their ratings: up to five GETs,
- * fewer when shows or movies are not wanted. */
+/** Read the user's watched shows and movies, their ratings, the watchlist, and
+ * the dropped shows: up to eight paged GETs, fewer when shows or movies are not
+ * wanted. */
 export async function readTraktList(want: {
   shows: boolean;
   movies: boolean;
 }): Promise<TraktListDump> {
   const get = (on: boolean, path: string) =>
     on ? getAllPages<unknown>(path) : Promise.resolve<unknown[]>([]);
-  const [shows, movies, showRatings, seasonRatings, movieRatings] = await Promise.all([
+  const [
+    shows,
+    movies,
+    showRatings,
+    seasonRatings,
+    movieRatings,
+    showWatchlist,
+    movieWatchlist,
+    dropped,
+  ] = await Promise.all([
     // Without `extended=progress` Trakt leaves out the seasons (since July 2026).
     get(want.shows, "/sync/watched/shows?extended=progress"),
     get(want.movies, "/sync/watched/movies"),
     get(want.shows, "/sync/ratings/shows"),
     get(want.shows, "/sync/ratings/seasons"),
     get(want.movies, "/sync/ratings/movies"),
+    get(want.shows, "/sync/watchlist/shows"),
+    get(want.movies, "/sync/watchlist/movies"),
+    get(want.shows, "/users/hidden/dropped?type=show"),
   ]);
-  return { shows, movies, showRatings, seasonRatings, movieRatings };
+  return {
+    shows,
+    movies,
+    showRatings,
+    seasonRatings,
+    movieRatings,
+    showWatchlist,
+    movieWatchlist,
+    dropped,
+  };
 }
 
 /** Trakt's change stamps (`/sync/last_activities`), unparsed. One GET, so a list

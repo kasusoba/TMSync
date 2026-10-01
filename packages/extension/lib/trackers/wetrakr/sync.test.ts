@@ -45,6 +45,25 @@ describe("wetrakrEntries", () => {
     });
   });
 
+  it("reads a show's status from its list, any list but watched winning", () => {
+    const out = wetrakrEntries({
+      ...empty,
+      shows: [
+        { id: 1, title: "A", ids: { tmdb: 1 }, list: "watched" },
+        { id: 1, title: "A", ids: { tmdb: 1 }, list: "waiting" },
+        { id: 2, title: "B", ids: { tmdb: 2 }, list: "planning" },
+      ],
+      movies: [{ id: 3, title: "C", ids: { tmdb: 3 } }],
+      movieStatus: [{ id: 4, title: "D", ids: { tmdb: 4 }, list: "dropped" }],
+    });
+    expect(out.map((e) => [e.id, e.shape !== "cour" && e.status])).toEqual([
+      [1, "CURRENT"],
+      [2, "PLANNING"],
+      [3, "COMPLETED"],
+      [4, "DROPPED"],
+    ]);
+  });
+
   it("reads watched and rated movies, and skips rows that do not fit", () => {
     const out = wetrakrEntries({
       ...empty,

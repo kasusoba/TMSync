@@ -16,7 +16,7 @@ import type { ListEntry } from "./types";
 
 /** Bump when `ListCache` or `ListEntry` changes shape: an older saved list is then
  * read again instead of reused. */
-export const LIST_CACHE_VERSION = 4;
+export const LIST_CACHE_VERSION = 5;
 
 /** A tracker's list as saved after a read. */
 export interface ListCache {

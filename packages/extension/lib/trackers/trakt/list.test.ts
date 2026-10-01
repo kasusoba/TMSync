@@ -48,4 +48,21 @@ describe("traktEntries", () => {
       expect.objectContaining({ shape: "movie", id: 2, watched: false, rating: 80 }),
     ]);
   });
+
+  it("reads the watchlist as planned and a dropped show as dropped, the later one winning", () => {
+    const entries = traktEntries({
+      shows: [],
+      movies: [],
+      showRatings: [],
+      seasonRatings: [],
+      movieRatings: [],
+      showWatchlist: [{ listed_at: "2024-01-01T00:00:00.000Z", show: got }],
+      movieWatchlist: [{ listed_at: "2024-01-01T00:00:00.000Z", movie: heat }],
+      dropped: [{ hidden_at: "2024-03-01T00:00:00.000Z", show: got }],
+    });
+    expect(entries).toEqual([
+      expect.objectContaining({ shape: "seasons", id: 1390, status: "DROPPED", seasons: {} }),
+      expect.objectContaining({ shape: "movie", id: 1, status: "PLANNING", watched: false }),
+    ]);
+  });
 });

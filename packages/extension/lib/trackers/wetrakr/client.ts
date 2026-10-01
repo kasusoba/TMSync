@@ -381,41 +381,51 @@ async function allCompact(path: string): Promise<unknown[]> {
 
 /** Everything list sync reads from WeTrakr, as WeTrakr returns it. */
 export interface WetrakrListDump {
-  /** Show entries of every tracking list that holds watches (titles, ids). */
+  /** Show entries of every tracking list (titles, ids), each with the `list` it
+   * came from. */
   shows: unknown[];
   /** Every episode play, compact. */
   episodePlays: unknown[];
   /** Watched movies. */
   movies: unknown[];
+  /** Planned and dropped movies, each with its `list`. Missing = not read. */
+  movieStatus?: unknown[];
   showRatings: unknown[];
   seasonRatings: unknown[];
   movieRatings: unknown[];
 }
 
-/** The tracking lists a show with watched episodes can sit in. */
-const SHOW_LISTS = ["watching", "waiting", "watched", "paused", "dropped"] as const;
+/** The tracking lists of shows and of movies. */
+const SHOW_LISTS = ["watching", "waiting", "watched", "paused", "dropped", "planning"] as const;
+const MOVIE_LISTS = ["planning", "dropped"] as const;
 
-/** Read the user's watches and ratings: the parts not wanted are skipped. */
+/** Every row of some tracking lists, each tagged with its list. */
+const tagged = (lists: readonly string[], target: "shows" | "movies") =>
+  Promise.all(
+    lists.map((list) =>
+      allPages(`/sync/tracking/${list}/${target}`).then((rows) =>
+        rows.map((r) => ({ ...(r as object), list })),
+      ),
+    ),
+  ).then((l) => l.flat());
+
+/** Read the user's watches, statuses, and ratings: the parts not wanted are skipped. */
 export async function readWetrakrList(want: {
   shows: boolean;
   movies: boolean;
 }): Promise<WetrakrListDump> {
   const none = Promise.resolve<unknown[]>([]);
-  const [shows, episodePlays, movies, showRatings, seasonRatings, movieRatings] = await Promise.all(
-    [
-      want.shows
-        ? Promise.all(SHOW_LISTS.map((s) => allPages(`/sync/tracking/${s}/shows`))).then((l) =>
-            l.flat(),
-          )
-        : none,
+  const [shows, episodePlays, movies, movieStatus, showRatings, seasonRatings, movieRatings] =
+    await Promise.all([
+      want.shows ? tagged(SHOW_LISTS, "shows") : none,
       want.shows ? allCompact("/sync/tracking/watched/history/episodes") : none,
       want.movies ? allPages("/sync/tracking/watched/movies") : none,
+      want.movies ? tagged(MOVIE_LISTS, "movies") : none,
       want.shows ? allPages("/sync/ratings/shows") : none,
       want.shows ? allPages("/sync/ratings/seasons") : none,
       want.movies ? allPages("/sync/ratings/movies") : none,
-    ],
-  );
-  return { shows, episodePlays, movies, showRatings, seasonRatings, movieRatings };
+    ]);
+  return { shows, episodePlays, movies, movieStatus, showRatings, seasonRatings, movieRatings };
 }
 
 /** WeTrakr's change stamps (`/sync/last_activities`), unparsed. */
