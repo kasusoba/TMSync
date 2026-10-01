@@ -53,7 +53,7 @@ auto-detects metadata first and shows a live preview of what the engine reads. T
 from Options, under Sites.
 
 A recipe does not set when an episode counts as finished. The engine uses one fixed point, 80%
-(`WATCHED_THRESHOLD` in `lib/trackers/types.ts`), which matches Trakt's own rule. For Trakt and Simkl it
+(`WATCHED_THRESHOLD` in `lib/trackers/types.ts`), which matches Trakt's own rule. For Trakt, WeTrakr, and Simkl it
 decides *when* the stop is sent. For AniList and MyAnimeList it *is* the watched decision. Older
 recipes may still carry `video.watchedThreshold`. The schema drops it, so it has no effect.
 

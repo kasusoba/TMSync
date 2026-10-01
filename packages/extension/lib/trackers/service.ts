@@ -94,6 +94,9 @@ export interface TrackerService {
     chunk: number;
     run(writes: SyncWrite[], report?: ApplyReport): Promise<ChunkOutcome>;
   };
+  /** A Letterboxd-import CSV of the user's movies (`TRACKER_INFO.exportsLetterboxd`).
+   * Throws with a user-facing message when it fails. */
+  exportLetterboxd?(): Promise<{ csv: string; count: number }>;
   /** Alarm handlers by alarm name (the tracker creates the alarms itself). */
   alarms?: Record<string, () => Promise<void>>;
   /** Listeners and this tracker's own message handlers (features only it has), set

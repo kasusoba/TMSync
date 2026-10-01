@@ -763,6 +763,7 @@ export function App() {
   const [needsOnly, setNeedsOnly] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [exportFrom, setExportFrom] = useState<Tracker | null>(null);
   const [exportNote, setExportNote] = useState<string | null>(null);
   const [backupBusy, setBackupBusy] = useState(false);
   const [backupNote, setBackupNote] = useState<string | null>(null);
@@ -1073,16 +1074,17 @@ export function App() {
     setOpenLinkId(id); // auto-expand the new row (and collapse any other)
   };
 
-  const exportLetterboxd = async () => {
+  const exportLetterboxd = async (tracker: Tracker) => {
     setExporting(true);
     setExportNote(null);
-    const out = await sendMessage("exportLetterboxd", undefined);
+    setExportFrom(tracker);
+    const out = await sendMessage("exportLetterboxd", { tracker });
     if (out.ok && out.csv !== undefined) {
       const blob = new Blob([out.csv], { type: "text/csv;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "trakt-letterboxd.csv";
+      a.download = `${tracker}-letterboxd.csv`;
       a.click();
       URL.revokeObjectURL(url);
       const n = out.count ?? 0;
@@ -1209,22 +1211,23 @@ export function App() {
       setAnimap({ forward: {}, reverse: {} });
     });
 
-  // Trakt's Letterboxd export, shown under the Trakt account row once connected.
-  const letterboxdCard = (
+  // The Letterboxd export, under the account row of each connected tracker that
+  // can export (`TRACKER_INFO.exportsLetterboxd`).
+  const letterboxdCard = (tk: Tracker) => (
     <div class={clsx("space-y-2 rounded-lg px-3 py-2.5", t.card)}>
       <div class="flex items-center justify-between gap-3">
         <span class="min-w-0">
           <span class={clsx("block text-[13px] font-medium", t.heading)}>Export to Letterboxd</span>
           <span class={clsx("block text-[11px] leading-relaxed", t.sub)}>
-            Your Trakt movie history, ratings &amp; reviews as a Letterboxd-import CSV (rewatches
-            included).
+            Your {trackerLabel(tk)} movie history, ratings &amp; reviews as a Letterboxd-import CSV
+            (rewatches included).
           </span>
         </span>
-        <Btn t={t} tone="ghost" disabled={exporting} onClick={exportLetterboxd}>
+        <Btn t={t} tone="ghost" disabled={exporting} onClick={() => exportLetterboxd(tk)}>
           <Icon name="external" class="text-[12px]" /> {exporting ? "Exporting…" : "Export CSV"}
         </Btn>
       </div>
-      {exportNote && (
+      {exportNote && exportFrom === tk && (
         <p class={clsx("rounded-md px-2.5 py-1.5 text-[11px]", t.infoBox)}>{exportNote}</p>
       )}
     </div>
@@ -1452,7 +1455,9 @@ export function App() {
                     onConnect={() => connectProvider(tk)}
                     onDisconnect={() => act(() => sendMessage("disconnectTracker", tk))}
                   >
-                    {tk === "trakt" && accounts.trakt?.connected && letterboxdCard}
+                    {TRACKER_INFO[tk].exportsLetterboxd &&
+                      accounts[tk]?.connected &&
+                      letterboxdCard(tk)}
                   </AccountRow>
                 ))}
               </>

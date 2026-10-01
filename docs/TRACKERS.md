@@ -13,6 +13,7 @@ official docs, the date is given.
 - [AniList](#anilist)
 - [MyAnimeList](#myanimelist)
 - [Simkl](#simkl)
+- [WeTrakr](#wetrakr)
 - [Rating and notes by tracker](#rating-and-notes-by-tracker)
 - [List sync: reads and writes](#list-sync-reads-and-writes)
 - [Adding a tracker](#adding-a-tracker)
@@ -153,17 +154,68 @@ retired.
   10 seconds. Chrome counts that as activity, and Firefox is unverified. If Firefox sleeps the
   worker, the held stop still goes out from its alarm about 30 seconds later.
 
+## WeTrakr
+
+Checked 2026-10-01 against the official docs (`https://api.wetrakr.com/#/`). The docs page is a
+JavaScript app with no spec file: the reference is data inside its `/assets/index-<hash>.js` bundle.
+The API is in beta, so check it again before relying on a detail.
+
+- **App:** registered on request (WeTrakr Discord), one app per account, so no second app for
+  Firefox: ask for both TMSync redirect URIs on the one app. The client id is the public app key.
+- **Every request** carries `wetrakr-api-key: <client id>` and `wetrakr-api-version: 1`, plus
+  `Authorization: Bearer` when signed in. JSON bodies.
+- **Auth:** `GET /oauth/authorize` with `client_id`, `redirect_uri`, `code_challenge`,
+  `code_challenge_method=S256`, and `state` (all required). Exchange at `POST /oauth/token` with
+  `{client_id, code, code_verifier}`. **Never send a secret:** the terms forbid one in an app users
+  install, and a wrong one burns the code. The access token lasts 7 days and the refresh token 180.
+  `POST /oauth/token/refresh` ROTATES the refresh token (the old one has a short grace window), so
+  refresh single-flight. A 401 `INVALID_REFRESH_TOKEN` means connect again. Disconnect calls
+  `POST /oauth/logout` with the refresh token. A device flow exists too (`/oauth/device/*`).
+- **CORS:** none, the preflight included. `api.wetrakr.com` is an optional host permission asked
+  on Connect, with `wetrakr.com` for its quick links (`TRACKER_INFO.hostAccess`).
+- **Resolve:** `GET /media/external/{tmdb|imdb|tvdb}/{id}?type=movie|show` gives `{id, type}`; TMDB
+  needs `type` (409 with both matches without it). Then `GET /movies/{id}` or `/shows/{id}` for the
+  title and ids. Else `GET /search?q&filter_type=movie|show`. Search results carry NO external ids,
+  so a manual pick reads each hit's detail (cached in `wetrakr_ids_cache`). WeTrakr ids are not TMDB
+  ids: the two id spaces overlap. Seasons and episodes: `/shows/{id}/seasons/{n}` and
+  `/seasons/{n}/episodes/{e}`.
+- **Scrobble:** `POST /scrobble/start|pause|stop` with `movie` or `show` + `episode {season,
+  number}` (by WeTrakr `id`, or `{title, year, ids}`), `progress` 0 to 100, and `app_version`.
+  WeTrakr owns the watched decision: a stop at 80 or more logs the play (201 `scrobble`), less is a
+  pause. A stop at 80 or more works without a start. A repeat inside one runtime is not logged
+  again, so a second stop is safe. `start` echoes the episode it matched: TMSync compares it with the
+  one sent, and on a mismatch it calls `DELETE /scrobble/playing` (cancel, no play logged) and shows
+  the numbering warning. A 404 means the title or episode is not on WeTrakr.
+- **Ratings:** `POST /sync/ratings` and `/sync/ratings/remove`, 0 to 10 with one decimal, at the
+  movie, show, season, or episode level. Seasons and episodes nest by number under the show, like
+  Trakt. TMSync sends whole stars. The user's rating of one item is
+  `interactions.user.rating.rating` on the item with `?extended=interactions`.
+- **Comments are public** (the note, like Trakt): `POST /sync/comments` with one of `movie`,
+  `show`, `season`, `episode` (a season or episode by its own id), `text` (up to 10,000
+  characters, no minimum), and `spoiler`. `DELETE /sync/comments/{id}`. There is **no edit**: a
+  changed note posts a new comment, then deletes the old one. Private notes exist (`/sync/notes`)
+  but a free account keeps only 100, so TMSync does not use them.
+- **Watched progress** (the popup): the per-season episode lists carry the user's tracking state
+  when signed in. One call per season, so it is kept 5 minutes and skipped above 15 seasons.
+- **Limits:** per user, 200 GET and 60 writes a minute; a daily quota (1,000 on a free account) is
+  in test and not enforced. Headers `RateLimit-*` and `X-Quota-*`. 429 = back off, 420 = plan
+  limit, 423 = the app is locked.
+- **Terms:** link the item's wetrakr.com page wherever its data shows; cache, and check
+  `/sync/last_activities` before a list is read again; never poll in a loop; never parse
+  wetrakr.com HTML (the quick links read the URL and the API); delete the user's WeTrakr data on
+  disconnect; store tokens encrypted.
+
 ## Rating and notes by tracker
 
 The rating panel reads `TRACKER_INFO.rates` and `.note`, never the tracker name or its numbering
 family.
 
-| | **Trakt** | **AniList** | **MyAnimeList** | **Simkl** |
-|---|---|---|---|---|
-| Rate at | show, season, or episode | the cour entry | the cour entry | the movie or show |
-| Score scale | 1 to 10 | the user's `scoreFormat` | 1 to 10 integer (0 clears) | 1 to 10 integer |
-| Text | a public comment (5 words or more) | a private note (`MediaList.notes`) | a private note (`comments`) | none |
-| Public review | deferred | deferred (`SaveReview`, a separate public entity with a long minimum) | none | none |
+| | **Trakt** | **WeTrakr** | **AniList** | **MyAnimeList** | **Simkl** |
+|---|---|---|---|---|---|
+| Rate at | show, season, or episode | show, season, or episode | the cour entry | the cour entry | the movie or show |
+| Score scale | 1 to 10 | 0 to 10 (TMSync sends 1 to 10) | the user's `scoreFormat` | 1 to 10 integer (0 clears) | 1 to 10 integer |
+| Text | a public comment (5 words or more) | a public comment (no minimum, no edit) | a private note (`MediaList.notes`) | a private note (`comments`) | none |
+| Public review | deferred | comments of 200 words or more show as reviews | deferred (`SaveReview`, a separate public entity with a long minimum) | none | none |
 
 Score and note both write to the cour entry on AniList and MAL. There is no episode-level score and
 no object above the entries to rate. Rating prompts fire on completion only.
@@ -176,6 +228,7 @@ How list sync reads and writes each tracker. How it plans is in
 | | **Reads (one preview)** | **Writes (apply)** | **Spacing and stops** |
 |---|---|---|---|
 | Trakt | `/sync/last_activities`, then (if it moved) up to 5 GETs: `/sync/watched/{shows,movies}`, `/sync/ratings/{shows,seasons,movies}` (paged) | `POST /sync/history`, `POST /sync/ratings`, and `POST /sync/ratings/remove`, up to 100 items each | 1.1 s between POSTs. 429 or 420 stops Trakt. |
+| WeTrakr | `/sync/last_activities`, then (if it moved): the show lists `/sync/tracking/{watching,waiting,watched,paused,dropped}/shows` (titles), the compact episode plays `/sync/tracking/watched/history/episodes`, `/sync/tracking/watched/movies`, and `/sync/ratings/{shows,seasons,movies}` (paged) | `POST /sync/tracking` (status `watched` per episode or movie), `POST /sync/ratings`, `POST /sync/ratings/remove`, up to 100 items each | 1.1 s between POSTs (60 writes a minute). 429, 420, or 423 stops WeTrakr. |
 | AniList | `Viewer`, then `MediaListCollection` in chunks of 500 (custom lists too, one entry per media: an entry hidden from status lists is only there) | a fresh `Page.mediaList(mediaId_in)` read per 25 entries, then one `SaveMediaListEntry` or `DeleteMediaListEntry` per entry | 2.1 s between requests. A 429 waits out `Retry-After` once; a second one stops AniList. |
 | MyAnimeList | `/users/@me/animelist`, 1000 per page, one page at a time | per entry: `GET /anime/{id}` (`my_list_status`), then `PATCH` or `DELETE /anime/{id}/my_list_status` | 1.5 s between requests. A 403 stops MAL. |
 | Simkl | `/sync/activities`, then 0 to 3: `/sync/all-items/{shows,anime,movies}` for the types that moved, with `date_from` when nothing was removed | `POST /sync/history/remove`, `/sync/history`, `/sync/ratings`, `/sync/ratings/remove`, up to 250 items per chunk | 1.1 s between POSTs. A 429 stops Simkl. |
@@ -186,6 +239,13 @@ How list sync reads and writes each tracker. How it plans is in
   (the air date). A season rating nests in its show: `shows: [{ ids, seasons: [{ number, rating }] }]`.
   Trakt echoes items it could not match in `not_found`. Trakt has no list status and no list
   entries, so sync writes it no status and never removes from it.
+- **WeTrakr.** Sync treats it like Trakt (the `seasoned` family): watches and ratings, season
+  ratings too; it writes no status, removes nothing, and cannot be a main list, because its plays
+  are watch history. A watch write gives each episode its own `watched` status, so the show's
+  status is untouched, and `tracked_at` (else `use_release_date`) dates it. WeTrakr echoes what it
+  could not resolve in `notFound` (camel case). Compact rows carry no titles, which is why the
+  show lists are read too. WeTrakr also keeps statuses (watching, planning, dropped, paused) that
+  sync does not use yet.
 - **AniList.** Read scores with `score(format: POINT_100)`, so every score is 0 to 100, and write
   with `scoreRaw` (0 clears a rating). A removal needs the LIST ENTRY id (`MediaList.id`), not the media id; the fresh
   read before each write gives it. `private` entries, entries hidden from status lists (`hiddenFromStatusLists`), and `isAdult` media are skipped by default.
@@ -216,7 +276,8 @@ a fixed set:
 
 1. **Types.** Add the id to the `Tracker` union and `TrackerId` in `packages/shared`, and give it a
    `TRACKER_INFO` entry in `lib/trackers/types.ts`: `label`, `family` (`seasoned`, `cour`, or `any`),
-   `rates`, `note`, and how a wrong match is fixed. Bump `SCHEMA_VERSION` (see
+   `rates`, `note` (and `noteMinWords`), how a wrong match is fixed, `hostAccess` when the API has
+   no CORS, and `exportsLetterboxd` when the service can export movies. Bump `SCHEMA_VERSION` (see
    [`RECIPES.md`](./RECIPES.md#versioning)), since an older build cannot parse the new value.
 2. **Adapter.** Add `lib/trackers/<tracker>/` with a `TrackerAdapter`: `resolve`, `recordProgress`,
    `ratingLevels`, `watchedState`, and `resolvableNamespaces`, strongest id first. Register it in
@@ -235,11 +296,15 @@ a fixed set:
    brings its fix-match `pins` (the type requires them). If the tracker can search, add `search`
    (and `pinPick` if a pick's ids alone could drift), so manual mode can use it. Register it in
    `SERVICES` (`lib/trackers/service.ts`). The background needs no edit.
-6. **UI.** Add a mark (`marks.data.ts`, `kit.tsx`, the `TRACKER_MARK` entry), an Account row in
-   Options, a connect button in the popup, and a picker toggle entry in `PickerPanel.tsx`. Provider
-   rows are hand-wired per provider, not a loop. Add the new states to the gallery.
-7. **Storage and backup.** Add token and connection keys in `lib/storage.ts` and to
-   `lib/portability`.
+6. **UI.** Add a mark (`marks.data.ts`, `kit.tsx`, the `TRACKER_MARK` entry) and a picker toggle
+   entry in `PickerPanel.tsx`. The Options account rows and the popup connect buttons loop over
+   `ALL_TRACKERS`, so they need no edit; the gallery's `OptionsView` mock is hand-wired, so add a
+   row there, and add the new states to the gallery. A tracker with quick links on its own site
+   adds a runtime quick-links script and joins `QUICK_LINK_PAGES`; keep its host out of the
+   install manifest (`wxt.config.ts` strips it).
+7. **Storage and backup.** Define the token item with `secretItem` in `lib/storage.ts` (stored
+   encrypted) and add it to `trackerTokens`. Tokens never go in a backup; add the tracker to the
+   backup's list sync `kinds` schema (`lib/portability/backup.ts`).
 8. **List sync (optional).** Add `list.ts` (a pure normalizer to `ListEntry`) and `apply.ts`
    (writes to API calls, `unrate` included), and wire `readList` and `applyList` in the service.
    Without them the tracker takes no part in list sync. If the API has a cheap change check, use

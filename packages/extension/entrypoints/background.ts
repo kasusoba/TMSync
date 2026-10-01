@@ -54,7 +54,12 @@ import {
   getService,
   watchConnectGrants,
 } from "@/lib/trackers/service";
-import { type TrackedItem, type Tracker, WATCHED_THRESHOLD } from "@/lib/trackers/types";
+import {
+  TRACKER_INFO,
+  type TrackedItem,
+  type Tracker,
+  WATCHED_THRESHOLD,
+} from "@/lib/trackers/types";
 import {
   type BadgeStatus,
   type DerivedOutcome,
@@ -430,6 +435,17 @@ export default defineBackground(() => {
       return (await getService(data.tracker).search?.(data.query, data.type)) ?? [];
     } catch {
       return [];
+    }
+  });
+
+  onMessage("exportLetterboxd", async ({ data }) => {
+    const run = getService(data.tracker).exportLetterboxd;
+    if (!run) return { ok: false, error: `${TRACKER_INFO[data.tracker].label} has no export` };
+    try {
+      const { csv, count } = await run();
+      return { ok: true, csv, count };
+    } catch (e) {
+      return { ok: false, error: errorMessage(e) };
     }
   });
 

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeBrowser } from "wxt/testing";
 import { buildScrobbleBody, episodeMismatch } from "./adapter";
 import { readCallback } from "./auth";
-import { resolve, saveCorrection, wetrakrCacheKey, yearOf } from "./client";
+import { exportLetterboxd, resolve, saveCorrection, wetrakrCacheKey, yearOf } from "./client";
 
 const show: ParsedMedia = {
   mediaType: "show",
@@ -172,5 +172,35 @@ describe("resolve", () => {
     expect(await resolve(show)).toEqual(fix);
     expect(calls).toHaveLength(0);
     expect(await wetrakrCorrections.getValue()).toHaveProperty("show:tmdb:1396");
+  });
+});
+
+describe("exportLetterboxd", () => {
+  it("turns plays, ratings, and comments into Letterboxd rows", async () => {
+    const heat = {
+      id: 7,
+      title: "Heat",
+      ids: { tmdb: 949, imdb: "tt0113277" },
+      release_date: "1995-12-15",
+    };
+    api({
+      "/sync/tracking/watched/history/movies": [
+        { watched_at: "2026-01-02T20:00:00Z", movie: heat },
+        { watched_at: "2025-06-01T20:00:00Z", movie: heat },
+      ],
+      "/sync/ratings/movies": [
+        { ...heat, type: "movie", interactions: { user: { rating: { rating: 8.6 } } } },
+      ],
+      "/sync/comments/movies": [{ text: "Great heist film.", is_long: false, movie: { id: 7 } }],
+    });
+    const { csv, count } = await exportLetterboxd();
+    expect(count).toBe(2);
+    const lines = csv.trim().split("\n");
+    expect(lines[1]).toContain("2026-01-02");
+    // The rating and review attach to the earliest play only.
+    expect(lines[2]).toContain("2025-06-01");
+    expect(lines[2]).toContain("4.5");
+    expect(lines[2]).toContain("Great heist film.");
+    expect(lines[2]).toContain("tt0113277");
   });
 });

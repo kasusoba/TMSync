@@ -1,5 +1,4 @@
 import { TRAKT } from "@/config";
-import { errorMessage } from "@/lib/errors";
 import { onMessage } from "@/messaging";
 import type { TrackerService } from "../service";
 import { TRAKT_CHUNK, applyTrakt } from "./apply";
@@ -57,6 +56,13 @@ export const traktService: TrackerService = {
         year: pick.year,
       }),
     ),
+  exportLetterboxd: async () => {
+    try {
+      return await exportLetterboxd();
+    } catch (e) {
+      throw e instanceof TraktNotConnectedError ? new Error("Not connected to Trakt") : e;
+    }
+  },
   onWake() {
     // The ids behind a trakt.tv page slug, for the quick links on trakt.tv.
     onMessage("traktIdsForSlug", async ({ data }) => {
@@ -64,19 +70,6 @@ export const traktService: TrackerService = {
         return await idsForSlug(data.type, data.slug);
       } catch {
         return null;
-      }
-    });
-
-    // Letterboxd import CSV from the user's Trakt movies (options page).
-    onMessage("exportLetterboxd", async () => {
-      try {
-        const { csv, count } = await exportLetterboxd();
-        return { ok: true, csv, count };
-      } catch (e) {
-        return {
-          ok: false,
-          error: e instanceof TraktNotConnectedError ? "Not connected to Trakt" : errorMessage(e),
-        };
       }
     });
   },

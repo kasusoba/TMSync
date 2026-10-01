@@ -15,7 +15,7 @@ Two kinds of contribution are welcome: **site definitions** (the easy, high-valu
 The most useful thing most people can contribute is a **recipe** (so TMSync can scrobble a
 streaming site) and/or a **quick link** (so a "watch on ..." button appears on tracker pages).
 Both live in one tracker-agnostic file, [`recipes/index.json`](./recipes/index.json). Each recipe
-names the trackers it records to, so Trakt, Simkl, and anime sites coexist in the same list.
+names the trackers it records to, so Trakt, WeTrakr, Simkl, and anime sites coexist in the same list.
 There is no backend: the library is versioned JSON fetched from this repo, and it reaches every
 user with the next library sync after a PR merges.
 

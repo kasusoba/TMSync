@@ -10,8 +10,8 @@
 
 Automatically scrobble what you watch to your media trackers, on any streaming site. TMSync is
 multi-tracker by design. Today it supports [Trakt](https://trakt.tv),
-[AniList](https://anilist.co), [MyAnimeList](https://myanimelist.net), and
-[Simkl](https://simkl.com), with room for more.
+[WeTrakr](https://wetrakr.com), [AniList](https://anilist.co),
+[MyAnimeList](https://myanimelist.net), and [Simkl](https://simkl.com), with room for more.
 
 TMSync is a browser extension for Chrome and Firefox. While you watch on a streaming site it
 reads what's playing, finds it on the right tracker, and logs it for you. No manual check-ins.
@@ -22,7 +22,7 @@ Each thing you watch is routed to the trackers that fit it, all at once if you l
 
 | Tracker | Takes |
 |---|---|
-| Trakt, Simkl | Everything: movies and TV, live-action and anime |
+| Trakt, WeTrakr, Simkl | Everything: movies and TV, live-action and anime |
 | AniList, MyAnimeList | Anime only: series and movies |
 
 You choose which trackers are on for each site. If you know MAL-Sync for anime, this is the same
@@ -43,8 +43,8 @@ idea, made general across trackers.
 
 ## What it does
 
-- Detects the title and episode when you press play and records it to the right tracker. Trakt
-  and Simkl update in real time, so your profile shows what you're currently watching. AniList
+- Detects the title and episode when you press play and records it to the right tracker. Trakt,
+  WeTrakr, and Simkl update in real time, so your profile shows what you're currently watching. AniList
   and MyAnimeList get one list update per episode, once you pass the point where it counts as
   watched.
 - Works on most sites with a video and a readable title, including ones with no API.
@@ -60,10 +60,10 @@ idea, made general across trackers.
   Pick one tracker as the main list, or let each list fill in what the others have. A removal
   on one list carries over to the others. You can turn on a daily automatic sync (it only adds;
   removals and conflicts wait for you).
-- Adds "watch on..." links to trakt.tv and anilist.co pages that take you to your usual streaming
+- Adds "watch on..." links to trakt.tv, wetrakr.com, and anilist.co pages that take you to your usual streaming
   sites at the right episode.
-- Backs up your sites, quick links, and corrections to a file, and exports your Trakt movie
-  history to Letterboxd as a CSV.
+- Backs up your sites, quick links, and corrections to a file, and exports your Trakt or WeTrakr
+  movie history to Letterboxd as a CSV.
 - Your watch history only goes to your own tracker accounts. Matching and scrobbling happen on
   your machine, and each item goes only to the trackers it's routed to.
 - Only gets access to a site once you enable it there. No broad permissions at install.
@@ -73,7 +73,7 @@ idea, made general across trackers.
 1. Install it from the
    [Chrome Web Store](https://chromewebstore.google.com/detail/tmsync/hkfpacmhbiccimikfleemmhfemdnjfpf)
    or [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/tmsync/).
-2. Click the toolbar icon and connect the trackers you use: Trakt, AniList, MyAnimeList, Simkl,
+2. Click the toolbar icon and connect the trackers you use: Trakt, WeTrakr, AniList, MyAnimeList, Simkl,
    or any mix. MyAnimeList asks for access to myanimelist.net when you connect it.
 3. Open something to watch on a streaming site and turn TMSync on for it under "Video detection"
    in the popup. A small badge shows what it matched. Press play.
@@ -105,7 +105,7 @@ Want to chat, ask a question, or request a site? Join the
   Chrome Web Store listing copy, kept here so it stays in sync.
 
   Short description (max 132 chars):
-  Auto-scrobble what you watch to your trackers (Trakt, AniList, MyAnimeList, Simkl). Works on most streaming sites, no manual logging.
+  Auto-scrobble what you watch to your trackers (Trakt, WeTrakr, AniList, MyAnimeList, Simkl). Works on most streaming sites.
 
   Full description: the "What it does" + "Getting started" sections above.
 
@@ -114,8 +114,10 @@ Want to chat, ask a question, or request a site? Join the
   access to a streaming site to read the title and episode that plays there. It also asks
   for access to myanimelist.net and api.myanimelist.net only when the user connects a
   MyAnimeList account, to sign in and to update that user's anime list. MyAnimeList's API
-  does not allow calls from other origins without this access. No access is granted at
-  install.
+  does not allow calls from other origins without this access. In the same way it asks for
+  access to api.wetrakr.com and wetrakr.com only when the user connects a WeTrakr account: to
+  sign in, to record that user's watches, and to show "watch on" links on wetrakr.com pages.
+  No access is granted at install.
 -->
 
 ## License

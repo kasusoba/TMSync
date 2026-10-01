@@ -5,8 +5,8 @@ A plain-English tour of how the code works, subsystem by subsystem. Read it when
 [`CLAUDE.md`](../CLAUDE.md). Recipe details are in [`RECIPES.md`](./RECIPES.md), and per-tracker API
 facts are in [`TRACKERS.md`](./TRACKERS.md).
 
-TMSync scrobbles movies and non-anime TV to Trakt and/or Simkl, and anime to AniList and/or
-MyAnimeList (and to Trakt and Simkl too), all at once if the user wants. It works on arbitrary
+TMSync scrobbles movies and non-anime TV to Trakt, WeTrakr, and/or Simkl, and anime to AniList and/or
+MyAnimeList (and to Trakt, WeTrakr, and Simkl too), all at once if the user wants. It works on arbitrary
 streaming sites, including ones with no API. List sync (section 7) can also bring the
 lists of all connected trackers in sync. It exists because tools like MAL-Sync cover only anime,
 and others are tied to official integrations and will not touch aggregator sites.
@@ -157,14 +157,14 @@ implementations behind it.
 tracker rates (`levels` or the whole `entry`) and what note it keeps (`public`, `private`,
 `none`); the rating panel reads those, not tracker names.
 
-| | **Trakt** (`lib/trackers/trakt/`) | **AniList** (`lib/trackers/anilist/`) | **MyAnimeList** (`lib/trackers/mal/`) | **Simkl** (`lib/trackers/simkl/`) |
-|---|---|---|---|---|
-| Progress | real-time scrobble `start`/`pause`/`stop` | none, one `SaveMediaListEntry` per episode at threshold | none, one `PATCH my_list_status` per episode at threshold | real-time scrobble, one call per 20 s |
-| Watched decision | Trakt owns it (≥80% on stop) | *we* own it (crossing `WATCHED_THRESHOLD`, 80%) | *we* own it (same planner) | Simkl owns it (≥80% on stop) |
-| Auth | OAuth authorization-code, refresh-token rotation | OAuth authorization-code, ~1-year token, no refresh | authorization code + PKCE, no secret, refresh on 401 / near expiry | AUTH V2 code + PKCE (S256), no secret, 7-day token, refresh + revoke |
-| Identity | `/search` → trakt/imdb/tmdb ids | GraphQL `Media` search → AniList id | MAL id, AniList `idMal`, else MAL search | none: each write sends ids + title + year; the match is cached from the reply |
-| Resolvable ids | tmdb, imdb, tvdb | anilist, mal | mal | all (only when alone) |
-| Host access | install manifest | install manifest | optional, asked on Connect | none (CORS) |
+| | **Trakt** (`lib/trackers/trakt/`) | **WeTrakr** (`lib/trackers/wetrakr/`) | **AniList** (`lib/trackers/anilist/`) | **MyAnimeList** (`lib/trackers/mal/`) | **Simkl** (`lib/trackers/simkl/`) |
+|---|---|---|---|---|---|
+| Progress | real-time scrobble `start`/`pause`/`stop` | real-time scrobble; a mismatched echoed episode cancels the session | none, one `SaveMediaListEntry` per episode at threshold | none, one `PATCH my_list_status` per episode at threshold | real-time scrobble, one call per 20 s |
+| Watched decision | Trakt owns it (≥80% on stop) | WeTrakr owns it (≥80% on stop) | *we* own it (crossing `WATCHED_THRESHOLD`, 80%) | *we* own it (same planner) | Simkl owns it (≥80% on stop) |
+| Auth | OAuth authorization-code, refresh-token rotation | code + PKCE (S256), no secret, 7-day token, rotating refresh, logout on disconnect | OAuth authorization-code, ~1-year token, no refresh | authorization code + PKCE, no secret, refresh on 401 / near expiry | AUTH V2 code + PKCE (S256), no secret, 7-day token, refresh + revoke |
+| Identity | `/search` → trakt/imdb/tmdb ids | `/media/external` by page id, else `/search` | GraphQL `Media` search → AniList id | MAL id, AniList `idMal`, else MAL search | none: each write sends ids + title + year; the match is cached from the reply |
+| Resolvable ids | tmdb, imdb, tvdb | tmdb, imdb, tvdb | anilist, mal | mal | all (only when alone) |
+| Host access | install manifest | optional, asked on Connect (API and site) | install manifest | optional, asked on Connect | none (CORS) |
 
 **Why they're deliberately different code paths:** AniList has no concept of "currently watching",
 so faking a scrobble loop for it would be wrong. It reads the viewer's existing list entry *before
@@ -306,12 +306,12 @@ and nothing of it touches `extract()` or the scrobble path.
 
 1. **Read.** Each tracker's service has `readList(kinds, saved, timed)`, which returns its whole list as
    normalized `ListEntry` values in one of three shapes: `movie` (watched or not), `seasons` (a
-   set of watched episodes per season: Trakt, Simkl shows), and `cour` (a count plus a status:
+   set of watched episodes per season: Trakt, WeTrakr, Simkl shows), and `cour` (a count plus a status:
    AniList, MAL, Simkl anime). The readers live in `lib/trackers/<tracker>/list.ts`, each a pure
    normalizer (Zod per item, a bad item is dropped) plus a fetch in its `client.ts`. A tracker with
    a change check reuses its saved list (see "Change checks").
 2. **Plan.** `planSync` (`plan/`, pure; `plan/index.ts` names each file's part) groups entries that are the same thing, by id only, never
-   by title. Movies and non-anime TV move between Trakt and Simkl by tmdb, imdb, or tvdb. Anime is
+   by title. Movies and non-anime TV move between Trakt, WeTrakr, and Simkl by tmdb, imdb, or tvdb. Anime is
    planned per cour. A seasoned list reaches a cour through the crosswalk, with the user's fix-match
    pins folded in (`withOverrides`). A crosswalk miss or ambiguity is a skip, reported, never a
    guess. The result is a `SyncPlan`: per-item writes (`SyncWrite`, which describe intent, not API
@@ -387,7 +387,7 @@ the status the preview saw, and a rating fills an empty one unless the user pick
 **Dates.** A backfilled watch on Trakt or Simkl gets the date the source list was last watched
 (`watchedAt`), so a large first sync does not put hundreds of watches on one day. It is never the
 last change of the entry: a rating or a watchlist add years after the watch would date the play by
-it. Trakt and Simkl give the last watch. AniList and MAL give the finish day of a finished entry,
+it. Trakt, WeTrakr, and Simkl give the last watch. AniList and MAL give the finish day of a finished entry,
 else only the last change, which can be later than the watch but never earlier. Every episode of
 one backfill gets the same date. When the date is unknown, Trakt uses the air date and Simkl uses
 the time of the write.
@@ -504,8 +504,9 @@ travels.
   `recipes/store.ts`), plus `quick_links`, `quick_links_enabled`, `corrections`, `manual_selections`,
   `badge_prefs`, and `list_sync_settings` (without the ignore list and automatic sync, which
   are per device).
-- **`local:`** (per-device): `trakt_tokens`, `anilist_tokens`, `mal_tokens`, `simkl_tokens`, the
-  resolution caches, `simkl_matches`, `simkl_scrobble_at`, `simkl_held_stops`, rating and note
+- **`local:`** (per-device): `trakt_tokens`, `anilist_tokens`, `mal_tokens`, `simkl_tokens`,
+  `wetrakr_tokens`, the resolution caches, `wetrakr_corrections`, `wetrakr_ids_cache`,
+  `simkl_matches`, `simkl_scrobble_at`, `simkl_held_stops`, rating and note
   mirrors (the tracker is the source of truth), `remote_recipes`, `enabled_origins`, `anime_map`
   and `animap_overrides`, `anilist_corrections`, `mal_corrections`, `quicklink_slugs`, and the
   list sync state (`list_sync_ignore`, `list_sync_auto_on`, `list_sync_job`, `list_sync_apply`, `list_sync_cancel_at`, `list_sync_picks`,

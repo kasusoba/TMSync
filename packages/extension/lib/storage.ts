@@ -27,7 +27,7 @@ import type { WetrakrIdentity, WetrakrIds, WetrakrTokens } from "./trackers/wetr
  *  - `sync:`  user-owned deltas that follow the user across devices via the
  *             browser account — custom recipes, user quick links, corrections,
  *             manual picks, badge prefs. NEVER secrets (tokens) or large caches.
- *  - `local:` per-device — tokens (encrypted, `secretItem`), caches/mirrors, granted origins,
+ *  - `local:` per-device: tokens (encrypted, `secretItem`), caches/mirrors, granted origins,
  *             the resolution/crosswalk data (regenerable).
  *  - `session:` ephemeral per-tab session state.
  *

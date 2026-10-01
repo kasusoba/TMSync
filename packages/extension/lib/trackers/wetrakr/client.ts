@@ -1,5 +1,6 @@
 import { wetrakrCorrections, wetrakrIdsCache, wetrakrResolutionCache } from "@/lib/storage";
 import { type ParsedMedia, primaryId } from "@tmsync/shared";
+import { buildLetterboxdRows, toLetterboxdCsv } from "../../portability/letterboxd";
 import { hasTrackerAccess } from "../access";
 import { errorDetail } from "../oauth";
 import { baseHeaders, getValidAccessToken, refreshAfterReject } from "./auth";
@@ -447,4 +448,62 @@ export async function pageMedia(
     tmdb: Number.isFinite(tmdb) && tmdb > 0 ? tmdb : undefined,
     imdb: m.ids?.imdb,
   };
+}
+
+// --- Letterboxd export (options page) ---
+
+interface PlayRow {
+  watched_at?: string;
+  movie?: { id: number; title?: string; ids?: WetrakrIds; release_date?: string };
+}
+interface RatedRow extends WetrakrMedia {
+  interactions?: { user?: { rating?: { rating: number; rated_at?: string } } };
+}
+interface CommentRow {
+  text?: string;
+  is_long?: boolean;
+  movie?: { id: number };
+}
+
+/** A WeTrakr movie in the export's input shape. The builder keys films by
+ * `ids.trakt`: here that holds the WeTrakr id. */
+function exportRef(m: { id: number; title?: string; ids?: WetrakrIds; release_date?: string }) {
+  const tmdb = Number(m.ids?.tmdb);
+  return {
+    title: m.title ?? "",
+    year: yearOf(m.release_date),
+    ids: {
+      trakt: m.id,
+      imdb: m.ids?.imdb,
+      tmdb: Number.isFinite(tmdb) && tmdb > 0 ? tmdb : undefined,
+    },
+  };
+}
+
+/**
+ * Build a Letterboxd-import CSV from the user's WeTrakr movies: every play (so
+ * rewatches survive), ratings rounded to whole stars, and comments (a long one is a
+ * review). The CSV goes back to the page to download; nothing is sent anywhere.
+ */
+export async function exportLetterboxd(): Promise<{ csv: string; count: number }> {
+  const [plays, rated, comments] = await Promise.all([
+    allPages("/sync/tracking/watched/history/movies") as Promise<PlayRow[]>,
+    allPages("/sync/ratings/movies") as Promise<RatedRow[]>,
+    allPages("/sync/comments/movies") as Promise<CommentRow[]>,
+  ]);
+  const rows = buildLetterboxdRows({
+    history: plays.flatMap((p) =>
+      p.movie && p.watched_at ? [{ movie: exportRef(p.movie), watched_at: p.watched_at }] : [],
+    ),
+    ratings: rated.flatMap((m) => {
+      const r = m.interactions?.user?.rating;
+      if (!r) return [];
+      const rating = Math.max(1, Math.round(r.rating));
+      return [{ movie: exportRef(m), rating, rated_at: r.rated_at ?? "" }];
+    }),
+    comments: comments.flatMap((c) =>
+      c.movie && c.text ? [{ movieId: c.movie.id, comment: c.text, isReview: !!c.is_long }] : [],
+    ),
+  });
+  return { csv: toLetterboxdCsv(rows), count: rows.length };
 }

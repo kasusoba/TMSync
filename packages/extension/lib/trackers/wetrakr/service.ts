@@ -11,7 +11,7 @@ import {
 import type { TrackerService } from "../service";
 import { WETRAKR_CHUNK, applyWetrakr } from "./apply";
 import { connect, disconnect, getRedirectUri, isConnected } from "./auth";
-import { pageMedia, saveCorrection, search } from "./client";
+import { exportLetterboxd, pageMedia, saveCorrection, search } from "./client";
 import type { ReviewLevel } from "./client";
 import { WETRAKR } from "./config";
 import { readWetrakrEntries } from "./list";
@@ -104,6 +104,7 @@ export const wetrakrService: TrackerService = {
       title: pick.title,
       year: pick.year,
     }),
+  exportLetterboxd,
   onWake() {
     void syncQuickLinksScript();
     browser.permissions.onAdded.addListener(() => void syncQuickLinksScript());

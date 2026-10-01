@@ -246,10 +246,15 @@ export interface ProtocolMap {
   resolveAll(q: { media: ParsedMedia; trackers: Tracker[] }): TrackerResolution[];
   /** Force-refresh the CDN recipe list; returns how many recipes are now cached. */
   refreshRecipes(): { ok: boolean; count: number; error?: string };
-  /** Build a Letterboxd-import CSV from the user's Trakt movie history, ratings
-   * and reviews (rewatches included). Client-side only — the CSV is returned to
-   * the page to download; nothing is sent anywhere new (constraint #6). */
-  exportLetterboxd(): { ok: boolean; csv?: string; count?: number; error?: string };
+  /** Build a Letterboxd-import CSV from the user's movie history, ratings and
+   * reviews on one tracker (rewatches included). Client-side only: the CSV is
+   * returned to the page to download; nothing is sent anywhere new (constraint #6). */
+  exportLetterboxd(q: { tracker: Tracker }): {
+    ok: boolean;
+    csv?: string;
+    count?: number;
+    error?: string;
+  };
   /** List sync (docs/ARCHITECTURE.md section 7): start reading every connected tracker's list
    * and planning what each is missing. Returns at once; progress and the plan land
    * in the `listSyncJob` storage item. Read only, it writes nothing to a tracker.

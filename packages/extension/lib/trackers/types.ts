@@ -71,6 +71,8 @@ export interface TrackerInfo {
   noteMinWords?: number;
   /** How a wrong match is fixed (which panel the fix button opens). */
   fix: FixKind;
+  /** The account can export its movies as a Letterboxd CSV (`TrackerService.exportLetterboxd`). */
+  exportsLetterboxd?: boolean;
   /** The build variables that configure this tracker (named in the Account pane when
    * a build lacks them). */
   env: readonly string[];
@@ -90,6 +92,7 @@ const INFO = {
     note: "public",
     noteMinWords: 5,
     fix: "search",
+    exportsLetterboxd: true,
     env: ["WXT_TRAKT_CLIENT_ID", "WXT_TRAKT_CLIENT_SECRET"],
   },
   wetrakr: {
@@ -98,6 +101,7 @@ const INFO = {
     rates: "levels",
     note: "public",
     fix: "search",
+    exportsLetterboxd: true,
     env: ["WXT_WETRAKR_CLIENT_ID"],
     // The site too: one prompt also covers its quick links (wetrakr-quicklinks).
     hostAccess: {
