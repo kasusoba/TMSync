@@ -101,12 +101,14 @@ function passThrough(media: ParsedMedia, nativeItem: TrackedItem | null): Derive
 }
 
 /** Same numbering family: keep the media as is and pass every id the native item
- * is known by, so the target resolves its own entry exactly. */
+ * is known by, so the target resolves its own entry exactly. A native item with no
+ * shared id (Trakt ids are no namespace) leaves the target to resolve the page
+ * itself, as it would if it were native. */
 function sameFamily(media: ParsedMedia, nativeItem: TrackedItem): DeriveOutcome {
   const ids: TargetIds = "ids" in nativeItem ? { ...nativeItem.ids } : {};
   const own = TRACKER_INFO[nativeItem.tracker].ownNamespace;
   if (own) ids[own] = nativeItem.id;
-  return Object.keys(ids).length ? { kind: "resolved", media, ids } : { kind: "miss" };
+  return Object.keys(ids).length ? { kind: "resolved", media, ids } : { kind: "resolved", media };
 }
 
 /** Seasoned → cour (forward). Needs the scraped TMDB id. */

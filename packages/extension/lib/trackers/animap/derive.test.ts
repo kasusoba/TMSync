@@ -68,9 +68,17 @@ describe("deriveMedia — reverse (AniList-native → Trakt)", () => {
     });
   });
 
-  it("misses when the native item isn't an AniList entry (no id to reverse)", () => {
+  it("misses when there is no native item to reverse", () => {
     const media: ParsedMedia = { mediaType: "show", title: "AoT", episode: 3 };
-    expect(deriveMedia("trakt", media, traktItem, map)).toEqual({ kind: "miss" });
+    expect(deriveMedia("trakt", media, null, map)).toEqual({ kind: "miss" });
+  });
+});
+
+describe("deriveMedia — same seasoned family (Trakt-native → WeTrakr)", () => {
+  it("passes the page as is when the native item shares no id", () => {
+    const media: ParsedMedia = { mediaType: "movie", title: "Toy Story 5", ids: { tmdb: 1084244 } };
+    const item: TrackedItem = { tracker: "trakt", mediaType: "movie", id: 871500, title: "x" };
+    expect(deriveMedia("wetrakr", media, item, map)).toEqual({ kind: "resolved", media });
   });
 });
 
