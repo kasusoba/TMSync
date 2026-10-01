@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { planSync } from "../../sync/plan/index";
 import { DEFAULT_SYNC_SETTINGS, type ListEntry, type SyncWrite } from "../../sync/types";
 import { Animap } from "../animap/index";
-import { inNotFound, ratingsBody, trackingBody, wetrakrRef } from "./apply";
+import { inNotFound, ratingsBody, statusBody, trackingBody, wetrakrRef } from "./apply";
 import { wetrakrEntries } from "./list";
 
 const empty = {
@@ -167,5 +167,24 @@ describe("planning with WeTrakr", () => {
       }),
     ]);
     expect(writes.some((w) => w.op === "remove")).toBe(false);
+  });
+});
+
+describe("WeTrakr statuses", () => {
+  it("sets a show's list with no seasons, and clears what WeTrakr cannot hold", () => {
+    const st = (mediaType: "movie" | "show", from: string | null, to: string): SyncWrite =>
+      ({
+        tracker: "wetrakr",
+        op: "status",
+        target: { ids: { tmdb: 9 }, mediaType },
+        status: { from, to },
+      }) as SyncWrite;
+    expect(statusBody([st("show", null, "PAUSED"), st("movie", "PLANNING", "CURRENT")])).toEqual({
+      body: {
+        shows: [{ ids: { tmdb: 9 }, status: "paused" }],
+        movies: [{ ids: { tmdb: 9 }, status: "none" }],
+      },
+      at: [0, 1],
+    });
   });
 });

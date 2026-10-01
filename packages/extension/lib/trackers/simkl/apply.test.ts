@@ -99,3 +99,18 @@ describe("simklBodies: unrate", () => {
     expect(out.unrate.body.movies).toHaveLength(1);
   });
 });
+
+describe("Simkl statuses", () => {
+  it("moves a show to its list with /sync/add-to-list", () => {
+    const w: SyncWrite = {
+      tracker: "simkl",
+      op: "status",
+      target: { ids: { tmdb: 5 }, mediaType: "show" },
+      status: { from: "CURRENT", to: "PAUSED" },
+    };
+    expect(simklBodies([w]).status).toEqual({
+      body: { movies: [], shows: [{ ids: { tmdb: "5" }, to: "hold" }] },
+      at: [0],
+    });
+  });
+});

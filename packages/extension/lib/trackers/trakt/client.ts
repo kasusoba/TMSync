@@ -568,8 +568,17 @@ export async function readTraktActivity(): Promise<unknown> {
 // --- list sync writes (docs/ARCHITECTURE.md section 7) ---
 
 /** A Trakt sync POST: status, the JSON body when it worked, and a short error. */
+export type TraktSyncPath =
+  | "/sync/history"
+  | "/sync/ratings"
+  | "/sync/ratings/remove"
+  | "/sync/watchlist"
+  | "/sync/watchlist/remove"
+  | "/users/hidden/dropped"
+  | "/users/hidden/dropped/remove";
+
 export async function syncPost(
-  path: "/sync/history" | "/sync/ratings" | "/sync/ratings/remove",
+  path: TraktSyncPath,
   body: unknown,
 ): Promise<{ status: number; data?: unknown; error?: string }> {
   const res = await api(path, { method: "POST", body: JSON.stringify(body) }, true);

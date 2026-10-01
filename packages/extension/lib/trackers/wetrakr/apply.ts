@@ -1,14 +1,17 @@
 /**
  * WeTrakr's part of applying a list sync plan (docs/ARCHITECTURE.md section 7): one
- * `POST /sync/tracking` for the watches, one `POST /sync/ratings` for the ratings,
- * and one `POST /sync/ratings/remove` for the ratings to clear, per chunk. Each
- * watch write logs a play, so the plan never sends one twice (it diffs against what
- * WeTrakr has). Sync writes WeTrakr no status and removes nothing.
+ * `POST /sync/tracking` for the watches, a second one for the statuses (after the
+ * watches, which can move a show's list), one `POST /sync/ratings` for the
+ * ratings, and one `POST /sync/ratings/remove` for the ratings to clear, per
+ * chunk. Each watch write logs a play, so the plan never sends one twice (it
+ * diffs against what WeTrakr has). Sync removes nothing from WeTrakr.
  */
 import { errorMessage } from "../../errors";
 import { wetrakrRatings } from "../../storage";
+import { givesStatus } from "../../sync/plan/status";
 import type { ChunkOutcome, SyncWrite, TargetRef, WriteOutcome } from "../../sync/types";
 import { outcomes, sleep, toTen } from "../../sync/write-util";
+import type { CourStatus } from "../cour-plan";
 import { WetrakrNotConnectedError, syncPost } from "./client";
 
 /** Writes per chunk (items per POST; WeTrakr takes up to 5,000). */
@@ -67,6 +70,38 @@ export function trackingBody(writes: SyncWrite[]): {
   return { body: { movies, shows }, at };
 }
 
+/** A status as a WeTrakr tracking list. A status WeTrakr cannot hold on the item
+ * clears the one it has (`none` never deletes plays). */
+const COUR_TO_WETRAKR: Partial<Record<CourStatus, string>> = {
+  PLANNING: "planning",
+  CURRENT: "watching",
+  PAUSED: "paused",
+  DROPPED: "dropped",
+};
+
+/** The `/sync/tracking` body for the status writes, and which writes it holds. A
+ * show's status is its own (no nested seasons), so it marks no episode. Pure. */
+export function statusBody(writes: SyncWrite[]): {
+  body: Record<string, unknown[]>;
+  at: number[];
+} {
+  const movies: unknown[] = [];
+  const shows: unknown[] = [];
+  const at: number[] = [];
+  writes.forEach((w, i) => {
+    if (w.op !== "status") return;
+    const ref = wetrakrRef(w.target);
+    if (!ref) return;
+    const movie = w.target.mediaType === "movie";
+    const to = w.status.to;
+    const status =
+      to && givesStatus("wetrakr", movie ? "movie" : "show", to) ? COUR_TO_WETRAKR[to] : "none";
+    (movie ? movies : shows).push({ ...ref, status });
+    at.push(i);
+  });
+  return { body: { movies, shows }, at };
+}
+
 /** The `/sync/ratings` body (or, with `unrate`, the `/sync/ratings/remove` body),
  * and which writes it holds. A season rating nests in its show. Pure. */
 export function ratingsBody(
@@ -95,8 +130,12 @@ export function ratingsBody(
  * Whether WeTrakr's `notFound` names this item. It echoes what it could not resolve
  * as it was sent, so an echo is ours when its id or ids match. Pure.
  */
-export function inNotFound(data: unknown, ref: Record<string, unknown>): boolean {
-  const nf = (data as { notFound?: Record<string, unknown> } | undefined)?.notFound;
+export function inNotFound(
+  data: unknown,
+  ref: Record<string, unknown>,
+  key: "notFound" | "errored" = "notFound",
+): boolean {
+  const nf = (data as Record<string, Record<string, unknown> | undefined> | undefined)?.[key];
   if (!nf || typeof nf !== "object") return false;
   const want = JSON.stringify(ref.id ?? ref.ids);
   return Object.values(nf).some(
@@ -117,6 +156,7 @@ export async function applyWetrakr(writes: SyncWrite[]): Promise<ChunkOutcome> {
   });
   const parts = [
     { path: "/sync/tracking" as const, ...trackingBody(writes) },
+    { path: "/sync/tracking" as const, ...statusBody(writes) },
     { path: "/sync/ratings" as const, ...ratingsBody(writes) },
     { path: "/sync/ratings/remove" as const, ...ratingsBody(writes, "unrate") },
   ].filter((p) => p.at.length);
@@ -148,7 +188,9 @@ export async function applyWetrakr(writes: SyncWrite[]): Promise<ChunkOutcome> {
         const ref = wetrakrRef((writes[i] as SyncWrite).target) ?? {};
         results[i] = inNotFound(res.data, ref)
           ? { ok: false, reason: "not_found", error: "WeTrakr could not match it." }
-          : { ok: true };
+          : inNotFound(res.data, ref, "errored")
+            ? { ok: false, reason: "failed", error: "WeTrakr did not take it." }
+            : { ok: true };
       }
       if (part.path !== "/sync/tracking") rated = true;
     } catch (e) {
