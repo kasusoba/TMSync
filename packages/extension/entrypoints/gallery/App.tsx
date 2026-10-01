@@ -469,7 +469,7 @@ export function App() {
               trackers={["trakt"]}
               iframe
               preview={{ ok: true, text: "movie: Dune: Part Two (2024)" }}
-              status="Saved! Reload the page to start scrobbling."
+              status="Saved. Scrobbling on this page."
             />
           </Tile>
           <Tile label="Library covers this page · override" t={t}>
@@ -857,7 +857,7 @@ export function App() {
         </Group>
 
         {/* QUICK LINKS */}
-        <Group id="links" title="Quick links (injected on Trakt pages)" t={t}>
+        <Group id="links" title="Quick links (injected on tracker pages)" t={t}>
           <Tile label="Mixed: deep link, deep+search, search-only" t={t}>
             <QuickLinksView
               variant={variant}

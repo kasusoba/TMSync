@@ -180,6 +180,17 @@ export const QUICK_LINK_PAGES: Record<QuickLinkTracker, Tracker[]> = {
   anilist: ["anilist", "mal", "simkl"],
 };
 
+/** Where a quick-link kind shows, for UI text: "movie and TV pages on Trakt,
+ * WeTrakr, and Simkl". */
+export function quickLinkWhere(kind: QuickLinkTracker): string {
+  const names = QUICK_LINK_PAGES[kind].map((tk) => TRACKER_INFO[tk].label);
+  const list =
+    names.length > 2
+      ? `${names.slice(0, -1).join(", ")}, and ${names.at(-1)}`
+      : names.join(" and ");
+  return `${kind === "anilist" ? "anime" : "movie and TV"} pages on ${list}`;
+}
+
 /** All trackers in a stable order — for UI iteration (toggles, tabs) + registries. */
 export const ALL_TRACKERS = Object.keys(TRACKER_INFO) as Tracker[];
 

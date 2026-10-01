@@ -50,7 +50,11 @@ export const TRAKT_PLACEHOLDERS: readonly PlaceholderDoc[] = [
   { token: "imdb", desc: "IMDb id", example: "tt0133093" },
   { token: "title", desc: "URL-encoded title", example: "The%20Matrix" },
   { token: "slug", desc: "clean slug, year stripped", example: "the-matrix" },
-  { token: "slugyear", desc: "Trakt slug, may keep a year", example: "the-matrix-1999" },
+  {
+    token: "slugyear",
+    desc: "Trakt slug, may keep a year (Trakt pages only)",
+    example: "the-matrix-1999",
+  },
   { token: "season", desc: "season number (tv)", example: "1" },
   { token: "episode", desc: "episode number (tv)", example: "5" },
 ];

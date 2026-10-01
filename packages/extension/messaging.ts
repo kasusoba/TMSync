@@ -267,6 +267,9 @@ export interface ProtocolMap {
   /** Register the content script for an origin the user just granted access to. */
   registerSite(origin: string): { ok: boolean; error?: string };
   unregisterSite(origin: string): { ok: boolean };
+  /** Start the content script in every frame of the sender's tab that has access
+   * but does not run it yet (a site the picker just saved). True when it runs. */
+  startOnTab(): boolean;
   /** Run the step after a site-access grant the popup asked for (`siteGrantIntent`).
    * `done: false` when the background already ran it (on `permissions.onAdded`). */
   finishSiteGrant(): SiteGrantOutcome;

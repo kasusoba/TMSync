@@ -450,8 +450,8 @@ export function OptionsView({
                   }
                 />
                 <p class={clsx("text-[12px]", t.sub)}>
-                  “Watch on …” buttons added to your trackers’ title pages (Trakt, AniList, and more
-                  as trackers are added). Toggle a site on to show it; drag the handle to set
+                  “Watch on …” buttons added to your trackers’ title pages (Trakt, WeTrakr, AniList,
+                  MyAnimeList, and Simkl). Toggle a site on to show it; drag the handle to set
                   display order.
                 </p>
                 <Filter t={t} q={q} setQ={setQ} placeholder="Filter quick links…" />

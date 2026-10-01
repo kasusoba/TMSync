@@ -1,4 +1,5 @@
 import { ANIME_MAP, RECIPES } from "@/config";
+import { CONTENT_MARK } from "@/lib/diagnostics/why";
 import { errorMessage } from "@/lib/errors";
 import { bundledLinks } from "@/lib/recipes";
 import { addedHosts, findMovedSite, groupSites, withSiteHosts } from "@/lib/recipes/sites";
@@ -327,6 +328,9 @@ export default defineBackground(() => {
   onMessage("registerSite", ({ data }) => registerSite(data));
   onMessage("finishSiteGrant", () => finishSiteGrant());
   onMessage("unregisterSite", ({ data }) => unregisterSite(data));
+  onMessage("startOnTab", ({ sender }) =>
+    sender.tab?.id !== undefined ? startOnTab(sender.tab.id) : false,
+  );
   onMessage("listEnabledSites", () => enabledOrigins.getValue());
   // Reconcile after a broad-grant toggle or a backup import (the caller changed
   // permissions/recipes in its own page context, then asks the SW to catch up).
@@ -1679,6 +1683,41 @@ async function finishSiteGrant(): Promise<SiteGrantOutcome> {
  * after a grant the new host permission can lag reaching the scripting API, so
  * retry once. False when it still fails (e.g. a restricted page): reload to start.
  */
+/**
+ * Start the content script in the frames of a tab that have access but do not run
+ * it: a registration covers only later loads, so a site the picker just saved
+ * would wait for a reload. The script marks itself (`CONTENT_MARK`), so a frame
+ * that runs it already is left alone and never scrobbles twice. False when a
+ * frame refused the script.
+ */
+async function startOnTab(tabId: number): Promise<boolean> {
+  try {
+    const probe = await browser.scripting.executeScript({
+      target: { tabId, allFrames: true },
+      func: (mark: string) => ({
+        runs: !!(globalThis as unknown as Record<string, unknown>)[mark],
+        origin: location.origin,
+      }),
+      args: [CONTENT_MARK],
+    });
+    // Only the enabled sites, as a reload would (another granted origin, like a
+    // tracker's site, has no content script).
+    const enabled = await enabledOrigins.getValue();
+    const frameIds = probe
+      .filter((r) => r.result && !r.result.runs && enabled.includes(r.result.origin))
+      .map((r) => r.frameId);
+    if (frameIds.length === 0) return true;
+    return await injectWithRetry(() =>
+      browser.scripting.executeScript({
+        target: { tabId, frameIds },
+        files: ["/content-scripts/content.js"],
+      }),
+    );
+  } catch {
+    return false;
+  }
+}
+
 async function injectWithRetry(run: () => Promise<unknown>): Promise<boolean> {
   try {
     await run();

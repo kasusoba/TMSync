@@ -188,8 +188,8 @@ export function PreviewResult({
 
       {preview.noCrosswalk && (
         <p class={clsx("rounded-md px-2.5 py-1.5 text-[11px]", t.infoBox)}>
-          The anime crosswalk isn’t downloaded yet, so anime can’t move between Trakt and AniList or
-          MyAnimeList. Refresh the library and preview again.
+          The anime crosswalk isn’t downloaded yet, so anime can’t move between Trakt or WeTrakr and
+          AniList or MyAnimeList. Refresh the library and preview again.
         </p>
       )}
       {preview.reason === "too_few" && (

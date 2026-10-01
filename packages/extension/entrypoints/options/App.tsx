@@ -34,6 +34,7 @@ import {
   type QuickLinkTracker,
   TRACKER_INFO,
   type Tracker,
+  quickLinkWhere,
   trackerLabel,
 } from "@/lib/trackers/types";
 import { type Accounts, loadAccounts } from "@/lib/ui/accounts";
@@ -328,7 +329,10 @@ function QuickLinkRow({
             <>
               {field("Anime path", anime, setAnime, "/anime/{slug}")}
               {field("Search path", search, setSearch, "/search?q={title}")}
-              <PlaceholderHelp list={ANILIST_PLACEHOLDERS} note="shown on anilist.co anime pages" />
+              <PlaceholderHelp
+                list={ANILIST_PLACEHOLDERS}
+                note={`shown on ${quickLinkWhere("anilist")}`}
+              />
             </>
           ) : (
             <>
@@ -337,7 +341,7 @@ function QuickLinkRow({
               {field("Search path", search, setSearch, "/search/{title}")}
               <PlaceholderHelp
                 list={TRAKT_PLACEHOLDERS}
-                note="shown on trakt.tv and wetrakr.com movie/TV pages"
+                note={`shown on ${quickLinkWhere("trakt")}`}
               />
             </>
           )}
@@ -1638,8 +1642,8 @@ export function App() {
                   }
                 />
                 <p class={clsx("text-[12px]", t.sub)}>
-                  “Watch on …” buttons added to your trackers’ title pages (Trakt, AniList, and more
-                  as trackers are added). Toggle a site on to show it; drag the handle to set
+                  “Watch on …” buttons added to your trackers’ title pages (Trakt, WeTrakr, AniList,
+                  MyAnimeList, and Simkl). Toggle a site on to show it; drag the handle to set
                   display order.
                   {!linksOn &&
                     " Quick links are off, so none of these show until you turn them on."}

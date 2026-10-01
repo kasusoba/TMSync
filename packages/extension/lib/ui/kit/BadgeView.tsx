@@ -324,7 +324,7 @@ export function RateNotePanel({
         <label class={clsx("mb-3 flex items-center gap-2 text-[11px]", t.sub)}>
           <input type="checkbox" class="accent-trakt" checked={spoiler} readOnly />
           Mark as spoiler
-          <span class={t.faint} title="Only applies to Trakt public comments">
+          <span class={t.faint} title="Only applies to public comments">
             <Icon name="info" class="text-[12px]" />
           </span>
         </label>

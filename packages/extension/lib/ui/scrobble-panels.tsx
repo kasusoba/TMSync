@@ -676,7 +676,7 @@ export function RateNote({
                 }}
               />
               Mark as spoiler
-              <span class={t.faint} title="Only applies to Trakt public comments">
+              <span class={t.faint} title="Only applies to public comments">
                 <Icon name="info" class="text-[12px]" />
               </span>
             </label>
