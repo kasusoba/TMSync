@@ -1155,6 +1155,17 @@ describe("statuses on movies and TV", () => {
     expect(p.conflicts).toEqual([]);
   });
 
+  it("never moves a show a tracker holds as completed", () => {
+    const p = plan(
+      [
+        show("wetrakr", { 1: [1, 2] }, { status: "COMPLETED", updatedAt: 1, watchedAt: 1 }),
+        show("simkl", { 1: [1, 2] }, { status: "DROPPED", updatedAt: 5, watchedAt: 1 }),
+      ],
+      { trackers: W },
+    );
+    expect(statusOps(p)).toEqual(["trakt:null>DROPPED"]);
+  });
+
   it("lists paused against dropped as a conflict, and a pick goes everywhere", () => {
     const entries = [
       show("wetrakr", { 1: [1] }, { status: "PAUSED", updatedAt: 2, watchedAt: 1 }),

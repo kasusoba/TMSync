@@ -29,7 +29,8 @@ export const givesStatus = (tk: Tracker, shape: StatusShape, s: CourStatus) =>
  * The status write a tracker needs to go from `from` to `to`, or undefined. A
  * status the tracker cannot be given still leaves the one it holds: Trakt leaves
  * the watchlist (or undrops) when the show is watched again, though it has no
- * "watching". COMPLETED is never written. Pure.
+ * "watching". COMPLETED is never written, and a completed item is never moved
+ * (as for anime: no silent rewatch). Pure.
  */
 export function statusChange(
   tk: Tracker,
@@ -39,7 +40,7 @@ export function statusChange(
 ): Change<CourStatus | null> | undefined {
   if (!to || to === "COMPLETED") return undefined;
   const was = from ? normStatus(from) : null;
-  if (was === to) return undefined;
+  if (was === to || was === "COMPLETED") return undefined;
   if (givesStatus(tk, shape, to)) return { from, to };
   if (was && givesStatus(tk, shape, was)) return { from, to };
   return undefined;
