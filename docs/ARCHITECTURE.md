@@ -511,6 +511,13 @@ travels.
   list sync state (`list_sync_ignore`, `list_sync_auto_on`, `list_sync_job`, `list_sync_apply`, `list_sync_cancel_at`, `list_sync_picks`,
   `list_sync_cache_<tracker>`, `list_sync_base`, `list_sync_base_next`, `list_sync_auto`,
   `list_sync_auto_seen`).
+- **Tokens are encrypted at rest** (`lib/secret.ts`). An AES-GCM key, made non-extractable, lives
+  in the extension's IndexedDB, and the `*_tokens` items hold only ciphertext (`secretItem` in
+  `lib/storage.ts`). A copy of `storage.local` alone holds no usable token. Code that runs as the
+  extension can still decrypt, so this is defense in depth. If the key is lost (the browser's
+  site data was cleared), the tokens read as null and the user connects again. The background
+  seals any plain token on each wake. Only extension pages and the background can read tokens: a
+  content script would reach the host page's IndexedDB.
 - **`session:`** (ephemeral, per tab): `tab_sessions` (the crash-reconcile source of truth),
   `tab_frame_origins`, `tab_status`, `manual_contexts`, `episode_overrides`.
 

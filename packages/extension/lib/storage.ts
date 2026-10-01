@@ -1,6 +1,7 @@
 import type { BadgeStatus } from "@/messaging";
 import type { LinkTemplates, ParsedMedia, Recipe } from "@tmsync/shared";
 import { storage } from "wxt/utils/storage";
+import { type Sealed, isSealed, seal, unseal } from "./secret";
 import type { ApplyJob } from "./sync/apply";
 import type { AutoRun } from "./sync/auto";
 import type { PendingBase, SyncBase } from "./sync/base";
@@ -25,7 +26,7 @@ import type { QuickLinkTracker, Tracker } from "./trackers/types";
  *  - `sync:`  user-owned deltas that follow the user across devices via the
  *             browser account — custom recipes, user quick links, corrections,
  *             manual picks, badge prefs. NEVER secrets (tokens) or large caches.
- *  - `local:` per-device — tokens (secrets), caches/mirrors, granted origins,
+ *  - `local:` per-device — tokens (encrypted, `secretItem`), caches/mirrors, granted origins,
  *             the resolution/crosswalk data (regenerable).
  *  - `session:` ephemeral per-tab session state.
  *
@@ -34,16 +35,62 @@ import type { QuickLinkTracker, Tracker } from "./trackers/types";
  * are single keys; if they grow large, move them to per-item keys too.
  */
 
-export const traktTokens = storage.defineItem<TraktTokens | null>("local:trakt_tokens", {
-  fallback: null,
-});
+/**
+ * A storage item whose value is encrypted at rest (`secret.ts`). Same calls as a
+ * plain item. A value that will not decrypt (the key was lost with the browser's
+ * site data) reads as null, so the tracker shows as disconnected and the user
+ * connects again. A plain value from before encryption reads as is;
+ * `sealPlainSecrets` encrypts it on the next wake.
+ */
+export interface SecretItem<T> {
+  getValue(): Promise<T | null>;
+  setValue(value: T | null): Promise<void>;
+  watch(cb: (next: T | null, prev: T | null) => void): () => void;
+}
+
+const secretSealers: Array<() => Promise<void>> = [];
+
+function secretItem<T>(key: `local:${string}`): SecretItem<T> {
+  const raw = storage.defineItem<T | Sealed | null>(key, { fallback: null });
+  const open = async (value: T | Sealed | null): Promise<T | null> => {
+    if (!isSealed(value)) return value;
+    try {
+      return await unseal<T>(value);
+    } catch {
+      return null;
+    }
+  };
+  const item: SecretItem<T> = {
+    getValue: async () => open(await raw.getValue()),
+    setValue: async (value) => raw.setValue(value === null ? null : await seal(value)),
+    watch: (cb) =>
+      raw.watch((next, prev) => {
+        void Promise.all([open(next), open(prev)]).then(([n, p]) => cb(n, p));
+      }),
+  };
+  secretSealers.push(async () => {
+    const value = await raw.getValue();
+    if (value === null || isSealed(value)) return;
+    const sealed = await seal(value);
+    // A refresh may have written new tokens while we encrypted. Write only when the
+    // stored value is still the plain one we read.
+    if (JSON.stringify(await raw.getValue()) === JSON.stringify(value)) await raw.setValue(sealed);
+  });
+  return item;
+}
+
+/** Encrypt token values stored before encryption existed. The background runs it
+ * on each wake; it does nothing once every value is sealed. */
+export async function sealPlainSecrets(): Promise<void> {
+  await Promise.all(secretSealers.map((s) => s().catch(() => undefined)));
+}
+
+export const traktTokens = secretItem<TraktTokens>("local:trakt_tokens");
 
 // --- AniList (the anime tracker; routed, never synced with Trakt — constraint #1) ---
 
 /** AniList implicit-grant token (no refresh token; ~1-year validity). */
-export const anilistTokens = storage.defineItem<AniListTokens | null>("local:anilist_tokens", {
-  fallback: null,
-});
+export const anilistTokens = secretItem<AniListTokens>("local:anilist_tokens");
 
 /** The AniList viewer id, for list sync's fresh reads. `at` is the token's
  * `obtained_at`: a new sign-in has a new one, so an id of the old account is
@@ -75,9 +122,7 @@ export const anilistNotes = storage.defineItem<Record<number, string>>("local:an
 // --- MyAnimeList (a cour-family tracker like AniList) ---
 
 /** MAL OAuth tokens. The access token expires; auth.ts refreshes it. */
-export const malTokens = storage.defineItem<MalTokens | null>("local:mal_tokens", {
-  fallback: null,
-});
+export const malTokens = secretItem<MalTokens>("local:mal_tokens");
 
 /**
  * When the popup asked for MAL host access to connect (ms). On Firefox the
@@ -156,9 +201,7 @@ export const malNotes = storage.defineItem<Record<number, string>>("local:mal_no
 // --- Simkl (the `any` family: takes the page's own numbering) ---
 
 /** Simkl OAuth tokens. The access token lasts 7 days; auth.ts refreshes it. */
-export const simklTokens = storage.defineItem<SimklTokens | null>("local:simkl_tokens", {
-  fallback: null,
-});
+export const simklTokens = secretItem<SimklTokens>("local:simkl_tokens");
 
 /**
  * What Simkl matched a page item to, keyed by simklKey(media). Filled from write
