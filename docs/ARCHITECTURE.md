@@ -357,8 +357,10 @@ and nothing of it touches `extract()` or the scrobble path.
 - **Remembered misses** (`misses.ts`). A write a tracker answers "not found" for (the item, or the
   episodes it sent) is remembered per tracker and item. The planner leaves it out and lists it as
   a skip. This stops a write that can never land from failing on every apply: Simkl numbers TV
-  episodes in TVDB order, Trakt and WeTrakr in TMDB order. A miss expires after 30 days, and
-  connecting the account again forgets it.
+  episodes in TVDB order, Trakt and WeTrakr in TMDB order, and even two TMDB-based trackers can
+  split a season differently. WeTrakr takes an episode it does not have without a word, so the
+  apply also remembers each episode a tracker took: planned again, it was not kept, and counts as a
+  miss. A miss expires after 30 days, and connecting the account again forgets it.
 - **Ratings** fill empty ratings only. Scores are compared on the target's own scale, so rounding
   (AniList 85 to MAL 9 and back) never loops. Two different ratings are a conflict.
 - **Start and finish days** (AniList `startedAt` and `completedAt`, MAL `start_date` and

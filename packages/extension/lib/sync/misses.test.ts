@@ -42,4 +42,12 @@ describe("misses", () => {
     expect(liveMisses(m, MISS_TTL_MS - 1).simkl?.k).toBeDefined();
     expect(liveMisses(m, MISS_TTL_MS)).toEqual({});
   });
+
+  it("drops an episode the tracker took before but did not keep", () => {
+    const m = addMisses({}, [], 0, [{ key: "k", w: eps("trakt", 21) }]);
+    expect(m.trakt?.k).toEqual({ at: 0, sent: ["1:21"] });
+    const out = dropMissed("k", "Show", [eps("trakt", 21, 22)], m);
+    expect(out.writes).toEqual([eps("trakt", 22)]);
+    expect(out.skips).toMatchObject([{ tracker: "trakt", detail: "1 episode" }]);
+  });
 });

@@ -290,6 +290,8 @@ async function runApply(
   const taken = new Set<string>();
   // The writes a tracker could not match, remembered after each chunk.
   const missed: { key: string; w: SyncWrite }[] = [];
+  // The writes a tracker took, so one it took but did not keep shows next time.
+  const took: { key: string; w: SyncWrite }[] = [];
   const { save } = run;
   const setTracker = (tk: Tracker, patch: Partial<ApplyTracker>) =>
     save({
@@ -325,6 +327,8 @@ async function runApply(
               else if (r.ok) {
                 tally.done += 1;
                 taken.add(`${tracker}:${i + n}`);
+                const q = chunk[n];
+                if (q) took.push({ key: q.key, w: q.w });
               } else {
                 const q = chunk[n];
                 if (r.reason === "not_found" && q) missed.push({ key: q.key, w: q.w });
@@ -352,7 +356,7 @@ async function runApply(
             out.results.map((_, n) => n),
             out.results,
           );
-          await rememberMisses(missed.splice(0));
+          await rememberMisses(missed.splice(0), took.splice(0));
           if (out.stop) return setTracker(tracker, { state: "stopped", error: out.stop });
         }
         await setTracker(tracker, { state: "done" });

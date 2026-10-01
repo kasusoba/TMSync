@@ -4,7 +4,9 @@
  * its database, often because it numbers the episodes differently (Simkl keeps
  * TVDB order, Trakt and WeTrakr TMDB order). Planned again, the write fails on
  * every run. So the apply remembers it per tracker and item, and the planner
- * leaves it out and lists it as a skip. A miss expires after `MISS_TTL_MS`
+ * leaves it out and lists it as a skip. Some trackers (WeTrakr) take an episode
+ * they do not have without a word: so the apply also remembers each episode a
+ * tracker took (`sent`), and one that is planned again was not kept. A miss expires after `MISS_TTL_MS`
  * (trackers add titles and episodes), and connecting the account again
  * forgets the tracker's misses. Pure, except the storage helpers at the end.
  */
@@ -20,6 +22,8 @@ export interface Miss {
   at: number;
   whole?: true;
   eps?: string[];
+  /** Episodes the tracker took. Planned again, they were not kept: a miss. */
+  sent?: string[];
 }
 
 /** Each tracker's misses, by item key (`SyncItem.key`). */
@@ -28,21 +32,32 @@ export type SyncMisses = Partial<Record<Tracker, Record<string, Miss>>>;
 export const epKey = (e: EpisodeRef) => `${e.season ?? ""}:${e.number}`;
 
 /** The misses with the new ones added. An episodes write adds its episodes;
- * any other write marks the whole item. Pure. */
+ * any other write marks the whole item. `taken` = episodes writes the tracker
+ * answered as done, kept as `sent`. Pure. */
 export function addMisses(
   old: SyncMisses,
   found: { key: string; w: SyncWrite }[],
   now: number,
+  taken: { key: string; w: SyncWrite }[] = [],
 ): SyncMisses {
   const out: SyncMisses = { ...old };
-  for (const { key, w } of found) {
+  const edit = (key: string, w: SyncWrite, change: (m: Miss) => void) => {
     const mine = { ...out[w.tracker] };
     const m: Miss = { ...mine[key], at: now };
-    if (w.op === "episodes") m.eps = [...new Set([...(m.eps ?? []), ...w.add.map(epKey)])];
-    else m.whole = true;
+    change(m);
     mine[key] = m;
     out[w.tracker] = mine;
-  }
+  };
+  for (const { key, w } of found)
+    edit(key, w, (m) => {
+      if (w.op === "episodes") m.eps = [...new Set([...(m.eps ?? []), ...w.add.map(epKey)])];
+      else m.whole = true;
+    });
+  for (const { key, w } of taken)
+    if (w.op === "episodes")
+      edit(key, w, (m) => {
+        m.sent = [...new Set([...(m.sent ?? []), ...w.add.map(epKey)])];
+      });
   return out;
 }
 
@@ -81,8 +96,8 @@ export function dropMissed(
       whole.add(w.tracker);
       continue;
     }
-    if (w.op === "episodes" && m.eps?.length) {
-      const gone = new Set(m.eps);
+    if (w.op === "episodes" && (m.eps?.length || m.sent?.length)) {
+      const gone = new Set([...(m.eps ?? []), ...(m.sent ?? [])]);
       const add = w.add.filter((e) => !gone.has(epKey(e)));
       const n = w.add.length - add.length;
       if (n) lost.set(w.tracker, (lost.get(w.tracker) ?? 0) + n);
@@ -109,13 +124,16 @@ let saving = Promise.resolve();
 
 /** Save the writes a tracker could not match. Never throws: a lost miss only
  * means the write is tried again. */
-export function rememberMisses(found: { key: string; w: SyncWrite }[]): Promise<void> {
-  if (!found.length) return saving;
+export function rememberMisses(
+  found: { key: string; w: SyncWrite }[],
+  taken: { key: string; w: SyncWrite }[] = [],
+): Promise<void> {
+  if (!found.length && !taken.some((x) => x.w.op === "episodes")) return saving;
   saving = saving
     .then(async () => {
       const now = Date.now();
       const old = await listSyncMisses.getValue();
-      await listSyncMisses.setValue(addMisses(liveMisses(old, now), found, now));
+      await listSyncMisses.setValue(addMisses(liveMisses(old, now), found, now, taken));
     })
     .catch(() => {});
   return saving;
