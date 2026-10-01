@@ -1,6 +1,7 @@
 import { onMessage } from "@/messaging";
 import {
   wetrakrCorrections,
+  wetrakrEpisodeChecks,
   wetrakrIdsCache,
   wetrakrNotes,
   wetrakrProgress,
@@ -42,6 +43,7 @@ export const wetrakrService: TrackerService = {
     await disconnect();
     await Promise.all([
       wetrakrResolutionCache.setValue({}),
+      wetrakrEpisodeChecks.setValue({}),
       wetrakrCorrections.setValue({}),
       wetrakrIdsCache.setValue({}),
       wetrakrRatings.setValue({}),

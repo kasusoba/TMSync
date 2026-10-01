@@ -193,7 +193,9 @@ The API is in beta, so check it again before relying on a detail.
   pause. A stop at 80 or more works without a start. A repeat inside one runtime is not logged
   again, so a second stop is safe. `start` echoes the episode it matched: TMSync compares it with the
   one sent, and on a mismatch it calls `DELETE /scrobble/playing` (cancel, no play logged) and shows
-  the numbering warning. A 404 means the title or episode is not on WeTrakr.
+  the numbering warning. A stop logs the play before its reply names the episode, so TMSync keeps
+  each episode's check for a day and sends no stop on a mismatch. A stop with no check sends a
+  start first. A 404 means the title or episode is not on WeTrakr.
 - **Ratings:** `POST /sync/ratings` and `/sync/ratings/remove`, 0 to 10 with one decimal, at the
   movie, show, season, or episode level. Seasons and episodes nest by number under the show, like
   Trakt. TMSync sends whole stars. The user's rating of one item is

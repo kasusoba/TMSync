@@ -2,7 +2,7 @@ import { wetrakrCorrections, wetrakrResolutionCache, wetrakrTokens } from "@/lib
 import type { ParsedMedia } from "@tmsync/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeBrowser } from "wxt/testing";
-import { buildScrobbleBody, episodeMismatch } from "./adapter";
+import { buildScrobbleBody, episodeMismatch, wetrakrAdapter } from "./adapter";
 import { readCallback } from "./auth";
 import { exportLetterboxd, resolve, saveCorrection, wetrakrCacheKey, yearOf } from "./client";
 
@@ -126,6 +126,52 @@ describe("episodeMismatch", () => {
 
   it("passes when the reply names no episode", () => {
     expect(episodeMismatch(body, { action: "pause", progress: 10 })).toBeNull();
+  });
+});
+
+describe("recordProgress stop", () => {
+  beforeEach(() => {
+    vi.spyOn(fakeBrowser.runtime, "getManifest").mockReturnValue({
+      manifest_version: 3,
+      name: "TMSync",
+      version: "1.0.0",
+    });
+  });
+  const reply = (season: number, number: number) => ({
+    action: "start",
+    progress: 90,
+    episode: { id: 1, season_number: season, number },
+  });
+  const paths = (calls: { url: string; init?: RequestInit }[]) =>
+    calls.map((c) => `${c.init?.method ?? "GET"} ${new URL(c.url).pathname}`);
+
+  it("checks the episode with a start first, and logs nothing on a mismatch", async () => {
+    const calls = api({ "/scrobble/start": reply(2, 5), "/scrobble/playing": {} });
+    const r = await wetrakrAdapter.recordProgress(item, show, 90, "stop");
+    expect(r).toMatchObject({ ok: false, reason: "numbering_mismatch" });
+    expect(paths(calls)).toEqual(["POST /scrobble/start", "DELETE /scrobble/playing"]);
+  });
+
+  it("reuses a start's mismatch, with no new start", async () => {
+    const calls = api({ "/scrobble/start": reply(2, 5), "/scrobble/playing": {} });
+    await wetrakrAdapter.recordProgress(item, show, 10, "start");
+    calls.length = 0;
+    const r = await wetrakrAdapter.recordProgress(item, show, 90, "stop");
+    expect(r).toMatchObject({ ok: false, reason: "numbering_mismatch" });
+    expect(paths(calls)).toEqual(["DELETE /scrobble/playing"]);
+  });
+
+  it("sends the stop when the episode matched", async () => {
+    const calls = api({
+      "/scrobble/start": reply(1, 2),
+      "/scrobble/stop": { ...reply(1, 2), action: "scrobble" },
+    });
+    const r = await wetrakrAdapter.recordProgress(item, show, 90, "stop");
+    expect(r).toMatchObject({ ok: true, action: "scrobble" });
+    expect(paths(calls).filter((p) => p.includes("scrobble"))).toEqual([
+      "POST /scrobble/start",
+      "POST /scrobble/stop",
+    ]);
   });
 });
 

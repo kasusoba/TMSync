@@ -208,6 +208,13 @@ export const wetrakrResolutionCache = storage.defineItem<Record<string, WetrakrI
   { fallback: {} },
 );
 
+/** What WeTrakr matched each scrobbled episode to (ms + the mismatch, or null
+ * when it matched), keyed `show:season:episode`. A stop reads it, so a play is
+ * never logged on an episode WeTrakr numbers differently. */
+export const wetrakrEpisodeChecks = storage.defineItem<
+  Record<string, { at: number; mismatch: string | null }>
+>("local:wetrakr_episode_checks", { fallback: {} });
+
 /** The user's WeTrakr match fixes, keyed like the resolution cache. Authoritative
  * in resolve. Per device, and cleared on disconnect with the rest. */
 export const wetrakrCorrections = storage.defineItem<Record<string, WetrakrIdentity>>(
