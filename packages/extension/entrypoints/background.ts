@@ -18,6 +18,7 @@ import {
   newPendingSites,
   quickLinks,
   remoteRecipes,
+  sealPlainSecrets,
   siteGrantIntent,
   tabFrameOrigins,
   tabSessions,
@@ -122,6 +123,8 @@ export default defineBackground(() => {
   // origin) so a plain "reload the extension" is enough and survives updates.
   void syncRegistrations();
   void customRecipes.migrate();
+  // Encrypt OAuth tokens stored before encryption existed (lib/secret.ts).
+  void sealPlainSecrets();
 
   // Keep registrations in step with the recipe set: a recipe synced from another
   // device, imported, or pulled from the CDN auto-activates on any origin the user

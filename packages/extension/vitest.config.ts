@@ -9,5 +9,6 @@ export default defineConfig({
     // Without this, happy-dom tries to actually FETCH them.
     environmentOptions: { happyDOM: { settings: { disableIframePageLoading: true } } },
     exclude: [...configDefaults.exclude, "e2e/**"],
+    setupFiles: ["./test/setup.ts"],
   },
 });
