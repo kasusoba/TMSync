@@ -27,7 +27,7 @@ export function summarize(plan: SyncPlan, trackers: Tracker[]): SyncTotals[] {
       else if (w.op === "rating") t.ratings += 1;
       else if (w.op === "remove") t.removed += 1;
       else if (w.op === "unrate") t.unrated += 1;
-      else if (w.create) t.created += 1;
+      else if (w.op === "entry" && w.create) t.created += 1;
       else t.updated += 1;
     }
   }

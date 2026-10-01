@@ -1,4 +1,5 @@
 import { ANIME_MAP, RECIPES } from "@/config";
+import { CONTENT_MARK } from "@/lib/diagnostics/why";
 import { errorMessage } from "@/lib/errors";
 import { bundledLinks } from "@/lib/recipes";
 import { addedHosts, findMovedSite, groupSites, withSiteHosts } from "@/lib/recipes/sites";
@@ -18,6 +19,7 @@ import {
   newPendingSites,
   quickLinks,
   remoteRecipes,
+  sealPlainSecrets,
   siteGrantIntent,
   tabFrameOrigins,
   tabSessions,
@@ -40,14 +42,26 @@ import {
 } from "@/lib/trackers";
 import {
   type AnimapOverrides,
+  type DeriveOutcome,
   type TargetIds,
   deriveMediaWith,
 } from "@/lib/trackers/animap/derive";
 import type { Animap } from "@/lib/trackers/animap/index";
 import { loadAnimap, parseAnimeMap } from "@/lib/trackers/animap/load";
 import { planCourWrite } from "@/lib/trackers/cour-plan";
-import { type ReviewHandler, allServices, getService } from "@/lib/trackers/service";
-import { type TrackedItem, type Tracker, WATCHED_THRESHOLD } from "@/lib/trackers/types";
+import {
+  type ReviewHandler,
+  allServices,
+  connectTracker,
+  getService,
+  watchConnectGrants,
+} from "@/lib/trackers/service";
+import {
+  TRACKER_INFO,
+  type TrackedItem,
+  type Tracker,
+  WATCHED_THRESHOLD,
+} from "@/lib/trackers/types";
 import {
   type BadgeStatus,
   type DerivedOutcome,
@@ -122,6 +136,8 @@ export default defineBackground(() => {
   // origin) so a plain "reload the extension" is enough and survives updates.
   void syncRegistrations();
   void customRecipes.migrate();
+  // Encrypt OAuth tokens stored before encryption existed (lib/secret.ts).
+  void sealPlainSecrets();
 
   // Keep registrations in step with the recipe set: a recipe synced from another
   // device, imported, or pulled from the CDN auto-activates on any origin the user
@@ -181,6 +197,7 @@ export default defineBackground(() => {
 
   // Each tracker's own listeners, set up again on each wake (constraint #4).
   for (const service of allServices()) service.onWake?.();
+  watchConnectGrants();
 
   onMessage("refreshRecipes", async () => {
     // One "Refresh" button, both CDN lists. Awaited so the options page reads a
@@ -194,12 +211,9 @@ export default defineBackground(() => {
   // Accounts: one set of handlers for every tracker, through its service.
   onMessage("getTrackerStatus", ({ data }) => getService(data).status());
 
-  // A saved list sync read and base belong to one account; a new sign-in drops
-  // them (only once it succeeds: a cancelled sign-in keeps the old account).
   onMessage("connectTracker", async ({ data }) => {
     try {
-      await getService(data).connect();
-      await forgetLists(data);
+      await connectTracker(data);
       return { ok: true };
     } catch (e) {
       return { ok: false, error: errorMessage(e) };
@@ -311,6 +325,9 @@ export default defineBackground(() => {
   onMessage("registerSite", ({ data }) => registerSite(data));
   onMessage("finishSiteGrant", () => finishSiteGrant());
   onMessage("unregisterSite", ({ data }) => unregisterSite(data));
+  onMessage("startOnTab", ({ sender }) =>
+    sender.tab?.id !== undefined ? startOnTab(sender.tab.id) : false,
+  );
   onMessage("listEnabledSites", () => enabledOrigins.getValue());
   // Reconcile after a broad-grant toggle or a backup import (the caller changed
   // permissions/recipes in its own page context, then asks the SW to catch up).
@@ -421,6 +438,31 @@ export default defineBackground(() => {
     } catch {
       return [];
     }
+  });
+
+  onMessage("exportLetterboxd", async ({ data }) => {
+    const run = getService(data.tracker).exportLetterboxd;
+    if (!run) return { ok: false, error: `${TRACKER_INFO[data.tracker].label} has no export` };
+    try {
+      const { csv, count } = await run();
+      return { ok: true, csv, count };
+    } catch (e) {
+      return { ok: false, error: errorMessage(e) };
+    }
+  });
+
+  // Pin the fix on the media this tracker resolves, not the page as scraped: a
+  // derived tracker gets the crosswalk's media (Trakt, WeTrakr from an AniList
+  // page) or the page plus the native item's ids (Simkl), so a pin on the page
+  // would never be read.
+  onMessage("fixMatch", async ({ data, sender }) => {
+    const tabId = data.tabId ?? sender.tab?.id;
+    const trackers =
+      tabId !== undefined ? (await tabSessions.getValue())[tabId]?.trackers : undefined;
+    const target = await reviewTarget({ media: data.media, tracker: data.tracker, trackers });
+    const media = "media" in target ? target.media : data.media;
+    await getService(data.tracker).pinPick?.(media, data.pick);
+    if (tabId !== undefined) void sendMessage("recheck", undefined, tabId);
   });
 
   onMessage("searchCour", async ({ data }) => {
@@ -923,6 +965,30 @@ function needsCourBridge(native: Tracker, target: Tracker): boolean {
 }
 
 /**
+ * {@link deriveMediaWith}, plus one fallback: a seasoned tracker that speaks the
+ * page resolves the page itself when the native tracker found nothing (WeTrakr
+ * when Trakt has no such title), as it would if it were native.
+ */
+function deriveTarget(
+  target: Tracker,
+  media: ParsedMedia,
+  nativeItem: TrackedItem | null,
+  overrides: AnimapOverrides,
+  animap: Animap,
+): DeriveOutcome {
+  const d = deriveMediaWith(target, media, nativeItem, overrides, animap);
+  if (
+    d.kind === "miss" &&
+    nativeItem === null &&
+    trackerFamily(target) === "seasoned" &&
+    speaksPage(target, media)
+  ) {
+    return { kind: "resolved", media };
+  }
+  return d;
+}
+
+/**
  * Resolve a derived tracker's entry: by the exact ids the derivation named (the
  * adapter picks the namespace it can use), else from the derived media.
  */
@@ -974,7 +1040,7 @@ async function resolveAcross(
       );
       continue;
     }
-    const d = deriveMediaWith(tk, media, nativeItem, overrides, animap);
+    const d = deriveTarget(tk, media, nativeItem, overrides, animap);
     if (d.kind === "miss") {
       // An empty crosswalk means the CDN copy hasn't landed yet, not that the
       // item is unmapped, so say that instead of "not on this tracker".
@@ -1029,7 +1095,7 @@ async function reviewTarget(
     ? (await resolveNative(native, data.media, overrides, animap).catch(() => ({ item: null })))
         .item
     : null;
-  const d = deriveMediaWith(tracker, data.media, nativeItem, overrides, animap);
+  const d = deriveTarget(tracker, data.media, nativeItem, overrides, animap);
   const name = trackerLabel(tracker);
   if (d.kind === "ambiguous") return { ok: false, error: `can't tell which ${name} entry this is` };
   // The anchor falls back to the page as scraped, as it does when it records.
@@ -1079,7 +1145,7 @@ async function recordDerivedTrackers(
   };
 
   for (const target of targets) {
-    const d = deriveMediaWith(target, data.media, nativeItem, overrides, animap);
+    const d = deriveTarget(target, data.media, nativeItem, overrides, animap);
     if (d.kind === "miss") {
       // No crosswalk row: skip this tracker (the item is not mapped there).
       out.push({
@@ -1400,7 +1466,10 @@ async function syncRegistrations(): Promise<void> {
     const registered = await browser.scripting.getRegisteredContentScripts();
     const ids = new Set(registered.map((s) => s.id));
     if (await hasAllSites()) {
-      const perOrigin = registered.map((s) => s.id).filter((id) => id !== ALL_SITES_ID);
+      // Only the per-site scripts: a tracker's own scripts (wetrakr-quicklinks) stay.
+      const perOrigin = registered
+        .map((s) => s.id)
+        .filter((id) => id.startsWith("tmsync-") && id !== ALL_SITES_ID);
       if (perOrigin.length)
         await browser.scripting.unregisterContentScripts({ ids: perOrigin }).catch(() => {});
       if (!ids.has(ALL_SITES_ID)) await registerAllSites().catch(() => {});
@@ -1611,6 +1680,41 @@ async function finishSiteGrant(): Promise<SiteGrantOutcome> {
  * after a grant the new host permission can lag reaching the scripting API, so
  * retry once. False when it still fails (e.g. a restricted page): reload to start.
  */
+/**
+ * Start the content script in the frames of a tab that have access but do not run
+ * it: a registration covers only later loads, so a site the picker just saved
+ * would wait for a reload. The script marks itself (`CONTENT_MARK`), so a frame
+ * that runs it already is left alone and never scrobbles twice. False when a
+ * frame refused the script.
+ */
+async function startOnTab(tabId: number): Promise<boolean> {
+  try {
+    const probe = await browser.scripting.executeScript({
+      target: { tabId, allFrames: true },
+      func: (mark: string) => ({
+        runs: !!(globalThis as unknown as Record<string, unknown>)[mark],
+        origin: location.origin,
+      }),
+      args: [CONTENT_MARK],
+    });
+    // Only the enabled sites, as a reload would (another granted origin, like a
+    // tracker's site, has no content script).
+    const enabled = await enabledOrigins.getValue();
+    const frameIds = probe
+      .filter((r) => r.result && !r.result.runs && enabled.includes(r.result.origin))
+      .map((r) => r.frameId);
+    if (frameIds.length === 0) return true;
+    return await injectWithRetry(() =>
+      browser.scripting.executeScript({
+        target: { tabId, frameIds },
+        files: ["/content-scripts/content.js"],
+      }),
+    );
+  } catch {
+    return false;
+  }
+}
+
 async function injectWithRetry(run: () => Promise<unknown>): Promise<boolean> {
   try {
     await run();

@@ -11,7 +11,7 @@ import type { CourEntry } from "./cour-plan";
 /** The trackers — a growing list (multi-track, constraint #1). Add a member here,
  * then a `TRACKER_INFO` entry, an adapter (registered in `getAdapter`), a mark, and
  * a picker toggle. Nothing should switch on the string with an "else ⇒ trakt" default. */
-export type Tracker = "trakt" | "anilist" | "mal" | "simkl";
+export type Tracker = "trakt" | "anilist" | "mal" | "simkl" | "wetrakr";
 
 /**
  * The fraction of a video after which TMSync treats it as finished (0–1).
@@ -67,11 +67,19 @@ export interface TrackerInfo {
   rates: RatingScope;
   /** What kind of note the rating panel can write to this tracker. */
   note: NoteKind;
+  /** The fewest words the tracker takes in a note (Trakt rejects shorter comments). */
+  noteMinWords?: number;
   /** How a wrong match is fixed (which panel the fix button opens). */
   fix: FixKind;
+  /** The account can export its movies as a Letterboxd CSV (`TrackerService.exportLetterboxd`). */
+  exportsLetterboxd?: boolean;
   /** The build variables that configure this tracker (named in the Account pane when
    * a build lacks them). */
   env: readonly string[];
+  /** Host access the tracker needs: an API that sends no CORS headers, or the site
+   * its quick links run on. The UI asks for it on the Connect click (`access.ts`),
+   * never at install. `site` names it to the user. */
+  hostAccess?: { origins: readonly string[]; site: string };
 }
 
 // Order matters: `ALL_TRACKERS` follows it, and native inference takes the first
@@ -82,8 +90,24 @@ const INFO = {
     family: "seasoned",
     rates: "levels",
     note: "public",
+    noteMinWords: 5,
     fix: "search",
+    exportsLetterboxd: true,
     env: ["WXT_TRAKT_CLIENT_ID", "WXT_TRAKT_CLIENT_SECRET"],
+  },
+  wetrakr: {
+    label: "WeTrakr",
+    family: "seasoned",
+    rates: "levels",
+    note: "public",
+    fix: "search",
+    exportsLetterboxd: true,
+    env: ["WXT_WETRAKR_CLIENT_ID"],
+    // The site too: one prompt also covers its quick links (wetrakr-quicklinks).
+    hostAccess: {
+      origins: ["https://api.wetrakr.com/*", "https://wetrakr.com/*"],
+      site: "wetrakr.com",
+    },
   },
   anilist: {
     label: "AniList",
@@ -102,14 +126,20 @@ const INFO = {
     note: "private",
     fix: "cour",
     env: ["WXT_MAL_CLIENT_ID"],
+    hostAccess: {
+      origins: ["https://myanimelist.net/*", "https://api.myanimelist.net/*"],
+      site: "myanimelist.net",
+    },
   },
   simkl: {
     label: "Simkl",
     family: "any",
     rates: "entry",
     note: "none",
-    fix: "none",
+    fix: "search",
     env: ["WXT_SIMKL_CLIENT_ID"],
+    // Its API answers CORS. The site is only for its quick links (simkl-quicklinks).
+    hostAccess: { origins: ["https://simkl.com/*"], site: "simkl.com" },
   },
 } as const satisfies Record<Tracker, TrackerInfo>;
 
@@ -128,12 +158,38 @@ export const trackerFix = (tracker: Tracker): FixKind => TRACKER_INFO[tracker].f
 export const isCourFix = (tracker: Tracker): tracker is CourTracker =>
   trackerFix(tracker) === "cour";
 
-/** Trackers whose pages can host quick links (each has a quick-link content
- * script). A subset of `Tracker`: a new tracker gets links only with its own script. */
+/** The kinds of quick link, named by the tracker whose templates they use (the
+ * stored `tracker` value): `trakt` = movie and TV templates, `anilist` = anime
+ * templates. */
 export type QuickLinkTracker = "trakt" | "anilist";
 
-/** The quick-link trackers, in display order (the quick-link editors' tabs). */
+/** The quick-link kinds, in display order (the quick-link editors' tabs). */
 export const QUICK_LINK_TRACKERS: QuickLinkTracker[] = ["trakt", "anilist"];
+
+/** Each quick-link kind's name in the editors' tabs. */
+export const QUICK_LINK_KIND_LABEL: Record<QuickLinkTracker, string> = {
+  trakt: "Movies & TV",
+  anilist: "Anime",
+};
+
+/** The trackers whose pages show each kind of quick link (each has a quick-link
+ * content script). Simkl's pages show both: its anime pages the anime kind, its
+ * movie and TV pages the other. */
+export const QUICK_LINK_PAGES: Record<QuickLinkTracker, Tracker[]> = {
+  trakt: ["trakt", "wetrakr", "simkl"],
+  anilist: ["anilist", "mal", "simkl"],
+};
+
+/** Where a quick-link kind shows, for UI text: "movie and TV pages on Trakt,
+ * WeTrakr, and Simkl". */
+export function quickLinkWhere(kind: QuickLinkTracker): string {
+  const names = QUICK_LINK_PAGES[kind].map((tk) => TRACKER_INFO[tk].label);
+  const list =
+    names.length > 2
+      ? `${names.slice(0, -1).join(", ")}, and ${names.at(-1)}`
+      : names.join(" and ");
+  return `${kind === "anilist" ? "anime" : "movie and TV"} pages on ${list}`;
+}
 
 /** All trackers in a stable order — for UI iteration (toggles, tabs) + registries. */
 export const ALL_TRACKERS = Object.keys(TRACKER_INFO) as Tracker[];
@@ -177,6 +233,14 @@ export type TrackedItem =
       year?: number;
     }
   | {
+      tracker: "wetrakr";
+      mediaType: "movie" | "show";
+      /** WeTrakr id. */
+      id: number;
+      title: string;
+      year?: number;
+    }
+  | {
       tracker: "anilist";
       /** A cour entry. An anime movie is an entry with one episode, so it is a show here too. */
       mediaType: "show";
@@ -212,6 +276,8 @@ export type TrackedItem =
       year?: number;
       /** The item's Simkl page, once a write has told us its id and section. */
       url?: string;
+      /** The user pinned the id (fix match): writes send it alone. */
+      pinned?: boolean;
     };
 
 /** A search result in a cour tracker's fix-match picker (AniList, MAL). Mirrors

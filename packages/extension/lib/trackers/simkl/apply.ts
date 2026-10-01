@@ -1,9 +1,9 @@
 /**
  * Simkl's part of applying a list sync plan (docs/ARCHITECTURE.md section 7). Per
- * chunk, at most four POSTs of the user's daily quota: `/sync/history/remove`,
+ * chunk, at most five POSTs of the user's daily quota: `/sync/history/remove`,
  * `/sync/history` (watches, and an anime entry's episodes and status),
- * `/sync/ratings`, and `/sync/ratings/remove`. Never the scrobble endpoints, so
- * no 20 s lock.
+ * `/sync/add-to-list` (the status of a movie or show), `/sync/ratings`, and
+ * `/sync/ratings/remove`. Never the scrobble endpoints, so no 20 s lock.
  *
  * Anime goes under `shows[]` on every sync endpoint (Simkl's docs:
  * `/sync/history/remove` ignores an `anime[]` array), with its cour ids, and
@@ -54,6 +54,8 @@ export function simklBodies(writes: SyncWrite[]): {
   ratings: { body: Body; at: number[] };
   unrate: { body: Body; at: number[] };
   remove: { body: Body; at: number[] };
+  /** Statuses, each item with its own `to`. */
+  status: { body: Body; at: number[] };
   /** Writes with nothing Simkl can take (a rewatch count), done as they are. */
   nothing: number[];
 } {
@@ -62,6 +64,7 @@ export function simklBodies(writes: SyncWrite[]): {
   const ratings = empty();
   const unrate = empty();
   const remove = empty();
+  const status = empty();
   const nothing: number[] = [];
   const put = (b: { body: Body; at: number[] }, w: SyncWrite, i: number, item: object) => {
     b.body[section(w.target)].push({ ids: simklItemIds(w.target), ...item });
@@ -111,18 +114,23 @@ export function simklBodies(writes: SyncWrite[]): {
         return put(unrate, w, i, {});
       case "remove":
         return put(remove, w, i, {});
+      case "status":
+        return w.status.to
+          ? put(status, w, i, { to: COUR_TO_SIMKL[w.status.to] })
+          : nothing.push(i);
     }
   });
-  return { history, ratings, unrate, remove, nothing };
+  return { history, ratings, unrate, remove, status, nothing };
 }
 
 export async function applySimkl(writes: SyncWrite[]): Promise<ChunkOutcome> {
   const results = outcomes(writes.length, { ok: true });
-  const { history, ratings, unrate, remove, nothing } = simklBodies(writes);
+  const { history, ratings, unrate, remove, status, nothing } = simklBodies(writes);
   for (const i of nothing) results[i] = { ok: true };
   const parts = [
     { path: "/sync/history/remove", ...remove },
     { path: "/sync/history", ...history },
+    { path: "/sync/add-to-list", ...status },
     { path: "/sync/ratings", ...ratings },
     { path: "/sync/ratings/remove", ...unrate },
   ].filter((p) => p.at.length);

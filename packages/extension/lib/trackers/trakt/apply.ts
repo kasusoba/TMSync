@@ -1,15 +1,16 @@
 /**
- * Trakt's part of applying a list sync plan (docs/ARCHITECTURE.md section 7): one
- * `POST /sync/history` for the watches, one `POST /sync/ratings` for the ratings,
- * and one `POST /sync/ratings/remove` for the ratings to clear, per chunk.
- * Trakt keeps a new play for every history write, so the plan never sends one
- * twice (it diffs against what Trakt has). Trakt has no list entries and no
- * status, so it takes no `entry` or `remove` write.
+ * Trakt's part of applying a list sync plan (docs/ARCHITECTURE.md section 7). Per
+ * chunk, one POST each for what it holds: `/sync/history` for the watches,
+ * `/sync/ratings` and `/sync/ratings/remove`, and for statuses
+ * `/sync/watchlist` (plan to watch) and `/users/hidden/dropped` (dropped shows),
+ * each with its `/remove`. Trakt keeps a new play for every history write, so
+ * the plan never sends one twice (it diffs against what Trakt has). Trakt has no
+ * list entries, so it takes no `entry` or `remove` write.
  */
 import { errorMessage } from "../../errors";
 import { remoteRatings } from "../../storage";
 import type { ChunkOutcome, SyncWrite, TargetRef, WriteOutcome } from "../../sync/types";
-import { inNotFound, outcomes, sleep, toTen } from "../../sync/write-util";
+import { inNotFound, sleep, toTen } from "../../sync/write-util";
 import { TraktNotConnectedError, syncPost } from "./client";
 
 /** Writes per chunk (items per POST). */
@@ -93,22 +94,67 @@ export function ratingsBody(
   return { body: { movies, shows }, at };
 }
 
-export async function applyTrakt(writes: SyncWrite[]): Promise<ChunkOutcome> {
-  const results = outcomes(writes.length, {
-    ok: false,
-    reason: "failed",
-    error: "Trakt takes no list entries.",
+/** The status writes as the four Trakt lists they move between: which go on or
+ * off the watchlist, and which shows are dropped or undropped. Pure. */
+export function statusBodies(
+  writes: SyncWrite[],
+): Record<
+  | "/sync/watchlist"
+  | "/sync/watchlist/remove"
+  | "/users/hidden/dropped"
+  | "/users/hidden/dropped/remove",
+  { body: Record<string, unknown[]>; at: number[] }
+> {
+  const empty = () => ({
+    body: { movies: [] as unknown[], shows: [] as unknown[] },
+    at: [] as number[],
   });
+  const out = {
+    "/sync/watchlist": empty(),
+    "/sync/watchlist/remove": empty(),
+    "/users/hidden/dropped": empty(),
+    "/users/hidden/dropped/remove": empty(),
+  };
+  writes.forEach((w, i) => {
+    if (w.op !== "status") return;
+    const { from, to } = w.status;
+    const key = w.target.mediaType === "movie" ? "movies" : "shows";
+    const put = (path: keyof typeof out) => {
+      out[path].body[key]?.push({ ids: traktIds(w.target) });
+      out[path].at.push(i);
+    };
+    if (to === "PLANNING") put("/sync/watchlist");
+    else if (from === "PLANNING") put("/sync/watchlist/remove");
+    if (key === "shows" && to === "DROPPED") put("/users/hidden/dropped");
+    else if (key === "shows" && from === "DROPPED") put("/users/hidden/dropped/remove");
+  });
+  return out;
+}
+
+export async function applyTrakt(writes: SyncWrite[]): Promise<ChunkOutcome> {
   const parts = [
     { path: "/sync/history" as const, ...historyBody(writes) },
     { path: "/sync/ratings" as const, ...ratingsBody(writes) },
     { path: "/sync/ratings/remove" as const, ...ratingsBody(writes, "unrate") },
+    ...Object.entries(statusBodies(writes)).map(([path, b]) => ({
+      path: path as keyof ReturnType<typeof statusBodies>,
+      ...b,
+    })),
   ].filter((p) => p.at.length);
+  // A write in some part is done unless one of its parts fails (a status can take
+  // two: off the watchlist, onto the dropped list).
+  const sent = new Set(parts.flatMap((p) => p.at));
+  const results = writes.map(
+    (_, i): WriteOutcome =>
+      sent.has(i)
+        ? { ok: true }
+        : { ok: false, reason: "failed", error: "Trakt takes no list entries." },
+  );
   let stop: string | undefined;
   let rated = false;
   for (const part of parts) {
     const set = (r: WriteOutcome) => {
-      for (const i of part.at) results[i] = r;
+      for (const i of part.at) if (results[i]?.ok) results[i] = r;
     };
     if (stop) {
       set({ ok: false, reason: "failed", error: "Not sent." });
@@ -129,11 +175,10 @@ export async function applyTrakt(writes: SyncWrite[]): Promise<ChunkOutcome> {
       }
       for (const i of part.at) {
         const w = writes[i] as SyncWrite;
-        results[i] = inNotFound(res.data, traktIds(w.target))
-          ? { ok: false, reason: "not_found", error: "Trakt could not match it." }
-          : { ok: true };
+        if (results[i]?.ok && inNotFound(res.data, traktIds(w.target)))
+          results[i] = { ok: false, reason: "not_found", error: "Trakt could not match it." };
       }
-      if (part.path !== "/sync/history") rated = true;
+      if (part.path.startsWith("/sync/ratings")) rated = true;
     } catch (e) {
       if (e instanceof TraktNotConnectedError) stop = "Trakt is not connected.";
       set({ ok: false, reason: "failed", error: errorMessage(e) });

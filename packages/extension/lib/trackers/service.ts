@@ -1,12 +1,23 @@
 import type { ParsedMedia } from "@tmsync/shared";
+import { browser } from "wxt/browser";
+import { connectIntent } from "../storage";
+import { forgetLists } from "../sync/base-store";
 import type { ListCache, ListRead } from "../sync/list-cache";
 import type { ChunkOutcome, SyncKind, SyncWrite, WriteOutcome } from "../sync/types";
+import { hasTrackerAccess, isTrackerGrant } from "./access";
 import { anilistService } from "./anilist/service";
 import type { BoundCourPins } from "./cour-pins";
 import { malService } from "./mal/service";
 import { simklService } from "./simkl/service";
 import { traktService } from "./trakt/service";
-import type { CourTracker, RatingLevel, SearchOption, Tracker } from "./types";
+import {
+  type CourTracker,
+  type RatingLevel,
+  type SearchOption,
+  TRACKER_INFO,
+  type Tracker,
+} from "./types";
+import { wetrakrService } from "./wetrakr/service";
 
 /** Report some writes of a chunk as done, by their place in the chunk. */
 export type ApplyReport = (at: number[], outcome: WriteOutcome) => void;
@@ -52,8 +63,7 @@ export interface TrackerService {
   review: ReviewHandler;
   /**
    * Free-text search of this tracker, for manual mode (a site with no readable
-   * title). Optional: Simkl has none, since its shared daily quota rules out
-   * searching.
+   * title) and the fix-match panel. Called only on a user's action.
    */
   search?(query: string, type: "movie" | "show"): Promise<SearchOption[]>;
   /**
@@ -84,6 +94,9 @@ export interface TrackerService {
     chunk: number;
     run(writes: SyncWrite[], report?: ApplyReport): Promise<ChunkOutcome>;
   };
+  /** A Letterboxd-import CSV of the user's movies (`TRACKER_INFO.exportsLetterboxd`).
+   * Throws with a user-facing message when it fails. */
+  exportLetterboxd?(): Promise<{ csv: string; count: number }>;
   /** Alarm handlers by alarm name (the tracker creates the alarms itself). */
   alarms?: Record<string, () => Promise<void>>;
   /** Listeners and this tracker's own message handlers (features only it has), set
@@ -111,6 +124,7 @@ const SERVICES: TrackerServices = {
   anilist: anilistService,
   mal: malService,
   simkl: simklService,
+  wetrakr: wetrakrService,
 };
 
 /** The background service for a tracker. */
@@ -121,4 +135,38 @@ export function getService<T extends Tracker>(tracker: T): TrackerServices[T] {
 /** Every tracker's service, in registry order. */
 export function allServices(): TrackerService[] {
   return Object.values(SERVICES);
+}
+
+/** How long a popup's connect intent stays good (the user answers the prompt). */
+const INTENT_MS = 2 * 60 * 1000;
+
+/**
+ * Sign in to a tracker. A tracker with `hostAccess` needs the grant first: the UI
+ * asks for it on the Connect click, a gesture the background does not have.
+ * A saved list sync read and base belong to one account, so a new sign-in drops
+ * them (only once it succeeds: a cancelled sign-in keeps the old account).
+ */
+export async function connectTracker(tracker: Tracker): Promise<void> {
+  if (!(await hasTrackerAccess(tracker))) {
+    throw new Error(`Allow access to ${TRACKER_INFO[tracker].label} to connect`);
+  }
+  await getService(tracker).connect();
+  await forgetLists(tracker);
+}
+
+/**
+ * Finish a sign-in after a first host grant. Firefox closes the popup at the
+ * permission prompt, so the popup cannot ask for the sign-in; it left an intent.
+ * A listener set up on each wake (constraint #4).
+ */
+export function watchConnectGrants(): void {
+  browser.permissions.onAdded.addListener(async (granted) => {
+    const intent = await connectIntent.getValue();
+    if (!intent || Date.now() - intent.at > INTENT_MS) return;
+    if (!isTrackerGrant(intent.tracker, granted.origins)) return;
+    await connectIntent.setValue(null);
+    await connectTracker(intent.tracker).catch((e) =>
+      console.warn(`[TMSync] ${TRACKER_INFO[intent.tracker].label} sign-in failed`, e),
+    );
+  });
 }

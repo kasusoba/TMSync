@@ -34,6 +34,7 @@ export function PreviewResult({
   onApply,
   onCancelApply,
   onPick,
+  onPickMany = () => {},
   held = [],
   heldFirst = false,
   onPreview = () => {},
@@ -51,6 +52,7 @@ export function PreviewResult({
   onApply: () => void;
   onCancelApply: () => void;
   onPick: (key: string, value: SyncPick | undefined) => void;
+  onPickMany?: (picks: Record<string, SyncPick | undefined>) => void;
   /** The items the last daily run held for the user (`AutoRun.held`). */
   held?: string[];
   /** Open on the held items only: the user previewed to review them. */
@@ -98,6 +100,10 @@ export function PreviewResult({
   const conflicts = plan.conflicts.filter(
     (c) => !kept.has(c.key) && match({ ...c, kind: undefined }),
   );
+  // Conflicts with no pick yet: they write nothing until the user picks.
+  const open = plan.conflicts.filter(
+    (c) => !kept.has(c.key) && inView(c.key) && c.picked === undefined,
+  ).length;
   const skips = plan.skips.filter(
     (s) => s.reason !== "ignored" && match({ ...s, kind: undefined }),
   );
@@ -182,8 +188,8 @@ export function PreviewResult({
 
       {preview.noCrosswalk && (
         <p class={clsx("rounded-md px-2.5 py-1.5 text-[11px]", t.infoBox)}>
-          The anime crosswalk isn’t downloaded yet, so anime can’t move between Trakt and AniList or
-          MyAnimeList. Refresh the library and preview again.
+          The anime crosswalk isn’t downloaded yet, so anime can’t move between Trakt or WeTrakr and
+          AniList or MyAnimeList. Refresh the library and preview again.
         </p>
       )}
       {preview.reason === "too_few" && (
@@ -282,6 +288,17 @@ export function PreviewResult({
         </div>
       )}
 
+      {tab === "changes" && open > 0 && (
+        <div class={clsx("flex items-center gap-3 rounded-md px-3 py-2 text-[12px]", t.infoBox)}>
+          <span class="flex-1">
+            {plural(open, "conflict")} {open === 1 ? "waits" : "wait"} for your pick. Until you
+            pick, sync writes nothing for {open === 1 ? "it" : "them"}.
+          </span>
+          <Btn t={t} tone="ghost" onClick={() => setTab("conflicts")}>
+            Review conflicts
+          </Btn>
+        </div>
+      )}
       {tab === "changes" && (
         <ChangesTable t={t} trackers={trackers} items={items.slice(0, shown)} onKeepOut={keepOut} />
       )}
@@ -312,7 +329,13 @@ export function PreviewResult({
       {tab === "notices" && !notices.length && <Empty t={t} text="Nothing is left as is." />}
 
       {tab === "conflicts" && (
-        <ConflictTable t={t} trackers={trackers} conflicts={conflicts} onPick={onPick} />
+        <ConflictTable
+          t={t}
+          trackers={trackers}
+          conflicts={conflicts}
+          onPick={onPick}
+          onPickMany={onPickMany}
+        />
       )}
       {tab === "conflicts" && !conflicts.length && <Empty t={t} text="No conflicts." />}
 

@@ -50,7 +50,11 @@ export const TRAKT_PLACEHOLDERS: readonly PlaceholderDoc[] = [
   { token: "imdb", desc: "IMDb id", example: "tt0133093" },
   { token: "title", desc: "URL-encoded title", example: "The%20Matrix" },
   { token: "slug", desc: "clean slug, year stripped", example: "the-matrix" },
-  { token: "slugyear", desc: "Trakt slug, may keep a year", example: "the-matrix-1999" },
+  {
+    token: "slugyear",
+    desc: "Trakt slug, may keep a year (Trakt pages only)",
+    example: "the-matrix-1999",
+  },
   { token: "season", desc: "season number (tv)", example: "1" },
   { token: "episode", desc: "episode number (tv)", example: "5" },
 ];
@@ -84,6 +88,7 @@ export function placeholderHint(list: readonly PlaceholderDoc[]): string {
  *   MyAnimeList:   myanimelist.net/anime/{id}  (the entry, like AniList)
  *   Simkl:         simkl.com/{movies|tv}/{id}  (a guess from the media type; the
  *                  real page, `anime` included, comes from the write that names it)
+ *   WeTrakr:       wetrakr.com/{movies|shows}/{id}
  */
 export function trackerItemUrl(tracker: Tracker, id: number, opts?: ItemUrlOpts): string {
   return ITEM_URL[tracker](id, opts ?? {});
@@ -108,6 +113,7 @@ const ITEM_URL: Record<Tracker, (id: number, o: ItemUrlOpts) => string> = {
   anilist: (id) => `https://anilist.co/anime/${id}`,
   mal: (id) => `https://myanimelist.net/anime/${id}`,
   simkl: (id, o) => `https://simkl.com/${o.mediaType === "movie" ? "movies" : "tv"}/${id}`,
+  wetrakr: (id, o) => `https://wetrakr.com/${o.mediaType === "movie" ? "movies" : "shows"}/${id}`,
 };
 
 /** Split an absolute template into host and path. Null for a path template.
@@ -270,4 +276,39 @@ export function buildAniListSiteLinks(
     if (url) out.search = url;
   }
   return out;
+}
+
+/** One site's built links, named for the quick-links block. */
+export interface NamedSiteLinks extends SiteLinks {
+  name: string;
+}
+
+/** The movie and TV quick links for a page's media: one entry per site that has a link. */
+export function siteQuickLinks(
+  sites: (LinkTemplates & { name: string })[],
+  media: TraktPageMedia,
+): NamedSiteLinks[] {
+  return sites.flatMap((s) => {
+    const links = buildSiteLinks(s, media);
+    return links.direct || links.search ? [{ name: s.name, ...links }] : [];
+  });
+}
+
+/**
+ * The anime quick links for an anime: one entry per site that has a link. `slugs`
+ * is the crosswalk of real site slugs learned from past watches, keyed
+ * `host:anilistId`.
+ */
+export function animeQuickLinks(
+  sites: (LinkTemplates & { name: string })[],
+  media: AniListPageMedia,
+  slugs: Record<string, string>,
+): NamedSiteLinks[] {
+  return sites.flatMap((s) => {
+    const host = linkHost(s);
+    const canonical =
+      host && media.anilistId !== undefined ? slugs[`${host}:${media.anilistId}`] : undefined;
+    const links = buildAniListSiteLinks(s, media, canonical);
+    return links.direct || links.search ? [{ name: s.name, ...links }] : [];
+  });
 }

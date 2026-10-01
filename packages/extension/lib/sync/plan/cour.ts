@@ -21,6 +21,7 @@ import type {
 import { type CourEntry, type PlanContext, removedOn } from "./context";
 import type { CourGroup, SeasonedPart } from "./group";
 import { fillRatings, ratingNotices } from "./ratings";
+import { statusChange } from "./status";
 import {
   courCount,
   finished,
@@ -125,9 +126,26 @@ export function planCour(ctx: PlanContext, key: string, g: CourGroup): void {
     ...srcSeasoned.filter((p) => p.local.size > 0).map((p) => p.entry.watchedAt),
   );
 
-  // Status: finished by progress, else the most recent entry.
-  const withStatus = srcCour
-    .filter((e): e is CourEntry & { status: CourStatus } => e.status !== null)
+  // A seasoned list keeps one status for the whole show, so it counts for a cour
+  // only when the show is this one cour (or the cour is a movie).
+  const single =
+    first?.kind === "resolved" &&
+    (first.value.tmdbKind === "movie" || animap.anilistIds(first.value.tmdbId, "tv").length === 1);
+
+  // Status: finished by progress, else the most recent entry. A seasoned list's
+  // "completed" only says what its watches say, which the progress has already.
+  type Held = { tracker: Tracker; status: CourStatus; updatedAt?: number; seasoned?: true };
+  const held: (Omit<Held, "status"> & { status?: CourStatus | null })[] = [
+    ...srcCour.map((e) => ({ tracker: e.tracker, status: e.status, updatedAt: e.updatedAt })),
+    ...(single ? srcSeasoned : []).map((p) => ({
+      tracker: p.entry.tracker,
+      status: p.entry.status,
+      updatedAt: p.entry.updatedAt,
+      seasoned: true as const,
+    })),
+  ];
+  const withStatus = held
+    .filter((e): e is Held => !!e.status && !(e.seasoned && e.status === "COMPLETED"))
     .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
   const done = total !== null && progress >= total && progress > 0;
   const latest = withStatus[0];
@@ -139,7 +157,12 @@ export function planCour(ctx: PlanContext, key: string, g: CourGroup): void {
         ? "CURRENT"
         : null;
   if (desired === "PLANNING" && progress > 0) desired = "CURRENT";
-  const distinct = new Set(withStatus.map((e) => normStatus(e.status)));
+  // A seasoned plan to watch with progress is no disagreement: it only lags.
+  const distinct = new Set(
+    withStatus
+      .filter((e) => !(e.seasoned && e.status === "PLANNING" && progress > 0))
+      .map((e) => normStatus(e.status)),
+  );
   // The disagreement, if any: each cour target adds itself below, so a status the
   // user picks can go to all of them (`withPicks`).
   let statusConflict: SyncConflict | undefined;
@@ -150,7 +173,8 @@ export function planCour(ctx: PlanContext, key: string, g: CourGroup): void {
       kind: "anime",
       field: "status",
       values: withStatus.map((e) => ({ tracker: e.tracker, value: e.status, at: e.updatedAt })),
-      chosen: { tracker: latest.tracker, value: normStatus(latest.status) },
+      // Nothing is chosen: a disagreement writes no status until the user picks.
+      chosen: null,
       targets: [],
     };
     conflicts.push(statusConflict);
@@ -343,7 +367,11 @@ export function planCour(ctx: PlanContext, key: string, g: CourGroup): void {
     if (entry || progress > 0 || desired) ratingRefs.set(tk, { level: "entry", target });
     const from = entry?.progress ?? 0;
     const to = Math.max(from, progress);
-    let status = desired;
+    // In a disagreement the entry keeps its status, and only follows the episodes.
+    const keep = entry?.status && !(entry.status === "PLANNING" && to > 0) ? entry.status : null;
+    let status: CourStatus | null = statusConflict
+      ? (keep ?? (to > 0 ? "CURRENT" : null))
+      : desired;
     if (tTotal !== null && to >= tTotal && to > 0) status = "COMPLETED";
     else if (status === "COMPLETED") status = "CURRENT";
     if (status === "PLANNING" && to > 0) status = entry?.status ?? "CURRENT";
@@ -438,6 +466,35 @@ export function planCour(ctx: PlanContext, key: string, g: CourGroup): void {
           add: sortEps(add),
           was,
           ...(srcAt !== undefined ? { at: srcAt } : {}),
+        });
+    }
+    // The show's (or movie's) status, when the show is this one cour.
+    if (single && desired) {
+      const shape = first.value.tmdbKind === "movie" ? "movie" : "show";
+      const from = p?.entry.status ?? null;
+      let to: CourStatus | null = desired;
+      if (shape === "movie" && progress > 0) to = null;
+      const adds = writes.some(
+        (w) => w.tracker === tk && (w.op === "episodes" || w.op === "movie"),
+      );
+      const gets = (p && (p.local.size > 0 || p.entry.status)) || adds || to === "PLANNING";
+      statusConflict?.targets?.push({
+        tracker: tk,
+        target,
+        exists: !!p,
+        status: from,
+        progress: progress > 0 ? 1 : 0,
+        total: null,
+        shape,
+      });
+      const status = gets && !statusConflict ? statusChange(tk, shape, from, to) : undefined;
+      if (status)
+        writes.push({
+          tracker: tk,
+          op: "status",
+          target,
+          status,
+          ...(p ? { was: stateOf(p.entry) } : {}),
         });
     }
     // A season rating goes only to a list that rates seasons (Trakt). A Simkl show

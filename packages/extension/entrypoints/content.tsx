@@ -1,3 +1,4 @@
+import { CONTENT_MARK } from "@/lib/diagnostics/why";
 import { loadRecipes } from "@/lib/recipes";
 import { SessionManager } from "@/lib/scrobble/session";
 import { customRecipes, remoteRecipes } from "@/lib/storage";
@@ -19,6 +20,8 @@ export default defineContentScript({
   allFrames: true,
   cssInjectionMode: "ui",
   async main(ctx) {
+    // Lets startOnTab skip a frame that runs this already.
+    (globalThis as unknown as Record<string, boolean>)[CONTENT_MARK] = true;
     const recipes = await loadRecipes();
 
     if (window === window.top) await mountBadge(ctx);
@@ -26,9 +29,9 @@ export default defineContentScript({
     const session = new SessionManager(ctx, recipes);
     session.start();
 
-    // Reflect picker saves/edits/deletes LIVE — no page reload. The picker writes
-    // the recipe stores; when they change, reload + re-evaluate this tab. (New
-    // sites still need the content script injected, i.e. one reload, the first time.)
+    // Reflect picker saves/edits/deletes LIVE, no page reload. The picker writes
+    // the recipe stores; when they change, reload + re-evaluate this tab. On a new
+    // site the picker's save injects this script first (`startOnTab`).
     // A library refresh that finds no change still rewrites its fetch time, and
     // updateRecipes restarts the playing session, so compare the lists first.
     let loaded = JSON.stringify(recipes);

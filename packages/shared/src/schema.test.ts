@@ -159,4 +159,9 @@ describe("minSchemaVersion", () => {
     expect(minSchemaVersion(["anilist", "mal"])).toBe(4);
     expect(minSchemaVersion(["simkl"])).toBe(4);
   });
+
+  it("is 5 once a recipe names WeTrakr", () => {
+    expect(minSchemaVersion(["trakt", "wetrakr"])).toBe(5);
+    expect(minSchemaVersion(["mal", "wetrakr"])).toBe(5);
+  });
 });

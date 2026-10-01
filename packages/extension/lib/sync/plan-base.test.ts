@@ -266,7 +266,8 @@ describe("remembered removals: an entry that was only a rating", () => {
 
   it("clears the rating on the others and keeps the item", () => {
     const p = plan([simklPlanned(70)], [traktRated(), simklPlanned(70)]);
-    expect(ops(p)).toEqual(["simkl:unrate"]);
+    // The plan to watch still goes to the Trakt watchlist.
+    expect(ops(p)).toEqual(["trakt:status", "simkl:unrate"]);
   });
 
   it("keeps a cour and clears its rating when a Trakt show rating goes", () => {

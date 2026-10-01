@@ -84,10 +84,16 @@ export function simklKind(media: ParsedMedia): "movie" | "show" | "anime" {
 }
 
 /** The ids we send, as strings (Simkl accepts both, echoes strings). For `anime`,
- * only cour ids: a TMDB show id there could match the wrong cour. Pure. */
-export function simklIds(media: ParsedMedia, simklId?: number): Record<string, string | number> {
+ * only cour ids: a TMDB show id there could match the wrong cour. A `pinned` Simkl
+ * id (the user's fix) goes alone, so a wrong page id cannot pull the match away. Pure. */
+export function simklIds(
+  media: ParsedMedia,
+  simklId?: number,
+  pinned = false,
+): Record<string, string | number> {
   const ids: Record<string, string | number> = {};
   if (simklId) ids.simkl = simklId;
+  if (simklId && pinned) return ids;
   const kind = simklKind(media);
   const keys =
     kind === "anime"
@@ -126,11 +132,11 @@ export function simklKey(media: ParsedMedia, perSeason = true): string {
 }
 
 /** The media object for a body: title, year and ids (Simkl matches on these). */
-function mediaObject(media: ParsedMedia, simklId?: number) {
+function mediaObject(media: ParsedMedia, simklId?: number, pinned = false) {
   return {
     title: media.title,
     ...(media.year ? { year: media.year } : {}),
-    ids: simklIds(media, simklId),
+    ids: simklIds(media, simklId, pinned),
   };
 }
 
@@ -142,9 +148,10 @@ export function scrobbleBody(
   media: ParsedMedia,
   progress: number,
   simklId?: number,
+  pinned = false,
 ): Record<string, unknown> | null {
   const p = Math.round(Math.max(0, Math.min(100, progress)) * 100) / 100;
-  const obj = mediaObject(media, simklId);
+  const obj = mediaObject(media, simklId, pinned);
   switch (simklKind(media)) {
     case "movie":
       return { progress: p, movie: obj };
@@ -172,10 +179,80 @@ export function matchFrom(res: SimklScrobbleResponse | undefined): SimklMatch | 
   return null;
 }
 
-/** Remember what Simkl matched a page item to. */
+/** Remember what Simkl matched a page item to. A user's pin stays: a write
+ * against it only echoes the pinned entry. */
 export async function saveMatch(media: ParsedMedia, match: SimklMatch): Promise<void> {
   const all = await simklMatches.getValue();
-  await simklMatches.setValue({ ...all, [simklKey(media)]: match });
+  const key = simklKey(media);
+  if (all[key]?.pinned) return;
+  await simklMatches.setValue({ ...all, [key]: match });
+}
+
+/** Pin a page item to the Simkl entry the user picked (fix match). */
+export async function pinMatch(media: ParsedMedia, match: SimklMatch): Promise<void> {
+  const all = await simklMatches.getValue();
+  await simklMatches.setValue({ ...all, [simklKey(media)]: { ...match, pinned: true } });
+}
+
+/** A `/search/{type}` result (fields we read). */
+interface SimklSearchHit {
+  title?: string;
+  year?: number;
+  endpoint_type?: "movies" | "tv" | "anime";
+  /** Anime only: tv, movie, ova, ona, special, music. */
+  type?: string;
+  ids?: { simkl_id?: number; tmdb?: string };
+}
+
+/** A search hit the fix-match panel can pin. */
+export interface SimklSearchOption {
+  id: number;
+  section: SimklSection;
+  mediaType: "movie" | "show";
+  title: string;
+  year?: number;
+  tmdb?: number;
+}
+
+/** Turn search hits into pickable options. Anime hits keep the asked type (an
+ * anime film for a movie, the rest for a show). Pure. */
+export function searchOptions(hits: SimklSearchHit[], type: "movie" | "show"): SimklSearchOption[] {
+  const out: SimklSearchOption[] = [];
+  for (const h of hits) {
+    const id = h.ids?.simkl_id;
+    const section = h.endpoint_type;
+    if (!id || !h.title || !section) continue;
+    if (section === "anime" && (h.type === "movie") !== (type === "movie")) continue;
+    const tmdb = Number(h.ids?.tmdb);
+    out.push({
+      id,
+      section,
+      mediaType: type,
+      title: h.title,
+      year: h.year,
+      tmdb: Number.isFinite(tmdb) && tmdb > 0 ? tmdb : undefined,
+    });
+  }
+  return out;
+}
+
+/**
+ * Free-text search, ONLY on the user's Fix click or manual pick: each call costs
+ * the user's shared daily quota, so nothing searches on its own. A movie looks in
+ * movies and anime (anime films), a show in tv and anime.
+ */
+export async function search(query: string, type: "movie" | "show"): Promise<SimklSearchOption[]> {
+  if (!query.trim()) return [];
+  const q = `&${new URLSearchParams({ q: query, limit: "8" })}`;
+  const paths =
+    type === "movie" ? ["/search/movie", "/search/anime"] : ["/search/tv", "/search/anime"];
+  const lists = await Promise.all(
+    paths.map(async (p) => {
+      const body = await simklGet(p, q);
+      return Array.isArray(body) ? (body as SimklSearchHit[]) : [];
+    }),
+  );
+  return searchOptions(lists.flat(), type);
 }
 
 /** The cached match for a page item, if a write has told us one. */

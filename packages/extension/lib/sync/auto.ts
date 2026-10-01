@@ -58,7 +58,8 @@ export interface AutoRun {
  * brings with it (watching, or completed at the last episode), and a watching or
  * planned entry that is at its last episode already (`catchesUp`).
  * Held: removals (of entries and ratings), any other status change with no
- * progress, a new entry whose status the trackers disagree on, and every conflict.
+ * progress, the status of a movie or show on a tracker that keeps watches by
+ * episode, a new entry whose status the trackers disagree on, and every conflict.
  */
 export function additionsOnly(plan: SyncPlan): { plan: SyncPlan; held: string[] } {
   const held = new Set(plan.conflicts.map((c) => c.key));
@@ -86,6 +87,7 @@ function addition(w: SyncWrite, contested: boolean): SyncWrite | null {
       return w.picked ? null : w;
     case "remove":
     case "unrate":
+    case "status":
       return null;
     case "entry": {
       if (w.create) return contested ? null : w;

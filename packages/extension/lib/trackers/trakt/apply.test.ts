@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SyncWrite } from "../../sync/types";
-import { historyBody, ratingsBody, traktIds } from "./apply";
+import { historyBody, ratingsBody, statusBodies, traktIds } from "./apply";
 
 const show = { id: 11, ids: { tmdb: 1399, imdb: "tt0944947" }, mediaType: "show" as const };
 const movie = { ids: { tmdb: 603 }, mediaType: "movie" as const };
@@ -78,5 +78,25 @@ describe("ratingsBody: unrate", () => {
     const out = ratingsBody([w], "unrate");
     expect(out.at).toEqual([0]);
     expect(out.body.shows).toEqual([{ ids: { trakt: 9, tmdb: 50 }, seasons: [{ number: 2 }] }]);
+  });
+});
+
+describe("Trakt status bodies", () => {
+  const st = (target: typeof show | typeof movie, from: string | null, to: string): SyncWrite =>
+    ({ tracker: "trakt", op: "status", target, status: { from, to } }) as SyncWrite;
+
+  it("moves items between the watchlist and the dropped list", () => {
+    const b = statusBodies([
+      st(movie, null, "PLANNING"),
+      st(show, "PLANNING", "DROPPED"),
+      st(show, "DROPPED", "CURRENT"),
+    ]);
+    expect(b["/sync/watchlist"]).toEqual({
+      body: { movies: [{ ids: { tmdb: 603 } }], shows: [] },
+      at: [0],
+    });
+    expect(b["/sync/watchlist/remove"].at).toEqual([1]);
+    expect(b["/users/hidden/dropped"].at).toEqual([1]);
+    expect(b["/users/hidden/dropped/remove"].at).toEqual([2]);
   });
 });

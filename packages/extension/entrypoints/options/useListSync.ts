@@ -177,12 +177,14 @@ export function useListSync(open: boolean): Omit<ComponentProps<typeof ListSyncV
     }
   };
 
-  // A pick in a disagreement, by `pickKey` (undefined = no pick: a rating is left
-  // alone, a status goes to the most recent).
-  const pickConflict = (key: string, value: SyncPick | undefined) => {
+  // Picks in disagreements, by `pickKey` (undefined = no pick: nothing is written
+  // for that field). One save for many, so a bulk pick loses none.
+  const pickConflicts = (picks: Record<string, SyncPick | undefined>) => {
     const next = { ...syncPicks };
-    if (value === undefined) delete next[key];
-    else next[key] = value;
+    for (const [key, value] of Object.entries(picks)) {
+      if (value === undefined) delete next[key];
+      else next[key] = value;
+    }
     setSyncPicks(next);
     void listSyncPicks.setValue(next).catch((e) => setSyncError(actionError(e)));
   };
@@ -220,7 +222,8 @@ export function useListSync(open: boolean): Omit<ComponentProps<typeof ListSyncV
     blocked: syncBlocked,
     onApply: applyListSync,
     onCancelApply: () => void cancelApply().catch((e) => setSyncError(actionError(e))),
-    onPick: pickConflict,
+    onPick: (key: string, value: SyncPick | undefined) => pickConflicts({ [key]: value }),
+    onPickMany: pickConflicts,
     autoRun,
     autoNow: {
       running:

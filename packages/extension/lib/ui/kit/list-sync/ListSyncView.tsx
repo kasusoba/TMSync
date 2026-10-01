@@ -57,6 +57,7 @@ export function ListSyncView({
   onApply = () => {},
   onCancelApply = () => {},
   onPick = () => {},
+  onPickMany = () => {},
   autoRun = null,
   autoNow,
 }: {
@@ -81,6 +82,8 @@ export function ListSyncView({
   onCancelApply?: () => void;
   /** Pick in a disagreement, by `pickKey` (undefined = no pick). */
   onPick?: (key: string, value: SyncPick | undefined) => void;
+  /** Many picks at once, by `pickKey`. */
+  onPickMany?: (picks: Record<string, SyncPick | undefined>) => void;
   onPreview: () => void;
   onKind: (tracker: Tracker, kind: SyncKind, on: boolean) => void;
   onSetting: (key: "includePrivate" | "includeAdult" | "auto", on: boolean) => void;
@@ -150,7 +153,7 @@ export function ListSyncView({
               <tr class={clsx("border-t", t.divider)}>
                 <td class={clsx("pt-2.5 font-medium", t.heading)}>Main list</td>
                 {KINDS.map((k) => {
-                  // Trakt holds only watch history, so it cannot be a main list.
+                  // Trakt and WeTrakr hold watch history, so they cannot be a main list.
                   const able = rows.filter(
                     (r) => canBeMain(r.tracker) && r.can.includes(k) && r.on.includes(k),
                   );
@@ -182,8 +185,8 @@ export function ListSyncView({
           <p class={clsx("mt-2 text-[11px] leading-relaxed", t.sub)}>
             None: every list gets what the others have, and an entry or a rating you remove from one
             list is removed from the others. A main list: the others copy it, and lose list entries
-            it doesn’t have. Trakt can’t be a main list: it holds only what you watched. Progress
-            never goes down and Trakt history is never deleted. The preview lists what stays as it
+            it doesn’t have. Trakt and WeTrakr can’t be a main list: their lists are watch history,
+            and sync never deletes it. Progress never goes down. The preview lists what stays as it
             is.
           </p>
         </section>
@@ -287,6 +290,7 @@ export function ListSyncView({
               onApply={onApply}
               onCancelApply={onCancelApply}
               onPick={onPick}
+              onPickMany={onPickMany}
               held={autoRun?.held}
               heldFirst={reviewHeld}
               onPreview={() => {

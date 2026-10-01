@@ -1,17 +1,7 @@
 import { stampBuild } from "@/lib/diagnostics/build-stamp";
 import { quickLinkSlugs, quickLinks, quickLinksEnabled } from "@/lib/storage";
 import { type QuickLinkItem, mountQuickLinks } from "@/lib/ui/quicklinks";
-import { type AniListPageMedia, buildAniListSiteLinks } from "@tmsync/shared";
-
-/** Hostname of a quick-link site from its `anime` template (for crosswalk lookup). */
-function siteHost(animeTemplate?: string): string | undefined {
-  if (!animeTemplate) return undefined;
-  try {
-    return new URL(animeTemplate).hostname;
-  } catch {
-    return undefined;
-  }
-}
+import { type AniListPageMedia, animeQuickLinks } from "@tmsync/shared";
 
 /**
  * Runs on anilist.co (the AniList analogue of trakt-quicklinks.content). Reads an anime's id
@@ -45,18 +35,7 @@ export default defineContentScript({
 
     const getItems = (): QuickLinkItem[] => {
       const media = parseAniListPage();
-      if (!media) return [];
-      const items: QuickLinkItem[] = [];
-      for (const s of sites) {
-        const host = siteHost(s.anime);
-        const canonical =
-          host && media.anilistId !== undefined
-            ? crosswalk[`${host}:${media.anilistId}`]
-            : undefined;
-        const links = buildAniListSiteLinks(s, media, canonical);
-        if (links.direct || links.search) items.push({ name: s.name, ...links });
-      }
-      return items;
+      return media ? animeQuickLinks(sites, media, crosswalk) : [];
     };
 
     const animeId = () => location.pathname.match(/\/anime\/(\d+)/)?.[1] ?? null;

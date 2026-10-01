@@ -17,11 +17,3 @@ export const MAL = {
   /** REST API root. */
   apiBase: "https://api.myanimelist.net/v2",
 } as const;
-
-/**
- * The origins MAL calls need. They are NOT install-time host permissions: the UI
- * requests them on the Connect click (a user gesture), inside the existing
- * `optional_host_permissions`. MAL sends no CORS headers, so without the grant
- * every call fails and the adapter degrades to "not connected".
- */
-export const MAL_ORIGINS = ["https://myanimelist.net/*", "https://api.myanimelist.net/*"];

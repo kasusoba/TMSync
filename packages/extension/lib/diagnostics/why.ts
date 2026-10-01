@@ -13,6 +13,10 @@ import type { FrameNode } from "./frame-tree";
  * scan's injected function cannot import, so it repeats this name as a literal. */
 export const FRAME_DIAG_KEY = "__tmsyncDiag";
 
+/** The global the content script sets as it starts, so the background can tell a
+ * frame that runs it from one that does not (`startOnTab`). */
+export const CONTENT_MARK = "__tmsyncContent";
+
 /** Where the top frame's last recipe check stopped. */
 export type MatchStep =
   | "no-recipe" // no recipe names this domain

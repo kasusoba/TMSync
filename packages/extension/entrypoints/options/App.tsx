@@ -14,9 +14,9 @@ import {
   animapOverrides,
   animeMap,
   badgePrefs,
+  connectIntent,
   corrections,
   customRecipes,
-  malConnectIntent,
   malCorrections,
   newPendingSites,
   optionsIntent,
@@ -24,9 +24,9 @@ import {
   quickLinksEnabled,
   remoteRecipes,
 } from "@/lib/storage";
+import { accessRefusedNote, requestTrackerAccess } from "@/lib/trackers/access";
 import type { AniListIdentity } from "@/lib/trackers/anilist/types";
 import type { AnimapOverrides } from "@/lib/trackers/animap/derive";
-import { requestMalAccess } from "@/lib/trackers/mal/access";
 import type { MalIdentity } from "@/lib/trackers/mal/types";
 import type { ResolvedIdentity } from "@/lib/trackers/trakt/types";
 import {
@@ -34,6 +34,7 @@ import {
   type QuickLinkTracker,
   TRACKER_INFO,
   type Tracker,
+  quickLinkWhere,
   trackerLabel,
 } from "@/lib/trackers/types";
 import { type Accounts, loadAccounts } from "@/lib/ui/accounts";
@@ -317,7 +318,7 @@ function QuickLinkRow({
       </div>
       {open && (
         <div class={clsx("mt-3 space-y-2.5 border-t pt-3", t.divider)}>
-          {/* shows on — Trakt pages (movies/TV) or AniList pages (anime) */}
+          {/* shows on: movie and TV pages or anime pages (QUICK_LINK_PAGES) */}
           <div>
             <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>Shows on</span>
             <TrackerTab t={t} value={tracker} onChange={setTracker} />
@@ -328,14 +329,20 @@ function QuickLinkRow({
             <>
               {field("Anime path", anime, setAnime, "/anime/{slug}")}
               {field("Search path", search, setSearch, "/search?q={title}")}
-              <PlaceholderHelp list={ANILIST_PLACEHOLDERS} note="shown on anilist.co anime pages" />
+              <PlaceholderHelp
+                list={ANILIST_PLACEHOLDERS}
+                note={`shown on ${quickLinkWhere("anilist")}`}
+              />
             </>
           ) : (
             <>
               {field("Movie path", movie, setMovie, "/movie/{tmdb}")}
               {field("TV path", tv, setTv, "/tv/{tmdb}/{season}/{episode}")}
               {field("Search path", search, setSearch, "/search/{title}")}
-              <PlaceholderHelp list={TRAKT_PLACEHOLDERS} note="shown on trakt.tv movie/TV pages" />
+              <PlaceholderHelp
+                list={TRAKT_PLACEHOLDERS}
+                note={`shown on ${quickLinkWhere("trakt")}`}
+              />
             </>
           )}
           <Btn t={t} tone="primary" disabled={busy} onClick={save}>
@@ -760,6 +767,7 @@ export function App() {
   const [needsOnly, setNeedsOnly] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [exportFrom, setExportFrom] = useState<Tracker | null>(null);
   const [exportNote, setExportNote] = useState<string | null>(null);
   const [backupBusy, setBackupBusy] = useState(false);
   const [backupNote, setBackupNote] = useState<string | null>(null);
@@ -953,11 +961,12 @@ export function App() {
   // failed or cancelled OAuth (e.g. the auth window closed, or Trakt rejected the
   // sign-in) showed no feedback in Options — the popup already reports it, so match.
   const connectProvider = async (which: Tracker) => {
-    // MAL needs host access first, asked while the click still counts as a gesture.
-    // Clear a stale popup intent first, so this grant never starts a second sign-in.
-    if (which === "mal") void malConnectIntent.setValue(0);
-    if (which === "mal" && !(await requestMalAccess().catch(() => false))) {
-      setAccountMsg("MyAnimeList needs access to myanimelist.net to connect.");
+    // A tracker with `hostAccess` needs the grant first, asked while the click still
+    // counts as a gesture. Clear a stale popup intent first, so this grant never
+    // starts a second sign-in.
+    void connectIntent.setValue(null);
+    if (!(await requestTrackerAccess(which).catch(() => false))) {
+      setAccountMsg(accessRefusedNote(which));
       return;
     }
     setBusy(true);
@@ -1069,16 +1078,17 @@ export function App() {
     setOpenLinkId(id); // auto-expand the new row (and collapse any other)
   };
 
-  const exportLetterboxd = async () => {
+  const exportLetterboxd = async (tracker: Tracker) => {
     setExporting(true);
     setExportNote(null);
-    const out = await sendMessage("exportLetterboxd", undefined);
+    setExportFrom(tracker);
+    const out = await sendMessage("exportLetterboxd", { tracker });
     if (out.ok && out.csv !== undefined) {
       const blob = new Blob([out.csv], { type: "text/csv;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "trakt-letterboxd.csv";
+      a.download = `${tracker}-letterboxd.csv`;
       a.click();
       URL.revokeObjectURL(url);
       const n = out.count ?? 0;
@@ -1205,22 +1215,23 @@ export function App() {
       setAnimap({ forward: {}, reverse: {} });
     });
 
-  // Trakt's Letterboxd export, shown under the Trakt account row once connected.
-  const letterboxdCard = (
+  // The Letterboxd export, under the account row of each connected tracker that
+  // can export (`TRACKER_INFO.exportsLetterboxd`).
+  const letterboxdCard = (tk: Tracker) => (
     <div class={clsx("space-y-2 rounded-lg px-3 py-2.5", t.card)}>
       <div class="flex items-center justify-between gap-3">
         <span class="min-w-0">
           <span class={clsx("block text-[13px] font-medium", t.heading)}>Export to Letterboxd</span>
           <span class={clsx("block text-[11px] leading-relaxed", t.sub)}>
-            Your Trakt movie history, ratings &amp; reviews as a Letterboxd-import CSV (rewatches
-            included).
+            Your {trackerLabel(tk)} movie history, ratings &amp; reviews as a Letterboxd-import CSV
+            (rewatches included).
           </span>
         </span>
-        <Btn t={t} tone="ghost" disabled={exporting} onClick={exportLetterboxd}>
+        <Btn t={t} tone="ghost" disabled={exporting} onClick={() => exportLetterboxd(tk)}>
           <Icon name="external" class="text-[12px]" /> {exporting ? "Exporting…" : "Export CSV"}
         </Btn>
       </div>
-      {exportNote && (
+      {exportNote && exportFrom === tk && (
         <p class={clsx("rounded-md px-2.5 py-1.5 text-[11px]", t.infoBox)}>{exportNote}</p>
       )}
     </div>
@@ -1448,7 +1459,9 @@ export function App() {
                     onConnect={() => connectProvider(tk)}
                     onDisconnect={() => act(() => sendMessage("disconnectTracker", tk))}
                   >
-                    {tk === "trakt" && accounts.trakt?.connected && letterboxdCard}
+                    {TRACKER_INFO[tk].exportsLetterboxd &&
+                      accounts[tk]?.connected &&
+                      letterboxdCard(tk)}
                   </AccountRow>
                 ))}
               </>
@@ -1629,8 +1642,8 @@ export function App() {
                   }
                 />
                 <p class={clsx("text-[12px]", t.sub)}>
-                  “Watch on …” buttons added to your trackers’ title pages (Trakt, AniList, and more
-                  as trackers are added). Toggle a site on to show it; drag the handle to set
+                  “Watch on …” buttons added to your trackers’ title pages (Trakt, WeTrakr, AniList,
+                  MyAnimeList, and Simkl). Toggle a site on to show it; drag the handle to set
                   display order.
                   {!linksOn &&
                     " Quick links are off, so none of these show until you turn them on."}

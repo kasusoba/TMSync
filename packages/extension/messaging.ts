@@ -1,7 +1,7 @@
 import type { ManualContext } from "@/lib/storage";
 import type { ApplyBlock } from "@/lib/sync/apply";
 import type { AccountStatus } from "@/lib/trackers/service";
-import type { ResolvedIdentity, TraktIds, TraktSearchOption } from "@/lib/trackers/trakt/types";
+import type { TraktIds } from "@/lib/trackers/trakt/types";
 import type {
   CourSearchOption,
   CourTracker,
@@ -12,7 +12,7 @@ import type {
   Tracker,
   WatchedState,
 } from "@/lib/trackers/types";
-import type { ParsedMedia } from "@tmsync/shared";
+import type { AniListPageMedia, ParsedMedia } from "@tmsync/shared";
 import { defineExtensionMessaging } from "@webext-core/messaging";
 
 /** What `finishSiteGrant` did, for the popup's note. */
@@ -246,10 +246,15 @@ export interface ProtocolMap {
   resolveAll(q: { media: ParsedMedia; trackers: Tracker[] }): TrackerResolution[];
   /** Force-refresh the CDN recipe list; returns how many recipes are now cached. */
   refreshRecipes(): { ok: boolean; count: number; error?: string };
-  /** Build a Letterboxd-import CSV from the user's Trakt movie history, ratings
-   * and reviews (rewatches included). Client-side only — the CSV is returned to
-   * the page to download; nothing is sent anywhere new (constraint #6). */
-  exportLetterboxd(): { ok: boolean; csv?: string; count?: number; error?: string };
+  /** Build a Letterboxd-import CSV from the user's movie history, ratings and
+   * reviews on one tracker (rewatches included). Client-side only: the CSV is
+   * returned to the page to download; nothing is sent anywhere new (constraint #6). */
+  exportLetterboxd(q: { tracker: Tracker }): {
+    ok: boolean;
+    csv?: string;
+    count?: number;
+    error?: string;
+  };
   /** List sync (docs/ARCHITECTURE.md section 7): start reading every connected tracker's list
    * and planning what each is missing. Returns at once; progress and the plan land
    * in the `listSyncJob` storage item. Read only, it writes nothing to a tracker.
@@ -262,6 +267,9 @@ export interface ProtocolMap {
   /** Register the content script for an origin the user just granted access to. */
   registerSite(origin: string): { ok: boolean; error?: string };
   unregisterSite(origin: string): { ok: boolean };
+  /** Start the content script in every frame of the sender's tab that has access
+   * but does not run it yet (a site the picker just saved). True when it runs. */
+  startOnTab(): boolean;
   /** Run the step after a site-access grant the popup asked for (`siteGrantIntent`).
    * `done: false` when the background already ran it (on `permissions.onAdded`). */
   finishSiteGrant(): SiteGrantOutcome;
@@ -357,12 +365,25 @@ export interface ProtocolMap {
    * carries no external-id links (unlike the classic site), so its quick links
    * resolve `{tmdb}` this way instead of scraping it. Null on any failure. */
   traktIdsForSlug(q: { type: "movie" | "show"; slug: string }): TraktIds | null;
+  /** Title and external ids of a WeTrakr title by its id, for the quick links on
+   * wetrakr.com (read from the API, never the page). Null on any failure. */
+  wetrakrPageMedia(q: {
+    type: "movie" | "show";
+    id: number;
+  }): { title: string; tmdb?: number; imdb?: string } | null;
+  /** An anime's AniList id and titles by its AniList or MAL id, for the anime quick
+   * links on myanimelist.net and simkl.com. Null on any failure. */
+  anilistPageMedia(q: { anilist?: number; mal?: number }): AniListPageMedia | null;
 
   // --- corrections (fix a wrong match) ---
-  /** Free-text Trakt search for the correction picker. */
-  searchTrakt(q: { query: string; type?: "movie" | "show" }): TraktSearchOption[];
-  /** Persist a correction for the scraped media and re-resolve the tab. */
-  saveCorrection(data: { media: ParsedMedia; identity: ResolvedIdentity; tabId?: number }): void;
+  /** Fix a wrong match on a tracker that searches (`fix: "search"`): lock the
+   * scraped media to the pick (the tracker's `pinPick`), then re-resolve the tab. */
+  fixMatch(data: {
+    tracker: Tracker;
+    media: ParsedMedia;
+    pick: SearchOption;
+    tabId?: number;
+  }): void;
   /** Free-text search for a cour tracker's fix-match panel. */
   searchCour(q: { tracker: CourTracker; query: string }): CourSearchOption[];
   /** Pin (or block, via `id: null`) a cour tracker's entry for this item: a

@@ -74,6 +74,7 @@ const ListSyncSettingsSchema: z.ZodType<ListSyncSettings> = z.object({
     anilist: z.array(SyncKindSchema).optional(),
     mal: z.array(SyncKindSchema).optional(),
     simkl: z.array(SyncKindSchema).optional(),
+    wetrakr: z.array(SyncKindSchema).optional(),
   }),
   includePrivate: z.boolean(),
   includeAdult: z.boolean(),

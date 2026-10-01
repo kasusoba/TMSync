@@ -14,6 +14,8 @@ export const SKIP_LABEL: Record<SkipReason, string> = {
   not_mapped: "Not in the anime crosswalk",
   numbering: "Episode numbers don’t match",
   no_id: "No id the tracker can use",
+  not_on_tracker:
+    "The tracker didn’t take it last time (its episode numbers differ). Tried again after 30 days",
   main_missing: "The main list wasn’t read, so nothing of this kind is planned",
 };
 

@@ -9,6 +9,15 @@ import type { ParsedMedia } from "@tmsync/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeBrowser } from "wxt/testing";
 import { flushHeldStops, scrobble, scrobbleLockWait, simklKey } from "./client";
+
+// These tests drive the scrobble lock with fake timers. Real WebCrypto settles on
+// the real clock, which would make the token reads race the faked one, so tokens
+// are sealed with a plain encoding here. lib/secret.test.ts covers the real thing.
+vi.mock("../../secret", async (actual) => ({
+  ...(await actual<typeof import("../../secret")>()),
+  seal: async (value: unknown) => ({ sealed: 1, iv: "", data: btoa(JSON.stringify(value)) }),
+  unseal: async (sealed: { data: string }) => JSON.parse(atob(sealed.data)),
+}));
 import { simklGetReview, simklRate } from "./review";
 
 const TOKENS = {

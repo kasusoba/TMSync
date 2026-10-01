@@ -1,9 +1,10 @@
 /**
- * Trakt → Letterboxd CSV export (pure, server-reusable; no DOM/browser APIs).
+ * Tracker → Letterboxd CSV export (pure, server-reusable; no DOM/browser APIs).
  *
- * Reads ONLY from Trakt — Letterboxd is just the output column layout, not a
- * tracker integration (no Letterboxd API/auth/sync; constraint #1 holds). The
- * caller fetches the raw Trakt data; this turns it into Letterboxd's import CSV.
+ * Reads ONLY from the user's tracker (Trakt or WeTrakr). Letterboxd is just the
+ * output column layout, not a tracker integration (no Letterboxd API/auth/sync;
+ * constraint #1 holds). The input shapes are Trakt's payloads: Trakt passes them as
+ * is, and WeTrakr maps its own to them (its own id in `ids.trakt`).
  *
  * Rewatches: we read the *history* (one record per play), not the collapsed
  * "watched" list — so each play becomes its own row with its own date, which

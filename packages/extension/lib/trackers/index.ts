@@ -5,6 +5,7 @@ import { malAdapter } from "./mal/adapter";
 import { simklAdapter } from "./simkl/adapter";
 import { traktAdapter } from "./trakt/adapter";
 import { ALL_TRACKERS, type Tracker, isPassthrough, isSeasonless, trackerFamily } from "./types";
+import { wetrakrAdapter } from "./wetrakr/adapter";
 
 export type { TrackerAdapter } from "./adapter";
 export type {
@@ -34,6 +35,7 @@ const ADAPTERS: Record<Tracker, TrackerAdapter> = {
   anilist: anilistAdapter,
   mal: malAdapter,
   simkl: simklAdapter,
+  wetrakr: wetrakrAdapter,
 };
 
 /** The adapter for a tracker. */

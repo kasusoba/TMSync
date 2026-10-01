@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  animeQuickLinks,
   buildAniListSiteLinks,
   buildSiteLinks,
   fillTemplate,
   linkHost,
+  siteQuickLinks,
   slugify,
   trackerItemUrl,
   withLinkHost,
@@ -251,5 +253,25 @@ describe("trackerItemUrl", () => {
     expect(trackerItemUrl("anilist", 154587, { season: 1, episode: 5 })).toBe(
       "https://anilist.co/anime/154587",
     );
+  });
+});
+
+describe("quick-link lists", () => {
+  it("drops a site with no link for the media", () => {
+    const sites = [
+      { name: "A", movie: "https://a.example/movie/{tmdb}" },
+      { name: "B", tv: "https://b.example/tv/{tmdb}" },
+    ];
+    expect(siteQuickLinks(sites, { type: "movie", tmdb: "603" })).toEqual([
+      { name: "A", direct: "https://a.example/movie/603" },
+    ]);
+  });
+
+  it("fills {slug} from the crosswalk under the site's host field", () => {
+    const sites = [{ name: "S", host: "anime.example", anime: "/watch/{slug}" }];
+    const media = { anilistId: 21, title: "One Piece" };
+    expect(animeQuickLinks(sites, media, { "anime.example:21": "op-tv" })).toEqual([
+      { name: "S", direct: "https://anime.example/watch/op-tv" },
+    ]);
   });
 });

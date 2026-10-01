@@ -37,16 +37,24 @@ export { type RecipeLibrary, parseLibrary, parseLinks, parseRecipes } from "./re
 export {
   ANILIST_PLACEHOLDERS,
   buildAniListSiteLinks,
+  animeQuickLinks,
   buildSiteLinks,
   fillTemplate,
   linkHost,
   placeholderHint,
+  siteQuickLinks,
   slugify,
   TRAKT_PLACEHOLDERS,
   trackerItemUrl,
   withLinkHost,
 } from "./links";
-export type { AniListPageMedia, PlaceholderDoc, SiteLinks, TraktPageMedia } from "./links";
+export type {
+  AniListPageMedia,
+  NamedSiteLinks,
+  PlaceholderDoc,
+  SiteLinks,
+  TraktPageMedia,
+} from "./links";
 // Letterboxd CSV export lives in the extension (packages/extension/
 // lib/portability/letterboxd.ts) — it's Trakt-shaped domain logic, not part of the
 // tracker-agnostic shared engine.

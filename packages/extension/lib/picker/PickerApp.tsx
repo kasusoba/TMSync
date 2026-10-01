@@ -356,7 +356,8 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
     }
     setEditingId(built.recipe.id);
     await sendMessage("registerSite", location.origin);
-    setStatus("Saved! Reload the page to start scrobbling.");
+    const live = await sendMessage("startOnTab", undefined).catch(() => false);
+    setStatus(live ? "Saved. Scrobbling on this page." : "Saved. Reload the page to start.");
   }
 
   const preview = previewDraft(draft, ctx);

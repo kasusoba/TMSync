@@ -44,6 +44,7 @@ export const simklAdapter: TrackerAdapter = {
       title: match?.title || media.title,
       year: match?.year ?? media.year,
       url: match ? matchUrl(match) : undefined,
+      pinned: match?.pinned,
     };
     return item;
   },
@@ -56,7 +57,7 @@ export const simklAdapter: TrackerAdapter = {
   ): Promise<RecordResult> {
     if (item.tracker !== "simkl") return { ok: false, reason: "unresolved" };
     if (!(await isConnected())) return { ok: false, reason: "not_connected" };
-    const body = scrobbleBody(media, progress, item.id || undefined);
+    const body = scrobbleBody(media, progress, item.id || undefined, item.pinned);
     if (!body) return { ok: false, reason: "no_episode" };
     let out: Awaited<ReturnType<typeof scrobble>>;
     try {

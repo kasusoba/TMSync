@@ -1,8 +1,9 @@
 /**
- * Trakt's list for list sync: watched shows and movies, plus ratings, as
- * `ListEntry` values. Trakt keeps ratings apart from history, so an item that is
- * rated but not watched is still an entry (with nothing watched). Trakt has no
- * list status: completion is derived from episodes.
+ * Trakt's list for list sync: watched shows and movies, ratings, the watchlist,
+ * and the dropped shows, as `ListEntry` values. Trakt keeps these apart from
+ * history, so an item that is only rated, listed, or dropped is still an entry
+ * (with nothing watched). The watchlist is the status PLANNING and a dropped show
+ * DROPPED. Trakt has no other status: completion is derived from episodes.
  */
 import { z } from "zod";
 import {
@@ -32,6 +33,12 @@ const WatchedShow = z.object({
     .default([]),
 });
 const WatchedMovie = z.object({ last_watched_at: z.string().nullish(), movie: Media });
+const Listed = z.object({
+  listed_at: z.string().nullish(),
+  show: Media.optional(),
+  movie: Media.optional(),
+});
+const Hidden = z.object({ hidden_at: z.string().nullish(), show: Media.optional() });
 const Rated = z.object({
   rating: z.number(),
   rated_at: z.string().nullish(),
@@ -119,6 +126,28 @@ export function traktEntries(dump: TraktListDump): ListEntry[] {
     const e = movie(r.movie);
     e.rating = r.rating * 10;
     e.updatedAt = newest(e.updatedAt, ms(r.rated_at));
+  }
+  // A show both on the watchlist and dropped takes the later of the two.
+  const statusAt = new Map<ListEntry, number>();
+  const setStatus = (
+    e: ListEntry & { status?: unknown },
+    status: "PLANNING" | "DROPPED",
+    at?: number,
+  ) => {
+    if (e.shape === "cour" || (statusAt.get(e) ?? -1) > (at ?? 0)) return;
+    e.status = status;
+    statusAt.set(e, at ?? 0);
+    e.updatedAt = newest(e.updatedAt, at);
+  };
+  for (const l of parseEach(Listed, [
+    ...(dump.showWatchlist ?? []),
+    ...(dump.movieWatchlist ?? []),
+  ])) {
+    const e = l.show ? show(l.show) : l.movie ? movie(l.movie) : null;
+    if (e) setStatus(e, "PLANNING", ms(l.listed_at));
+  }
+  for (const h of parseEach(Hidden, dump.dropped ?? [])) {
+    if (h.show) setStatus(show(h.show), "DROPPED", ms(h.hidden_at));
   }
   return [...shows.values(), ...movies.values()];
 }

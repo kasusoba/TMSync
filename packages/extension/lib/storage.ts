@@ -1,10 +1,12 @@
 import type { BadgeStatus } from "@/messaging";
 import type { LinkTemplates, ParsedMedia, Recipe } from "@tmsync/shared";
 import { storage } from "wxt/utils/storage";
+import { type Sealed, isSealed, seal, unseal } from "./secret";
 import type { ApplyJob } from "./sync/apply";
 import type { AutoRun } from "./sync/auto";
 import type { PendingBase, SyncBase } from "./sync/base";
 import type { ListCache } from "./sync/list-cache";
+import type { SyncMisses } from "./sync/misses";
 import type { SyncJob } from "./sync/preview";
 import type { SyncPicks } from "./sync/types";
 import { DEFAULT_SYNC_SETTINGS, type ListSyncSettings } from "./sync/types";
@@ -15,7 +17,8 @@ import type { Cached } from "./trackers/identity-cache";
 import type { MalIdentity, MalListStatus, MalTokens } from "./trackers/mal/types";
 import type { SimklMatch, SimklTokens } from "./trackers/simkl/types";
 import type { ResolvedIdentity, TraktIds, TraktTokens } from "./trackers/trakt/types";
-import type { QuickLinkTracker, Tracker } from "./trackers/types";
+import type { QuickLinkTracker, Tracker, WatchedState } from "./trackers/types";
+import type { WetrakrIdentity, WetrakrIds, WetrakrTokens } from "./trackers/wetrakr/types";
 
 /**
  * All persisted state lives here. The background SW is stateless (constraint
@@ -25,7 +28,7 @@ import type { QuickLinkTracker, Tracker } from "./trackers/types";
  *  - `sync:`  user-owned deltas that follow the user across devices via the
  *             browser account — custom recipes, user quick links, corrections,
  *             manual picks, badge prefs. NEVER secrets (tokens) or large caches.
- *  - `local:` per-device — tokens (secrets), caches/mirrors, granted origins,
+ *  - `local:` per-device: tokens (encrypted, `secretItem`), caches/mirrors, granted origins,
  *             the resolution/crosswalk data (regenerable).
  *  - `session:` ephemeral per-tab session state.
  *
@@ -34,16 +37,62 @@ import type { QuickLinkTracker, Tracker } from "./trackers/types";
  * are single keys; if they grow large, move them to per-item keys too.
  */
 
-export const traktTokens = storage.defineItem<TraktTokens | null>("local:trakt_tokens", {
-  fallback: null,
-});
+/**
+ * A storage item whose value is encrypted at rest (`secret.ts`). Same calls as a
+ * plain item. A value that will not decrypt (the key was lost with the browser's
+ * site data) reads as null, so the tracker shows as disconnected and the user
+ * connects again. A plain value from before encryption reads as is;
+ * `sealPlainSecrets` encrypts it on the next wake.
+ */
+export interface SecretItem<T> {
+  getValue(): Promise<T | null>;
+  setValue(value: T | null): Promise<void>;
+  watch(cb: (next: T | null, prev: T | null) => void): () => void;
+}
+
+const secretSealers: Array<() => Promise<void>> = [];
+
+function secretItem<T>(key: `local:${string}`): SecretItem<T> {
+  const raw = storage.defineItem<T | Sealed | null>(key, { fallback: null });
+  const open = async (value: T | Sealed | null): Promise<T | null> => {
+    if (!isSealed(value)) return value;
+    try {
+      return await unseal<T>(value);
+    } catch {
+      return null;
+    }
+  };
+  const item: SecretItem<T> = {
+    getValue: async () => open(await raw.getValue()),
+    setValue: async (value) => raw.setValue(value === null ? null : await seal(value)),
+    watch: (cb) =>
+      raw.watch((next, prev) => {
+        void Promise.all([open(next), open(prev)]).then(([n, p]) => cb(n, p));
+      }),
+  };
+  secretSealers.push(async () => {
+    const value = await raw.getValue();
+    if (value === null || isSealed(value)) return;
+    const sealed = await seal(value);
+    // A refresh may have written new tokens while we encrypted. Write only when the
+    // stored value is still the plain one we read.
+    if (JSON.stringify(await raw.getValue()) === JSON.stringify(value)) await raw.setValue(sealed);
+  });
+  return item;
+}
+
+/** Encrypt token values stored before encryption existed. The background runs it
+ * on each wake; it does nothing once every value is sealed. */
+export async function sealPlainSecrets(): Promise<void> {
+  await Promise.all(secretSealers.map((s) => s().catch(() => undefined)));
+}
+
+export const traktTokens = secretItem<TraktTokens>("local:trakt_tokens");
 
 // --- AniList (the anime tracker; routed, never synced with Trakt — constraint #1) ---
 
 /** AniList implicit-grant token (no refresh token; ~1-year validity). */
-export const anilistTokens = storage.defineItem<AniListTokens | null>("local:anilist_tokens", {
-  fallback: null,
-});
+export const anilistTokens = secretItem<AniListTokens>("local:anilist_tokens");
 
 /** The AniList viewer id, for list sync's fresh reads. `at` is the token's
  * `obtained_at`: a new sign-in has a new one, so an id of the old account is
@@ -75,19 +124,7 @@ export const anilistNotes = storage.defineItem<Record<number, string>>("local:an
 // --- MyAnimeList (a cour-family tracker like AniList) ---
 
 /** MAL OAuth tokens. The access token expires; auth.ts refreshes it. */
-export const malTokens = storage.defineItem<MalTokens | null>("local:mal_tokens", {
-  fallback: null,
-});
-
-/**
- * When the popup asked for MAL host access to connect (ms). On Firefox the
- * permission prompt closes the popup, so the popup cannot send `connectTracker` after
- * a first grant. The MAL service sees the grant (`permissions.onAdded`) and signs in
- * when this is recent. In storage, not memory: the background is stateless.
- */
-export const malConnectIntent = storage.defineItem<number>("session:mal_connect_intent", {
-  fallback: 0,
-});
+export const malTokens = secretItem<MalTokens>("local:mal_tokens");
 
 /**
  * What the popup asked site access FOR, so the step after the grant still runs when
@@ -156,9 +193,79 @@ export const malNotes = storage.defineItem<Record<number, string>>("local:mal_no
 // --- Simkl (the `any` family: takes the page's own numbering) ---
 
 /** Simkl OAuth tokens. The access token lasts 7 days; auth.ts refreshes it. */
-export const simklTokens = storage.defineItem<SimklTokens | null>("local:simkl_tokens", {
-  fallback: null,
+export const simklTokens = secretItem<SimklTokens>("local:simkl_tokens");
+
+// --- WeTrakr (the `seasoned` family, like Trakt) ---
+
+/** WeTrakr OAuth tokens. The access token lasts 7 days and the refresh token
+ * rotates; auth.ts refreshes it. */
+export const wetrakrTokens = secretItem<WetrakrTokens>("local:wetrakr_tokens");
+
+/** WeTrakr resolutions keyed by wetrakrCacheKey(media). Cleared on disconnect
+ * (WeTrakr's terms: delete a user's WeTrakr data when they disconnect). */
+export const wetrakrResolutionCache = storage.defineItem<Record<string, WetrakrIdentity>>(
+  "local:wetrakr_resolution_cache",
+  { fallback: {} },
+);
+
+/** What WeTrakr matched each scrobbled episode to (ms + the mismatch, or null
+ * when it matched), keyed `show:season:episode`. A stop reads it, so a play is
+ * never logged on an episode WeTrakr numbers differently. */
+export const wetrakrEpisodeChecks = storage.defineItem<
+  Record<string, { at: number; mismatch: string | null }>
+>("local:wetrakr_episode_checks", { fallback: {} });
+
+/** The user's WeTrakr match fixes, keyed like the resolution cache. Authoritative
+ * in resolve. Per device, and cleared on disconnect with the rest. */
+export const wetrakrCorrections = storage.defineItem<Record<string, WetrakrIdentity>>(
+  "local:wetrakr_corrections",
+  { fallback: {} },
+);
+
+/** External ids of WeTrakr titles by WeTrakr id (`movie:126`), for search results,
+ * which carry none. Catalog data, so cached as WeTrakr's terms allow. */
+export const wetrakrIdsCache = storage.defineItem<Record<string, WetrakrIds>>(
+  "local:wetrakr_ids_cache",
+  { fallback: {} },
+);
+
+/** Local copy of the user's WeTrakr ratings (1 to 10), keyed by wetrakrReviewKey.
+ * WeTrakr is the source of truth; a missing entry is read back from WeTrakr. */
+export const wetrakrRatings = storage.defineItem<Record<string, number>>("local:wetrakr_ratings", {
+  fallback: {},
 });
+
+/** The user's WeTrakr comments made through TMSync (the note), keyed like
+ * wetrakrRatings. WeTrakr has no comment edit, so a change deletes and posts again. */
+export const wetrakrNotes = storage.defineItem<
+  Record<string, { commentId: number; text: string; spoiler: boolean }>
+>("local:wetrakr_notes", { fallback: {} });
+
+/** Watched progress per WeTrakr show, kept a few minutes: reading it costs one call
+ * per season, and WeTrakr's terms allow user data cached for minutes. */
+export const wetrakrProgress = storage.defineItem<
+  Record<number, { at: number; state: WatchedState | null }>
+>("session:wetrakr_progress", { fallback: {} });
+
+/** Every tracker's token item, so a view can follow a sign-in on any tracker. */
+export const trackerTokens: Record<Tracker, SecretItem<unknown>> = {
+  trakt: traktTokens,
+  anilist: anilistTokens,
+  mal: malTokens,
+  simkl: simklTokens,
+  wetrakr: wetrakrTokens,
+};
+
+/**
+ * Which tracker the popup asked host access for, and when (ms). On Firefox the
+ * permission prompt closes the popup, so the popup cannot send `connectTracker`
+ * after a first grant. The background sees the grant (`permissions.onAdded`) and
+ * signs in when this is recent. In storage, not memory: the background is stateless.
+ */
+export const connectIntent = storage.defineItem<{ tracker: Tracker; at: number } | null>(
+  "session:connect_intent",
+  { fallback: null },
+);
 
 /**
  * What Simkl matched a page item to, keyed by simklKey(media). Filled from write
@@ -285,9 +392,9 @@ export interface QuickLinkSite extends LinkTemplates {
   id: string;
   name: string;
   enabled: boolean;
-  /** Which tracker's pages this link injects on: trakt.tv (movies/TV) or
-   * anilist.co (anime). Defaults to "trakt" for back-compat (v1 links). Only the
-   * trackers with a quick-link content script can host links. */
+  /** The kind of link: "trakt" (movie and TV pages) or "anilist" (anime pages).
+   * `QUICK_LINK_PAGES` names the trackers whose pages show each. Defaults to
+   * "trakt" for back-compat (v1 links). */
   tracker?: QuickLinkTracker;
   /** "library" = synced from the shared list (templates refresh on sync);
    * "user"/undefined = created or fully owned by the user. */
@@ -559,6 +666,7 @@ const LIST_SYNC_CACHE: Record<Tracker, ReturnType<typeof listCacheItem>> = {
   anilist: listCacheItem("anilist"),
   mal: listCacheItem("mal"),
   simkl: listCacheItem("simkl"),
+  wetrakr: listCacheItem("wetrakr"),
 };
 
 function listCacheItem(tracker: Tracker) {
@@ -603,6 +711,12 @@ export const listSyncAuto = storage.defineItem<AutoRun | null>("local:list_sync_
  * toolbar badge counts only new ones. */
 export const listSyncAutoSeen = storage.defineItem<string[]>("local:list_sync_auto_seen", {
   fallback: [],
+});
+
+/** The writes each tracker could not match, so sync stops planning them
+ * (`sync/misses.ts`). */
+export const listSyncMisses = storage.defineItem<SyncMisses>("local:list_sync_misses", {
+  fallback: {},
 });
 
 /** What the user picked where trackers disagree (a score 0 to 100, or a status),

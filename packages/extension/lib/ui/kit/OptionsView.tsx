@@ -14,6 +14,7 @@ import {
   TrackerMark,
   TraktMark,
   type Variant,
+  WetrakrMark,
   tokens,
 } from "./kit";
 
@@ -226,8 +227,8 @@ export function OptionsView({
               <>
                 <PaneHead t={t} title="Account" />
                 <p class={clsx("text-[12px]", t.sub)}>
-                  Independent trackers. Movies &amp; TV go to Trakt and Simkl; anime can go to
-                  AniList, MyAnimeList, and Simkl too, all at once.
+                  Independent trackers. Movies &amp; TV go to Trakt, WeTrakr, and Simkl; anime can
+                  go to AniList, MyAnimeList, and the others too, all at once.
                 </p>
                 <div class={clsx("flex items-center gap-3 rounded-lg px-3 py-2.5", t.card)}>
                   <TraktMark />
@@ -240,6 +241,18 @@ export function OptionsView({
                   </span>
                   <Btn t={t} tone="ghost">
                     Disconnect
+                  </Btn>
+                </div>
+                <div class={clsx("flex items-center gap-3 rounded-lg px-3 py-2.5", t.card)}>
+                  <WetrakrMark />
+                  <span class="min-w-0 flex-1">
+                    <span class={clsx("block text-[13px] font-semibold", t.heading)}>WeTrakr</span>
+                    <span class={clsx("flex items-center gap-1.5 text-[11px]", t.sub)}>
+                      Not connected
+                    </span>
+                  </span>
+                  <Btn t={t} tone="primary">
+                    Connect
                   </Btn>
                 </div>
                 <div class={clsx("flex items-center gap-3 rounded-lg px-3 py-2.5", t.card)}>
@@ -437,8 +450,8 @@ export function OptionsView({
                   }
                 />
                 <p class={clsx("text-[12px]", t.sub)}>
-                  “Watch on …” buttons added to your trackers’ title pages (Trakt, AniList, and more
-                  as trackers are added). Toggle a site on to show it; drag the handle to set
+                  “Watch on …” buttons added to your trackers’ title pages (Trakt, WeTrakr, AniList,
+                  MyAnimeList, and Simkl). Toggle a site on to show it; drag the handle to set
                   display order.
                 </p>
                 <Filter t={t} q={q} setQ={setQ} placeholder="Filter quick links…" />

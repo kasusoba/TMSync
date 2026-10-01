@@ -1,4 +1,4 @@
-import type { ParsedMedia } from "@tmsync/shared";
+import type { AniListPageMedia, ParsedMedia } from "@tmsync/shared";
 import {
   anilistCorrections,
   anilistResolutionCache,
@@ -257,6 +257,43 @@ export async function resolveByMalId(idMal: number): Promise<AniListIdentity | n
     [key]: stamp(identity),
   });
   return identity;
+}
+
+const PAGE_MEDIA_QUERY = `
+query ($id: Int, $idMal: Int) {
+  Media(id: $id, idMal: $idMal, type: ANIME) {
+    id
+    title { romaji english }
+  }
+}`;
+
+/**
+ * An anime's AniList id and titles by its AniList or MAL id, for the anime quick
+ * links on myanimelist.net and simkl.com. Unauthenticated. Null when AniList has no
+ * such entry.
+ */
+export async function pageMedia(ids: {
+  anilist?: number;
+  mal?: number;
+}): Promise<AniListPageMedia | null> {
+  if (ids.anilist === undefined && ids.mal === undefined) return null;
+  let data: { Media: MediaNode | null };
+  try {
+    data = await gql<{ Media: MediaNode | null }>(PAGE_MEDIA_QUERY, {
+      id: ids.anilist,
+      idMal: ids.anilist === undefined ? ids.mal : undefined,
+    });
+  } catch (e) {
+    if (e instanceof AniListHttpError && e.status === 404) return null;
+    throw e;
+  }
+  if (!data.Media) return null;
+  const { english, romaji } = data.Media.title ?? {};
+  return {
+    anilistId: data.Media.id,
+    title: english || romaji || undefined,
+    romaji: romaji || undefined,
+  };
 }
 
 const SEARCH_LIST_QUERY = `

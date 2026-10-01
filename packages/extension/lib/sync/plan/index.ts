@@ -14,7 +14,8 @@
  *  - A completed cour entry is never moved (no silent rewatch).
  *  - Ratings only fill empty ones. Two different ratings are a conflict for the user.
  *  - Status: when the progress finishes the entry, it is completed. Otherwise the
- *    most recently updated entry wins, and a disagreement is listed as a conflict.
+ *    status the entries hold. A disagreement is a conflict, and writes no status
+ *    until the user picks.
  *  - A kind with a MAIN list is not a union: only the main list is a source, and
  *    an entry it does not have is removed from the other lists. Copies still
  *    never go down, and never lose Trakt watch history: where the main list is

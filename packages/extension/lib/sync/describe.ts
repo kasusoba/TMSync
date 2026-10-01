@@ -1,5 +1,6 @@
 /** Plain-text descriptions of list sync writes and entries, for the preview. Pure. */
 import type { CourStatus } from "../trackers/cour-plan";
+import { givesStatus } from "./plan/status";
 import { outOfTen } from "./score";
 import type { EntryState, SyncWrite } from "./types";
 
@@ -39,6 +40,15 @@ export function describeWrite(w: SyncWrite): string {
       return `rate ${outOfTen(w.score)}/10${w.level === "season" ? ` (season ${w.season})` : ""}${w.picked ? " · your pick" : ""}`;
     case "unrate":
       return `remove rating${w.level === "season" ? ` (season ${w.season})` : ""} · was ${outOfTen(w.was)}/10`;
+    case "status": {
+      const { from, to } = w.status;
+      const shape = w.target.mediaType === "movie" ? "movie" : "show";
+      // A status the tracker cannot hold only takes it off the list it is on.
+      if (from && to && !givesStatus(w.tracker, shape, to))
+        return `remove from ${STATUS_LABEL[from]}`;
+      if (!to) return "";
+      return from ? `${STATUS_LABEL[from]} → ${STATUS_LABEL[to]}` : STATUS_LABEL[to];
+    }
     case "entry": {
       const parts: string[] = [w.create ? "add" : "update"];
       if (w.progress) parts.push(`${w.progress.from} → ${w.progress.to} eps`);

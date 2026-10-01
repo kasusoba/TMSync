@@ -15,6 +15,7 @@ import {
   type Tokens,
   TraktMark,
   type Variant,
+  WetrakrMark,
   tokens,
 } from "./kit";
 
@@ -104,6 +105,13 @@ const TRACKER_TOGGLES: {
     key: "trakt",
     label: "Trakt",
     mark: <TraktMark class="size-4" />,
+    need: (v) => !!v("title") || !!v("tmdbId"),
+    needHint: "Needs a title or a TMDB id.",
+  },
+  {
+    key: "wetrakr",
+    label: "WeTrakr",
+    mark: <WetrakrMark class="size-4" />,
     need: (v) => !!v("title") || !!v("tmdbId"),
     needHint: "Needs a title or a TMDB id.",
   },
@@ -412,10 +420,6 @@ export function PickerPanel(p: PickerPanelProps) {
                       (e.target as HTMLSelectElement).value as "auto" | "movie" | "show",
                     )
                   }
-                  // The open list is drawn by the browser in the HOST page's scheme
-                  // (light), so it showed our light text on white. Set the scheme,
-                  // and give the options solid colours for browsers that ignore it.
-                  style={{ colorScheme: p.variant }}
                   class={clsx(
                     "w-full appearance-none rounded-lg py-1.5 pr-8 pl-2.5 text-[13px] outline-none ring-inset focus:ring-2",
                     t.input,
@@ -428,15 +432,7 @@ export function PickerPanel(p: PickerPanelProps) {
                       ["show", "Show"],
                     ] as const
                   ).map(([value, label]) => (
-                    <option
-                      key={value}
-                      value={value}
-                      class={
-                        p.variant === "dark"
-                          ? "bg-zinc-900 text-zinc-100"
-                          : "bg-white text-zinc-900"
-                      }
-                    >
+                    <option key={value} value={value}>
                       {label}
                     </option>
                   ))}

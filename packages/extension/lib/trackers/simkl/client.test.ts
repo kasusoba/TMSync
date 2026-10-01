@@ -1,6 +1,14 @@
 import type { ParsedMedia } from "@tmsync/shared";
 import { describe, expect, it } from "vitest";
-import { lockWait, matchFrom, scrobbleBody, simklIds, simklKey, simklKind } from "./client";
+import {
+  lockWait,
+  matchFrom,
+  scrobbleBody,
+  searchOptions,
+  simklIds,
+  simklKey,
+  simklKind,
+} from "./client";
 
 const show: ParsedMedia = {
   mediaType: "show",
@@ -101,5 +109,48 @@ describe("lockWait", () => {
   it("waits out the rest of the 20 s scrobble lock", () => {
     expect(lockWait(1_000, 6_000)).toBe(15_000);
     expect(lockWait(1_000, 30_000)).toBe(0);
+  });
+});
+
+describe("pinned Simkl id", () => {
+  it("goes alone, so a wrong page id cannot pull the match away", () => {
+    expect(simklIds(show, 39687, true)).toEqual({ simkl: 39687 });
+  });
+});
+
+describe("searchOptions", () => {
+  const hits = [
+    {
+      title: "Toy Story 5",
+      year: 2026,
+      endpoint_type: "movies" as const,
+      ids: { simkl_id: 1, tmdb: "1084244" },
+    },
+    {
+      title: "Bebop",
+      year: 1998,
+      endpoint_type: "anime" as const,
+      type: "tv",
+      ids: { simkl_id: 2 },
+    },
+    {
+      title: "Bebop Film",
+      year: 2001,
+      endpoint_type: "anime" as const,
+      type: "movie",
+      ids: { simkl_id: 3 },
+    },
+    { title: "No id", endpoint_type: "tv" as const, ids: {} },
+  ];
+
+  it("keeps movies and anime films for a movie", () => {
+    expect(searchOptions(hits, "movie").map((o) => [o.id, o.section, o.tmdb])).toEqual([
+      [1, "movies", 1084244],
+      [3, "anime", undefined],
+    ]);
+  });
+
+  it("keeps anime series for a show, and drops a hit with no id", () => {
+    expect(searchOptions(hits, "show").map((o) => o.id)).toEqual([1, 2]);
   });
 });

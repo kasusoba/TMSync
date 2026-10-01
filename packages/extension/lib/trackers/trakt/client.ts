@@ -462,7 +462,11 @@ async function getAllPages<T>(path: string, limit = 100): Promise<T[]> {
     const sep = path.includes("?") ? "&" : "?";
     const res = await api(`${path}${sep}page=${page}&limit=${limit}`, {}, true);
     if (!res.ok) throw new Error(`Trakt ${path} returned ${res.status}`);
-    out.push(...((await res.json()) as T[]));
+    const items = (await res.json()) as T[];
+    out.push(...items);
+    // Trakt may apply a smaller limit than asked, so trust the page count, and
+    // stop early on an empty page.
+    if (!items.length) break;
     pageCount = Number(res.headers.get("X-Pagination-Page-Count")) || 1;
     page += 1;
   } while (page <= pageCount);
@@ -505,24 +509,52 @@ export interface TraktListDump {
   showRatings: unknown[];
   seasonRatings: unknown[];
   movieRatings: unknown[];
+  /** The watchlist ("plan to watch"). Missing = not read. */
+  showWatchlist?: unknown[];
+  movieWatchlist?: unknown[];
+  /** Dropped shows (`/users/hidden/dropped`). */
+  dropped?: unknown[];
 }
 
-/** Read the user's watched shows and movies, and their ratings: up to five GETs,
- * fewer when shows or movies are not wanted. */
+/** Read the user's watched shows and movies, their ratings, the watchlist, and
+ * the dropped shows: up to eight paged GETs, fewer when shows or movies are not
+ * wanted. */
 export async function readTraktList(want: {
   shows: boolean;
   movies: boolean;
 }): Promise<TraktListDump> {
   const get = (on: boolean, path: string) =>
     on ? getAllPages<unknown>(path) : Promise.resolve<unknown[]>([]);
-  const [shows, movies, showRatings, seasonRatings, movieRatings] = await Promise.all([
-    get(want.shows, "/sync/watched/shows"),
+  const [
+    shows,
+    movies,
+    showRatings,
+    seasonRatings,
+    movieRatings,
+    showWatchlist,
+    movieWatchlist,
+    dropped,
+  ] = await Promise.all([
+    // Without `extended=progress` Trakt leaves out the seasons (since July 2026).
+    get(want.shows, "/sync/watched/shows?extended=progress"),
     get(want.movies, "/sync/watched/movies"),
     get(want.shows, "/sync/ratings/shows"),
     get(want.shows, "/sync/ratings/seasons"),
     get(want.movies, "/sync/ratings/movies"),
+    get(want.shows, "/sync/watchlist/shows"),
+    get(want.movies, "/sync/watchlist/movies"),
+    get(want.shows, "/users/hidden/dropped?type=show"),
   ]);
-  return { shows, movies, showRatings, seasonRatings, movieRatings };
+  return {
+    shows,
+    movies,
+    showRatings,
+    seasonRatings,
+    movieRatings,
+    showWatchlist,
+    movieWatchlist,
+    dropped,
+  };
 }
 
 /** Trakt's change stamps (`/sync/last_activities`), unparsed. One GET, so a list
@@ -536,8 +568,17 @@ export async function readTraktActivity(): Promise<unknown> {
 // --- list sync writes (docs/ARCHITECTURE.md section 7) ---
 
 /** A Trakt sync POST: status, the JSON body when it worked, and a short error. */
+export type TraktSyncPath =
+  | "/sync/history"
+  | "/sync/ratings"
+  | "/sync/ratings/remove"
+  | "/sync/watchlist"
+  | "/sync/watchlist/remove"
+  | "/users/hidden/dropped"
+  | "/users/hidden/dropped/remove";
+
 export async function syncPost(
-  path: "/sync/history" | "/sync/ratings" | "/sync/ratings/remove",
+  path: TraktSyncPath,
   body: unknown,
 ): Promise<{ status: number; data?: unknown; error?: string }> {
   const res = await api(path, { method: "POST", body: JSON.stringify(body) }, true);

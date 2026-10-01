@@ -1,9 +1,10 @@
+import { onMessage } from "@/messaging";
 import { anilistCorrections, anilistResolutionCache } from "../../storage";
 import { bindPins, courSearch, setKey } from "../cour-pins";
 import type { CourTrackerService } from "../service";
 import { ANILIST_CHUNK, applyAniList } from "./apply";
 import { connect, disconnect, getRedirectUri, isConnected } from "./auth";
-import { anilistCacheKey, legacyAnilistKey, resolveById, searchAniList } from "./client";
+import { anilistCacheKey, legacyAnilistKey, pageMedia, resolveById, searchAniList } from "./client";
 import { ANILIST } from "./config";
 import { readAniListEntries } from "./list";
 import {
@@ -50,4 +51,13 @@ export const anilistService: CourTrackerService = {
       if (legacy !== undefined) await setKey(anilistCorrections, legacy, undefined);
     },
   }),
+  onWake() {
+    onMessage("anilistPageMedia", async ({ data }) => {
+      try {
+        return await pageMedia(data);
+      } catch {
+        return null;
+      }
+    });
+  },
 };

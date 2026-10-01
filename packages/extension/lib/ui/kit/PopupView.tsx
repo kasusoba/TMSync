@@ -2,9 +2,9 @@ import type { FrameNode } from "@/lib/diagnostics/frame-tree";
 import { type DiagLine, explainBadge } from "@/lib/diagnostics/why";
 import {
   ALL_TRACKERS,
-  QUICK_LINK_TRACKERS,
   type QuickLinkTracker,
   type Tracker,
+  quickLinkWhere,
   trackerLabel,
 } from "@/lib/trackers/types";
 import type { LinkTemplates } from "@tmsync/shared";
@@ -349,9 +349,8 @@ export function PopupView(p: PopupViewProps) {
           {watchOpen ? (
             <>
               <p class={clsx("text-[11px] leading-relaxed", t.sub)}>
-                A quick link on {trackerLabel(p.quickLinkInitial?.tracker ?? "trakt")} pages that
-                opens <span class="font-mono">{p.quickLinkHost}</span>. Per-site · works from any
-                page here.
+                A “Watch on” button for <span class="font-mono">{p.quickLinkHost}</span> on tracker
+                title pages. Per site · works from any page here.
               </p>
               <QuickLinkEditor
                 key={p.quickLinkHost}
@@ -367,8 +366,8 @@ export function PopupView(p: PopupViewProps) {
           ) : (
             <p class={clsx("text-[11px] leading-relaxed", t.faint)}>
               {p.quickLinkInitial
-                ? `Quick link added · opens ${p.quickLinkHost} from ${trackerLabel(p.quickLinkInitial.tracker ?? "trakt")} pages.`
-                : `Add a quick link on ${QUICK_LINK_TRACKERS.map(trackerLabel).join("/")} pages that opens ${p.quickLinkHost}.`}
+                ? `Quick link added · shows on ${quickLinkWhere(p.quickLinkInitial.tracker ?? "trakt")}.`
+                : `Add a “Watch on ${p.quickLinkHost}” button to tracker title pages.`}
             </p>
           )}
         </Section>

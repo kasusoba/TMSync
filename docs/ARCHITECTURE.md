@@ -5,8 +5,8 @@ A plain-English tour of how the code works, subsystem by subsystem. Read it when
 [`CLAUDE.md`](../CLAUDE.md). Recipe details are in [`RECIPES.md`](./RECIPES.md), and per-tracker API
 facts are in [`TRACKERS.md`](./TRACKERS.md).
 
-TMSync scrobbles movies and non-anime TV to Trakt and/or Simkl, and anime to AniList and/or
-MyAnimeList (and to Trakt and Simkl too), all at once if the user wants. It works on arbitrary
+TMSync scrobbles movies and non-anime TV to Trakt, WeTrakr, and/or Simkl, and anime to AniList and/or
+MyAnimeList (and to Trakt, WeTrakr, and Simkl too), all at once if the user wants. It works on arbitrary
 streaming sites, including ones with no API. List sync (section 7) can also bring the
 lists of all connected trackers in sync. It exists because tools like MAL-Sync cover only anime,
 and others are tied to official integrations and will not touch aggregator sites.
@@ -157,14 +157,14 @@ implementations behind it.
 tracker rates (`levels` or the whole `entry`) and what note it keeps (`public`, `private`,
 `none`); the rating panel reads those, not tracker names.
 
-| | **Trakt** (`lib/trackers/trakt/`) | **AniList** (`lib/trackers/anilist/`) | **MyAnimeList** (`lib/trackers/mal/`) | **Simkl** (`lib/trackers/simkl/`) |
-|---|---|---|---|---|
-| Progress | real-time scrobble `start`/`pause`/`stop` | none, one `SaveMediaListEntry` per episode at threshold | none, one `PATCH my_list_status` per episode at threshold | real-time scrobble, one call per 20 s |
-| Watched decision | Trakt owns it (≥80% on stop) | *we* own it (crossing `WATCHED_THRESHOLD`, 80%) | *we* own it (same planner) | Simkl owns it (≥80% on stop) |
-| Auth | OAuth authorization-code, refresh-token rotation | OAuth authorization-code, ~1-year token, no refresh | authorization code + PKCE, no secret, refresh on 401 / near expiry | AUTH V2 code + PKCE (S256), no secret, 7-day token, refresh + revoke |
-| Identity | `/search` → trakt/imdb/tmdb ids | GraphQL `Media` search → AniList id | MAL id, AniList `idMal`, else MAL search | none: each write sends ids + title + year; the match is cached from the reply |
-| Resolvable ids | tmdb, imdb, tvdb | anilist, mal | mal | all (only when alone) |
-| Host access | install manifest | install manifest | optional, asked on Connect | none (CORS) |
+| | **Trakt** (`lib/trackers/trakt/`) | **WeTrakr** (`lib/trackers/wetrakr/`) | **AniList** (`lib/trackers/anilist/`) | **MyAnimeList** (`lib/trackers/mal/`) | **Simkl** (`lib/trackers/simkl/`) |
+|---|---|---|---|---|---|
+| Progress | real-time scrobble `start`/`pause`/`stop` | real-time scrobble; a mismatched echoed episode cancels the session | none, one `SaveMediaListEntry` per episode at threshold | none, one `PATCH my_list_status` per episode at threshold | real-time scrobble, one call per 20 s |
+| Watched decision | Trakt owns it (≥80% on stop) | WeTrakr owns it (≥80% on stop) | *we* own it (crossing `WATCHED_THRESHOLD`, 80%) | *we* own it (same planner) | Simkl owns it (≥80% on stop) |
+| Auth | OAuth authorization-code, refresh-token rotation | code + PKCE (S256), no secret, 7-day token, rotating refresh, logout on disconnect | OAuth authorization-code, ~1-year token, no refresh | authorization code + PKCE, no secret, refresh on 401 / near expiry | AUTH V2 code + PKCE (S256), no secret, 7-day token, refresh + revoke |
+| Identity | `/search` → trakt/imdb/tmdb ids | `/media/external` by page id, else `/search` | GraphQL `Media` search → AniList id | MAL id, AniList `idMal`, else MAL search | none: each write sends ids + title + year; the match is cached from the reply |
+| Resolvable ids | tmdb, imdb, tvdb | tmdb, imdb, tvdb | anilist, mal | mal | all (only when alone) |
+| Host access | install manifest | optional, asked on Connect (API and site) | install manifest | optional, asked on Connect | none (CORS) |
 
 **Why they're deliberately different code paths:** AniList has no concept of "currently watching",
 so faking a scrobble loop for it would be wrong. It reads the viewer's existing list entry *before
@@ -270,9 +270,11 @@ handlers there too (Trakt: the fix-match search, trakt.tv slug ids, the Letterbo
 registry is `lib/trackers/service.ts`. The background's account, `rateItem`/`saveNote`/etc., and
 fix-match handlers are thin dispatchers over it, so the background never names a tracker for
 these. Manual mode (a site with no readable title) searches through the optional `search` on each
-service, so it works with any connected tracker that can search (Trakt, AniList, MAL; Simkl has
-none because of its quota). The pick carries the entry's ids, and a tracker that needs more to lock
-the match keeps its own (`pinPick`: Trakt saves a correction). (The `TrackerAdapter` interface itself covers
+service, so it works with any connected tracker that can search (all five; Simkl searches only on
+the user's click, because of its quota). The pick carries the entry's ids, and a tracker that needs
+more to lock the match keeps its own (`pinPick`: Trakt and WeTrakr save a correction, Simkl pins its
+id). The fix-match handler pins on the media the tracker resolves (`reviewTarget`), not the page as
+scraped, so a derived tracker reads its own pin. (The `TrackerAdapter` interface itself covers
 resolve/record/ratingLevels/watchedState; folding rate/note *writes* into the interface is a future
 step best done when a third tracker exists to shape it.)
 
@@ -306,12 +308,13 @@ and nothing of it touches `extract()` or the scrobble path.
 
 1. **Read.** Each tracker's service has `readList(kinds, saved, timed)`, which returns its whole list as
    normalized `ListEntry` values in one of three shapes: `movie` (watched or not), `seasons` (a
-   set of watched episodes per season: Trakt, Simkl shows), and `cour` (a count plus a status:
-   AniList, MAL, Simkl anime). The readers live in `lib/trackers/<tracker>/list.ts`, each a pure
+   set of watched episodes per season: Trakt, WeTrakr, Simkl shows), and `cour` (a count plus a status:
+   AniList, MAL, Simkl anime). A `movie` or `seasons` entry can carry a status too: the Trakt
+   watchlist (plan to watch) and dropped shows, a WeTrakr tracking list, a Simkl list. The readers live in `lib/trackers/<tracker>/list.ts`, each a pure
    normalizer (Zod per item, a bad item is dropped) plus a fetch in its `client.ts`. A tracker with
    a change check reuses its saved list (see "Change checks").
 2. **Plan.** `planSync` (`plan/`, pure; `plan/index.ts` names each file's part) groups entries that are the same thing, by id only, never
-   by title. Movies and non-anime TV move between Trakt and Simkl by tmdb, imdb, or tvdb. Anime is
+   by title. Movies and non-anime TV move between Trakt, WeTrakr, and Simkl by tmdb, imdb, or tvdb. Anime is
    planned per cour. A seasoned list reaches a cour through the crosswalk, with the user's fix-match
    pins folded in (`withOverrides`). A crosswalk miss or ambiguity is a skip, reported, never a
    guess. The result is a `SyncPlan`: per-item writes (`SyncWrite`, which describe intent, not API
@@ -329,9 +332,10 @@ and nothing of it touches `extract()` or the scrobble path.
 - **A main list per kind (optional).** For movies, TV, or anime, one tracker can be the main list.
   Only it is a source; the others copy it, and a list entry it does not have is removed from them.
   Trakt watch history is never removed, since deleting plays cannot be undone. A copy that is
-  further than the main list keeps its progress, and the plan says so as a notice. Trakt cannot
-  be a main list: it holds only watch history, so every planned or unwatched entry on the
-  others would be removed (`canBeMain`). A saved Trakt main list reads as none.
+  further than the main list keeps its progress, and the plan says so as a notice. Trakt and
+  WeTrakr cannot be a main list (`canBeMain`): their lists are watch history, which sync never
+  removes, so a copy could never be made to match them. A saved Trakt or WeTrakr main list reads
+  as none.
 - **Remembered removals (always on).** In a union, an entry or a rating removed from one list
   since the last sync is removed from the others instead of added back (see "The base").
   There is no switch: the removal is always in the preview first, an automatic run holds it for
@@ -339,8 +343,26 @@ and nothing of it touches `extract()` or the scrobble path.
   history is still never removed; the plan says so as a notice.
 - **Kinds per tracker.** The user picks which kinds each tracker takes part in. A kind that is off
   is off both ways: not read as a source and not written as a target.
-- **Status.** When the progress finishes an entry, it is completed. Otherwise the most recently
-  updated entry wins, and the plan lists it as a conflict. A completed entry is never moved.
+- **Status.** When the progress finishes an entry, it is completed. Otherwise the entries that
+  hold a status give it. When they hold different ones, the plan lists a conflict and writes no
+  status until the user picks: dates are a poor guide, since an import or a sync write moves them.
+  The entries still follow the episodes (a planned entry with progress is watching). The Changes
+  tab says how many conflicts wait. A completed entry is never moved.
+- **Status on movies and TV** (`plan/status.ts`). The same rule, plus the watches: a planned show
+  with watches is being watched, and a show watched after it was paused or dropped is being
+  watched again. Each tracker gets only the statuses it can hold: Trakt plan to watch (movies,
+  shows) and dropped (shows), WeTrakr and Simkl plan to watch, watching, paused, and dropped
+  (movies: plan to watch and dropped). A tracker leaves a status it holds when the status moves on
+  (off the Trakt watchlist once watched). Completed is never written: it comes from the watches.
+  For anime, a seasoned show status counts only when the crosswalk maps the show to exactly one
+  cour (or the item is a movie), since one show status cannot name one of several cours.
+- **Remembered misses** (`misses.ts`). A write a tracker answers "not found" for (the item, or the
+  episodes it sent) is remembered per tracker and item. The planner leaves it out and lists it as
+  a skip. This stops a write that can never land from failing on every apply: Simkl numbers TV
+  episodes in TVDB order, Trakt and WeTrakr in TMDB order, and even two TMDB-based trackers can
+  split a season differently. WeTrakr takes an episode it does not have without a word, so the
+  apply also remembers each episode a tracker took: planned again, it was not kept, and counts as a
+  miss. A miss expires after 30 days, and connecting the account again forgets it.
 - **Ratings** fill empty ratings only. Scores are compared on the target's own scale, so rounding
   (AniList 85 to MAL 9 and back) never loops. Two different ratings are a conflict.
 - **Start and finish days** (AniList `startedAt` and `completedAt`, MAL `start_date` and
@@ -348,8 +370,9 @@ and nothing of it touches `extract()` or the scrobble path.
   start day of the sources, and the last finish day once the copy is finished. A day the copy has
   is never changed, and a completed entry still gets an empty day filled (a day is not a move).
   Only full dates count: a MAL date with no day is left alone.
-- **Picks.** In a conflict the user can pick the value every tracker gets (`withPicks`). A picked
-  status still follows the episodes. A picked rating replaces the ratings that differ.
+- **Picks.** In a conflict the user can pick the value every tracker gets (`withPicks`), one at a
+  time or for every conflict shown at once ("Trakt's value"). A picked status still follows the
+  episodes. A picked rating replaces the ratings that differ.
 - **Private and adult** AniList entries are skipped unless the user includes them.
 - **Convergence.** Applying a plan and planning again must give no writes. The planner tests check
   this for every case.
@@ -387,7 +410,7 @@ the status the preview saw, and a rating fills an empty one unless the user pick
 **Dates.** A backfilled watch on Trakt or Simkl gets the date the source list was last watched
 (`watchedAt`), so a large first sync does not put hundreds of watches on one day. It is never the
 last change of the entry: a rating or a watchlist add years after the watch would date the play by
-it. Trakt and Simkl give the last watch. AniList and MAL give the finish day of a finished entry,
+it. Trakt, WeTrakr, and Simkl give the last watch. AniList and MAL give the finish day of a finished entry,
 else only the last change, which can be later than the watch but never earlier. Every episode of
 one backfill gets the same date. When the date is unknown, Trakt uses the air date and Simkl uses
 the time of the write.
@@ -504,13 +527,21 @@ travels.
   `recipes/store.ts`), plus `quick_links`, `quick_links_enabled`, `corrections`, `manual_selections`,
   `badge_prefs`, and `list_sync_settings` (without the ignore list and automatic sync, which
   are per device).
-- **`local:`** (per-device): `trakt_tokens`, `anilist_tokens`, `mal_tokens`, `simkl_tokens`, the
-  resolution caches, `simkl_matches`, `simkl_scrobble_at`, `simkl_held_stops`, rating and note
+- **`local:`** (per-device): `trakt_tokens`, `anilist_tokens`, `mal_tokens`, `simkl_tokens`,
+  `wetrakr_tokens`, the resolution caches, `wetrakr_corrections`, `wetrakr_ids_cache`,
+  `simkl_matches`, `simkl_scrobble_at`, `simkl_held_stops`, rating and note
   mirrors (the tracker is the source of truth), `remote_recipes`, `enabled_origins`, `anime_map`
   and `animap_overrides`, `anilist_corrections`, `mal_corrections`, `quicklink_slugs`, and the
   list sync state (`list_sync_ignore`, `list_sync_auto_on`, `list_sync_job`, `list_sync_apply`, `list_sync_cancel_at`, `list_sync_picks`,
   `list_sync_cache_<tracker>`, `list_sync_base`, `list_sync_base_next`, `list_sync_auto`,
   `list_sync_auto_seen`).
+- **Tokens are encrypted at rest** (`lib/secret.ts`). An AES-GCM key, made non-extractable, lives
+  in the extension's IndexedDB, and the `*_tokens` items hold only ciphertext (`secretItem` in
+  `lib/storage.ts`). A copy of `storage.local` alone holds no usable token. Code that runs as the
+  extension can still decrypt, so this is defense in depth. If the key is lost (the browser's
+  site data was cleared), the tokens read as null and the user connects again. The background
+  seals any plain token on each wake. Only extension pages and the background can read tokens: a
+  content script would reach the host page's IndexedDB.
 - **`session:`** (ephemeral, per tab): `tab_sessions` (the crash-reconcile source of truth),
   `tab_frame_origins`, `tab_status`, `manual_contexts`, `episode_overrides`.
 

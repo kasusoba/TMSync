@@ -1,13 +1,13 @@
 import { actionError } from "@/lib/errors";
 import type { ManualContext } from "@/lib/storage";
 import { pickMedia } from "@/lib/trackers/search";
-import type { ReviewLevel, TraktSearchOption } from "@/lib/trackers/trakt/types";
-import { pickedIdentity } from "@/lib/trackers/trakt/util";
+import type { ReviewLevel } from "@/lib/trackers/trakt/types";
 import {
   type CourSearchOption,
   type CourTracker,
   type RatingLevel,
   type SearchOption,
+  TRACKER_INFO,
   type Tracker,
   type WatchedEpisode,
   type WatchedState,
@@ -80,8 +80,8 @@ function PanelHeader({
   );
 }
 
-function optionLabel(o: TraktSearchOption): string {
-  return `${o.title}${o.year ? ` (${o.year})` : ""} · ${o.type}`;
+function optionLabel(o: SearchOption): string {
+  return `${o.title}${o.year ? ` (${o.year})` : ""} · ${o.mediaType}`;
 }
 
 /**
@@ -189,10 +189,9 @@ export function TrackingRows({
     void sendMessage("resolveAll", { media, trackers }).then(setResolutions);
   }, [media, trackers.join(",")]);
   const resFor = (tk: Tracker) => resolutions?.find((r) => r.tracker === tk);
-  // A search-fixed tracker (Trakt) is always fixable. A cour tracker (AniList, MAL)
-  // is too: with a tmdbId we pin the crosswalk override, and the title correction
-  // covers the rest (a native match, or MAL following AniList's entry). A `none`
-  // tracker (Simkl matches server-side) has nothing to fix.
+  // A search-fixed tracker (Trakt, WeTrakr, Simkl) is always fixable. A cour tracker
+  // (AniList, MAL) is too: with a tmdbId we pin the crosswalk override, and the title
+  // correction covers the rest (a native match, or MAL following AniList's entry).
   const canFix = (tk: Tracker) =>
     trackerFix(tk) === "search" ||
     (isCourFix(tk) && (media.ids?.tmdb !== undefined || !!media.title));
@@ -526,18 +525,22 @@ export function RateNote({
   // "AniList" just because Trakt is deselected: on a Trakt-only item that left the
   // box reading "Private note on AniList…" when no tracker was even AniList.
   const noteTrackers = (targets.length > 0 ? targets : applicable).filter(takesNote);
-  // Cour trackers keep a private note; Trakt posts a public comment; Simkl keeps none.
-  const privateOn = noteTrackers
-    .filter((tk) => trackerNote(tk) === "private")
-    .map(trackerLabel)
-    .join(" and ");
-  const publicOn = noteTrackers.find((tk) => trackerNote(tk) === "public");
+  // Cour trackers keep a private note; Trakt and WeTrakr post a public comment;
+  // Simkl keeps none.
+  const namesOf = (kind: "public" | "private") =>
+    noteTrackers
+      .filter((tk) => trackerNote(tk) === kind)
+      .map(trackerLabel)
+      .join(" and ");
+  const privateOn = namesOf("private");
+  const publicOn = namesOf("public");
+  const minWords = Math.max(0, ...noteTrackers.map((tk) => TRACKER_INFO[tk].noteMinWords ?? 0));
   const notePlaceholder =
     publicOn && privateOn
-      ? `Public comment on ${trackerLabel(publicOn)} · private note on ${privateOn}…`
+      ? `Public comment on ${publicOn} · private note on ${privateOn}…`
       : privateOn
         ? `Private note on ${privateOn}…`
-        : "Your note · public on Trakt, at least 5 words…";
+        : `Your note · public on ${publicOn || "Trakt"}${minWords ? `, at least ${minWords} words` : ""}…`;
   const noNotes = noteTrackers.length === 0;
 
   return (
@@ -673,7 +676,7 @@ export function RateNote({
                 }}
               />
               Mark as spoiler
-              <span class={t.faint} title="Only applies to Trakt public comments">
+              <span class={t.faint} title="Only applies to public comments">
                 <Icon name="info" class="text-[12px]" />
               </span>
             </label>
@@ -699,11 +702,13 @@ export function RateNote({
 /** The "fix match" panel: search Trakt and pick the correct entry. `tabId` is set
  * when shown from the popup (a content script infers its own tab from the sender). */
 export function Correction({
+  tracker,
   t,
   tabId,
   onClose,
   onBack,
 }: {
+  tracker: Tracker;
   t: Tokens;
   tabId?: number;
   onClose: () => void;
@@ -711,7 +716,7 @@ export function Correction({
 }) {
   const [media, setMedia] = useState<ParsedMedia | null>(null);
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<TraktSearchOption[]>([]);
+  const [results, setResults] = useState<SearchOption[]>([]);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -731,25 +736,17 @@ export function Correction({
     const type =
       media && (media.season !== undefined || media.episode !== undefined)
         ? "show"
-        : media?.mediaType === "show"
-          ? "show"
-          : media?.mediaType === "movie"
-            ? "movie"
-            : undefined;
-    setResults(await sendMessage("searchTrakt", { query, type }));
+        : (media?.mediaType ?? "show");
+    setResults(await sendMessage("searchTracker", { tracker, query, type }));
     setBusy(false);
   };
 
-  const pick = async (o: TraktSearchOption) => {
+  const pick = async (o: SearchOption) => {
     if (!media) return;
     setBusy(true);
     setErr(null);
     try {
-      await sendMessage("saveCorrection", {
-        media,
-        identity: pickedIdentity(o),
-        tabId,
-      });
+      await sendMessage("fixMatch", { tracker, media, pick: o, tabId });
       setSaved(optionLabel(o));
     } catch (e) {
       setErr(actionError(e));
@@ -778,7 +775,7 @@ export function Correction({
                 }}
                 onKeyUp={(e) => e.stopPropagation()}
                 onKeyPress={(e) => e.stopPropagation()}
-                placeholder="Search Trakt…"
+                placeholder={`Search ${trackerLabel(tracker)}…`}
                 class="w-full bg-transparent py-1.5 text-[13px] outline-none"
               />
             </div>
@@ -795,7 +792,7 @@ export function Correction({
               results.map((o) => (
                 <button
                   type="button"
-                  key={`${o.type}-${o.traktId}`}
+                  key={`${o.mediaType}-${o.id}`}
                   onClick={() => pick(o)}
                   disabled={busy}
                   class={clsx(
@@ -1316,6 +1313,7 @@ export function NowPlaying({
     null,
   );
   const [fixTracker, setFixTracker] = useState<CourTracker>("anilist");
+  const [searchFix, setSearchFix] = useState<Tracker>("trakt");
   const [rewatchBusy, setRewatchBusy] = useState(false);
   const [watched, setWatched] = useState<WatchedState | null>(null);
   const done = () => {
@@ -1349,6 +1347,7 @@ export function NowPlaying({
   if (panel === "fix")
     return (
       <Correction
+        tracker={searchFix}
         t={t}
         tabId={tabId}
         onClose={() => setPanel(null)}
@@ -1439,7 +1438,10 @@ export function NowPlaying({
             media={media}
             trackers={trackers}
             onFix={(tk) => {
-              if (trackerFix(tk) === "search") return setPanel("fix");
+              if (trackerFix(tk) === "search") {
+                setSearchFix(tk);
+                return setPanel("fix");
+              }
               if (!isCourFix(tk)) return; // nothing to fix (Simkl matches server-side)
               setFixTracker(tk);
               setPanel("cour-fix");
