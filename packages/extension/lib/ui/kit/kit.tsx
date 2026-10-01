@@ -30,6 +30,8 @@ export interface Tokens {
   ghost: string;
   danger: string;
   link: string;
+  /** A text field or a select. It sets the colour scheme and the option colours
+   * too: the browser draws an open select list in the page's scheme, not ours. */
   input: string;
   chip: string;
   okBox: string;
@@ -53,7 +55,7 @@ export function tokens(v: Variant): Tokens {
       danger: "bg-white/5 text-rose-300 ring-1 ring-white/10 hover:bg-rose-500/10",
       link: "text-ikura hover:text-ikura-600",
       input:
-        "bg-white/5 text-zinc-100 ring-1 ring-white/15 focus:ring-ikura placeholder:text-zinc-500",
+        "bg-white/5 text-zinc-100 ring-1 ring-white/15 focus:ring-ikura placeholder:text-zinc-500 [color-scheme:dark] [&_option]:bg-zinc-900 [&_option]:text-zinc-100",
       chip: "bg-white/5 text-zinc-300 ring-1 ring-white/10",
       okBox: "bg-emerald-500/10 text-emerald-300 ring-1 ring-emerald-500/20",
       badBox: "bg-rose-500/10 text-rose-300 ring-1 ring-rose-500/20",
@@ -73,7 +75,8 @@ export function tokens(v: Variant): Tokens {
     ghost: "bg-white text-zinc-700 ring-1 ring-zinc-300 hover:bg-zinc-50",
     danger: "bg-white text-rose-600 ring-1 ring-zinc-300 hover:bg-rose-50",
     link: "text-ikura hover:text-ikura-600",
-    input: "bg-white text-zinc-900 ring-1 ring-zinc-300 focus:ring-ikura placeholder:text-zinc-400",
+    input:
+      "bg-white text-zinc-900 ring-1 ring-zinc-300 focus:ring-ikura placeholder:text-zinc-400 [color-scheme:light] [&_option]:bg-white [&_option]:text-zinc-900",
     chip: "bg-zinc-100 text-zinc-600 ring-1 ring-zinc-200",
     okBox: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200",
     badBox: "bg-rose-50 text-rose-700 ring-1 ring-rose-200",
