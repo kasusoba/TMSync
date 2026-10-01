@@ -5,7 +5,7 @@ describe("tracker host access", () => {
   it("is needed only by trackers that list origins", () => {
     expect(needsHostAccess("mal")).toBe(true);
     expect(needsHostAccess("trakt")).toBe(false);
-    expect(needsHostAccess("simkl")).toBe(false);
+    expect(needsHostAccess("simkl")).toBe(true); // simkl.com, for its quick links
   });
 
   it("counts as granted for a tracker that needs none", async () => {

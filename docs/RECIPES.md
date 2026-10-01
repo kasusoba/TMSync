@@ -136,15 +136,18 @@ Rule of thumb: a TMDB-native site splits by `urlPattern`, and an AniList-native 
 
 ## Quick links
 
-A quick link puts a "watch on \<site\>" button on a trakt.tv or anilist.co page. It is URL
-templates, independent of whether a recipe exists for that site. Quick links are managed per site.
+A quick link puts a "watch on \<site\>" button on a tracker's page. It is URL templates,
+independent of whether a recipe exists for that site. Quick links are managed per site. A
+`"trakt"` link (movies and TV) shows on Trakt, WeTrakr, and Simkl movie and TV pages. An
+`"anilist"` link (anime) shows on AniList, MyAnimeList, and Simkl anime pages. The WeTrakr,
+MyAnimeList, and Simkl pages need the site access their Connect asks for.
 
 ```jsonc
 {
   "id": "cineby",                            // unique, kebab-case
   "name": "Cineby",                          // shown on the button
   "host": "cineby.at",                       // the site's domain, the one field to change if it moves
-  "tracker": "trakt",                        // which tracker's pages it shows on: "trakt" | "anilist"
+  "tracker": "trakt",                        // the kind: "trakt" (movies and TV) | "anilist" (anime)
   "movie": "/movie/{tmdb}",
   "tv":    "/tv/{tmdb}/{season}/{episode}",
   "search": "/search?q={title}"              // fallback when ids are missing
@@ -158,7 +161,7 @@ Placeholders, substituted from the tracker page (never executed):
 
 | placeholder         | on | value |
 |---------------------|----|-------|
-| `{tmdb}` `{imdb}`   | Trakt | ids read from Trakt's own external links |
+| `{tmdb}` `{imdb}`   | Trakt | ids from the tracker page (Trakt's and Simkl's external links, the WeTrakr API) |
 | `{title}`           | both | URL-encoded title (English or romaji on AniList) |
 | `{slug}`            | both | lowercase, hyphen-joined title (on Trakt: the Trakt slug with a trailing year stripped) |
 | `{slugyear}`        | Trakt | the raw Trakt slug, year included |

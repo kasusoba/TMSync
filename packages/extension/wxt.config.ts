@@ -87,10 +87,11 @@ export default defineConfig({
       if (manifest.options_ui) manifest.options_ui.open_in_tab = true;
 
       const BROAD = "*://*/*";
-      // Hosts of runtime-registered scripts that WXT would add as required. WeTrakr's
-      // quick links run on wetrakr.com only after the user grants it on Connect
-      // (inside the broad optional permission), so it must never be asked at install.
-      const RUNTIME_ONLY = [BROAD, "*://wetrakr.com/*"];
+      // Hosts of runtime-registered scripts that WXT would add as required. The
+      // WeTrakr, MAL, and Simkl quick links run on their sites only after the user
+      // grants the site on Connect (inside the broad optional permission), so a site
+      // must never be asked at install.
+      const RUNTIME_ONLY = [BROAD, "*://wetrakr.com/*", "*://myanimelist.net/*", "*://simkl.com/*"];
       // MV3: drop broad required host access.
       if (manifest.host_permissions) {
         manifest.host_permissions = manifest.host_permissions.filter(

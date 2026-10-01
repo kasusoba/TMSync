@@ -385,9 +385,9 @@ export interface QuickLinkSite extends LinkTemplates {
   id: string;
   name: string;
   enabled: boolean;
-  /** Which tracker's pages this link injects on: trakt.tv (movies/TV) or
-   * anilist.co (anime). Defaults to "trakt" for back-compat (v1 links). Only the
-   * trackers with a quick-link content script can host links. */
+  /** The kind of link: "trakt" (movie and TV pages) or "anilist" (anime pages).
+   * `QUICK_LINK_PAGES` names the trackers whose pages show each. Defaults to
+   * "trakt" for back-compat (v1 links). */
   tracker?: QuickLinkTracker;
   /** "library" = synced from the shared list (templates refresh on sync);
    * "user"/undefined = created or fully owned by the user. */

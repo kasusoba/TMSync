@@ -76,9 +76,9 @@ export interface TrackerInfo {
   /** The build variables that configure this tracker (named in the Account pane when
    * a build lacks them). */
   env: readonly string[];
-  /** Host access the tracker's API needs because it sends no CORS headers. The UI
-   * asks for it on the Connect click (`access.ts`), never at install. `site` names it
-   * to the user. */
+  /** Host access the tracker needs: an API that sends no CORS headers, or the site
+   * its quick links run on. The UI asks for it on the Connect click (`access.ts`),
+   * never at install. `site` names it to the user. */
   hostAccess?: { origins: readonly string[]; site: string };
 }
 
@@ -138,6 +138,8 @@ const INFO = {
     note: "none",
     fix: "search",
     env: ["WXT_SIMKL_CLIENT_ID"],
+    // Its API answers CORS. The site is only for its quick links (simkl-quicklinks).
+    hostAccess: { origins: ["https://simkl.com/*"], site: "simkl.com" },
   },
 } as const satisfies Record<Tracker, TrackerInfo>;
 
@@ -164,11 +166,18 @@ export type QuickLinkTracker = "trakt" | "anilist";
 /** The quick-link kinds, in display order (the quick-link editors' tabs). */
 export const QUICK_LINK_TRACKERS: QuickLinkTracker[] = ["trakt", "anilist"];
 
+/** Each quick-link kind's name in the editors' tabs. */
+export const QUICK_LINK_KIND_LABEL: Record<QuickLinkTracker, string> = {
+  trakt: "Movies & TV",
+  anilist: "Anime",
+};
+
 /** The trackers whose pages show each kind of quick link (each has a quick-link
- * content script). A movie and TV link shows on every seasoned tracker's pages. */
+ * content script). Simkl's pages show both: its anime pages the anime kind, its
+ * movie and TV pages the other. */
 export const QUICK_LINK_PAGES: Record<QuickLinkTracker, Tracker[]> = {
-  trakt: ["trakt", "wetrakr"],
-  anilist: ["anilist"],
+  trakt: ["trakt", "wetrakr", "simkl"],
+  anilist: ["anilist", "mal", "simkl"],
 };
 
 /** All trackers in a stable order — for UI iteration (toggles, tabs) + registries. */

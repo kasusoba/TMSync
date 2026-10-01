@@ -1,5 +1,4 @@
 import { onMessage } from "@/messaging";
-import { browser } from "wxt/browser";
 import {
   wetrakrCorrections,
   wetrakrIdsCache,
@@ -8,6 +7,7 @@ import {
   wetrakrRatings,
   wetrakrResolutionCache,
 } from "../../storage";
+import { watchQuickLinksScript } from "../quicklinks-script";
 import type { TrackerService } from "../service";
 import { WETRAKR_CHUNK, applyWetrakr } from "./apply";
 import { connect, disconnect, getRedirectUri, isConnected } from "./auth";
@@ -24,36 +24,7 @@ import {
 } from "./review";
 
 /** The runtime-registered quick links script on wetrakr.com. */
-const QUICKLINKS_ID = "wetrakr-quicklinks";
-const SITE = ["https://wetrakr.com/*"];
-
-/**
- * Register the wetrakr.com quick links script while the user holds wetrakr.com
- * access (asked on Connect), and remove it when they do not. Never in the install
- * manifest (constraint #5). Safe to call on every wake and permission change.
- */
-async function syncQuickLinksScript(): Promise<void> {
-  try {
-    const has = await browser.permissions.contains({ origins: SITE });
-    const on =
-      (await browser.scripting.getRegisteredContentScripts({ ids: [QUICKLINKS_ID] })).length > 0;
-    if (has && !on) {
-      await browser.scripting.registerContentScripts([
-        {
-          id: QUICKLINKS_ID,
-          matches: SITE,
-          js: ["content-scripts/wetrakr-quicklinks.js"],
-          runAt: "document_idle",
-          persistAcrossSessions: true,
-        },
-      ]);
-    } else if (!has && on) {
-      await browser.scripting.unregisterContentScripts({ ids: [QUICKLINKS_ID] });
-    }
-  } catch {
-    // best effort: without it, wetrakr.com just shows no quick links
-  }
-}
+const QUICKLINKS = { id: "wetrakr-quicklinks", matches: ["https://wetrakr.com/*"] };
 
 export const wetrakrService: TrackerService = {
   readList: readWetrakrEntries,
@@ -106,9 +77,7 @@ export const wetrakrService: TrackerService = {
     }),
   exportLetterboxd,
   onWake() {
-    void syncQuickLinksScript();
-    browser.permissions.onAdded.addListener(() => void syncQuickLinksScript());
-    browser.permissions.onRemoved.addListener(() => void syncQuickLinksScript());
+    watchQuickLinksScript(QUICKLINKS);
     onMessage("wetrakrPageMedia", async ({ data }) => {
       try {
         return await pageMedia(data.type, data.id);

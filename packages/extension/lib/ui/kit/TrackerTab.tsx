@@ -1,4 +1,5 @@
 import {
+  QUICK_LINK_KIND_LABEL,
   QUICK_LINK_PAGES,
   QUICK_LINK_TRACKERS,
   type QuickLinkTracker,
@@ -10,8 +11,8 @@ import { type Tokens, TrackerMark } from "./kit";
 /**
  * Single-select tracker tab — logo + name, matching the picker's tracker chips
  * (ring = selected). A quick link shows on ONE tracker's pages, so this is a
- * radio, not the picker's multi-toggle. A tab names every tracker whose pages
- * show that kind (`QUICK_LINK_PAGES`). Shared by the popup + Options quick-link
+ * radio, not the picker's multi-toggle. A tab names the kind and shows the mark
+ * of every tracker whose pages show it (`QUICK_LINK_PAGES`). Shared by the popup + Options quick-link
  * editors so the two stay identical. Lists only the trackers whose pages can host
  * quick links (QUICK_LINK_TRACKERS), not every tracker.
  */
@@ -30,6 +31,7 @@ export function TrackerTab({
         <button
           type="button"
           key={key}
+          title={`Shows on ${QUICK_LINK_PAGES[key].map(trackerLabel).join(", ")}`}
           onClick={() => onChange?.(key)}
           class={clsx(
             "flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 ring-inset transition",
@@ -41,7 +43,7 @@ export function TrackerTab({
             <TrackerMark key={tk} tracker={tk} class="size-4" />
           ))}
           <span class={clsx("text-[12px] font-medium", t.heading)}>
-            {QUICK_LINK_PAGES[key].map(trackerLabel).join(" + ")}
+            {QUICK_LINK_KIND_LABEL[key]}
           </span>
         </button>
       ))}

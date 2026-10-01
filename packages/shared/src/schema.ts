@@ -124,8 +124,9 @@ export type LinkTemplates = z.infer<typeof LinkTemplates>;
  * A quick-link site shared through the recipe library (the `links` section of
  * index.json). Per-site, separate from recipes (scraping config) but contributed
  * in the same file. The client adds these to the user's quick-links disabled by
- * default — the user enables their favourites. `tracker` decides which tracker's
- * pages it injects on (trakt.tv vs anilist.co); v1 links default to `trakt`.
+ * default — the user enables their favourites. `tracker` is the kind: `trakt`
+ * (movie and TV pages of Trakt, WeTrakr, Simkl) or `anilist` (anime pages of
+ * AniList, MAL, Simkl); v1 links default to `trakt`.
  */
 export const LibraryLink = LinkTemplates.extend({
   id: z.string(),

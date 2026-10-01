@@ -1,3 +1,4 @@
+import { watchQuickLinksScript } from "../quicklinks-script";
 import type { TrackerService } from "../service";
 import { SIMKL_CHUNK, applySimkl } from "./apply";
 import { connect, disconnect, getRedirectUri, isConnected } from "./auth";
@@ -45,4 +46,8 @@ export const simklService: TrackerService = {
     }),
   // A stop held inside Simkl's 20 s lock, if the worker stopped before sending it.
   alarms: { [HELD_STOP_ALARM]: flushHeldStops },
+  // The quick links on simkl.com, while the site grant (asked on Connect) holds.
+  onWake() {
+    watchQuickLinksScript({ id: "simkl-quicklinks", matches: ["https://simkl.com/*"] });
+  },
 };

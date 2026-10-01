@@ -317,7 +317,7 @@ function QuickLinkRow({
       </div>
       {open && (
         <div class={clsx("mt-3 space-y-2.5 border-t pt-3", t.divider)}>
-          {/* shows on: Trakt and WeTrakr pages (movies/TV) or AniList pages (anime) */}
+          {/* shows on: movie and TV pages or anime pages (QUICK_LINK_PAGES) */}
           <div>
             <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>Shows on</span>
             <TrackerTab t={t} value={tracker} onChange={setTracker} />

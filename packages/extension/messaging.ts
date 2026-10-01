@@ -12,7 +12,7 @@ import type {
   Tracker,
   WatchedState,
 } from "@/lib/trackers/types";
-import type { ParsedMedia } from "@tmsync/shared";
+import type { AniListPageMedia, ParsedMedia } from "@tmsync/shared";
 import { defineExtensionMessaging } from "@webext-core/messaging";
 
 /** What `finishSiteGrant` did, for the popup's note. */
@@ -368,6 +368,9 @@ export interface ProtocolMap {
     type: "movie" | "show";
     id: number;
   }): { title: string; tmdb?: number; imdb?: string } | null;
+  /** An anime's AniList id and titles by its AniList or MAL id, for the anime quick
+   * links on myanimelist.net and simkl.com. Null on any failure. */
+  anilistPageMedia(q: { anilist?: number; mal?: number }): AniListPageMedia | null;
 
   // --- corrections (fix a wrong match) ---
   /** Fix a wrong match on a tracker that searches (`fix: "search"`): lock the

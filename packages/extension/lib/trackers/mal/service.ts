@@ -1,5 +1,6 @@
 import { malCorrections, malMissCache, malResolutionCache } from "../../storage";
 import { bindPins, courSearch, setKey } from "../cour-pins";
+import { watchQuickLinksScript } from "../quicklinks-script";
 import type { CourTrackerService } from "../service";
 import { MAL_CHUNK, applyMal } from "./apply";
 import { connect, disconnect, getRedirectUri, isConnected } from "./auth";
@@ -41,4 +42,8 @@ export const malService: CourTrackerService = {
       await setKey(malMissCache, key, undefined); // a remembered miss
     },
   }),
+  // The anime quick links on myanimelist.net, while the site grant (asked on Connect) holds.
+  onWake() {
+    watchQuickLinksScript({ id: "mal-quicklinks", matches: ["https://myanimelist.net/*"] });
+  },
 };

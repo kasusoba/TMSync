@@ -1,9 +1,9 @@
 import { stampBuild } from "@/lib/diagnostics/build-stamp";
 import { quickLinks, quickLinksEnabled } from "@/lib/storage";
 import { parseWetrakrPath } from "@/lib/trackers/wetrakr/page";
-import { type QuickLinkItem, mountQuickLinks } from "@/lib/ui/quicklinks";
+import { type QuickLinkItem, keepQuickLinks } from "@/lib/ui/quicklinks";
 import { sendMessage } from "@/messaging";
-import { type TraktPageMedia, buildSiteLinks } from "@tmsync/shared";
+import { type TraktPageMedia, siteQuickLinks } from "@tmsync/shared";
 
 /**
  * Runs on wetrakr.com (the WeTrakr analogue of trakt-quicklinks.content). Injects
@@ -28,7 +28,7 @@ export default defineContentScript({
     );
     if (sites.length === 0) return; // nothing to show
 
-    let ui: Awaited<ReturnType<typeof mountQuickLinks>> | undefined;
+    let ui: ReturnType<typeof keepQuickLinks> | undefined;
     let gen = 0;
     const sync = async () => {
       const my = ++gen;
@@ -47,19 +47,10 @@ export default defineContentScript({
         season: page.type === "show" ? (page.season ?? 1) : undefined,
         episode: page.type === "show" ? (page.episode ?? 1) : undefined,
       };
-      const items = (): QuickLinkItem[] =>
-        sites.flatMap((s) => {
-          const links = buildSiteLinks(s, media);
-          return links.direct || links.search ? [{ name: s.name, ...links }] : [];
-        });
-      // Under the title header of a movie, show, season, or episode page.
-      const created = await mountQuickLinks(ctx, items, {
-        anchor: "content-header",
-        append: "after",
-        class: "my-3",
-      });
-      if (my !== gen) return created.remove(); // navigated again while mounting
-      ui = created;
+      const items = (): QuickLinkItem[] => siteQuickLinks(sites, media);
+      // In the left column, under the page's own "Where to watch" box (as on
+      // app.trakt.tv), else under the poster when the title has no such box.
+      ui = keepQuickLinks(ctx, items, { anchor: wetrakrAnchor, class: "mt-4" });
     };
 
     await sync();
@@ -72,3 +63,12 @@ export default defineContentScript({
     }, 500);
   },
 });
+
+/** The page's "Where to watch" box, else the poster. Layout only: no data is read
+ * from the page (WeTrakr's terms). */
+function wetrakrAnchor(): Element | null {
+  return (
+    document.querySelector("content-header we-item-info.sidebar-streaming") ??
+    document.querySelector("content-header .detail-grid__poster")
+  );
+}

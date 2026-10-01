@@ -88,7 +88,8 @@ and `/api/v2`).
   temporary IP ban follows request bursts. Back off on a 403 and never retry in a loop.
 - **CORS:** MAL sends no CORS headers. Calls from the background work only with host permission for
   both `myanimelist.net` and `api.myanimelist.net`, so those are optional permissions requested on
-  Connect, never in the install manifest.
+  Connect, never in the install manifest. The same grant runs the quick links on myanimelist.net,
+  which bridge the MAL id to AniList (`idMal`) for the anime templates.
 - **Resolution:** a MAL id directly, an AniList id through AniList's `idMal`, else a title search.
   Searching AniList first to get `idMal` is stronger than MAL's own search (length limits, weak
   ranking), so the MAL title search is the last fallback.
@@ -116,8 +117,9 @@ retired.
   returns 200).
 - **Every request** needs the query params `client_id`, `app-name`, and `app-version`. Browser code
   cannot set `User-Agent`, so skip it. Send a JSON `Content-Type` only on POST.
-- **CORS:** `api.simkl.com`, the token endpoint included, answers CORS (checked live), so Simkl needs
-  no host permission.
+- **CORS:** `api.simkl.com`, the token endpoint included, answers CORS (checked live), so the API
+  needs no host permission. Connect asks for `simkl.com` only, for its quick links, which read the
+  ids from the page's external links and so cost no quota.
 - **Limits:** 10 GET per second and 1 POST per second. The daily quota is **per user and shared
   across every app they use**: 500 on Free, 1,000 on PRO, 10,000 on VIP, resetting at midnight
   America/New_York.

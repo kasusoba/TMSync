@@ -27,6 +27,8 @@ export async function mountQuickLinks(
     label?: string | null;
     /** Extra spacing classes (margins) so the block doesn't touch host elements. */
     class?: string;
+    /** The host page's theme. Default dark (every tracker site but MAL's light one). */
+    variant?: "light" | "dark";
     /**
      * Whether to use WXT's `autoMount` (default true — waits for `anchor` and
      * re-mounts as it comes and goes). Set `false` for a plain one-shot `mount`
@@ -54,7 +56,7 @@ export async function mountQuickLinks(
     if (!mounted) return;
     render(
       <QuickLinksView
-        variant="dark"
+        variant={opts.variant ?? "dark"}
         items={getItems()}
         loading={opts.loading?.() ?? false}
         label={opts.label}
@@ -106,5 +108,66 @@ export async function mountQuickLinks(
     update: paint,
     mount: () => ui.mount(),
     attached: () => ui.shadowHost.isConnected,
+  };
+}
+
+/**
+ * Keep a quick-links block on a page whose framework renders the anchor late and
+ * can rebuild it (WeTrakr's Angular, Simkl, MAL). Mounts once `anchor` resolves,
+ * re-mounts when the page drops our host, and moves the block when `anchor`
+ * resolves to a different element (a preferred anchor that renders after its
+ * fallback). Polls like the AniList script, for the same reason (see
+ * anilist-quicklinks.content.tsx).
+ */
+export function keepQuickLinks(
+  ctx: ContentScriptContext,
+  getItems: () => QuickLinkItem[],
+  opts: {
+    anchor: () => Element | null;
+    append?: "after" | "before" | "first" | "last";
+    class?: string;
+    variant?: "light" | "dark";
+  },
+): { remove: () => void } {
+  let ui: Awaited<ReturnType<typeof mountQuickLinks>> | undefined;
+  let at: Element | null = null;
+  let busy = false;
+  let dead = false;
+  const tick = async () => {
+    if (dead || busy) return;
+    const anchor = opts.anchor();
+    if (ui && anchor !== at) {
+      ui.remove();
+      ui = undefined;
+    }
+    if (!anchor) return;
+    if (ui) {
+      if (!ui.attached()) ui.mount();
+      return;
+    }
+    busy = true;
+    try {
+      at = anchor;
+      const created = await mountQuickLinks(ctx, getItems, {
+        anchor: () => at,
+        append: opts.append ?? "after",
+        class: opts.class,
+        variant: opts.variant,
+        auto: false,
+      });
+      if (dead) created.remove();
+      else ui = created;
+    } finally {
+      busy = false;
+    }
+  };
+  void tick();
+  const timer = ctx.setInterval(() => void tick(), 250);
+  return {
+    remove: () => {
+      dead = true;
+      clearInterval(timer);
+      ui?.remove();
+    },
   };
 }

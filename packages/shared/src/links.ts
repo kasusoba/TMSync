@@ -273,3 +273,38 @@ export function buildAniListSiteLinks(
   }
   return out;
 }
+
+/** One site's built links, named for the quick-links block. */
+export interface NamedSiteLinks extends SiteLinks {
+  name: string;
+}
+
+/** The movie and TV quick links for a page's media: one entry per site that has a link. */
+export function siteQuickLinks(
+  sites: (LinkTemplates & { name: string })[],
+  media: TraktPageMedia,
+): NamedSiteLinks[] {
+  return sites.flatMap((s) => {
+    const links = buildSiteLinks(s, media);
+    return links.direct || links.search ? [{ name: s.name, ...links }] : [];
+  });
+}
+
+/**
+ * The anime quick links for an anime: one entry per site that has a link. `slugs`
+ * is the crosswalk of real site slugs learned from past watches, keyed
+ * `host:anilistId`.
+ */
+export function animeQuickLinks(
+  sites: (LinkTemplates & { name: string })[],
+  media: AniListPageMedia,
+  slugs: Record<string, string>,
+): NamedSiteLinks[] {
+  return sites.flatMap((s) => {
+    const host = linkHost(s);
+    const canonical =
+      host && media.anilistId !== undefined ? slugs[`${host}:${media.anilistId}`] : undefined;
+    const links = buildAniListSiteLinks(s, media, canonical);
+    return links.direct || links.search ? [{ name: s.name, ...links }] : [];
+  });
+}
