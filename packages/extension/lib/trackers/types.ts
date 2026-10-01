@@ -67,6 +67,8 @@ export interface TrackerInfo {
   rates: RatingScope;
   /** What kind of note the rating panel can write to this tracker. */
   note: NoteKind;
+  /** The fewest words the tracker takes in a note (Trakt rejects shorter comments). */
+  noteMinWords?: number;
   /** How a wrong match is fixed (which panel the fix button opens). */
   fix: FixKind;
   /** The build variables that configure this tracker (named in the Account pane when
@@ -86,6 +88,7 @@ const INFO = {
     family: "seasoned",
     rates: "levels",
     note: "public",
+    noteMinWords: 5,
     fix: "search",
     env: ["WXT_TRAKT_CLIENT_ID", "WXT_TRAKT_CLIENT_SECRET"],
   },

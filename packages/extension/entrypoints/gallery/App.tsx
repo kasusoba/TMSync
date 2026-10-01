@@ -741,6 +741,18 @@ export function App() {
               spoiler={false}
             />
           </Tile>
+          <Tile label="Rate & note · episode level, Trakt + WeTrakr comments" t={t}>
+            <RateNotePanel
+              variant={variant}
+              isShow
+              level="episode"
+              trackers={["trakt", "wetrakr"]}
+              value={8}
+              note=""
+              hasNote={false}
+              spoiler={false}
+            />
+          </Tile>
           <Tile label="Rate & note · clearing a saved rating" t={t}>
             <RateNotePanel
               variant={variant}

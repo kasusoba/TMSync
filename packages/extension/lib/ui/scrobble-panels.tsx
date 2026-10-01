@@ -7,6 +7,7 @@ import {
   type CourTracker,
   type RatingLevel,
   type SearchOption,
+  TRACKER_INFO,
   type Tracker,
   type WatchedEpisode,
   type WatchedState,
@@ -525,18 +526,22 @@ export function RateNote({
   // "AniList" just because Trakt is deselected: on a Trakt-only item that left the
   // box reading "Private note on AniList…" when no tracker was even AniList.
   const noteTrackers = (targets.length > 0 ? targets : applicable).filter(takesNote);
-  // Cour trackers keep a private note; Trakt posts a public comment; Simkl keeps none.
-  const privateOn = noteTrackers
-    .filter((tk) => trackerNote(tk) === "private")
-    .map(trackerLabel)
-    .join(" and ");
-  const publicOn = noteTrackers.find((tk) => trackerNote(tk) === "public");
+  // Cour trackers keep a private note; Trakt and WeTrakr post a public comment;
+  // Simkl keeps none.
+  const namesOf = (kind: "public" | "private") =>
+    noteTrackers
+      .filter((tk) => trackerNote(tk) === kind)
+      .map(trackerLabel)
+      .join(" and ");
+  const privateOn = namesOf("private");
+  const publicOn = namesOf("public");
+  const minWords = Math.max(0, ...noteTrackers.map((tk) => TRACKER_INFO[tk].noteMinWords ?? 0));
   const notePlaceholder =
     publicOn && privateOn
-      ? `Public comment on ${trackerLabel(publicOn)} · private note on ${privateOn}…`
+      ? `Public comment on ${publicOn} · private note on ${privateOn}…`
       : privateOn
         ? `Private note on ${privateOn}…`
-        : "Your note · public on Trakt, at least 5 words…";
+        : `Your note · public on ${publicOn || "Trakt"}${minWords ? `, at least ${minWords} words` : ""}…`;
   const noNotes = noteTrackers.length === 0;
 
   return (

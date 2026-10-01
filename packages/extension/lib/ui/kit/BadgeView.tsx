@@ -1,4 +1,10 @@
-import { type Tracker, isSeasonless, trackerLabel, trackerRates } from "@/lib/trackers/types";
+import {
+  TRACKER_INFO,
+  type Tracker,
+  isSeasonless,
+  trackerLabel,
+  trackerRates,
+} from "@/lib/trackers/types";
 import type { TrackerOutcome } from "@/messaging";
 import clsx from "clsx";
 import { Btn, Icon, IconBtn, Stars, TrackerMark, type Variant, outcomeTip, tokens } from "./kit";
@@ -185,6 +191,14 @@ export function BadgeMini({ state }: { state: BadgeState }) {
 const LEVELS = ["episode", "season", "show"] as const;
 
 /** Full rate + note panel. */
+/** The note box hint: where a public note goes, and the fewest words it takes. */
+function notePlaceholder(trackers: Tracker[]): string {
+  const pub = trackers.filter((tk) => TRACKER_INFO[tk].note === "public");
+  const min = Math.max(0, ...pub.map((tk) => TRACKER_INFO[tk].noteMinWords ?? 0));
+  const names = pub.map((tk) => TRACKER_INFO[tk].label).join(" and ") || "Trakt";
+  return `Your note · public on ${names}${min ? `, at least ${min} words` : ""}…`;
+}
+
 export function RateNotePanel({
   variant,
   isShow,
@@ -299,7 +313,7 @@ export function RateNotePanel({
       <textarea
         rows={4}
         value={note}
-        placeholder="Your note · public on Trakt, at least 5 words…"
+        placeholder={notePlaceholder(trackers)}
         class={clsx(
           "mb-2 w-full resize-none rounded-lg px-2.5 py-2 text-[12px] outline-none ring-inset focus:ring-2",
           t.input,

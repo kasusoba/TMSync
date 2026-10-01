@@ -212,3 +212,137 @@ export async function cancelPlaying(body: ScrobbleBody): Promise<void> {
   const { progress: _p, app_version: _v, ...target } = body;
   await api("/scrobble/playing", { method: "DELETE", body: target }, true);
 }
+
+// --- ratings, comments, and watched progress ---
+
+export type ReviewLevel = "movie" | "show" | "season" | "episode";
+
+/** The API path of the movie, show, season, or episode a level names. Null when a
+ * season or episode level lacks its number. Pure. */
+export function itemPath(
+  identity: WetrakrIdentity,
+  level: ReviewLevel,
+  season?: number,
+  episode?: number,
+): string | null {
+  if (level === "movie") return `/movies/${identity.id}`;
+  const show = `/shows/${identity.id}`;
+  if (level === "show") return show;
+  if (season === undefined) return null;
+  if (level === "season") return `${show}/seasons/${season}`;
+  if (episode === undefined) return null;
+  return `${show}/seasons/${season}/episodes/${episode}`;
+}
+
+/** Body for POST /sync/ratings and /sync/ratings/remove (which ignores `rating`).
+ * A season or episode nests by number under the show's WeTrakr id. Pure. */
+export function ratingBody(
+  identity: WetrakrIdentity,
+  level: ReviewLevel,
+  season: number | undefined,
+  episode: number | undefined,
+  rating?: number,
+): Record<string, unknown> | null {
+  const r = rating !== undefined ? { rating } : {};
+  const id = { id: identity.id };
+  if (level === "movie") return { movies: [{ ...id, ...r }] };
+  if (level === "show") return { shows: [{ ...id, ...r }] };
+  if (season === undefined) return null;
+  if (level === "season") return { shows: [{ ...id, seasons: [{ number: season, ...r }] }] };
+  if (episode === undefined) return null;
+  return {
+    shows: [{ ...id, seasons: [{ number: season, episodes: [{ number: episode, ...r }] }] }],
+  };
+}
+
+interface Interactions {
+  interactions?: {
+    user?: {
+      rating?: { rating: number };
+      tracking?: { last?: { status?: string; last_watched_at?: string } };
+    };
+  };
+}
+
+/** GET an item with the user's interactions. Null when it is not on WeTrakr. */
+async function getItem<T>(path: string): Promise<(T & Interactions) | null> {
+  const res = await api(`${path}${path.includes("?") ? "&" : "?"}extended=interactions`, {}, true);
+  if (!res.ok) return null;
+  return (await res.json()) as T & Interactions;
+}
+
+/** The user's rating of an item on WeTrakr (0 to 10), or null. */
+export async function getRemoteRating(path: string): Promise<number | null> {
+  return (await getItem<object>(path))?.interactions?.user?.rating?.rating ?? null;
+}
+
+/** The WeTrakr id of the item at a path (a comment on a season or episode needs it). */
+export async function itemId(path: string): Promise<number | null> {
+  const res = await api(path);
+  if (!res.ok) return null;
+  return ((await res.json()) as { id?: number }).id ?? null;
+}
+
+export interface WriteOutcome {
+  ok: boolean;
+  error?: string;
+}
+
+/** A failed write's message: WeTrakr's own text when it gave one. */
+async function failure(res: Response): Promise<WriteOutcome> {
+  return { ok: false, error: (await errorDetail(res)) || `failed (${res.status})` };
+}
+
+/** POST /sync/ratings, or /sync/ratings/remove. */
+export async function syncRatings(
+  body: Record<string, unknown>,
+  remove = false,
+): Promise<WriteOutcome> {
+  const res = await api(`/sync/ratings${remove ? "/remove" : ""}`, { method: "POST", body }, true);
+  return res.ok ? { ok: true } : failure(res);
+}
+
+/** POST /sync/comments on one item. Returns the new comment's id. */
+export async function postComment(
+  target:
+    | { movie: { id: number } }
+    | { show: { id: number } }
+    | { season: { id: number } }
+    | { episode: { id: number } },
+  text: string,
+  spoiler: boolean,
+): Promise<WriteOutcome & { id?: number }> {
+  const res = await api(
+    "/sync/comments",
+    { method: "POST", body: { ...target, text, spoiler } },
+    true,
+  );
+  if (!res.ok) return failure(res);
+  return { ok: true, id: ((await res.json()) as { id?: number }).id };
+}
+
+/** DELETE /sync/comments/{id}. A comment already gone counts as deleted. */
+export async function deleteComment(id: number): Promise<WriteOutcome> {
+  const res = await api(`/sync/comments/${id}`, { method: "DELETE" }, true);
+  return res.ok || res.status === 404 ? { ok: true } : failure(res);
+}
+
+/** One season's episodes with the user's tracking state. */
+export interface WetrakrEpisode extends Interactions {
+  number: number;
+  air_date?: string | null;
+}
+
+/** The season numbers of a show (specials, season 0, left out). */
+export async function seasonNumbers(showId: number): Promise<number[] | null> {
+  const res = await api(`/shows/${showId}/seasons`, {}, true);
+  if (!res.ok) return null;
+  const seasons = (await res.json()) as { number: number }[];
+  return seasons.map((x) => x.number).filter((n) => n > 0);
+}
+
+/** A season's episodes with the user's tracking state. */
+export async function seasonEpisodes(showId: number, season: number): Promise<WetrakrEpisode[]> {
+  const res = await api(`/shows/${showId}/seasons/${season}/episodes`, {}, true);
+  return res.ok ? ((await res.json()) as WetrakrEpisode[]) : [];
+}

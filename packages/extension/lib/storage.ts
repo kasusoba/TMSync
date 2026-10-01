@@ -16,7 +16,7 @@ import type { Cached } from "./trackers/identity-cache";
 import type { MalIdentity, MalListStatus, MalTokens } from "./trackers/mal/types";
 import type { SimklMatch, SimklTokens } from "./trackers/simkl/types";
 import type { ResolvedIdentity, TraktIds, TraktTokens } from "./trackers/trakt/types";
-import type { QuickLinkTracker, Tracker } from "./trackers/types";
+import type { QuickLinkTracker, Tracker, WatchedState } from "./trackers/types";
 import type { WetrakrIdentity, WetrakrIds, WetrakrTokens } from "./trackers/wetrakr/types";
 
 /**
@@ -220,6 +220,24 @@ export const wetrakrIdsCache = storage.defineItem<Record<string, WetrakrIds>>(
   "local:wetrakr_ids_cache",
   { fallback: {} },
 );
+
+/** Local copy of the user's WeTrakr ratings (1 to 10), keyed by wetrakrReviewKey.
+ * WeTrakr is the source of truth; a missing entry is read back from WeTrakr. */
+export const wetrakrRatings = storage.defineItem<Record<string, number>>("local:wetrakr_ratings", {
+  fallback: {},
+});
+
+/** The user's WeTrakr comments made through TMSync (the note), keyed like
+ * wetrakrRatings. WeTrakr has no comment edit, so a change deletes and posts again. */
+export const wetrakrNotes = storage.defineItem<
+  Record<string, { commentId: number; text: string; spoiler: boolean }>
+>("local:wetrakr_notes", { fallback: {} });
+
+/** Watched progress per WeTrakr show, kept a few minutes: reading it costs one call
+ * per season, and WeTrakr's terms allow user data cached for minutes. */
+export const wetrakrProgress = storage.defineItem<
+  Record<number, { at: number; state: WatchedState | null }>
+>("session:wetrakr_progress", { fallback: {} });
 
 /** Every tracker's token item, so a view can follow a sign-in on any tracker. */
 export const trackerTokens: Record<Tracker, SecretItem<unknown>> = {

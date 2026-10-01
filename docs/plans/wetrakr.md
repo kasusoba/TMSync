@@ -50,7 +50,7 @@ and add a log line in the same commit.
   account row, popup connect, picker toggle, gallery states. Token keys in storage (encrypted).
   On disconnect, clear every WeTrakr cache (terms). Scrobble guardrail: if the episode echoed by
   `start` differs from the one sent, `DELETE /scrobble/playing` and show the numbering warning.
-- [ ] **4. Ratings and comments.** `review.ts`: rate show, season, episode (0 to 10). Comment
+- [x] **4. Ratings and comments.** `review.ts`: rate show, season, episode (0 to 10). Comment
   on movie, show, season, episode, with the spoiler flag. `watchedState` for the popup.
 - [ ] **5. List sync.** `list.ts`, `apply.ts`, list cache. Daily sync too.
 - [ ] **6. Quick links on wetrakr.com.** Make quick links family-based (seasoned vs cour) instead
@@ -89,6 +89,15 @@ and add a log line in the same commit.
   Firefox, scrobble a movie and an episode, fix a wrong match. The repo secret
   `WXT_WETRAKR_CLIENT_ID` must exist before the next release. Episode page URLs on wetrakr.com
   are unknown; `trackerItemUrl` links the show page.
+
+- 2026-10-01: Step 4 done. `review.ts`: rate movie, show, season, episode (whole stars sent,
+  0 to 10 read back from `interactions.user.rating`), public comment with spoiler flag (no edit
+  endpoint, so post new then delete old), `watchedState` from the per-season episode lists
+  (one call per season, cached 5 min in `session:wetrakr_progress`, none above 15 seasons).
+  `TRACKER_INFO.noteMinWords` (Trakt 5) drives the note hint instead of a Trakt-only string.
+  Comment endpoints: `POST /sync/comments`, `DELETE /sync/comments/{id}`. To check by hand: the
+  user tracking field on episodes (assumed `interactions.user.tracking.last.status`), a rating
+  made on wetrakr.com showing in the panel.
 
 ## WeTrakr API facts (checked 2026-10-01)
 

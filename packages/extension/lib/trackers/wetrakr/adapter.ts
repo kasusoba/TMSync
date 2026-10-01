@@ -16,6 +16,7 @@ import {
   scrobble,
   resolve as wetrakrResolve,
 } from "./client";
+import { forgetProgress, wetrakrWatchedState } from "./review";
 import type { ScrobbleBody, ScrobbleReply } from "./types";
 
 type WetrakrItem = Extract<TrackedItem, { tracker: "wetrakr" }>;
@@ -107,6 +108,8 @@ export const wetrakrAdapter: TrackerAdapter = {
         };
       }
       const action = outcome.reply.action;
+      // A logged play changes the show's progress: drop the cached copy.
+      if (action === "scrobble") await forgetProgress(item.id);
       return {
         ok: true,
         status: outcome.status,
@@ -118,12 +121,18 @@ export const wetrakrAdapter: TrackerAdapter = {
     }
   },
 
-  // Rating comes with the review step.
-  ratingLevels(_media: ParsedMedia): RatingLevel[] {
-    return [];
+  ratingLevels(media: ParsedMedia): RatingLevel[] {
+    const isShow = media.season !== undefined || media.episode !== undefined;
+    return isShow ? ["episode", "season", "show"] : ["movie"];
   },
 
-  async watchedState(_item: TrackedItem): Promise<WatchedState | null> {
-    return null;
+  async watchedState(item: TrackedItem): Promise<WatchedState | null> {
+    if (item.tracker !== "wetrakr" || item.mediaType !== "show") return null;
+    try {
+      return await wetrakrWatchedState(item.id);
+    } catch (e) {
+      if (e instanceof WetrakrNotConnectedError) return null;
+      throw e;
+    }
   },
 };
