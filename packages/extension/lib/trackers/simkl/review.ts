@@ -19,7 +19,7 @@ async function ratingItem(media: ParsedMedia): Promise<Record<string, unknown>> 
   return {
     title: media.title,
     ...(media.year ? { year: media.year } : {}),
-    ids: simklIds(media, match?.id),
+    ids: simklIds(media, match?.id, match?.pinned),
   };
 }
 

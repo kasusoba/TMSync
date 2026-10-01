@@ -96,7 +96,7 @@ interface TrackerAdapter {
 
 **The two paradigms are genuinely different, so do not force them into one code path.** Trakt, WeTrakr, and Simkl are the scrobble paradigm (real-time `start`/`pause`/`stop`, and the tracker owns the watched decision at 80% on stop). AniList and MAL are the cour/list paradigm (one list write per episode at `WATCHED_THRESHOLD`, and we own the watched decision) and share one pure planner (`lib/trackers/cour-plan.ts`). The side-by-side comparison is in `docs/ARCHITECTURE.md` section 5, and each tracker's API facts are in `docs/TRACKERS.md`.
 
-**Simkl specifics:** it is native only when it is the only enabled tracker (it can take any page), and it is recorded last in a fan-out. Its daily quota is per user and shared with the user's other Simkl apps (500 requests on a free account), so it never polls, never searches, and returns `null` for `watchedState`. A start/pause inside the 20 s lock is dropped; a stop waits for the lock so the watch is never lost.
+**Simkl specifics:** it is native only when it is the only enabled tracker (it can take any page), and it is recorded last in a fan-out. Its daily quota is per user and shared with the user's other Simkl apps (500 requests on a free account), so it never polls, searches only when the user clicks Fix match (or picks in manual mode), and returns `null` for `watchedState`. A fix pins the Simkl id, and writes then send that id alone. A start/pause inside the 20 s lock is dropped; a stop waits for the lock so the watch is never lost.
 
 **MAL recording follows the AniList rules below** (read-before-write, never lower progress, "Rewatching?" confirm, `ep > num_episodes` guardrail). MAL answers 403 for request bursts ("DoS detected"); surface it and never retry in a loop.
 

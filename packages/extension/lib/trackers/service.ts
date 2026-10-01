@@ -62,8 +62,7 @@ export interface TrackerService {
   review: ReviewHandler;
   /**
    * Free-text search of this tracker, for manual mode (a site with no readable
-   * title). Optional: Simkl has none, since its shared daily quota rules out
-   * searching.
+   * title) and the fix-match panel. Called only on a user's action.
    */
   search?(query: string, type: "movie" | "show"): Promise<SearchOption[]>;
   /**

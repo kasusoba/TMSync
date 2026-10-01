@@ -135,6 +135,12 @@ retired.
   "not matched yet", and `404 id_err` on a write means "not found on Simkl". Supported id keys
   include `tmdb`, `imdb`, `tvdb`, `mal`, `anilist`, `anidb`, and `traktslug`. `simkl` is an integer
   and every other id is a string.
+- **Fix match** is the one search. `GET /search/{movie|tv|anime}?q=` (user token) runs only on the
+  user's click in the fix-match panel or manual mode. A movie searches `movie` and `anime` (anime
+  films), a show `tv` and `anime`. Results carry `ids.simkl_id` and sometimes `ids.tmdb` (a
+  string), never imdb. The pick is pinned in `simkl_matches` (`pinned: true`): later writes send
+  only `{ simkl: id }`, so a wrong page id cannot pull the match away, and a scrobble reply never
+  overwrites the pin.
 - **Numbering takes both families.** For a seasoned page, send `show` with tmdb or tvdb ids and
   `episode: { season, number }`, and Simkl maps anime to the right AniDB cour itself. Movies go under
   `movie`. For a cour page, send `anime` with mal or anilist ids and `episode: { number }`. This is

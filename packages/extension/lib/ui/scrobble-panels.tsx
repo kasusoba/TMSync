@@ -189,10 +189,9 @@ export function TrackingRows({
     void sendMessage("resolveAll", { media, trackers }).then(setResolutions);
   }, [media, trackers.join(",")]);
   const resFor = (tk: Tracker) => resolutions?.find((r) => r.tracker === tk);
-  // A search-fixed tracker (Trakt) is always fixable. A cour tracker (AniList, MAL)
-  // is too: with a tmdbId we pin the crosswalk override, and the title correction
-  // covers the rest (a native match, or MAL following AniList's entry). A `none`
-  // tracker (Simkl matches server-side) has nothing to fix.
+  // A search-fixed tracker (Trakt, WeTrakr, Simkl) is always fixable. A cour tracker
+  // (AniList, MAL) is too: with a tmdbId we pin the crosswalk override, and the title
+  // correction covers the rest (a native match, or MAL following AniList's entry).
   const canFix = (tk: Tracker) =>
     trackerFix(tk) === "search" ||
     (isCourFix(tk) && (media.ids?.tmdb !== undefined || !!media.title));

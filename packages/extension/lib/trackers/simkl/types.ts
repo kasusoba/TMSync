@@ -22,6 +22,8 @@ export interface SimklMatch {
   section: SimklSection;
   title: string;
   year?: number;
+  /** The user picked this entry (fix match): writes send only its Simkl id. */
+  pinned?: boolean;
 }
 
 /** A media object as Simkl echoes it in a scrobble response. */

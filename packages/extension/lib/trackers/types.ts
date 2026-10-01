@@ -136,7 +136,7 @@ const INFO = {
     family: "any",
     rates: "entry",
     note: "none",
-    fix: "none",
+    fix: "search",
     env: ["WXT_SIMKL_CLIENT_ID"],
   },
 } as const satisfies Record<Tracker, TrackerInfo>;
@@ -256,6 +256,8 @@ export type TrackedItem =
       year?: number;
       /** The item's Simkl page, once a write has told us its id and section. */
       url?: string;
+      /** The user pinned the id (fix match): writes send it alone. */
+      pinned?: boolean;
     };
 
 /** A search result in a cour tracker's fix-match picker (AniList, MAL). Mirrors
