@@ -6,7 +6,7 @@ Operating guide for Claude Code on this repo. Read before generating or editing 
 TMSync is a cross-browser (Chrome + Firefox) WebExtension that passively scrobbles what the user watches on arbitrary streaming sites (including gray-market ones with no API) to the right tracker: **movies and non-anime TV → Trakt and/or Simkl**, **anime series → AniList and/or MyAnimeList (MAL)** (and Trakt and Simkl too). It detects the media from the page using **declarative recipes** (data, not code), resolves it against the tracker(s) it routes to, and records progress. **Anime may be multi-tracked to Trakt, AniList, MAL, and Simkl at once** via a TMDB↔AniList crosswalk (with MAL ids); Simkl takes the page's own numbering and never uses the crosswalk. Non-anime goes only to Trakt and Simkl. Site definitions can be added on the fly via an in-page element picker. `docs/ARCHITECTURE.md` explains how it works, `docs/RECIPES.md` covers recipes, and `docs/TRACKERS.md` covers each tracker's API.
 
 ## Work in progress
-- **Adding WeTrakr as the fifth tracker** (multi-PR). Plan, decisions, checklist, and API facts: `docs/plans/wetrakr.md`. Read it before any WeTrakr work and update its checklist in each PR. Temporary: the last step deletes the plan file and this entry.
+- **Adding WeTrakr as the fifth tracker** (one PR, branch `feat/wetrakr`). Plan, decisions, checklist, and API facts: `docs/plans/wetrakr.md`. Read it before any WeTrakr work and tick its checklist as you go. Temporary: the last step deletes the plan file and this entry.
 
 ## Hard constraints (never violate)
 1. **Pluggable tracker registry, multi-tracked.** Trackers are a **list you can grow**, currently **Trakt + AniList + MyAnimeList + Simkl**. Each tracker is one implementation behind the adapter seam (see **Tracker adapters**); adding one = a new adapter + a picker toggle + (if it uses a different numbering) an anime-map entry, **without touching the other trackers or the shared `extract()` engine** (checklist: `docs/TRACKERS.md`). An item may be written to **every enabled tracker at once** (multi-track, `docs/ARCHITECTURE.md`); the picker exposes an **independent on/off toggle per tracker** (no "primary tab"). Which enabled tracker is **native** (its numbering matches the page → written directly) vs **derived** (mapped via the crosswalk) is **inferred at scrobble time**, not user-picked. Feasibility is per-item: a tracker that can't resolve an item (e.g. AniList on non-anime) is simply skipped.
@@ -136,6 +136,10 @@ The whole sequence, from a finished change to a published release:
 
 1. **Branch.** `git checkout -b <type>/<slug>` off an up-to-date `main`. Type is the same
    word the commit uses: `feat`, `fix`, `docs`, `chore`, `refactor`.
+   **One PR per user-facing change, however large.** A feature that takes many steps (a new
+   tracker, for example) is still one branch and one PR, with one commit per step inside it.
+   Do not split it into several PRs: each PR title is a line in the release notes, and the owner
+   is the only reviewer, so small PRs add noise and merge rounds and save no review time.
 2. **Commit.** The existing message conventions apply (Simplified Technical English, WHY in
    the body). Run `pnpm lint`, `tsc --noEmit`, `pnpm test`, and `pnpm build` first. Commit
    freely on the branch. The PR is squash-merged, so the branch history does not need to be

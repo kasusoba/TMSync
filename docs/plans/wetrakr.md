@@ -1,12 +1,13 @@
 # Plan: add WeTrakr as the fifth tracker
 
-> **Temporary file. Delete it in the last step (step 7).** Docs describe the current state only.
-> A plan and its log are not permanent docs. The facts that stay true move to `docs/TRACKERS.md`,
-> and the history stays in the merged PRs.
+> **Temporary file. Delete it in the last step (step 7), before the PR merges.** Docs describe
+> the current state only. A plan and its log are not permanent docs. The facts that stay true move
+> to `docs/TRACKERS.md`, and the history stays in the PR.
 
-Status file for a multi-PR job. A new session (any device) starts here: read this file, find the
-first unchecked step, and continue. Update the checklist and the log in the same PR as the work.
-When the last step merges, move the API facts into `docs/TRACKERS.md` and delete this file.
+Status file for one large PR. All work is on the branch `feat/wetrakr` (draft PR "Adds WeTrakr").
+A new session (any device): `git fetch && git checkout feat/wetrakr`, read this file, find the
+first unchecked step, and continue. Each step is one or more commits on that branch. Tick the step
+and add a log line in the same commit.
 
 - API docs: https://api.wetrakr.com/#/ (a JS app; the reference sits inside its bundle, see
   "Reading the docs" below).
@@ -29,9 +30,9 @@ When the last step merges, move the API facts into `docs/TRACKERS.md` and delete
 7. The client id is in the local `packages/extension/.env` as `WXT_WETRAKR_CLIENT_ID`. It is not a
    secret (it ships in the bundle), but it is not in git. Add it to the release workflow secrets.
 
-## Steps (one PR each, in order)
+## Steps (commits on `feat/wetrakr`, in order)
 
-- [ ] **1. Encrypt tokens.** One non-extractable AES-GCM key (WebCrypto) kept in IndexedDB. A
+- [x] **1. Encrypt tokens.** One non-extractable AES-GCM key (WebCrypto) kept in IndexedDB. A
   `secretItem()` helper in `lib/storage.ts` encrypts on write and decrypts on read. Use it for
   `trakt_tokens`, `anilist_tokens`, `mal_tokens`, `simkl_tokens`. A plain value found on read is
   encrypted in place (no reconnect). A value that fails to decrypt (key lost) reads as
@@ -66,6 +67,9 @@ When the last step merges, move the API facts into `docs/TRACKERS.md` and delete
   lookup and search work, no CORS headers. Foundation audit: the seam is sound (adapter and
   service registries, family-based derivation, provider rows driven by data). Only step 2 and
   the quick-link part of step 6 need refactoring.
+- 2026-10-01: Owner chose one PR for the whole feature (not one PR per step). Step 1 done: tokens
+  for all trackers are encrypted (`lib/secret.ts`, `secretItem`). Still to check by hand: Firefox
+  reload keeps the connection, and the upgrade from a plain-token build.
 
 ## WeTrakr API facts (checked 2026-10-01)
 
