@@ -12,9 +12,8 @@ import {
   type QuickLinkSite,
   type SiteGrantIntent,
   badgePrefs,
+  connectIntent,
   customRecipes,
-  malConnectIntent,
-  malTokens,
   newPendingSites,
   optionsIntent,
   quickLinks,
@@ -23,8 +22,14 @@ import {
   tabFrameOrigins,
   tabSessions,
   tabStatus,
+  trackerTokens,
 } from "@/lib/storage";
-import { hasMalAccess, requestMalAccess } from "@/lib/trackers/mal/access";
+import {
+  accessRefusedNote,
+  hasTrackerAccess,
+  needsHostAccess,
+  requestTrackerAccess,
+} from "@/lib/trackers/access";
 import { type Tracker, trackerLabel } from "@/lib/trackers/types";
 import { type Accounts, loadAccounts } from "@/lib/ui/accounts";
 import { PopupView } from "@/lib/ui/kit/PopupView";
@@ -262,30 +267,35 @@ export function App() {
     void refresh();
   }, []);
 
-  // The background may finish a MAL sign-in on its own (see connectTracker).
+  // The background may finish a sign-in on its own (see connectTracker).
   // biome-ignore lint/correctness/useExhaustiveDependencies: subscribe once
-  useEffect(() => malTokens.watch(() => void refresh()), []);
+  useEffect(() => {
+    const stops = Object.values(trackerTokens).map((item) => item.watch(() => void refresh()));
+    return () => {
+      for (const stop of stops) stop();
+    };
+  }, []);
 
   const connectTracker = async (tracker: Tracker) => {
     setNote(null);
-    if (tracker === "mal") {
+    if (needsHostAccess(tracker)) {
       // Everything here starts while the click still counts as a gesture. On Firefox
       // the permission prompt closes the popup, so after a FIRST grant the background
       // signs in (it watches for the grant and reads the intent). With access already
       // granted, no prompt shows and the popup connects as usual.
-      void malConnectIntent.setValue(Date.now());
-      const had = hasMalAccess().catch(() => false);
-      const granted = await requestMalAccess().catch(() => false);
+      void connectIntent.setValue({ tracker, at: Date.now() });
+      const had = hasTrackerAccess(tracker).catch(() => false);
+      const granted = await requestTrackerAccess(tracker).catch(() => false);
       if (!granted) {
-        void malConnectIntent.setValue(0);
-        setNote("MyAnimeList needs access to myanimelist.net to connect.");
+        void connectIntent.setValue(null);
+        setNote(accessRefusedNote(tracker));
         return;
       }
       if (!(await had)) {
-        setNote("Finish signing in to MyAnimeList in the window that opened.");
+        setNote(`Finish signing in to ${trackerLabel(tracker)} in the window that opened.`);
         return;
       }
-      void malConnectIntent.setValue(0);
+      void connectIntent.setValue(null);
     }
     setBusy(true);
     const res = await sendMessage("connectTracker", tracker);

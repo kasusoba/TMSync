@@ -1,12 +1,21 @@
 import type { ParsedMedia } from "@tmsync/shared";
+import { browser } from "wxt/browser";
+import { connectIntent } from "../storage";
 import type { ListCache, ListRead } from "../sync/list-cache";
 import type { ChunkOutcome, SyncKind, SyncWrite, WriteOutcome } from "../sync/types";
+import { hasTrackerAccess, isTrackerGrant } from "./access";
 import { anilistService } from "./anilist/service";
 import type { BoundCourPins } from "./cour-pins";
 import { malService } from "./mal/service";
 import { simklService } from "./simkl/service";
 import { traktService } from "./trakt/service";
-import type { CourTracker, RatingLevel, SearchOption, Tracker } from "./types";
+import {
+  type CourTracker,
+  type RatingLevel,
+  type SearchOption,
+  TRACKER_INFO,
+  type Tracker,
+} from "./types";
 
 /** Report some writes of a chunk as done, by their place in the chunk. */
 export type ApplyReport = (at: number[], outcome: WriteOutcome) => void;
@@ -121,4 +130,35 @@ export function getService<T extends Tracker>(tracker: T): TrackerServices[T] {
 /** Every tracker's service, in registry order. */
 export function allServices(): TrackerService[] {
   return Object.values(SERVICES);
+}
+
+/** How long a popup's connect intent stays good (the user answers the prompt). */
+const INTENT_MS = 2 * 60 * 1000;
+
+/**
+ * Sign in to a tracker. A tracker with `hostAccess` needs the grant first: the UI
+ * asks for it on the Connect click, a gesture the background does not have.
+ */
+export async function connectTracker(tracker: Tracker): Promise<void> {
+  if (!(await hasTrackerAccess(tracker))) {
+    throw new Error(`Allow access to ${TRACKER_INFO[tracker].label} to connect`);
+  }
+  await getService(tracker).connect();
+}
+
+/**
+ * Finish a sign-in after a first host grant. Firefox closes the popup at the
+ * permission prompt, so the popup cannot ask for the sign-in; it left an intent.
+ * A listener set up on each wake (constraint #4).
+ */
+export function watchConnectGrants(): void {
+  browser.permissions.onAdded.addListener(async (granted) => {
+    const intent = await connectIntent.getValue();
+    if (!intent || Date.now() - intent.at > INTENT_MS) return;
+    if (!isTrackerGrant(intent.tracker, granted.origins)) return;
+    await connectIntent.setValue(null);
+    await connectTracker(intent.tracker).catch((e) =>
+      console.warn(`[TMSync] ${TRACKER_INFO[intent.tracker].label} sign-in failed`, e),
+    );
+  });
 }

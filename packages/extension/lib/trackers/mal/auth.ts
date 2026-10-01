@@ -1,5 +1,6 @@
 import { browser } from "wxt/browser";
 import { malTokens } from "../../storage";
+import { hasTrackerAccess } from "../access";
 import {
   TokenEndpointError,
   base64url,
@@ -7,7 +8,6 @@ import {
   postTokenForm,
   singleFlight,
 } from "../oauth";
-import { hasMalAccess } from "./access";
 import { MAL } from "./config";
 import type { MalTokens } from "./types";
 
@@ -132,7 +132,7 @@ export async function refreshAfterReject(rejected: string): Promise<string | nul
  * grant without access can't make one call). No network: an expired access token
  * still counts, since the next call refreshes it. */
 export async function isConnected(): Promise<boolean> {
-  return (await malTokens.getValue()) !== null && (await hasMalAccess());
+  return (await malTokens.getValue()) !== null && (await hasTrackerAccess("mal"));
 }
 
 /** Forget a grant that MAL rejects even right after a refresh. */

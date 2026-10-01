@@ -37,7 +37,7 @@ and add a log line in the same commit.
   `trakt_tokens`, `anilist_tokens`, `mal_tokens`, `simkl_tokens`. A plain value found on read is
   encrypted in place (no reconnect). A value that fails to decrypt (key lost) reads as
   disconnected. Tests for round trip, migration, and lost key.
-- [ ] **2. Host access per tracker (refactor).** Today the "ask for host access on Connect" flow
+- [x] **2. Host access per tracker (refactor).** Today the "ask for host access on Connect" flow
   is MAL-only (`mal/access.ts`, `malConnectIntent`, branches in `popup/App.tsx` and
   `options/App.tsx`, the grant watcher in `mal/service.ts`). Make it data: a `hostOrigins` field
   on `TRACKER_INFO` and one generic request, intent, and grant watcher. MAL keeps working the
@@ -70,6 +70,11 @@ and add a log line in the same commit.
 - 2026-10-01: Owner chose one PR for the whole feature (not one PR per step). Step 1 done: tokens
   for all trackers are encrypted (`lib/secret.ts`, `secretItem`). Still to check by hand: Firefox
   reload keeps the connection, and the upgrade from a plain-token build.
+
+- 2026-10-01: Step 2 done. `TRACKER_INFO.hostAccess`, `lib/trackers/access.ts`,
+  `connectIntent` (names the tracker), `watchConnectGrants` and `connectTracker` in
+  `lib/trackers/service.ts`, `trackerTokens` map in storage. MAL works through it unchanged.
+  Hand check: connect MAL fresh in Chrome popup, Firefox popup, and Options.
 
 ## WeTrakr API facts (checked 2026-10-01)
 

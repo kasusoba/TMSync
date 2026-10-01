@@ -1,8 +1,6 @@
-import { browser } from "wxt/browser";
-import { malConnectIntent, malCorrections, malMissCache, malResolutionCache } from "../../storage";
+import { malCorrections, malMissCache, malResolutionCache } from "../../storage";
 import { bindPins, courSearch, setKey } from "../cour-pins";
 import type { CourTrackerService } from "../service";
-import { hasMalAccess, isMalGrant } from "./access";
 import { MAL_CHUNK, applyMal } from "./apply";
 import { connect, disconnect, getRedirectUri, isConnected } from "./auth";
 import { getAnime, malCacheKey, searchMal } from "./client";
@@ -10,9 +8,6 @@ import { MAL } from "./config";
 import { readMalEntries } from "./list";
 import { malDeleteNote, malGetReview, malRate, malSaveNote, malUnrate } from "./review";
 import type { MalIdentity } from "./types";
-
-/** How long a popup's MAL connect intent stays good (the user answers the prompt). */
-const MAL_INTENT_MS = 2 * 60 * 1000;
 
 export const malService: CourTrackerService = {
   readList: async () => ({ entries: await readMalEntries() }),
@@ -23,9 +18,6 @@ export const malService: CourTrackerService = {
     configured: !!MAL.clientId,
   }),
   connect: async () => {
-    // MAL sends no CORS headers, so every call needs the host grant. The UI asks for
-    // it on the Connect click (a gesture the background doesn't have).
-    if (!(await hasMalAccess())) throw new Error("Allow access to MyAnimeList to connect");
     await connect();
   },
   disconnect,
@@ -49,15 +41,4 @@ export const malService: CourTrackerService = {
       await setKey(malMissCache, key, undefined); // a remembered miss
     },
   }),
-  onWake() {
-    // A first MAL grant from the popup: Firefox closes the popup at the permission
-    // prompt, so the popup can't ask for the sign-in. It left an intent; sign in here.
-    browser.permissions.onAdded.addListener(async (granted) => {
-      if (!isMalGrant(granted.origins)) return;
-      const at = await malConnectIntent.getValue();
-      if (!at || Date.now() - at > MAL_INTENT_MS) return;
-      await malConnectIntent.setValue(0);
-      await connect().catch((e) => console.warn("[TMSync] MyAnimeList sign-in failed", e));
-    });
-  },
 };

@@ -125,16 +125,6 @@ export const anilistNotes = storage.defineItem<Record<number, string>>("local:an
 export const malTokens = secretItem<MalTokens>("local:mal_tokens");
 
 /**
- * When the popup asked for MAL host access to connect (ms). On Firefox the
- * permission prompt closes the popup, so the popup cannot send `connectTracker` after
- * a first grant. The MAL service sees the grant (`permissions.onAdded`) and signs in
- * when this is recent. In storage, not memory: the background is stateless.
- */
-export const malConnectIntent = storage.defineItem<number>("session:mal_connect_intent", {
-  fallback: 0,
-});
-
-/**
  * What the popup asked site access FOR, so the step after the grant still runs when
  * the permission prompt closes the popup (Firefox always, Chrome sometimes). The
  * popup writes it before the prompt. After the grant the popup asks the background
@@ -202,6 +192,25 @@ export const malNotes = storage.defineItem<Record<number, string>>("local:mal_no
 
 /** Simkl OAuth tokens. The access token lasts 7 days; auth.ts refreshes it. */
 export const simklTokens = secretItem<SimklTokens>("local:simkl_tokens");
+
+/** Every tracker's token item, so a view can follow a sign-in on any tracker. */
+export const trackerTokens: Record<Tracker, SecretItem<unknown>> = {
+  trakt: traktTokens,
+  anilist: anilistTokens,
+  mal: malTokens,
+  simkl: simklTokens,
+};
+
+/**
+ * Which tracker the popup asked host access for, and when (ms). On Firefox the
+ * permission prompt closes the popup, so the popup cannot send `connectTracker`
+ * after a first grant. The background sees the grant (`permissions.onAdded`) and
+ * signs in when this is recent. In storage, not memory: the background is stateless.
+ */
+export const connectIntent = storage.defineItem<{ tracker: Tracker; at: number } | null>(
+  "session:connect_intent",
+  { fallback: null },
+);
 
 /**
  * What Simkl matched a page item to, keyed by simklKey(media). Filled from write

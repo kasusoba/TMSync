@@ -14,9 +14,9 @@ import {
   animapOverrides,
   animeMap,
   badgePrefs,
+  connectIntent,
   corrections,
   customRecipes,
-  malConnectIntent,
   malCorrections,
   newPendingSites,
   optionsIntent,
@@ -24,9 +24,9 @@ import {
   quickLinksEnabled,
   remoteRecipes,
 } from "@/lib/storage";
+import { accessRefusedNote, requestTrackerAccess } from "@/lib/trackers/access";
 import type { AniListIdentity } from "@/lib/trackers/anilist/types";
 import type { AnimapOverrides } from "@/lib/trackers/animap/derive";
-import { requestMalAccess } from "@/lib/trackers/mal/access";
 import type { MalIdentity } from "@/lib/trackers/mal/types";
 import type { ResolvedIdentity } from "@/lib/trackers/trakt/types";
 import {
@@ -953,11 +953,12 @@ export function App() {
   // failed or cancelled OAuth (e.g. the auth window closed, or Trakt rejected the
   // sign-in) showed no feedback in Options — the popup already reports it, so match.
   const connectProvider = async (which: Tracker) => {
-    // MAL needs host access first, asked while the click still counts as a gesture.
-    // Clear a stale popup intent first, so this grant never starts a second sign-in.
-    if (which === "mal") void malConnectIntent.setValue(0);
-    if (which === "mal" && !(await requestMalAccess().catch(() => false))) {
-      setAccountMsg("MyAnimeList needs access to myanimelist.net to connect.");
+    // A tracker with `hostAccess` needs the grant first, asked while the click still
+    // counts as a gesture. Clear a stale popup intent first, so this grant never
+    // starts a second sign-in.
+    void connectIntent.setValue(null);
+    if (!(await requestTrackerAccess(which).catch(() => false))) {
+      setAccountMsg(accessRefusedNote(which));
       return;
     }
     setBusy(true);

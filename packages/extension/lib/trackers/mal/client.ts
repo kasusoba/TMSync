@@ -1,12 +1,12 @@
 import type { ParsedMedia } from "@tmsync/shared";
 import { errorMessage } from "../../errors";
 import { malCorrections, malEntryCache, malMissCache, malResolutionCache } from "../../storage";
+import { hasTrackerAccess } from "../access";
 import { resolveById as anilistResolveById } from "../anilist/client";
 import type { CourEntry, CourStatus } from "../cour-plan";
 import { freshHit, stamp } from "../identity-cache";
 import { errorDetail } from "../oauth";
 import type { CourSearchOption } from "../types";
-import { hasMalAccess } from "./access";
 import { forgetGrant, getValidAccessToken, refreshAfterReject } from "./auth";
 import { MAL } from "./config";
 import { MAL_TO_COUR, type MalAnimeNode, type MalIdentity, type MalListStatus } from "./types";
@@ -46,7 +46,7 @@ async function malFetch<T>(
     auth?: boolean;
   } = {},
 ): Promise<T | null> {
-  if (!(await hasMalAccess())) throw new MalNotConnectedError();
+  if (!(await hasTrackerAccess("mal"))) throw new MalNotConnectedError();
   let token = await getValidAccessToken();
   if (opts.auth && !token) throw new MalNotConnectedError();
   if (!token && !MAL.clientId) throw new MalNotConnectedError();

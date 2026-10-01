@@ -224,8 +224,11 @@ a fixed set:
    `lib/trackers/cour-plan.ts`. Put it last in `ALL_TRACKERS` if it could claim every namespace.
 3. **Auth and config.** Add `auth.ts` and `config.ts`, and a client ID in `.env.example`, the release workflow's secret check, and `wxt.config.ts` if needed.
 4. **Host access.** Never add a host to the install manifest. A required host makes Chrome disable
-   the extension on update until the user accepts. Put it in `optional_host_permissions` and request
-   it on Connect. Skip this if the API answers CORS.
+   the extension on update until the user accepts. List the origins in `TRACKER_INFO.hostAccess`
+   (with the `site` name the user sees). The popup and options ask for them on Connect
+   (`lib/trackers/access.ts`), the background checks them before `connect()`, and a first grant
+   from a popup that the prompt closed finishes in `watchConnectGrants`. The tracker's client calls
+   `hasTrackerAccess` before each request. Skip this if the API answers CORS.
 5. **Service.** Add `review.ts` and a `service.ts` with a `TrackerService`: account status, connect,
    disconnect, the rating and note calls, any alarms or wake listeners, and message handlers for
    features only this tracker has. A cour tracker also

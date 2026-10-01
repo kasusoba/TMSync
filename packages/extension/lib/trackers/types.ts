@@ -72,6 +72,10 @@ export interface TrackerInfo {
   /** The build variables that configure this tracker (named in the Account pane when
    * a build lacks them). */
   env: readonly string[];
+  /** Host access the tracker's API needs because it sends no CORS headers. The UI
+   * asks for it on the Connect click (`access.ts`), never at install. `site` names it
+   * to the user. */
+  hostAccess?: { origins: readonly string[]; site: string };
 }
 
 // Order matters: `ALL_TRACKERS` follows it, and native inference takes the first
@@ -102,6 +106,10 @@ const INFO = {
     note: "private",
     fix: "cour",
     env: ["WXT_MAL_CLIENT_ID"],
+    hostAccess: {
+      origins: ["https://myanimelist.net/*", "https://api.myanimelist.net/*"],
+      site: "myanimelist.net",
+    },
   },
   simkl: {
     label: "Simkl",

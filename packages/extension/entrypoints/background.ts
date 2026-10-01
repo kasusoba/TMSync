@@ -47,7 +47,13 @@ import {
 import type { Animap } from "@/lib/trackers/animap/index";
 import { loadAnimap, parseAnimeMap } from "@/lib/trackers/animap/load";
 import { planCourWrite } from "@/lib/trackers/cour-plan";
-import { type ReviewHandler, allServices, getService } from "@/lib/trackers/service";
+import {
+  type ReviewHandler,
+  allServices,
+  connectTracker,
+  getService,
+  watchConnectGrants,
+} from "@/lib/trackers/service";
 import { type TrackedItem, type Tracker, WATCHED_THRESHOLD } from "@/lib/trackers/types";
 import {
   type BadgeStatus,
@@ -184,6 +190,7 @@ export default defineBackground(() => {
 
   // Each tracker's own listeners, set up again on each wake (constraint #4).
   for (const service of allServices()) service.onWake?.();
+  watchConnectGrants();
 
   onMessage("refreshRecipes", async () => {
     // One "Refresh" button, both CDN lists. Awaited so the options page reads a
@@ -201,7 +208,7 @@ export default defineBackground(() => {
   // them (only once it succeeds: a cancelled sign-in keeps the old account).
   onMessage("connectTracker", async ({ data }) => {
     try {
-      await getService(data).connect();
+      await connectTracker(data);
       await forgetLists(data);
       return { ok: true };
     } catch (e) {
