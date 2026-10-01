@@ -1168,3 +1168,47 @@ describe("statuses on movies and TV", () => {
     expect(statusOps(picked)).toEqual(["simkl:DROPPED>PAUSED"]);
   });
 });
+
+describe("anime statuses on Trakt and WeTrakr", () => {
+  const A: Tracker[] = ["trakt", "wetrakr", "anilist"];
+  const statusOps = (p: SyncPlan) =>
+    p.items
+      .flatMap((i) => i.writes)
+      .flatMap((w) =>
+        w.op === "status"
+          ? [`${w.tracker}:${w.status.to}`]
+          : w.op === "entry" && w.status
+            ? [`${w.tracker}:${w.status.to}`]
+            : [],
+      );
+
+  it("puts a planned one-cour anime on the watchlists", () => {
+    const p = plan([courEntry("anilist", { anilist: 30 }, { status: "PLANNING" })], {
+      trackers: A,
+    });
+    expect(statusOps(p)).toEqual(["trakt:PLANNING", "wetrakr:PLANNING"]);
+  });
+
+  it("drops the cour when Trakt dropped a one-cour show", () => {
+    const p = plan(
+      [
+        traktShow(50, { 1: [1, 2] }, { status: "DROPPED", updatedAt: 9 }),
+        courEntry("anilist", { anilist: 30 }, { progress: 2, updatedAt: 1 }),
+      ],
+      { trackers: A },
+    );
+    expect(statusOps(p)).toContain("anilist:DROPPED");
+    expect(statusOps(p)).toContain("wetrakr:DROPPED");
+  });
+
+  it("gives and takes no show status for a show of several cours", () => {
+    const p = plan(
+      [
+        traktShow(1429, { 1: [1] }, { status: "DROPPED", updatedAt: 9 }),
+        courEntry("anilist", { anilist: 16498 }, { progress: 1, updatedAt: 1 }),
+      ],
+      { trackers: A },
+    );
+    expect(statusOps(p).filter((o) => o.endsWith("DROPPED"))).toEqual([]);
+  });
+});
