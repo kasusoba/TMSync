@@ -270,9 +270,11 @@ handlers there too (Trakt: the fix-match search, trakt.tv slug ids, the Letterbo
 registry is `lib/trackers/service.ts`. The background's account, `rateItem`/`saveNote`/etc., and
 fix-match handlers are thin dispatchers over it, so the background never names a tracker for
 these. Manual mode (a site with no readable title) searches through the optional `search` on each
-service, so it works with any connected tracker that can search (Trakt, AniList, MAL; Simkl has
-none because of its quota). The pick carries the entry's ids, and a tracker that needs more to lock
-the match keeps its own (`pinPick`: Trakt saves a correction). (The `TrackerAdapter` interface itself covers
+service, so it works with any connected tracker that can search (all five; Simkl searches only on
+the user's click, because of its quota). The pick carries the entry's ids, and a tracker that needs
+more to lock the match keeps its own (`pinPick`: Trakt and WeTrakr save a correction, Simkl pins its
+id). The fix-match handler pins on the media the tracker resolves (`reviewTarget`), not the page as
+scraped, so a derived tracker reads its own pin. (The `TrackerAdapter` interface itself covers
 resolve/record/ratingLevels/watchedState; folding rate/note *writes* into the interface is a future
 step best done when a third tracker exists to shape it.)
 

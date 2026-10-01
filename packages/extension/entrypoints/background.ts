@@ -41,6 +41,7 @@ import {
 } from "@/lib/trackers";
 import {
   type AnimapOverrides,
+  type DeriveOutcome,
   type TargetIds,
   deriveMediaWith,
 } from "@/lib/trackers/animap/derive";
@@ -449,9 +450,17 @@ export default defineBackground(() => {
     }
   });
 
+  // Pin the fix on the media this tracker resolves, not the page as scraped: a
+  // derived tracker gets the crosswalk's media (Trakt, WeTrakr from an AniList
+  // page) or the page plus the native item's ids (Simkl), so a pin on the page
+  // would never be read.
   onMessage("fixMatch", async ({ data, sender }) => {
-    await getService(data.tracker).pinPick?.(data.media, data.pick);
     const tabId = data.tabId ?? sender.tab?.id;
+    const trackers =
+      tabId !== undefined ? (await tabSessions.getValue())[tabId]?.trackers : undefined;
+    const target = await reviewTarget({ media: data.media, tracker: data.tracker, trackers });
+    const media = "media" in target ? target.media : data.media;
+    await getService(data.tracker).pinPick?.(media, data.pick);
     if (tabId !== undefined) void sendMessage("recheck", undefined, tabId);
   });
 
@@ -955,6 +964,30 @@ function needsCourBridge(native: Tracker, target: Tracker): boolean {
 }
 
 /**
+ * {@link deriveMediaWith}, plus one fallback: a seasoned tracker that speaks the
+ * page resolves the page itself when the native tracker found nothing (WeTrakr
+ * when Trakt has no such title), as it would if it were native.
+ */
+function deriveTarget(
+  target: Tracker,
+  media: ParsedMedia,
+  nativeItem: TrackedItem | null,
+  overrides: AnimapOverrides,
+  animap: Animap,
+): DeriveOutcome {
+  const d = deriveMediaWith(target, media, nativeItem, overrides, animap);
+  if (
+    d.kind === "miss" &&
+    nativeItem === null &&
+    trackerFamily(target) === "seasoned" &&
+    speaksPage(target, media)
+  ) {
+    return { kind: "resolved", media };
+  }
+  return d;
+}
+
+/**
  * Resolve a derived tracker's entry: by the exact ids the derivation named (the
  * adapter picks the namespace it can use), else from the derived media.
  */
@@ -1006,7 +1039,7 @@ async function resolveAcross(
       );
       continue;
     }
-    const d = deriveMediaWith(tk, media, nativeItem, overrides, animap);
+    const d = deriveTarget(tk, media, nativeItem, overrides, animap);
     if (d.kind === "miss") {
       // An empty crosswalk means the CDN copy hasn't landed yet, not that the
       // item is unmapped, so say that instead of "not on this tracker".
@@ -1061,7 +1094,7 @@ async function reviewTarget(
     ? (await resolveNative(native, data.media, overrides, animap).catch(() => ({ item: null })))
         .item
     : null;
-  const d = deriveMediaWith(tracker, data.media, nativeItem, overrides, animap);
+  const d = deriveTarget(tracker, data.media, nativeItem, overrides, animap);
   const name = trackerLabel(tracker);
   if (d.kind === "ambiguous") return { ok: false, error: `can't tell which ${name} entry this is` };
   // The anchor falls back to the page as scraped, as it does when it records.
@@ -1111,7 +1144,7 @@ async function recordDerivedTrackers(
   };
 
   for (const target of targets) {
-    const d = deriveMediaWith(target, data.media, nativeItem, overrides, animap);
+    const d = deriveTarget(target, data.media, nativeItem, overrides, animap);
     if (d.kind === "miss") {
       // No crosswalk row: skip this tracker (the item is not mapped there).
       out.push({
