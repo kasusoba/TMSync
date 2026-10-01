@@ -1,6 +1,7 @@
 import type { ParsedMedia } from "@tmsync/shared";
 import { browser } from "wxt/browser";
 import { connectIntent } from "../storage";
+import { forgetLists } from "../sync/base-store";
 import type { ListCache, ListRead } from "../sync/list-cache";
 import type { ChunkOutcome, SyncKind, SyncWrite, WriteOutcome } from "../sync/types";
 import { hasTrackerAccess, isTrackerGrant } from "./access";
@@ -142,12 +143,15 @@ const INTENT_MS = 2 * 60 * 1000;
 /**
  * Sign in to a tracker. A tracker with `hostAccess` needs the grant first: the UI
  * asks for it on the Connect click, a gesture the background does not have.
+ * A saved list sync read and base belong to one account, so a new sign-in drops
+ * them (only once it succeeds: a cancelled sign-in keeps the old account).
  */
 export async function connectTracker(tracker: Tracker): Promise<void> {
   if (!(await hasTrackerAccess(tracker))) {
     throw new Error(`Allow access to ${TRACKER_INFO[tracker].label} to connect`);
   }
   await getService(tracker).connect();
+  await forgetLists(tracker);
 }
 
 /**
