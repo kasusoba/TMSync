@@ -52,7 +52,7 @@ and add a log line in the same commit.
   `start` differs from the one sent, `DELETE /scrobble/playing` and show the numbering warning.
 - [x] **4. Ratings and comments.** `review.ts`: rate show, season, episode (0 to 10). Comment
   on movie, show, season, episode, with the spoiler flag. `watchedState` for the popup.
-- [ ] **5. List sync.** `list.ts`, `apply.ts`, list cache. Daily sync too.
+- [x] **5. List sync.** `list.ts`, `apply.ts`, list cache. Daily sync too.
 - [ ] **6. Quick links on wetrakr.com.** Make quick links family-based (seasoned vs cour) instead
   of Trakt vs AniList (`shared/src/links.ts`, `QuickLinkEditor.tsx`, `options/App.tsx`), share
   one content-script core with `trakt-quicklinks`, add `wetrakr-quicklinks.content.tsx`. Find
@@ -98,6 +98,15 @@ and add a log line in the same commit.
   Comment endpoints: `POST /sync/comments`, `DELETE /sync/comments/{id}`. To check by hand: the
   user tracking field on episodes (assumed `interactions.user.tracking.last.status`), a rating
   made on wetrakr.com showing in the panel.
+
+- 2026-10-01: Step 5 done. `list.ts`, `apply.ts`. Sync treats WeTrakr like Trakt (family
+  `seasoned`): watches and ratings, season ratings too; no status written, nothing removed, not a
+  main list. Reads: `/sync/last_activities` stamp first, then the show lists per status (titles),
+  the compact episode play history, watched movies, and the three rating lists. Writes:
+  `POST /sync/tracking` (status `watched` per episode, `tracked_at` or `use_release_date`),
+  `/sync/ratings`, `/sync/ratings/remove`, 1.1 s apart; 429, 420, 423 stop. Later option: sync
+  WeTrakr statuses (watching, planning, dropped, paused) through a planner capability. To check by
+  hand: a preview and an apply against a real account.
 
 ## WeTrakr API facts (checked 2026-10-01)
 

@@ -346,3 +346,90 @@ export async function seasonEpisodes(showId: number, season: number): Promise<We
   const res = await api(`/shows/${showId}/seasons/${season}/episodes`, {}, true);
   return res.ok ? ((await res.json()) as WetrakrEpisode[]) : [];
 }
+
+// --- list sync (docs/ARCHITECTURE.md section 7) ---
+
+/** Every page of a paged list (100 per page, `X-Pagination-Page-Count`). */
+async function allPages(path: string): Promise<unknown[]> {
+  const out: unknown[] = [];
+  for (let page = 1; ; page++) {
+    const sep = path.includes("?") ? "&" : "?";
+    const res = await api(`${path}${sep}limit=100&page=${page}`, {}, true);
+    if (!res.ok) throw new Error(`WeTrakr ${path} returned ${res.status}`);
+    const rows = (await res.json()) as unknown[];
+    out.push(...rows);
+    const count = Number(res.headers.get("X-Pagination-Page-Count") ?? "1");
+    if (!rows.length || page >= count) return out;
+  }
+}
+
+/** Every row of a compact list (up to 5,000 per call, cursor in `X-Pagination-Next`). */
+async function allCompact(path: string): Promise<unknown[]> {
+  const out: unknown[] = [];
+  let after: string | null = null;
+  for (;;) {
+    const q = new URLSearchParams({ compact: "true", limit: "5000" });
+    if (after) q.set("after", after);
+    const res = await api(`${path}?${q}`, {}, true);
+    if (!res.ok) throw new Error(`WeTrakr ${path} returned ${res.status}`);
+    out.push(...((await res.json()) as unknown[]));
+    after = res.headers.get("X-Pagination-Next");
+    if (!after) return out;
+  }
+}
+
+/** Everything list sync reads from WeTrakr, as WeTrakr returns it. */
+export interface WetrakrListDump {
+  /** Show entries of every tracking list that holds watches (titles, ids). */
+  shows: unknown[];
+  /** Every episode play, compact. */
+  episodePlays: unknown[];
+  /** Watched movies. */
+  movies: unknown[];
+  showRatings: unknown[];
+  seasonRatings: unknown[];
+  movieRatings: unknown[];
+}
+
+/** The tracking lists a show with watched episodes can sit in. */
+const SHOW_LISTS = ["watching", "waiting", "watched", "paused", "dropped"] as const;
+
+/** Read the user's watches and ratings: the parts not wanted are skipped. */
+export async function readWetrakrList(want: {
+  shows: boolean;
+  movies: boolean;
+}): Promise<WetrakrListDump> {
+  const none = Promise.resolve<unknown[]>([]);
+  const [shows, episodePlays, movies, showRatings, seasonRatings, movieRatings] = await Promise.all(
+    [
+      want.shows
+        ? Promise.all(SHOW_LISTS.map((s) => allPages(`/sync/tracking/${s}/shows`))).then((l) =>
+            l.flat(),
+          )
+        : none,
+      want.shows ? allCompact("/sync/tracking/watched/history/episodes") : none,
+      want.movies ? allPages("/sync/tracking/watched/movies") : none,
+      want.shows ? allPages("/sync/ratings/shows") : none,
+      want.shows ? allPages("/sync/ratings/seasons") : none,
+      want.movies ? allPages("/sync/ratings/movies") : none,
+    ],
+  );
+  return { shows, episodePlays, movies, showRatings, seasonRatings, movieRatings };
+}
+
+/** WeTrakr's change stamps (`/sync/last_activities`), unparsed. */
+export async function readWetrakrActivity(): Promise<unknown> {
+  const res = await api("/sync/last_activities", {}, true);
+  if (!res.ok) throw new Error(`WeTrakr /sync/last_activities returned ${res.status}`);
+  return res.json();
+}
+
+/** A WeTrakr sync POST: status, the JSON body when it worked, and a short error. */
+export async function syncPost(
+  path: "/sync/tracking" | "/sync/ratings" | "/sync/ratings/remove",
+  body: unknown,
+): Promise<{ status: number; data?: unknown; error?: string }> {
+  const res = await api(path, { method: "POST", body }, true);
+  if (!res.ok) return { status: res.status, error: await errorDetail(res) };
+  return { status: res.status, data: await res.json().catch(() => undefined) };
+}

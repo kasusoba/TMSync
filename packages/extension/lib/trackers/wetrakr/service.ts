@@ -7,10 +7,12 @@ import {
   wetrakrResolutionCache,
 } from "../../storage";
 import type { TrackerService } from "../service";
+import { WETRAKR_CHUNK, applyWetrakr } from "./apply";
 import { connect, disconnect, getRedirectUri, isConnected } from "./auth";
 import { saveCorrection, search } from "./client";
 import type { ReviewLevel } from "./client";
 import { WETRAKR } from "./config";
+import { readWetrakrEntries } from "./list";
 import {
   wetrakrDeleteNote,
   wetrakrGetReview,
@@ -20,6 +22,8 @@ import {
 } from "./review";
 
 export const wetrakrService: TrackerService = {
+  readList: readWetrakrEntries,
+  applyList: { chunk: WETRAKR_CHUNK, run: applyWetrakr },
   status: async () => ({
     connected: await isConnected(),
     redirectUri: getRedirectUri(),
