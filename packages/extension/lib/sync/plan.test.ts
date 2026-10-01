@@ -776,30 +776,25 @@ describe("status and progress", () => {
     ]);
   });
 
-  it("the most recent status wins, and the preview lists the conflict", () => {
-    const p = plan(
-      [
-        courEntry(
-          "anilist",
-          { anilist: 30, mal: 300 },
-          { status: "DROPPED", progress: 4, updatedAt: 200 },
-        ),
-        courEntry(
-          "mal",
-          { anilist: 30, mal: 300 },
-          { status: "CURRENT", progress: 4, updatedAt: 100 },
-        ),
-      ],
-      { trackers: ["anilist", "mal"] },
-    );
-    expect(writesFor(p, "mal")).toEqual([
+  it("writes no status in a disagreement until the user picks", () => {
+    const entries = [
+      courEntry(
+        "anilist",
+        { anilist: 30, mal: 300 },
+        { status: "DROPPED", progress: 4, updatedAt: 200 },
+      ),
+      courEntry(
+        "mal",
+        { anilist: 30, mal: 300 },
+        { status: "CURRENT", progress: 4, updatedAt: 100 },
+      ),
+    ];
+    const p = plan(entries, { trackers: ["anilist", "mal"] });
+    expect(p.items).toEqual([]);
+    expect(p.conflicts).toEqual([expect.objectContaining({ field: "status", chosen: null })]);
+    const picked = withPicks(p, { "status:anilist:30": "DROPPED" });
+    expect(writesFor(picked, "mal")).toEqual([
       expect.objectContaining({ status: { from: "CURRENT", to: "DROPPED" } }),
-    ]);
-    expect(p.conflicts).toEqual([
-      expect.objectContaining({
-        field: "status",
-        chosen: { tracker: "anilist", value: "DROPPED" },
-      }),
     ]);
   });
 
@@ -1172,9 +1167,8 @@ describe("statuses on movies and TV", () => {
       show("simkl", { 1: [1] }, { status: "DROPPED", updatedAt: 3, watchedAt: 1 }),
     ];
     const p = plan(entries, { trackers: W });
-    expect(p.conflicts).toMatchObject([
-      { field: "status", kind: "tv", chosen: { value: "DROPPED" } },
-    ]);
+    expect(p.conflicts).toMatchObject([{ field: "status", kind: "tv", chosen: null }]);
+    expect(statusOps(p)).toEqual([]);
     const picked = withPicks(p, { "status:tv:tmdb:5": "PAUSED" });
     expect(statusOps(picked)).toEqual(["simkl:DROPPED>PAUSED"]);
   });
@@ -1200,7 +1194,7 @@ describe("anime statuses on Trakt and WeTrakr", () => {
     expect(statusOps(p)).toEqual(["trakt:PLANNING", "wetrakr:PLANNING"]);
   });
 
-  it("drops the cour when Trakt dropped a one-cour show", () => {
+  it("lists a Trakt drop against AniList watching, and a pick drops both", () => {
     const p = plan(
       [
         traktShow(50, { 1: [1, 2] }, { status: "DROPPED", updatedAt: 9 }),
@@ -1208,8 +1202,10 @@ describe("anime statuses on Trakt and WeTrakr", () => {
       ],
       { trackers: A },
     );
-    expect(statusOps(p)).toContain("anilist:DROPPED");
-    expect(statusOps(p)).toContain("wetrakr:DROPPED");
+    expect(p.conflicts).toMatchObject([{ key: "anilist:30", field: "status", chosen: null }]);
+    expect(statusOps(p)).toEqual([]);
+    const picked = withPicks(p, { "status:anilist:30": "DROPPED" });
+    expect(statusOps(picked).sort()).toEqual(["anilist:DROPPED", "wetrakr:DROPPED"]);
   });
 
   it("gives and takes no show status for a show of several cours", () => {

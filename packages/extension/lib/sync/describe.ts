@@ -44,7 +44,8 @@ export function describeWrite(w: SyncWrite): string {
       const { from, to } = w.status;
       const shape = w.target.mediaType === "movie" ? "movie" : "show";
       // A status the tracker cannot hold only takes it off the list it is on.
-      if (from && to && !givesStatus(w.tracker, shape, to)) return `off ${STATUS_LABEL[from]}`;
+      if (from && to && !givesStatus(w.tracker, shape, to))
+        return `remove from ${STATUS_LABEL[from]}`;
       if (!to) return "";
       return from ? `${STATUS_LABEL[from]} → ${STATUS_LABEL[to]}` : STATUS_LABEL[to];
     }

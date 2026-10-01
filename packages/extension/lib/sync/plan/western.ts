@@ -199,7 +199,8 @@ export function planWestern(ctx: PlanContext, all: SeasonedEntry[], kind: SyncKi
             .filter((m) => m.status)
             .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
             .map((m) => ({ tracker: m.tracker, value: m.status as string, at: m.updatedAt })),
-          chosen: { tracker: want.latest.tracker, value: want.desired as string },
+          // Nothing is chosen: a disagreement writes no status until the user picks.
+          chosen: null,
           targets: [],
         }
       : undefined;
@@ -218,7 +219,8 @@ export function planWestern(ctx: PlanContext, all: SeasonedEntry[], kind: SyncKi
       total: null,
       shape,
     });
-    const status = gets ? statusChange(tk, shape, from, want.desired) : undefined;
+    const status =
+      gets && !statusConflict ? statusChange(tk, shape, from, want.desired) : undefined;
     if (status)
       writes.push({
         tracker: tk,

@@ -271,8 +271,8 @@ export interface SyncConflict {
   field: "status" | "rating";
   /** Each tracker's value (a status, or a score 0 to 100), newest first. */
   values: { tracker: Tracker; value: string | number; at?: number }[];
-  /** What sync will use, when it picks one (status: the most recent). Null = it
-   * writes nothing for this field until the user picks. */
+  /** What sync will use without a pick. Null = it writes nothing for this field
+   * until the user picks (always, today). */
   chosen: { tracker: Tracker; value: string | number } | null;
   /** Rating only: where each tracker taking part keeps this rating, so a score
    * the user picks can be written to all of them. */

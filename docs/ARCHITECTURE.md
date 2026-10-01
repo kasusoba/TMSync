@@ -341,8 +341,11 @@ and nothing of it touches `extract()` or the scrobble path.
   history is still never removed; the plan says so as a notice.
 - **Kinds per tracker.** The user picks which kinds each tracker takes part in. A kind that is off
   is off both ways: not read as a source and not written as a target.
-- **Status.** When the progress finishes an entry, it is completed. Otherwise the most recently
-  updated entry wins, and the plan lists it as a conflict. A completed entry is never moved.
+- **Status.** When the progress finishes an entry, it is completed. Otherwise the entries that
+  hold a status give it. When they hold different ones, the plan lists a conflict and writes no
+  status until the user picks: dates are a poor guide, since an import or a sync write moves them.
+  The entries still follow the episodes (a planned entry with progress is watching). The Changes
+  tab says how many conflicts wait. A completed entry is never moved.
 - **Status on movies and TV** (`plan/status.ts`). The same rule, plus the watches: a planned show
   with watches is being watched, and a show watched after it was paused or dropped is being
   watched again. Each tracker gets only the statuses it can hold: Trakt plan to watch (movies,
@@ -363,8 +366,9 @@ and nothing of it touches `extract()` or the scrobble path.
   start day of the sources, and the last finish day once the copy is finished. A day the copy has
   is never changed, and a completed entry still gets an empty day filled (a day is not a move).
   Only full dates count: a MAL date with no day is left alone.
-- **Picks.** In a conflict the user can pick the value every tracker gets (`withPicks`). A picked
-  status still follows the episodes. A picked rating replaces the ratings that differ.
+- **Picks.** In a conflict the user can pick the value every tracker gets (`withPicks`), one at a
+  time or for every conflict shown at once ("Trakt's value"). A picked status still follows the
+  episodes. A picked rating replaces the ratings that differ.
 - **Private and adult** AniList entries are skipped unless the user includes them.
 - **Convergence.** Applying a plan and planning again must give no writes. The planner tests check
   this for every case.

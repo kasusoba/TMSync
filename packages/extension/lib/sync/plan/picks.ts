@@ -12,7 +12,7 @@ import { statusChange } from "./status";
  * tracker that can hold the rating and does not already have the picked score
  * (on its own scale) gets it, its own rating included.
  *
- * A status pick replaces "the most recent wins": every tracker in the
+ * A status pick settles a disagreement, which writes no status alone: every tracker in the
  * disagreement gets the picked status, by the same rules the planner keeps (an
  * entry that sync finishes is completed, "completed" needs every episode, and an
  * entry with progress is not "plan to watch").

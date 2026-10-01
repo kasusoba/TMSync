@@ -173,7 +173,8 @@ export function planCour(ctx: PlanContext, key: string, g: CourGroup): void {
       kind: "anime",
       field: "status",
       values: withStatus.map((e) => ({ tracker: e.tracker, value: e.status, at: e.updatedAt })),
-      chosen: { tracker: latest.tracker, value: normStatus(latest.status) },
+      // Nothing is chosen: a disagreement writes no status until the user picks.
+      chosen: null,
       targets: [],
     };
     conflicts.push(statusConflict);
@@ -366,7 +367,11 @@ export function planCour(ctx: PlanContext, key: string, g: CourGroup): void {
     if (entry || progress > 0 || desired) ratingRefs.set(tk, { level: "entry", target });
     const from = entry?.progress ?? 0;
     const to = Math.max(from, progress);
-    let status = desired;
+    // In a disagreement the entry keeps its status, and only follows the episodes.
+    const keep = entry?.status && !(entry.status === "PLANNING" && to > 0) ? entry.status : null;
+    let status: CourStatus | null = statusConflict
+      ? (keep ?? (to > 0 ? "CURRENT" : null))
+      : desired;
     if (tTotal !== null && to >= tTotal && to > 0) status = "COMPLETED";
     else if (status === "COMPLETED") status = "CURRENT";
     if (status === "PLANNING" && to > 0) status = entry?.status ?? "CURRENT";
@@ -482,7 +487,7 @@ export function planCour(ctx: PlanContext, key: string, g: CourGroup): void {
         total: null,
         shape,
       });
-      const status = gets ? statusChange(tk, shape, from, to) : undefined;
+      const status = gets && !statusConflict ? statusChange(tk, shape, from, to) : undefined;
       if (status)
         writes.push({
           tracker: tk,
