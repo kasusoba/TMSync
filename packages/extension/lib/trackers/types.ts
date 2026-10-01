@@ -99,7 +99,11 @@ const INFO = {
     note: "public",
     fix: "search",
     env: ["WXT_WETRAKR_CLIENT_ID"],
-    hostAccess: { origins: ["https://api.wetrakr.com/*"], site: "api.wetrakr.com" },
+    // The site too: one prompt also covers its quick links (wetrakr-quicklinks).
+    hostAccess: {
+      origins: ["https://api.wetrakr.com/*", "https://wetrakr.com/*"],
+      site: "wetrakr.com",
+    },
   },
   anilist: {
     label: "AniList",
@@ -148,12 +152,20 @@ export const trackerFix = (tracker: Tracker): FixKind => TRACKER_INFO[tracker].f
 export const isCourFix = (tracker: Tracker): tracker is CourTracker =>
   trackerFix(tracker) === "cour";
 
-/** Trackers whose pages can host quick links (each has a quick-link content
- * script). A subset of `Tracker`: a new tracker gets links only with its own script. */
+/** The kinds of quick link, named by the tracker whose templates they use (the
+ * stored `tracker` value): `trakt` = movie and TV templates, `anilist` = anime
+ * templates. */
 export type QuickLinkTracker = "trakt" | "anilist";
 
-/** The quick-link trackers, in display order (the quick-link editors' tabs). */
+/** The quick-link kinds, in display order (the quick-link editors' tabs). */
 export const QUICK_LINK_TRACKERS: QuickLinkTracker[] = ["trakt", "anilist"];
+
+/** The trackers whose pages show each kind of quick link (each has a quick-link
+ * content script). A movie and TV link shows on every seasoned tracker's pages. */
+export const QUICK_LINK_PAGES: Record<QuickLinkTracker, Tracker[]> = {
+  trakt: ["trakt", "wetrakr"],
+  anilist: ["anilist"],
+};
 
 /** All trackers in a stable order — for UI iteration (toggles, tabs) + registries. */
 export const ALL_TRACKERS = Object.keys(TRACKER_INFO) as Tracker[];

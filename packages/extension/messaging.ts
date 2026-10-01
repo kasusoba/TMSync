@@ -357,6 +357,12 @@ export interface ProtocolMap {
    * carries no external-id links (unlike the classic site), so its quick links
    * resolve `{tmdb}` this way instead of scraping it. Null on any failure. */
   traktIdsForSlug(q: { type: "movie" | "show"; slug: string }): TraktIds | null;
+  /** Title and external ids of a WeTrakr title by its id, for the quick links on
+   * wetrakr.com (read from the API, never the page). Null on any failure. */
+  wetrakrPageMedia(q: {
+    type: "movie" | "show";
+    id: number;
+  }): { title: string; tmdb?: number; imdb?: string } | null;
 
   // --- corrections (fix a wrong match) ---
   /** Fix a wrong match on a tracker that searches (`fix: "search"`): lock the

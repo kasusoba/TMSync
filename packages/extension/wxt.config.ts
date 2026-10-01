@@ -87,16 +87,24 @@ export default defineConfig({
       if (manifest.options_ui) manifest.options_ui.open_in_tab = true;
 
       const BROAD = "*://*/*";
+      // Hosts of runtime-registered scripts that WXT would add as required. WeTrakr's
+      // quick links run on wetrakr.com only after the user grants it on Connect
+      // (inside the broad optional permission), so it must never be asked at install.
+      const RUNTIME_ONLY = [BROAD, "*://wetrakr.com/*"];
       // MV3: drop broad required host access.
       if (manifest.host_permissions) {
-        manifest.host_permissions = manifest.host_permissions.filter((p: string) => p !== BROAD);
+        manifest.host_permissions = manifest.host_permissions.filter(
+          (p: string) => !RUNTIME_ONLY.includes(p),
+        );
         if (manifest.host_permissions.length === 0) {
           manifest.host_permissions = undefined;
         }
       }
       // MV2 folds host perms into required `permissions` — drop broad there too.
       if (manifest.permissions) {
-        manifest.permissions = manifest.permissions.filter((p: string) => p !== BROAD);
+        manifest.permissions = manifest.permissions.filter(
+          (p: string) => !RUNTIME_ONLY.includes(p),
+        );
       }
       // MV2 has no `optional_host_permissions`, and WXT doesn't translate it.
       // Declare the broad host as an OPTIONAL permission so Firefox can grant it

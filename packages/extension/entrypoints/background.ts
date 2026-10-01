@@ -1416,7 +1416,10 @@ async function syncRegistrations(): Promise<void> {
     const registered = await browser.scripting.getRegisteredContentScripts();
     const ids = new Set(registered.map((s) => s.id));
     if (await hasAllSites()) {
-      const perOrigin = registered.map((s) => s.id).filter((id) => id !== ALL_SITES_ID);
+      // Only the per-site scripts: a tracker's own scripts (wetrakr-quicklinks) stay.
+      const perOrigin = registered
+        .map((s) => s.id)
+        .filter((id) => id.startsWith("tmsync-") && id !== ALL_SITES_ID);
       if (perOrigin.length)
         await browser.scripting.unregisterContentScripts({ ids: perOrigin }).catch(() => {});
       if (!ids.has(ALL_SITES_ID)) await registerAllSites().catch(() => {});

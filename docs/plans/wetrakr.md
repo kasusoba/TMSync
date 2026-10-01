@@ -53,7 +53,7 @@ and add a log line in the same commit.
 - [x] **4. Ratings and comments.** `review.ts`: rate show, season, episode (0 to 10). Comment
   on movie, show, season, episode, with the spoiler flag. `watchedState` for the popup.
 - [x] **5. List sync.** `list.ts`, `apply.ts`, list cache. Daily sync too.
-- [ ] **6. Quick links on wetrakr.com.** Make quick links family-based (seasoned vs cour) instead
+- [x] **6. Quick links on wetrakr.com.** Make quick links family-based (seasoned vs cour) instead
   of Trakt vs AniList (`shared/src/links.ts`, `QuickLinkEditor.tsx`, `options/App.tsx`), share
   one content-script core with `trakt-quicklinks`, add `wetrakr-quicklinks.content.tsx`. Find
   the wetrakr.com URL shapes first (search results give `url: "/movies/483"`).
@@ -107,6 +107,17 @@ and add a log line in the same commit.
   `/sync/ratings`, `/sync/ratings/remove`, 1.1 s apart; 429, 420, 423 stop. Later option: sync
   WeTrakr statuses (watching, planning, dropped, paused) through a planner capability. To check by
   hand: a preview and an apply against a real account.
+
+- 2026-10-01: Step 6 done. Kept the stored quick-link kinds (`trakt` = movie and TV templates,
+  `anilist` = anime) so no migration or schema bump; `QUICK_LINK_PAGES` says a movie and TV link
+  shows on trakt.tv and wetrakr.com, and the editor tab shows both marks. New
+  `wetrakr-quicklinks.content.tsx`, `registration: "runtime"`, registered by the WeTrakr service
+  while `https://wetrakr.com/*` is granted (now part of WeTrakr's Connect prompt). Title from the
+  URL (`page.ts`) and the API (`wetrakrPageMedia`), never the page HTML. Anchor: the Angular
+  `content-header` element (the detail page header), found in the site bundle, not seen live.
+  `wxt.config.ts` strips `*://wetrakr.com/*` from the install manifest (WXT adds runtime matches);
+  `syncRegistrations` no longer removes non-site scripts under the broad grant. To check by hand:
+  links show under the header on movie, show, season, and episode pages.
 
 ## WeTrakr API facts (checked 2026-10-01)
 

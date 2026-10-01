@@ -433,3 +433,18 @@ export async function syncPost(
   if (!res.ok) return { status: res.status, error: await errorDetail(res) };
   return { status: res.status, data: await res.json().catch(() => undefined) };
 }
+
+/** A WeTrakr title and its external ids by WeTrakr id (the wetrakr.com quick links). */
+export async function pageMedia(
+  type: "movie" | "show",
+  id: number,
+): Promise<{ title: string; tmdb?: number; imdb?: string } | null> {
+  const m = await details(type, id);
+  if (!m) return null;
+  const tmdb = Number(m.ids?.tmdb);
+  return {
+    title: m.title,
+    tmdb: Number.isFinite(tmdb) && tmdb > 0 ? tmdb : undefined,
+    imdb: m.ids?.imdb,
+  };
+}

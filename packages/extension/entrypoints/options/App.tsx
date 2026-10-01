@@ -317,7 +317,7 @@ function QuickLinkRow({
       </div>
       {open && (
         <div class={clsx("mt-3 space-y-2.5 border-t pt-3", t.divider)}>
-          {/* shows on — Trakt pages (movies/TV) or AniList pages (anime) */}
+          {/* shows on: Trakt and WeTrakr pages (movies/TV) or AniList pages (anime) */}
           <div>
             <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>Shows on</span>
             <TrackerTab t={t} value={tracker} onChange={setTracker} />
@@ -335,7 +335,10 @@ function QuickLinkRow({
               {field("Movie path", movie, setMovie, "/movie/{tmdb}")}
               {field("TV path", tv, setTv, "/tv/{tmdb}/{season}/{episode}")}
               {field("Search path", search, setSearch, "/search/{title}")}
-              <PlaceholderHelp list={TRAKT_PLACEHOLDERS} note="shown on trakt.tv movie/TV pages" />
+              <PlaceholderHelp
+                list={TRAKT_PLACEHOLDERS}
+                note="shown on trakt.tv and wetrakr.com movie/TV pages"
+              />
             </>
           )}
           <Btn t={t} tone="primary" disabled={busy} onClick={save}>
