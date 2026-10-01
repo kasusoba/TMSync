@@ -307,7 +307,8 @@ and nothing of it touches `extract()` or the scrobble path.
 1. **Read.** Each tracker's service has `readList(kinds, saved, timed)`, which returns its whole list as
    normalized `ListEntry` values in one of three shapes: `movie` (watched or not), `seasons` (a
    set of watched episodes per season: Trakt, WeTrakr, Simkl shows), and `cour` (a count plus a status:
-   AniList, MAL, Simkl anime). The readers live in `lib/trackers/<tracker>/list.ts`, each a pure
+   AniList, MAL, Simkl anime). A `movie` or `seasons` entry can carry a status too: the Trakt
+   watchlist (plan to watch) and dropped shows, a WeTrakr tracking list, a Simkl list. The readers live in `lib/trackers/<tracker>/list.ts`, each a pure
    normalizer (Zod per item, a bad item is dropped) plus a fetch in its `client.ts`. A tracker with
    a change check reuses its saved list (see "Change checks").
 2. **Plan.** `planSync` (`plan/`, pure; `plan/index.ts` names each file's part) groups entries that are the same thing, by id only, never
@@ -329,9 +330,10 @@ and nothing of it touches `extract()` or the scrobble path.
 - **A main list per kind (optional).** For movies, TV, or anime, one tracker can be the main list.
   Only it is a source; the others copy it, and a list entry it does not have is removed from them.
   Trakt watch history is never removed, since deleting plays cannot be undone. A copy that is
-  further than the main list keeps its progress, and the plan says so as a notice. Trakt cannot
-  be a main list: it holds only watch history, so every planned or unwatched entry on the
-  others would be removed (`canBeMain`). A saved Trakt main list reads as none.
+  further than the main list keeps its progress, and the plan says so as a notice. Trakt and
+  WeTrakr cannot be a main list (`canBeMain`): their lists are watch history, which sync never
+  removes, so a copy could never be made to match them. A saved Trakt or WeTrakr main list reads
+  as none.
 - **Remembered removals (always on).** In a union, an entry or a rating removed from one list
   since the last sync is removed from the others instead of added back (see "The base").
   There is no switch: the removal is always in the preview first, an automatic run holds it for
@@ -341,6 +343,19 @@ and nothing of it touches `extract()` or the scrobble path.
   is off both ways: not read as a source and not written as a target.
 - **Status.** When the progress finishes an entry, it is completed. Otherwise the most recently
   updated entry wins, and the plan lists it as a conflict. A completed entry is never moved.
+- **Status on movies and TV** (`plan/status.ts`). The same rule, plus the watches: a planned show
+  with watches is being watched, and a show watched after it was paused or dropped is being
+  watched again. Each tracker gets only the statuses it can hold: Trakt plan to watch (movies,
+  shows) and dropped (shows), WeTrakr and Simkl plan to watch, watching, paused, and dropped
+  (movies: plan to watch and dropped). A tracker leaves a status it holds when the status moves on
+  (off the Trakt watchlist once watched). Completed is never written: it comes from the watches.
+  For anime, a seasoned show status counts only when the crosswalk maps the show to exactly one
+  cour (or the item is a movie), since one show status cannot name one of several cours.
+- **Remembered misses** (`misses.ts`). A write a tracker answers "not found" for (the item, or the
+  episodes it sent) is remembered per tracker and item. The planner leaves it out and lists it as
+  a skip. This stops a write that can never land from failing on every apply: Simkl numbers TV
+  episodes in TVDB order, Trakt and WeTrakr in TMDB order. A miss expires after 30 days, and
+  connecting the account again forgets it.
 - **Ratings** fill empty ratings only. Scores are compared on the target's own scale, so rounding
   (AniList 85 to MAL 9 and back) never loops. Two different ratings are a conflict.
 - **Start and finish days** (AniList `startedAt` and `completedAt`, MAL `start_date` and

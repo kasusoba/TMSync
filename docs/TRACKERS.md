@@ -227,25 +227,34 @@ How list sync reads and writes each tracker. How it plans is in
 
 | | **Reads (one preview)** | **Writes (apply)** | **Spacing and stops** |
 |---|---|---|---|
-| Trakt | `/sync/last_activities`, then (if it moved) up to 5 GETs: `/sync/watched/{shows,movies}`, `/sync/ratings/{shows,seasons,movies}` (paged) | `POST /sync/history`, `POST /sync/ratings`, and `POST /sync/ratings/remove`, up to 100 items each | 1.1 s between POSTs. 429 or 420 stops Trakt. |
-| WeTrakr | `/sync/last_activities`, then (if it moved): the show lists `/sync/tracking/{watching,waiting,watched,paused,dropped}/shows` (titles), the compact episode plays `/sync/tracking/watched/history/episodes`, `/sync/tracking/watched/movies`, and `/sync/ratings/{shows,seasons,movies}` (paged) | `POST /sync/tracking` (status `watched` per episode or movie), `POST /sync/ratings`, `POST /sync/ratings/remove`, up to 100 items each | 1.1 s between POSTs (60 writes a minute). 429, 420, or 423 stops WeTrakr. |
+| Trakt | `/sync/last_activities`, then (if it moved) up to 8 paged GETs: `/sync/watched/shows?extended=progress`, `/sync/watched/movies`, `/sync/ratings/{shows,seasons,movies}`, `/sync/watchlist/{shows,movies}`, `/users/hidden/dropped?type=show` | `POST /sync/history`, `/sync/ratings`, `/sync/ratings/remove`, `/sync/watchlist`, `/sync/watchlist/remove`, `/users/hidden/dropped`, `/users/hidden/dropped/remove`, up to 100 items each | 1.1 s between POSTs. 429 or 420 stops Trakt. |
+| WeTrakr | `/sync/last_activities`, then (if it moved): the show lists `/sync/tracking/{watching,waiting,watched,paused,dropped,planning}/shows` (titles, status), the compact episode plays `/sync/tracking/watched/history/episodes`, `/sync/tracking/{watched,planning,dropped}/movies`, and `/sync/ratings/{shows,seasons,movies}` (paged) | `POST /sync/tracking` (status `watched` per episode or movie), a second `POST /sync/tracking` for statuses, `POST /sync/ratings`, `POST /sync/ratings/remove`, up to 100 items each | 1.1 s between POSTs (60 writes a minute). 429, 420, or 423 stops WeTrakr. |
 | AniList | `Viewer`, then `MediaListCollection` in chunks of 500 (custom lists too, one entry per media: an entry hidden from status lists is only there) | a fresh `Page.mediaList(mediaId_in)` read per 25 entries, then one `SaveMediaListEntry` or `DeleteMediaListEntry` per entry | 2.1 s between requests. A 429 waits out `Retry-After` once; a second one stops AniList. |
 | MyAnimeList | `/users/@me/animelist`, 1000 per page, one page at a time | per entry: `GET /anime/{id}` (`my_list_status`), then `PATCH` or `DELETE /anime/{id}/my_list_status` | 1.5 s between requests. A 403 stops MAL. |
-| Simkl | `/sync/activities`, then 0 to 3: `/sync/all-items/{shows,anime,movies}` for the types that moved, with `date_from` when nothing was removed | `POST /sync/history/remove`, `/sync/history`, `/sync/ratings`, `/sync/ratings/remove`, up to 250 items per chunk | 1.1 s between POSTs. A 429 stops Simkl. |
+| Simkl | `/sync/activities`, then 0 to 3: `/sync/all-items/{shows,anime,movies}` for the types that moved, with `date_from` when nothing was removed | `POST /sync/history/remove`, `/sync/history`, `/sync/add-to-list`, `/sync/ratings`, `/sync/ratings/remove`, up to 250 items per chunk | 1.1 s between POSTs. A 429 stops Simkl. |
 
 - **Trakt.** Watches and ratings are separate lists, so an item that is rated but not watched is
   still read as an entry. A history write always adds a play, so the plan diffs against what
   Trakt has and never sends one twice. `watched_at` is the source list's date, else `"released"`
   (the air date). A season rating nests in its show: `shows: [{ ids, seasons: [{ number, rating }] }]`.
-  Trakt echoes items it could not match in `not_found`. Trakt has no list status and no list
-  entries, so sync writes it no status and never removes from it.
-- **WeTrakr.** Sync treats it like Trakt (the `seasoned` family): watches and ratings, season
-  ratings too; it writes no status, removes nothing, and cannot be a main list, because its plays
-  are watch history. A watch write gives each episode its own `watched` status, so the show's
-  status is untouched, and `tracked_at` (else `use_release_date`) dates it. WeTrakr echoes what it
-  could not resolve in `notFound` (camel case). Compact rows carry no titles, which is why the
-  show lists are read too. WeTrakr also keeps statuses (watching, planning, dropped, paused) that
-  sync does not use yet.
+  Trakt echoes items it could not match in `not_found`. Trakt has no list entries, so sync never
+  removes from it. Its statuses are two lists: the watchlist (`/sync/watchlist`, plan to watch,
+  movies and shows) and dropped shows (`/users/hidden/dropped`, shows only), each with a
+  `/remove`. Since July 2026 `/sync/watched/shows` leaves out the seasons unless the request asks
+  for `extended=progress`, and every watched list must be paged (`page`, `limit`). Trakt may apply
+  a smaller limit than asked, so the reader follows `X-Pagination-Page-Count` and stops on an
+  empty page.
+- **WeTrakr.** Sync treats it like Trakt (the `seasoned` family): watches, ratings (season
+  ratings too), and statuses; it removes nothing, and cannot be a main list, because its plays are
+  watch history. A watch write gives each episode its own `watched` status, so the show's status
+  is untouched, and `tracked_at` (else `use_release_date`) dates it. A status write is a second
+  `/sync/tracking` POST after the watches, with the show's or movie's list and no seasons:
+  `planning`, `watching`, `paused`, `dropped` (movies: `planning`, `dropped`). Never a bare
+  `watched` (it would log every aired episode), and `none` clears a list without deleting plays.
+  The reader takes each show's status from the tracking list it is in, where `waiting` (caught up,
+  still airing) reads as watching; a caught-up show can also be in `watched`, and the other list
+  wins. WeTrakr echoes what it could not resolve in `notFound` and what it refused in `errored`
+  (camel case). Compact rows carry no titles, which is why the show lists are read too.
 - **AniList.** Read scores with `score(format: POINT_100)`, so every score is 0 to 100, and write
   with `scoreRaw` (0 clears a rating). A removal needs the LIST ENTRY id (`MediaList.id`), not the media id; the fresh
   read before each write gives it. `private` entries, entries hidden from status lists (`hiddenFromStatusLists`), and `isAdult` media are skipped by default.
@@ -256,8 +265,11 @@ How list sync reads and writes each tracker. How it plans is in
 - **Simkl.** Anime goes under `shows[]` on every sync endpoint: `/sync/history/remove` ignores an
   `anime[]` array. An anime is named by its cour ids (`mal`, `anilist`) and its Simkl id only; a
   TMDB show id names every cour of the show. A cour count is sent as top-level `episodes` (AniDB
-  numbering). An item on `/sync/history` can carry `status` and `rating` too, so a status needs no
-  `/sync/add-to-list` call, and a bare `status: "completed"` marks a whole item watched. A bare
+  numbering). An item on `/sync/history` can carry `status` and `rating` too, so an anime status
+  needs no `/sync/add-to-list` call, and a bare `status: "completed"` marks a whole item watched.
+  The status of a non-anime movie or show goes to `/sync/add-to-list`, each item with its own `to`
+  (movies skip `watching` and `hold`). TV episodes are in TVDB order, so episodes from Trakt or
+  WeTrakr (TMDB order) can miss. A bare
   item on `/sync/history/remove` removes it from the library entirely. Simkl answers 201 even when
   it matched nothing, so `not_found` (a verbatim copy of what was sent) is the only signal. There is
   no rewatch count. `watched_at` is omitted when the date is unknown (Simkl has no "released"). A
