@@ -102,6 +102,32 @@ const entries: ListEntry[] = [
     rating: 80,
     watched: true,
   },
+  // On the Trakt watchlist, and dropped on Simkl: statuses on movies and TV.
+  {
+    tracker: "trakt",
+    shape: "movie",
+    id: 10,
+    title: "Dune: Part Two",
+    year: 2024,
+    ids: { tmdb: 693134 },
+    rating: null,
+    watched: false,
+    status: "PLANNING",
+    updatedAt: 1,
+  },
+  {
+    tracker: "simkl",
+    shape: "seasons",
+    id: 11,
+    title: "Lost",
+    year: 2004,
+    ids: { tmdb: 4607 },
+    rating: null,
+    seasons: { 1: [1, 2] },
+    status: "DROPPED",
+    updatedAt: 3,
+    watchedAt: 1,
+  },
   // Plan to watch on MyAnimeList only (removed from AniList long ago).
   {
     tracker: "mal",
