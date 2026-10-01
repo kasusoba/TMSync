@@ -175,6 +175,7 @@ function BadgeRoot() {
     null | "now" | "review" | "fix" | "cour-fix" | "manual" | "episode"
   >(null);
   const [fixTracker, setFixTracker] = useState<CourTracker>("anilist");
+  const [searchFix, setSearchFix] = useState<Tracker>("trakt");
   const [media, setMedia] = useState<ParsedMedia | null>(null);
   const [tracker, setTracker] = useState<Tracker | null>(null);
   /** The item's enabled trackers (multi-track) — the rate/note composer fans out
@@ -467,7 +468,10 @@ function BadgeRoot() {
             onFix={(tk) => {
               // On a manual site the pick IS the match, whichever tracker it came from.
               if (manualMode) return setPanel("manual");
-              if (trackerFix(tk) === "search") return setPanel("fix");
+              if (trackerFix(tk) === "search") {
+                setSearchFix(tk);
+                return setPanel("fix");
+              }
               if (!isCourFix(tk)) return; // nothing to fix (Simkl matches server-side)
               setFixTracker(tk);
               setPanel("cour-fix");
@@ -503,7 +507,12 @@ function BadgeRoot() {
         />
       )}
       {panel === "fix" && (
-        <Correction t={t} onClose={() => setPanel(null)} onBack={() => setPanel("now")} />
+        <Correction
+          tracker={searchFix}
+          t={t}
+          onClose={() => setPanel(null)}
+          onBack={() => setPanel("now")}
+        />
       )}
       {panel === "cour-fix" && (
         <CourCorrection

@@ -1,8 +1,7 @@
 import { actionError } from "@/lib/errors";
 import type { ManualContext } from "@/lib/storage";
 import { pickMedia } from "@/lib/trackers/search";
-import type { ReviewLevel, TraktSearchOption } from "@/lib/trackers/trakt/types";
-import { pickedIdentity } from "@/lib/trackers/trakt/util";
+import type { ReviewLevel } from "@/lib/trackers/trakt/types";
 import {
   type CourSearchOption,
   type CourTracker,
@@ -80,8 +79,8 @@ function PanelHeader({
   );
 }
 
-function optionLabel(o: TraktSearchOption): string {
-  return `${o.title}${o.year ? ` (${o.year})` : ""} · ${o.type}`;
+function optionLabel(o: SearchOption): string {
+  return `${o.title}${o.year ? ` (${o.year})` : ""} · ${o.mediaType}`;
 }
 
 /**
@@ -699,11 +698,13 @@ export function RateNote({
 /** The "fix match" panel: search Trakt and pick the correct entry. `tabId` is set
  * when shown from the popup (a content script infers its own tab from the sender). */
 export function Correction({
+  tracker,
   t,
   tabId,
   onClose,
   onBack,
 }: {
+  tracker: Tracker;
   t: Tokens;
   tabId?: number;
   onClose: () => void;
@@ -711,7 +712,7 @@ export function Correction({
 }) {
   const [media, setMedia] = useState<ParsedMedia | null>(null);
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<TraktSearchOption[]>([]);
+  const [results, setResults] = useState<SearchOption[]>([]);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -731,25 +732,17 @@ export function Correction({
     const type =
       media && (media.season !== undefined || media.episode !== undefined)
         ? "show"
-        : media?.mediaType === "show"
-          ? "show"
-          : media?.mediaType === "movie"
-            ? "movie"
-            : undefined;
-    setResults(await sendMessage("searchTrakt", { query, type }));
+        : (media?.mediaType ?? "show");
+    setResults(await sendMessage("searchTracker", { tracker, query, type }));
     setBusy(false);
   };
 
-  const pick = async (o: TraktSearchOption) => {
+  const pick = async (o: SearchOption) => {
     if (!media) return;
     setBusy(true);
     setErr(null);
     try {
-      await sendMessage("saveCorrection", {
-        media,
-        identity: pickedIdentity(o),
-        tabId,
-      });
+      await sendMessage("fixMatch", { tracker, media, pick: o, tabId });
       setSaved(optionLabel(o));
     } catch (e) {
       setErr(actionError(e));
@@ -778,7 +771,7 @@ export function Correction({
                 }}
                 onKeyUp={(e) => e.stopPropagation()}
                 onKeyPress={(e) => e.stopPropagation()}
-                placeholder="Search Trakt…"
+                placeholder={`Search ${trackerLabel(tracker)}…`}
                 class="w-full bg-transparent py-1.5 text-[13px] outline-none"
               />
             </div>
@@ -795,7 +788,7 @@ export function Correction({
               results.map((o) => (
                 <button
                   type="button"
-                  key={`${o.type}-${o.traktId}`}
+                  key={`${o.mediaType}-${o.id}`}
                   onClick={() => pick(o)}
                   disabled={busy}
                   class={clsx(
@@ -1316,6 +1309,7 @@ export function NowPlaying({
     null,
   );
   const [fixTracker, setFixTracker] = useState<CourTracker>("anilist");
+  const [searchFix, setSearchFix] = useState<Tracker>("trakt");
   const [rewatchBusy, setRewatchBusy] = useState(false);
   const [watched, setWatched] = useState<WatchedState | null>(null);
   const done = () => {
@@ -1349,6 +1343,7 @@ export function NowPlaying({
   if (panel === "fix")
     return (
       <Correction
+        tracker={searchFix}
         t={t}
         tabId={tabId}
         onClose={() => setPanel(null)}
@@ -1439,7 +1434,10 @@ export function NowPlaying({
             media={media}
             trackers={trackers}
             onFix={(tk) => {
-              if (trackerFix(tk) === "search") return setPanel("fix");
+              if (trackerFix(tk) === "search") {
+                setSearchFix(tk);
+                return setPanel("fix");
+              }
               if (!isCourFix(tk)) return; // nothing to fix (Simkl matches server-side)
               setFixTracker(tk);
               setPanel("cour-fix");

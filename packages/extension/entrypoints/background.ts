@@ -433,6 +433,12 @@ export default defineBackground(() => {
     }
   });
 
+  onMessage("fixMatch", async ({ data, sender }) => {
+    await getService(data.tracker).pinPick?.(data.media, data.pick);
+    const tabId = data.tabId ?? sender.tab?.id;
+    if (tabId !== undefined) void sendMessage("recheck", undefined, tabId);
+  });
+
   onMessage("searchCour", async ({ data }) => {
     try {
       return await getService(data.tracker).pins.search(data.query);

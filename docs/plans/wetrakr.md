@@ -76,6 +76,10 @@ and add a log line in the same commit.
   `lib/trackers/service.ts`, `trackerTokens` map in storage. MAL works through it unchanged.
   Hand check: connect MAL fresh in Chrome popup, Firefox popup, and Options.
 
+- 2026-10-01: Audit gap found and fixed: the "Fix match" panel for `fix: "search"` trackers was
+  Trakt-only. `Correction` now takes a `tracker`, searches with `searchTracker`, and pins with the
+  new `fixMatch` message (the tracker's `pinPick`). `searchTrakt` and `saveCorrection` are gone.
+
 ## WeTrakr API facts (checked 2026-10-01)
 
 **Every request:** base `https://api.wetrakr.com`, headers `wetrakr-api-key: <client_id>`,

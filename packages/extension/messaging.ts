@@ -1,7 +1,7 @@
 import type { ManualContext } from "@/lib/storage";
 import type { ApplyBlock } from "@/lib/sync/apply";
 import type { AccountStatus } from "@/lib/trackers/service";
-import type { ResolvedIdentity, TraktIds, TraktSearchOption } from "@/lib/trackers/trakt/types";
+import type { TraktIds } from "@/lib/trackers/trakt/types";
 import type {
   CourSearchOption,
   CourTracker,
@@ -359,10 +359,14 @@ export interface ProtocolMap {
   traktIdsForSlug(q: { type: "movie" | "show"; slug: string }): TraktIds | null;
 
   // --- corrections (fix a wrong match) ---
-  /** Free-text Trakt search for the correction picker. */
-  searchTrakt(q: { query: string; type?: "movie" | "show" }): TraktSearchOption[];
-  /** Persist a correction for the scraped media and re-resolve the tab. */
-  saveCorrection(data: { media: ParsedMedia; identity: ResolvedIdentity; tabId?: number }): void;
+  /** Fix a wrong match on a tracker that searches (`fix: "search"`): lock the
+   * scraped media to the pick (the tracker's `pinPick`), then re-resolve the tab. */
+  fixMatch(data: {
+    tracker: Tracker;
+    media: ParsedMedia;
+    pick: SearchOption;
+    tabId?: number;
+  }): void;
   /** Free-text search for a cour tracker's fix-match panel. */
   searchCour(q: { tracker: CourTracker; query: string }): CourSearchOption[];
   /** Pin (or block, via `id: null`) a cour tracker's entry for this item: a
