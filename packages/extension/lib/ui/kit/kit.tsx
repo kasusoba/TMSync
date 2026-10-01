@@ -2,7 +2,7 @@ import { type Tracker, trackerLabel } from "@/lib/trackers/types";
 import clsx from "clsx";
 import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
-import { ANILIST_LOGO, MAL_LOGO, SIMKL_LOGO, TRAKT_LOGO } from "./marks.data";
+import { ANILIST_LOGO, MAL_LOGO, SIMKL_LOGO, TRAKT_LOGO, WETRAKR_LOGO } from "./marks.data";
 
 /**
  * The shared design kit — presentational only (no browser APIs, no effects), so
@@ -326,6 +326,37 @@ export function SimklMark({
   );
 }
 
+/**
+ * The WeTrakr provider mark: WeTrakr's official app icon, unaltered (their brand
+ * rules forbid recolouring or cropping), with a "We" monogram fallback.
+ */
+export function WetrakrMark({
+  class: cls = "size-8",
+  src = WETRAKR_LOGO,
+}: { class?: string; src?: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <span
+        class={clsx(
+          "grid shrink-0 place-items-center rounded-lg bg-[#4835E8] text-[11px] font-bold text-white",
+          cls,
+        )}
+      >
+        We
+      </span>
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt="WeTrakr"
+      class={clsx("shrink-0 rounded-md object-contain", cls)}
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 /** Per-tracker logo component — the ONE place tracker → mark is decided. Every
  * `tk === "anilist" ? <AniListMark/> : <TraktMark/>` becomes `<TrackerMark tracker={tk}/>`,
  * so adding a tracker = one entry here, not a hunt through the UI. */
@@ -334,6 +365,7 @@ const TRACKER_MARK: Record<Tracker, (p: { class?: string }) => preact.JSX.Elemen
   anilist: AniListMark,
   mal: MalMark,
   simkl: SimklMark,
+  wetrakr: WetrakrMark,
 };
 
 export function TrackerMark({ tracker, class: cls }: { tracker: Tracker; class?: string }) {

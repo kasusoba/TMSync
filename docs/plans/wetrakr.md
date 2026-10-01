@@ -42,7 +42,7 @@ and add a log line in the same commit.
   `options/App.tsx`, the grant watcher in `mal/service.ts`). Make it data: a `hostOrigins` field
   on `TRACKER_INFO` and one generic request, intent, and grant watcher. MAL keeps working the
   same. WeTrakr needs it (no CORS headers, checked live 2026-10-01).
-- [ ] **3. WeTrakr core.** `wetrakr` in `TrackerId` with `V5_TRACKERS` and a schema bump.
+- [x] **3. WeTrakr core.** `wetrakr` in `TrackerId` with `V5_TRACKERS` and a schema bump.
   `TRACKER_INFO` (`seasoned`, `rates: "levels"`, `note: "public"`, `fix: "search"`,
   `hostOrigins: ["https://api.wetrakr.com/*"]`). `lib/trackers/wetrakr/`: `config`, `auth`
   (PKCE, single-flight refresh, logout on disconnect), `client` (headers, backoff on 429 and
@@ -79,6 +79,16 @@ and add a log line in the same commit.
 - 2026-10-01: Audit gap found and fixed: the "Fix match" panel for `fix: "search"` trackers was
   Trakt-only. `Correction` now takes a `tracker`, searches with `searchTracker`, and pins with the
   new `fixMatch` message (the tracker's `pinPick`). `searchTrakt` and `saveCorrection` are gone.
+
+- 2026-10-01: Step 3 done. `lib/trackers/wetrakr/` (config, auth, client, adapter, service),
+  schema v5, registry entries, mark (official app icon, `public/wetrakr.svg`), picker toggle,
+  gallery tiles, `.env.example`, release secret check. PKCE helpers moved to `oauth.ts`.
+  Search results carry no external ids, so `search` reads each hit's detail (cached in
+  `wetrakr_ids_cache`). Placeholders until step 4: `ratingLevels` is empty, review calls answer
+  "not supported yet", `watchedState` is null. Still to do by hand: sign in on Chrome and
+  Firefox, scrobble a movie and an episode, fix a wrong match. The repo secret
+  `WXT_WETRAKR_CLIENT_ID` must exist before the next release. Episode page URLs on wetrakr.com
+  are unknown; `trackerItemUrl` links the show page.
 
 ## WeTrakr API facts (checked 2026-10-01)
 

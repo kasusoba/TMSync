@@ -549,7 +549,7 @@ export function App() {
               preview={{ ok: true, text: "show: Frieren E3 → AniList + MyAnimeList + Trakt" }}
             />
           </Tile>
-          <Tile label="Multi-track: general site → Trakt + Simkl" t={t}>
+          <Tile label="Multi-track: general site → Trakt + WeTrakr + Simkl" t={t}>
             <PickerPanel
               variant={variant}
               mode="setup"
@@ -561,9 +561,9 @@ export function App() {
                 { key: "tmdbId", label: "TMDB id", value: "95396", source: "url" },
               ]}
               mediaType="show"
-              trackers={["trakt", "simkl"]}
+              trackers={["trakt", "wetrakr", "simkl"]}
               iframe
-              preview={{ ok: true, text: "show: Severance S2E4 → Trakt + Simkl" }}
+              preview={{ ok: true, text: "show: Severance S2E4 → Trakt + WeTrakr + Simkl" }}
             />
           </Tile>
         </Group>
@@ -631,7 +631,24 @@ export function App() {
                 title="Severance S2E4"
                 trackers={[
                   { tracker: "trakt", state: "ok", note: "added to history" },
+                  { tracker: "wetrakr", state: "ok", note: "added to history" },
                   { tracker: "simkl", state: "ok", note: "added to history" },
+                ]}
+              />
+              <BadgePill
+                variant={variant}
+                state="scrobbled"
+                detail="recorded · needs attention"
+                title="One Piece S1E1061"
+                trackers={[
+                  { tracker: "trakt", state: "ok", note: "added to history" },
+                  {
+                    tracker: "wetrakr",
+                    state: "attention",
+                    note: "numbering ✗",
+                    detail:
+                      "WeTrakr matched S21E1, not S1E1061 · this site's numbering doesn't match WeTrakr",
+                  },
                 ]}
               />
             </div>

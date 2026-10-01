@@ -16,6 +16,7 @@ import {
   TRACKER_INFO,
   type Tracker,
 } from "./types";
+import { wetrakrService } from "./wetrakr/service";
 
 /** Report some writes of a chunk as done, by their place in the chunk. */
 export type ApplyReport = (at: number[], outcome: WriteOutcome) => void;
@@ -120,6 +121,7 @@ const SERVICES: TrackerServices = {
   anilist: anilistService,
   mal: malService,
   simkl: simklService,
+  wetrakr: wetrakrService,
 };
 
 /** The background service for a tracker. */

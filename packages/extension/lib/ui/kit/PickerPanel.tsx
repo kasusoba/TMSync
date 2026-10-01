@@ -15,6 +15,7 @@ import {
   type Tokens,
   TraktMark,
   type Variant,
+  WetrakrMark,
   tokens,
 } from "./kit";
 
@@ -104,6 +105,13 @@ const TRACKER_TOGGLES: {
     key: "trakt",
     label: "Trakt",
     mark: <TraktMark class="size-4" />,
+    need: (v) => !!v("title") || !!v("tmdbId"),
+    needHint: "Needs a title or a TMDB id.",
+  },
+  {
+    key: "wetrakr",
+    label: "WeTrakr",
+    mark: <WetrakrMark class="size-4" />,
     need: (v) => !!v("title") || !!v("tmdbId"),
     needHint: "Needs a title or a TMDB id.",
   },

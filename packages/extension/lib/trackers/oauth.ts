@@ -101,3 +101,14 @@ export function singleFlight<A, T>(fn: (arg: A) => Promise<T>): (arg: A) => Prom
     return inFlight;
   };
 }
+
+/** A PKCE code verifier: 32 random bytes as base64url (43 characters), new per sign-in. */
+export function codeVerifier(): string {
+  return base64url(crypto.getRandomValues(new Uint8Array(32)));
+}
+
+/** The S256 challenge for a verifier: base64url(SHA-256(verifier)). */
+export async function codeChallenge(verifier: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+  return base64url(new Uint8Array(digest));
+}

@@ -11,7 +11,7 @@ import type { CourEntry } from "./cour-plan";
 /** The trackers — a growing list (multi-track, constraint #1). Add a member here,
  * then a `TRACKER_INFO` entry, an adapter (registered in `getAdapter`), a mark, and
  * a picker toggle. Nothing should switch on the string with an "else ⇒ trakt" default. */
-export type Tracker = "trakt" | "anilist" | "mal" | "simkl";
+export type Tracker = "trakt" | "anilist" | "mal" | "simkl" | "wetrakr";
 
 /**
  * The fraction of a video after which TMSync treats it as finished (0–1).
@@ -88,6 +88,15 @@ const INFO = {
     note: "public",
     fix: "search",
     env: ["WXT_TRAKT_CLIENT_ID", "WXT_TRAKT_CLIENT_SECRET"],
+  },
+  wetrakr: {
+    label: "WeTrakr",
+    family: "seasoned",
+    rates: "levels",
+    note: "public",
+    fix: "search",
+    env: ["WXT_WETRAKR_CLIENT_ID"],
+    hostAccess: { origins: ["https://api.wetrakr.com/*"], site: "api.wetrakr.com" },
   },
   anilist: {
     label: "AniList",
@@ -180,6 +189,14 @@ export type TrackedItem =
       tracker: "trakt";
       mediaType: "movie" | "show";
       /** Trakt id. */
+      id: number;
+      title: string;
+      year?: number;
+    }
+  | {
+      tracker: "wetrakr";
+      mediaType: "movie" | "show";
+      /** WeTrakr id. */
       id: number;
       title: string;
       year?: number;

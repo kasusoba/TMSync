@@ -23,8 +23,11 @@ import { z } from "zod";
  * `trackers`). An older build can't parse those values, so a recipe that names one
  * carries `schemaVersion: 4`; a recipe that names only Trakt and AniList stays at 3
  * and still reaches older builds (`minSchemaVersion`).
+ *
+ * v5 adds the WeTrakr tracker (`"wetrakr"`), the same way: only a recipe that names
+ * it carries `schemaVersion: 5`.
  */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 export const Transform = z.enum([
   "trim",
@@ -44,17 +47,20 @@ export type Transform = z.infer<typeof Transform>;
  * single-tracker recipe in the legacy `tracker`). Quick-link hosts are a separate,
  * smaller list: a tracker hosts links only once it has a quick-link content script.
  */
-export const TrackerId = z.enum(["trakt", "anilist", "mal", "simkl"]);
+export const TrackerId = z.enum(["trakt", "anilist", "mal", "simkl", "wetrakr"]);
 
-/** Trackers added in schema v4. A build older than v4 rejects a recipe naming one. */
+/** Trackers added in schema v4 and v5. A build older than that rejects a recipe
+ * naming one. */
 const V4_TRACKERS: readonly string[] = ["mal", "simkl"];
+const V5_TRACKERS: readonly string[] = ["wetrakr"];
 
 /**
- * The lowest `schemaVersion` a recipe that writes to `trackers` can carry: 4 when
- * it names a v4 tracker, else 3. The picker stamps this, so a Trakt or AniList
- * recipe stays readable by older builds. Pure.
+ * The lowest `schemaVersion` a recipe that writes to `trackers` can carry: 5 when
+ * it names a v5 tracker, 4 for a v4 tracker, else 3. The picker stamps this, so a
+ * Trakt or AniList recipe stays readable by older builds. Pure.
  */
 export function minSchemaVersion(trackers: readonly string[]): number {
+  if (trackers.some((tk) => V5_TRACKERS.includes(tk))) return 5;
   return trackers.some((tk) => V4_TRACKERS.includes(tk)) ? 4 : 3;
 }
 

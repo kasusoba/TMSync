@@ -17,6 +17,7 @@ import type { MalIdentity, MalListStatus, MalTokens } from "./trackers/mal/types
 import type { SimklMatch, SimklTokens } from "./trackers/simkl/types";
 import type { ResolvedIdentity, TraktIds, TraktTokens } from "./trackers/trakt/types";
 import type { QuickLinkTracker, Tracker } from "./trackers/types";
+import type { WetrakrIdentity, WetrakrIds, WetrakrTokens } from "./trackers/wetrakr/types";
 
 /**
  * All persisted state lives here. The background SW is stateless (constraint
@@ -193,12 +194,40 @@ export const malNotes = storage.defineItem<Record<number, string>>("local:mal_no
 /** Simkl OAuth tokens. The access token lasts 7 days; auth.ts refreshes it. */
 export const simklTokens = secretItem<SimklTokens>("local:simkl_tokens");
 
+// --- WeTrakr (the `seasoned` family, like Trakt) ---
+
+/** WeTrakr OAuth tokens. The access token lasts 7 days and the refresh token
+ * rotates; auth.ts refreshes it. */
+export const wetrakrTokens = secretItem<WetrakrTokens>("local:wetrakr_tokens");
+
+/** WeTrakr resolutions keyed by wetrakrCacheKey(media). Cleared on disconnect
+ * (WeTrakr's terms: delete a user's WeTrakr data when they disconnect). */
+export const wetrakrResolutionCache = storage.defineItem<Record<string, WetrakrIdentity>>(
+  "local:wetrakr_resolution_cache",
+  { fallback: {} },
+);
+
+/** The user's WeTrakr match fixes, keyed like the resolution cache. Authoritative
+ * in resolve. Per device, and cleared on disconnect with the rest. */
+export const wetrakrCorrections = storage.defineItem<Record<string, WetrakrIdentity>>(
+  "local:wetrakr_corrections",
+  { fallback: {} },
+);
+
+/** External ids of WeTrakr titles by WeTrakr id (`movie:126`), for search results,
+ * which carry none. Catalog data, so cached as WeTrakr's terms allow. */
+export const wetrakrIdsCache = storage.defineItem<Record<string, WetrakrIds>>(
+  "local:wetrakr_ids_cache",
+  { fallback: {} },
+);
+
 /** Every tracker's token item, so a view can follow a sign-in on any tracker. */
 export const trackerTokens: Record<Tracker, SecretItem<unknown>> = {
   trakt: traktTokens,
   anilist: anilistTokens,
   mal: malTokens,
   simkl: simklTokens,
+  wetrakr: wetrakrTokens,
 };
 
 /**
@@ -611,6 +640,7 @@ const LIST_SYNC_CACHE: Record<Tracker, ReturnType<typeof listCacheItem>> = {
   anilist: listCacheItem("anilist"),
   mal: listCacheItem("mal"),
   simkl: listCacheItem("simkl"),
+  wetrakr: listCacheItem("wetrakr"),
 };
 
 function listCacheItem(tracker: Tracker) {
