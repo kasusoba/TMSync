@@ -462,7 +462,11 @@ async function getAllPages<T>(path: string, limit = 100): Promise<T[]> {
     const sep = path.includes("?") ? "&" : "?";
     const res = await api(`${path}${sep}page=${page}&limit=${limit}`, {}, true);
     if (!res.ok) throw new Error(`Trakt ${path} returned ${res.status}`);
-    out.push(...((await res.json()) as T[]));
+    const items = (await res.json()) as T[];
+    out.push(...items);
+    // Trakt may apply a smaller limit than asked, so trust the page count, and
+    // stop early on an empty page.
+    if (!items.length) break;
     pageCount = Number(res.headers.get("X-Pagination-Page-Count")) || 1;
     page += 1;
   } while (page <= pageCount);
@@ -516,7 +520,8 @@ export async function readTraktList(want: {
   const get = (on: boolean, path: string) =>
     on ? getAllPages<unknown>(path) : Promise.resolve<unknown[]>([]);
   const [shows, movies, showRatings, seasonRatings, movieRatings] = await Promise.all([
-    get(want.shows, "/sync/watched/shows"),
+    // Without `extended=progress` Trakt leaves out the seasons (since July 2026).
+    get(want.shows, "/sync/watched/shows?extended=progress"),
     get(want.movies, "/sync/watched/movies"),
     get(want.shows, "/sync/ratings/shows"),
     get(want.shows, "/sync/ratings/seasons"),
