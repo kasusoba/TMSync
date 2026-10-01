@@ -7,6 +7,7 @@
 import { listSyncAccountAt, listSyncBase, listSyncBaseNext, listSyncCache } from "../storage";
 import type { Tracker } from "../trackers/types";
 import { BASE_VERSION, type BaseEntry, type SyncBase, afterWrites, keepOpen } from "./base";
+import { forgetMisses } from "./misses";
 import type { SyncItem, SyncWrite } from "./types";
 
 /** The base, when it was taken under these settings. */
@@ -95,4 +96,5 @@ export async function forgetLists(tracker: Tracker): Promise<void> {
     .removeValue()
     .catch(() => {});
   await forgetBase(tracker).catch(() => {});
+  await forgetMisses(tracker);
 }

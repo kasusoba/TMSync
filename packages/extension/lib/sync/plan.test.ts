@@ -1021,3 +1021,30 @@ describe("a main list", () => {
     );
   });
 });
+
+describe("remembered misses", () => {
+  it("leaves out what a tracker could not match before, as a skip", () => {
+    const show = (tracker: Tracker, eps: number[]): ListEntry => ({
+      tracker,
+      shape: "seasons",
+      id: tracker === "trakt" ? 1 : 2,
+      title: "Franklin",
+      ids: { tmdb: 77 },
+      rating: null,
+      seasons: { 1: eps },
+    });
+    const p = planSync({
+      entries: [show("trakt", [1, 2, 3]), show("simkl", [1])],
+      trackers: ["trakt", "simkl"],
+      settings: DEFAULT_SYNC_SETTINGS,
+      animap,
+      misses: { simkl: { "tv:tmdb:77": { at: 0, eps: ["1:3"] } } },
+    });
+    expect(writesFor(p, "simkl")).toMatchObject([
+      { op: "episodes", add: [{ season: 1, number: 2 }] },
+    ]);
+    expect(p.skips).toMatchObject([
+      { tracker: "simkl", reason: "not_on_tracker", detail: "1 episode" },
+    ]);
+  });
+});

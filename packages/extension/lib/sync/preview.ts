@@ -17,6 +17,7 @@ import {
   listSyncApply,
   listSyncCache,
   listSyncJob,
+  listSyncMisses,
   listSyncPicks,
   listSyncSettings,
 } from "../storage";
@@ -28,6 +29,7 @@ import { ALL_TRACKERS, type Tracker } from "../trackers/types";
 import { nextLists, settingsSig } from "./base";
 import { accountsChangedSince, commitBase, loadBase, savePending } from "./base-store";
 import { exclusive, jobAlive, jobRunner, versioned } from "./job";
+import { liveMisses } from "./misses";
 import { planSync, summarize, syncKindsFor, takesKind } from "./plan/index";
 import type { ScoreScale } from "./score";
 import { type ListEntry, type SyncPlan, type SyncTotals, pickKey } from "./types";
@@ -193,11 +195,20 @@ async function runPreview(start: SyncJob, auto: boolean): Promise<SyncJob> {
     // Plan against the base, so a removal on one list is not added back from another.
     const sig = settingsSig(settings);
     const last = await loadBase(sig);
+    const misses = liveMisses(await listSyncMisses.getValue().catch(() => ({})), Date.now());
     const preview: SyncPreview =
       trackers.length < 2
         ? { ...head, reason: "too_few", totals: [], plan: empty }
         : (() => {
-            const plan = planSync({ entries, trackers, settings, animap, scales, base: last });
+            const plan = planSync({
+              entries,
+              trackers,
+              settings,
+              animap,
+              scales,
+              base: last,
+              misses,
+            });
             return { ...head, totals: summarize(plan, trackers), plan };
           })();
     // The lists as read, with the plan's removed marks, become the base once this

@@ -6,6 +6,7 @@
 import type { Animap } from "../../trackers/animap/index";
 import { type Tracker, trackerLabel } from "../../trackers/types";
 import { type BaseEntry, BaseIndex, baseOf } from "../base";
+import { type SyncMisses, dropMissed } from "../misses";
 import type { ScoreScale } from "../score";
 import type {
   ListEntry,
@@ -32,6 +33,8 @@ export interface PlanInput {
   /** Each tracker's list at the last sync (`base.ts`), for remembered
    * removals. Missing = none: a union adds everything back. */
   base?: Partial<Record<Tracker, BaseEntry[]>>;
+  /** The writes the trackers could not match before (`misses.ts`): left out. */
+  misses?: SyncMisses;
 }
 
 export type CourEntry = Extract<ListEntry, { shape: "cour" }>;
@@ -202,7 +205,9 @@ export function planContext(input: PlanInput): PlanContext {
     removedSince,
     unratedSince,
     mainMissing,
-    push: (key, kind, title, year, writes) => {
+    push: (key, kind, title, year, all) => {
+      const { writes, skips: missed } = dropMissed(key, title, all, input.misses);
+      for (const s of missed) skips.push(s);
       if (writes.length) items.push({ key, kind, title, year, writes });
     },
   };

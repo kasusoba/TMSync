@@ -27,6 +27,7 @@ import { getService } from "../trackers/service";
 import { ALL_TRACKERS, type Tracker } from "../trackers/types";
 import { accountsChangedSince, commitBase } from "./base-store";
 import { exclusive, jobAlive, jobRunner, versioned } from "./job";
+import { rememberMisses } from "./misses";
 import { withPicks } from "./plan/index";
 import { type SyncPreview, readJob } from "./preview";
 import type { ChunkOutcome, SyncItem, SyncPicks, SyncWrite, WriteOutcome } from "./types";
@@ -287,6 +288,8 @@ async function runApply(
   const run = jobRunner(listSyncApply, start);
   // `tracker:index` of each write the tracker took, for the base.
   const taken = new Set<string>();
+  // The writes a tracker could not match, remembered after each chunk.
+  const missed: { key: string; w: SyncWrite }[] = [];
   const { save } = run;
   const setTracker = (tk: Tracker, patch: Partial<ApplyTracker>) =>
     save({
@@ -323,6 +326,8 @@ async function runApply(
                 tally.done += 1;
                 taken.add(`${tracker}:${i + n}`);
               } else {
+                const q = chunk[n];
+                if (r.reason === "not_found" && q) missed.push({ key: q.key, w: q.w });
                 tally.failedCount += 1;
                 if (failed.length < MAX_FAILED)
                   failed.push({ title: chunk[n]?.title ?? "", error: r.error ?? "Failed." });
@@ -347,6 +352,7 @@ async function runApply(
             out.results.map((_, n) => n),
             out.results,
           );
+          await rememberMisses(missed.splice(0));
           if (out.stop) return setTracker(tracker, { state: "stopped", error: out.stop });
         }
         await setTracker(tracker, { state: "done" });

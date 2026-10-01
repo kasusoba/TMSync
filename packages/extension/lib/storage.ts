@@ -6,6 +6,7 @@ import type { ApplyJob } from "./sync/apply";
 import type { AutoRun } from "./sync/auto";
 import type { PendingBase, SyncBase } from "./sync/base";
 import type { ListCache } from "./sync/list-cache";
+import type { SyncMisses } from "./sync/misses";
 import type { SyncJob } from "./sync/preview";
 import type { SyncPicks } from "./sync/types";
 import { DEFAULT_SYNC_SETTINGS, type ListSyncSettings } from "./sync/types";
@@ -703,6 +704,12 @@ export const listSyncAuto = storage.defineItem<AutoRun | null>("local:list_sync_
  * toolbar badge counts only new ones. */
 export const listSyncAutoSeen = storage.defineItem<string[]>("local:list_sync_auto_seen", {
   fallback: [],
+});
+
+/** The writes each tracker could not match, so sync stops planning them
+ * (`sync/misses.ts`). */
+export const listSyncMisses = storage.defineItem<SyncMisses>("local:list_sync_misses", {
+  fallback: {},
 });
 
 /** What the user picked where trackers disagree (a score 0 to 100, or a status),

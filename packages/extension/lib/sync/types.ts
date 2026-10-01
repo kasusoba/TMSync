@@ -236,6 +236,9 @@ export type SkipReason =
   | "numbering"
   /** No id the target tracker can use. */
   | "no_id"
+  /** The tracker answered "not found" for it (or for these episodes) on an
+   * earlier apply, so it is not sent again for a while (`misses.ts`). */
+  | "not_on_tracker"
   /** This kind has a main list, but it was not read (not connected, or failed),
    * so nothing of this kind is planned. */
   | "main_missing";
