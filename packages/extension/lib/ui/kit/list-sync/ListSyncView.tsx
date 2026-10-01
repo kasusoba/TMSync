@@ -57,6 +57,7 @@ export function ListSyncView({
   onApply = () => {},
   onCancelApply = () => {},
   onPick = () => {},
+  onPickMany = () => {},
   autoRun = null,
   autoNow,
 }: {
@@ -81,6 +82,8 @@ export function ListSyncView({
   onCancelApply?: () => void;
   /** Pick in a disagreement, by `pickKey` (undefined = no pick). */
   onPick?: (key: string, value: SyncPick | undefined) => void;
+  /** Many picks at once, by `pickKey`. */
+  onPickMany?: (picks: Record<string, SyncPick | undefined>) => void;
   onPreview: () => void;
   onKind: (tracker: Tracker, kind: SyncKind, on: boolean) => void;
   onSetting: (key: "includePrivate" | "includeAdult" | "auto", on: boolean) => void;
@@ -287,6 +290,7 @@ export function ListSyncView({
               onApply={onApply}
               onCancelApply={onCancelApply}
               onPick={onPick}
+              onPickMany={onPickMany}
               held={autoRun?.held}
               heldFirst={reviewHeld}
               onPreview={() => {

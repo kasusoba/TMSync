@@ -71,34 +71,74 @@ function conflictValue(c: SyncConflict, v: string | number): string {
   return c.field === "status" ? STATUS_LABEL[v as CourStatus] : `${outOfTen(Number(v))}/10`;
 }
 
+/** The value a tracker holds in a conflict, as a pick (a rewatch is completed). */
+function valueAsPick(c: SyncConflict, tk: Tracker): SyncPick | undefined {
+  const v = c.values.find((x) => x.tracker === tk)?.value;
+  if (v === undefined) return undefined;
+  return c.field === "status" ? normStatus(v as CourStatus) : Number(v);
+}
+
 export function ConflictTable({
   t,
   trackers,
   conflicts,
   onPick,
+  onPickMany,
 }: {
   t: Tokens;
   trackers: Tracker[];
   conflicts: SyncConflict[];
   onPick: (key: string, value: SyncPick | undefined) => void;
+  /** Many picks at once (the bulk buttons), by `pickKey`. */
+  onPickMany: (picks: Record<string, SyncPick | undefined>) => void;
 }) {
   if (!conflicts.length) return null;
+  // The trackers that hold a value in some conflict shown: each can be picked for all.
+  const holders = trackers.filter((tk) => conflicts.some((c) => valueAsPick(c, tk) !== undefined));
+  const pickAll = (tk: Tracker) => {
+    const picks: Record<string, SyncPick | undefined> = {};
+    for (const c of conflicts) {
+      const v = valueAsPick(c, tk);
+      if (v !== undefined) picks[pickKey(c)] = v;
+    }
+    onPickMany(picks);
+  };
+  const anyPicked = conflicts.some((c) => c.picked !== undefined);
   return (
     <div class="space-y-2">
       <p class={clsx("text-[11px] leading-relaxed", t.sub)}>
-        Pick the value every tracker should get. With no pick, the most recent status change wins,
-        and different ratings are left alone. A status still follows the episodes: an entry sync
-        finishes is completed, and one with watched episodes is never plan to watch.
+        Pick the value every tracker should get. With no pick, sync writes nothing for that field. A
+        status still follows the episodes: an entry sync finishes is completed, and one with watched
+        episodes is never plan to watch.
       </p>
-      <div class={clsx("overflow-x-clip rounded-lg", t.card)}>
-        <table class="w-full table-fixed text-[12px]">
+      <div class="flex flex-wrap items-center gap-2">
+        <span class={clsx("text-[11px]", t.faint)}>Pick for all shown:</span>
+        {holders.map((tk) => (
+          <Btn key={tk} t={t} tone="ghost" onClick={() => pickAll(tk)}>
+            <TrackerMark tracker={tk} class="size-3.5" /> {trackerLabel(tk)}’s value
+          </Btn>
+        ))}
+        {anyPicked && (
+          <Btn
+            t={t}
+            tone="ghost"
+            onClick={() =>
+              onPickMany(Object.fromEntries(conflicts.map((c) => [pickKey(c), undefined])))
+            }
+          >
+            Clear picks
+          </Btn>
+        )}
+      </div>
+      <div class={clsx("overflow-x-auto rounded-lg", t.card)}>
+        <table class="w-full min-w-[44rem] table-fixed text-[12px]">
           <colgroup>
-            <col class="w-[30%]" />
-            <col class="w-20" />
+            <col class="w-[24%]" />
+            <col class="w-16" />
             {trackers.map((tk) => (
               <col key={tk} />
             ))}
-            <col />
+            <col class="w-40" />
           </colgroup>
           <thead>
             <tr class={clsx("text-left", t.faint)}>
@@ -166,7 +206,7 @@ function RatingPick({
         const v = (e.target as HTMLSelectElement).value;
         onPick(pickKey(c), v ? Number(v) : undefined);
       }}
-      class={clsx("rounded-md px-1 py-1 text-[11px]", t.input)}
+      class={clsx("w-full rounded-md px-1 py-1 text-[11px]", t.input)}
       title="The rating every tracker gets"
     >
       <option value="">Leave alone</option>
@@ -179,8 +219,7 @@ function RatingPick({
   );
 }
 
-/** Pick one of the statuses the trackers have. No pick = the most recent change
- * wins (the planner's choice, named in the first option). */
+/** Pick one of the statuses the trackers have. No pick = no status is written. */
 function StatusPick({
   t,
   c,
@@ -196,12 +235,10 @@ function StatusPick({
         const v = (e.target as HTMLSelectElement).value;
         onPick(pickKey(c), v ? (v as CourStatus) : undefined);
       }}
-      class={clsx("rounded-md px-1 py-1 text-[11px]", t.input)}
+      class={clsx("w-full rounded-md px-1 py-1 text-[11px]", t.input)}
       title="The status every tracker gets"
     >
-      <option value="">
-        Most recent{c.chosen ? ` (${STATUS_LABEL[c.chosen.value as CourStatus]})` : ""}
-      </option>
+      <option value="">Leave alone</option>
       {statuses.map((s) => (
         <option key={s} value={s}>
           {STATUS_LABEL[s]}
