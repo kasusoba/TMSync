@@ -25,6 +25,32 @@ describe("parseRecipes", () => {
   });
 });
 
+describe("parseLibrary", () => {
+  it("reads a bare recipe array", () => {
+    const lib = parseLibrary([good]);
+    expect(lib.recipes.map((r) => r.id)).toEqual(["ok"]);
+    expect(lib.links).toEqual([]);
+    expect(lib.name).toBeUndefined();
+  });
+
+  it("keeps the source name and homepage", () => {
+    const lib = parseLibrary({
+      name: "  My   sites ",
+      homepage: "https://example.org/",
+      recipes: [good],
+    });
+    expect(lib.name).toBe("My sites");
+    expect(lib.homepage).toBe("https://example.org/");
+  });
+
+  it("drops a blank name, a long name's tail, and a non-http homepage", () => {
+    expect(parseLibrary({ name: " ", recipes: [] }).name).toBeUndefined();
+    expect(parseLibrary({ name: "x".repeat(100), recipes: [] }).name).toHaveLength(60);
+    expect(parseLibrary({ homepage: "javascript:alert(1)", recipes: [] }).homepage).toBeUndefined();
+    expect(parseLibrary({ homepage: "not a url", recipes: [] }).homepage).toBeUndefined();
+  });
+});
+
 describe("live recipes/index.json", () => {
   // vitest runs with cwd = packages/shared; the recipe library lives at repo root.
   // ONE tracker-agnostic file — Trakt and AniList recipes coexist, routed by each
