@@ -1,4 +1,5 @@
 import { noteFrameDiag } from "@/lib/diagnostics/why";
+import { openShadowRoots, shadowVideos } from "@/lib/scrobble/deep-video";
 import { quickLinkSlugs } from "@/lib/storage";
 import { inferNativeTracker } from "@/lib/trackers";
 import { type Tracker, isSeasonless, trackerLabel } from "@/lib/trackers/types";
@@ -829,6 +830,8 @@ export class SessionManager {
   /**
    * The first <video> that isn't a muted, looping background trailer (common on
    * movie landing pages). Falls back to any video if all look like trailers.
+   * Only when the page has no video at all does it look inside open shadow roots
+   * (web-component players), so the common case stays one query.
    */
   private findVideo(): HTMLVideoElement | null {
     const seen = new Set<HTMLVideoElement>();
@@ -841,6 +844,7 @@ export class SessionManager {
         }
       }
     }
+    if (candidates.length === 0) candidates.push(...shadowVideos(document));
     // Exclude muted, looping background trailers entirely (never fall back to
     // one — that would scrobble just from viewing a movie landing page). Prefer
     // a video that's actually playing.
@@ -982,19 +986,33 @@ export class SessionManager {
     // and on a landing page whose only <video> is a muted background trailer
     // (excluded by findVideo) it never stops. A short debounce keeps it cheap.
     let timer: ReturnType<typeof setTimeout> | null = null;
+    // A web-component player can add its <video> inside its shadow root after the
+    // host is in the page, which a document observer never sees. Watch each open
+    // shadow root too, once.
+    const watched = new WeakSet<ShadowRoot>();
+    const watchShadows = () => {
+      for (const root of openShadowRoots(document)) {
+        if (watched.has(root)) continue;
+        watched.add(root);
+        this.videoObserver?.observe(root, { childList: true, subtree: true });
+      }
+    };
     const check = () => {
       timer = null;
       if (this.findVideo()) {
         this.videoObserver?.disconnect();
         this.videoObserver = null;
         void this.ensurePlaying();
+        return;
       }
+      watchShadows();
     };
     this.videoObserver = new MutationObserver(() => {
       if (timer) return;
       timer = setTimeout(check, 400);
     });
     this.videoObserver.observe(document.documentElement, { childList: true, subtree: true });
+    watchShadows();
     this.ctx.onInvalidated(() => {
       if (timer) clearTimeout(timer);
       this.videoObserver?.disconnect();

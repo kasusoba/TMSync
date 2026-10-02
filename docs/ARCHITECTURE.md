@@ -97,7 +97,8 @@ watched". Follow the numbers:
    → `transforms`, and returns a `ParsedMedia` (`{ mediaType, title, year?, season?, episode?,
    ids? }`). It **never throws**: a bad selector just yields `null`.
 4. **Badge + session.** The top frame mounts the Shadow-DOM badge and starts a `SessionManager`
-   (`lib/scrobble/session.ts`). If the player is in a cross-origin iframe (common on sites
+   (`lib/scrobble/session.ts`). When the page has no `<video>` in its DOM, it also looks inside
+   open shadow roots, for players built as web components (`lib/scrobble/deep-video.ts`). If the player is in a cross-origin iframe (common on sites
    that embed a third-party player), the *matching* frame publishes the media for the tab and the *video-owning* frame pulls
    it: they coordinate over messaging.
 5. **Route.** The background decides which adapter(s) get this item from `recipeTrackers()`,
