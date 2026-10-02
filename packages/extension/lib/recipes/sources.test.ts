@@ -108,12 +108,16 @@ describe("mergeRecipes", () => {
     expect(ids(out)).toEqual(["custom:x", "b:x"]);
   });
 
-  it("shadows every source copy of an id when the fork has no base", () => {
+  it("never hides a source recipe that merely shares an id with one of the user's", () => {
     const sourced = [
       { recipe: recipe("x", ["x.to"]), sourceId: "a" },
       { recipe: recipe("x", ["y.to"]), sourceId: "b" },
     ];
-    expect(ids(mergeRecipes([recipe("x", ["z.to"])], sourced, {}))).toEqual(["custom:x"]);
+    expect(ids(mergeRecipes([recipe("x", ["z.to"])], sourced, {}))).toEqual([
+      "custom:x",
+      "a:x",
+      "b:x",
+    ]);
   });
 });
 

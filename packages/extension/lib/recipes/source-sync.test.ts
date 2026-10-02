@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeBrowser } from "wxt/testing";
 import { quickLinks, recipeSources, siteSourcePins, sourceCaches } from "../storage";
-import { applySourceLinks, migrateFromLibrary, refreshSources } from "./source-sync";
+import {
+  applySourceLinks,
+  migrateFromLibrary,
+  pruneSourceCaches,
+  refreshSources,
+} from "./source-sync";
 
 const recipe = {
   id: "x-movie",
@@ -45,7 +50,8 @@ describe("refreshSources", () => {
     ]);
   });
 
-  it("skips a fresh copy unless forced, and sends the ETag", async () => {
+  it("skips a fresh copy unless forced, and sends the ETag with host access", async () => {
+    vi.spyOn(fakeBrowser.permissions, "contains").mockResolvedValue(true);
     await recipeSources.setValue([source("a")]);
     fetchMock.mockResolvedValue(reply(file, { headers: { ETag: '"v1"' } }));
     await refreshSources();
@@ -56,6 +62,35 @@ describe("refreshSources", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[1]?.[1]?.headers).toEqual({ "If-None-Match": '"v1"' });
     expect((await sourceCaches.getValue()).a?.recipes).toHaveLength(1);
+  });
+
+  it("sends no ETag to a host read by CORS alone (it would force a preflight)", async () => {
+    vi.spyOn(fakeBrowser.permissions, "contains").mockResolvedValue(false);
+    await recipeSources.setValue([source("a")]);
+    fetchMock.mockImplementation(async () => reply(file, { headers: { ETag: '"v1"' } }));
+    await refreshSources();
+    await refreshSources({ force: true });
+    expect(fetchMock.mock.calls[1]?.[1]?.headers).toBeUndefined();
+  });
+
+  it("marks the first good read, not a failed first try", async () => {
+    await recipeSources.setValue([source("a")]);
+    fetchMock.mockResolvedValue(reply("down", { status: 503 }));
+    await refreshSources();
+    expect((await sourceCaches.getValue()).a?.okAt).toBeUndefined();
+    fetchMock.mockResolvedValue(reply(file));
+    await refreshSources({ force: true });
+    expect((await sourceCaches.getValue()).a?.okAt).toBeTypeOf("number");
+  });
+
+  it("writes no copy for a source removed during its fetch", async () => {
+    await recipeSources.setValue([source("a")]);
+    fetchMock.mockImplementation(async () => {
+      await recipeSources.setValue([]);
+      return reply(file);
+    });
+    await refreshSources();
+    expect(await sourceCaches.getValue()).toEqual({});
   });
 
   it("keeps the last good copy when a fetch fails, and records why", async () => {
@@ -81,12 +116,14 @@ describe("refreshSources", () => {
     expect(caches.b?.error).toBe("The file is not JSON.");
   });
 
-  it("drops the copies of removed sources and skips turned-off ones", async () => {
+  it("skips turned-off sources, and pruning drops the copies of removed ones", async () => {
     await recipeSources.setValue([source("b", false)]);
-    await sourceCaches.setValue({ gone: { recipes: [], links: [], fetchedAt: 1 } });
+    const copy = { recipes: [], links: [], fetchedAt: 1 };
+    await sourceCaches.setValue({ gone: copy, b: copy });
     await refreshSources();
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(await sourceCaches.getValue()).toEqual({});
+    await pruneSourceCaches();
+    expect(await sourceCaches.getValue()).toEqual({ b: copy });
   });
 });
 
@@ -117,6 +154,21 @@ describe("applySourceLinks", () => {
     await siteSourcePins.setValue({ "x.to": "b" });
     await applySourceLinks();
     expect((await quickLinks.getValue()).map((l) => l.id)).toEqual(["xb"]);
+  });
+});
+
+describe("applySourceLinks across a source turned off and on", () => {
+  it("brings the links back with the user's on/off", async () => {
+    await recipeSources.setValue([source("a")]);
+    await sourceCaches.setValue({ a: { recipes: [], links: [link] as never, fetchedAt: 1 } });
+    await applySourceLinks();
+    await quickLinks.setValue((await quickLinks.getValue()).map((l) => ({ ...l, enabled: true })));
+    await recipeSources.setValue([source("a", false)]);
+    await applySourceLinks();
+    expect(await quickLinks.getValue()).toEqual([]);
+    await recipeSources.setValue([source("a")]);
+    await applySourceLinks();
+    expect(await quickLinks.getValue()).toMatchObject([{ id: "x", enabled: true }]);
   });
 });
 

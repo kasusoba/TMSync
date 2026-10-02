@@ -1,5 +1,6 @@
 import type { Recipe } from "@tmsync/shared";
 import { describe, expect, it } from "vitest";
+import type { ForkBase } from "../storage";
 import {
   addedHosts,
   findMovedSite,
@@ -12,12 +13,12 @@ import {
 import { mergeRecipes, recipeHash } from "./sources";
 
 /** Group custom recipes plus recipes from one source "s", as the UI does. */
-const groupSites = (custom: Recipe[], sourced: Recipe[]) =>
+const groupSites = (custom: Recipe[], sourced: Recipe[], bases: Record<string, ForkBase> = {}) =>
   groupEffective(
     mergeRecipes(
       custom,
       sourced.map((recipe) => ({ recipe, sourceId: "s" })),
-      {},
+      bases,
     ),
   );
 
@@ -69,7 +70,7 @@ describe("groupSites", () => {
     expect(sites[0]?.hosts).toEqual([]);
   });
 
-  it("marks source recipes and drops the ones a custom recipe shadows", () => {
+  it("marks source recipes and drops the ones a fork shadows", () => {
     const mine = recipe("examplemovies", { urlPattern: "/movie", hostnames: ["examplemovies.at"] });
     const shadowed = recipe("examplemovies", {
       urlPattern: "/old",
@@ -79,7 +80,9 @@ describe("groupSites", () => {
       urlPattern: "/tv",
       hostnames: ["examplemovies.at"],
     });
-    const [site] = groupSites([mine], [shadowed, shared]);
+    const [site] = groupSites([mine], [shadowed, shared], {
+      examplemovies: { sourceId: "s", hash: "0" },
+    });
     expect(site?.recipes.map((r) => [r.recipe.match.urlPattern, r.sourceId])).toEqual([
       ["/movie", undefined],
       ["/tv", "s"],

@@ -393,6 +393,9 @@ export interface SourceCache {
   homepage?: string;
   /** Last attempt, good or bad. Gates the refresh TTL. */
   fetchedAt: number;
+  /** Last good fetch. Unset until the source was read once, so the first good
+   * read is not reported as new sites. */
+  okAt?: number;
   etag?: string;
   /** The last attempt's failure. Cleared by the next good fetch. */
   error?: string;
@@ -411,15 +414,25 @@ export const siteSourcePins = storage.defineItem<Record<string, string>>("sync:s
 
 /**
  * What a forked source recipe was forked from: its source and a hash of the source
- * version then. When the source version changes, the site row offers it.
+ * version then. When the source version changes, the site row offers it. In
+ * `sync`, like the forks it describes, so every device shadows the same copy.
  */
 export interface ForkBase {
   sourceId: string;
   hash: string;
 }
-export const forkBases = storage.defineItem<Record<string, ForkBase>>("local:fork_bases", {
+export const forkBases = storage.defineItem<Record<string, ForkBase>>("sync:fork_bases", {
   fallback: {},
 });
+
+/**
+ * The on/off of source quick links whose source is turned off, by link id. A
+ * turned-off source's links leave the list; this brings them back as they were.
+ */
+export const sourceLinkMemory = storage.defineItem<Record<string, boolean>>(
+  "sync:source_link_memory",
+  { fallback: {} },
+);
 
 /**
  * Quick links: per-SITE "watch on" buttons injected on Trakt pages. Independent

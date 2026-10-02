@@ -146,16 +146,15 @@ export const recipeTarget = (r: Recipe) =>
 
 /**
  * The user's recipes over the sourced ones (rule 1), one recipe per target. A
- * custom recipe with a source recipe's id is a fork of it and shadows it. When
- * the fork base names its source, only that source's copy is shadowed, because
- * ids are only unique inside one source.
+ * custom recipe shadows a source recipe by id only when its fork base names that
+ * source: ids are only unique inside one source, so a recipe the user made that
+ * happens to share an id with some source recipe must not hide it.
  */
 export function mergeRecipes(
   custom: Recipe[],
   sourced: SourcedRecipe[],
   bases: Record<string, ForkBase>,
 ): { recipe: Recipe; sourceId?: string }[] {
-  const customIds = new Set(custom.map((r) => r.id));
   const seenTargets = new Set<string>();
   const out: { recipe: Recipe; sourceId?: string }[] = [];
   const add = (recipe: Recipe, sourceId?: string) => {
@@ -166,10 +165,8 @@ export function mergeRecipes(
   };
   for (const r of custom) add(r);
   for (const { recipe, sourceId } of sourced) {
-    if (customIds.has(recipe.id)) {
-      const base = bases[recipe.id];
-      if (!base || base.sourceId === sourceId) continue;
-    }
+    const forked = bases[recipe.id]?.sourceId === sourceId;
+    if (forked && custom.some((c) => c.id === recipe.id)) continue;
     add(recipe, sourceId);
   }
   return out;
@@ -213,17 +210,15 @@ export function resolveSourceLinks(
 ): (LibraryLink & { sourceId: string })[] {
   const byKey = new Map<string, LibraryLink & { sourceId: string }>();
   const order = layers(sources, caches);
-  const rank = (id: string) => order.findIndex((l) => l.id === id);
   for (const { id, cache } of order) {
     for (const link of cache.links) {
       const host = normalizeHost(linkHost(link));
       const key = host || `id:${link.id}`;
       const cur = byKey.get(key);
       const pinned = host ? pins[host] : undefined;
-      const better =
-        !cur ||
-        (pinned === id && cur.sourceId !== id) ||
-        (pinned !== cur.sourceId && rank(id) < rank(cur.sourceId));
+      // Sources come in priority order, so the first one keeps the host unless
+      // the user pinned a later one.
+      const better = !cur || (pinned === id && cur.sourceId !== id);
       if (better) byKey.set(key, { ...link, sourceId: id });
     }
   }

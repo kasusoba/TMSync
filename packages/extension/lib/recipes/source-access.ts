@@ -43,3 +43,11 @@ export async function releaseSourceAccess(url: string, stillUsed: string[]): Pro
   if (!pattern || stillUsed.some((u) => sourcePattern(u) === pattern)) return;
   await browser.permissions.remove({ origins: [pattern] }).catch(() => false);
 }
+
+/** True when a source's host needs access that TMSync does not hold yet (a source
+ *  that came from a backup or another device, which never went through Add). */
+export async function needsSourceAccess(url: string): Promise<boolean> {
+  const pattern = sourcePattern(url);
+  if (!pattern) return false;
+  return !(await browser.permissions.contains({ origins: [pattern] }).catch(() => false));
+}

@@ -12,6 +12,7 @@ import {
   withSiteName,
 } from "@/lib/recipes/sites";
 import {
+  needsSourceAccess,
   parseSourceUrl,
   releaseSourceAccess,
   requestSourceAccess,
@@ -98,6 +99,16 @@ function parseHostInput(value: string): string {
       .replace(/^[a-z]+:\/\//i, "")
       .split(/[/?#]/)[0] ?? "";
   return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(bare) ? hostText(bare) : "";
+}
+
+/** Save `text` as a file download named `name`. */
+function saveFile(text: string, type: string, name: string): void {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 /** Hostname a recipe is grouped under: the first host in its scope. */
@@ -859,6 +870,8 @@ export function App() {
   /** The "add a recipe source" input, and the result of the last add or refresh. */
   const [sourceUrl, setSourceUrl] = useState("");
   const [sourceNote, setSourceNote] = useState<string | null>(null);
+  /** Sources whose host needs access TMSync does not hold (from a backup or sync). */
+  const [blockedSources, setBlockedSources] = useState<Set<string>>(new Set());
   /** Feedback for a Connect attempt (Options mirrors the popup — a failed/cancelled
    * OAuth used to silently do nothing here). */
   const [accountMsg, setAccountMsg] = useState<string | null>(null);
@@ -887,6 +900,10 @@ export function App() {
     setSites(sit);
     setRecipes(rs.custom);
     setRecipeState(rs);
+    const blocked = await Promise.all(
+      rs.sources.map(async (x) => ((await needsSourceAccess(x.url)) ? [x.id] : [])),
+    );
+    setBlockedSources(new Set(blocked.flat()));
     setLinks(ql);
     setLinksOn(qlOn);
     setCorr(c);
@@ -1038,6 +1055,11 @@ export function App() {
 
   const toggleSource = (id: string) =>
     act(async () => {
+      const src = sourceList.find((x) => x.id === id);
+      // Turning on: ask for host access first, while the click is a gesture.
+      if (src && !src.enabled && !(await requestSourceAccess(src.url))) {
+        return setSourceNote("TMSync needs access to that address to read the file.");
+      }
       const next = sourceList.map((x) => (x.id === id ? { ...x, enabled: !x.enabled } : x));
       await recipeSources.setValue(next);
       if (next.find((x) => x.id === id)?.enabled) {
@@ -1047,6 +1069,10 @@ export function App() {
 
   const refreshSource = (id: string) =>
     act(async () => {
+      const src = sourceList.find((x) => x.id === id);
+      if (src && !(await requestSourceAccess(src.url))) {
+        return setSourceNote("TMSync needs access to that address to read the file.");
+      }
       const out = await sendMessage("refreshRecipes", { sourceId: id });
       setSourceNote(
         out.ok ? `${nameOf(id)} · ${out.count} recipes.` : `${nameOf(id)}: ${out.error}`,
@@ -1077,12 +1103,18 @@ export function App() {
       await siteSourcePins.setValue(pins);
     });
 
-  // A fork whose source version changed: drop the fork, or keep it and stop asking.
+  // A fork whose source version changed: go back to the source's version of the
+  // whole site (every fork in it, so its recipes stay on the same domains), or
+  // keep the forks and stop asking.
   const staleOf = (site: SiteGroup) =>
     site.recipes.filter((r) => !r.sourceId && recipeState?.stale.includes(r.recipe.id));
   const useSourceVersion = (site: SiteGroup) =>
     act(async () => {
-      const ids = new Set(staleOf(site).map((r) => r.recipe.id));
+      const ids = new Set(
+        site.recipes
+          .filter((r) => !r.sourceId && recipeState?.bases[r.recipe.id])
+          .map((r) => r.recipe.id),
+      );
       await customRecipes.setValue((await customRecipes.getValue()).filter((r) => !ids.has(r.id)));
       const bases = { ...(await forkBases.getValue()) };
       for (const id of ids) delete bases[id];
@@ -1273,13 +1305,7 @@ export function App() {
     setExportFrom(tracker);
     const out = await sendMessage("exportLetterboxd", { tracker });
     if (out.ok && out.csv !== undefined) {
-      const blob = new Blob([out.csv], { type: "text/csv;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${tracker}-letterboxd.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
+      saveFile(out.csv, "text/csv;charset=utf-8", `${tracker}-letterboxd.csv`);
       const n = out.count ?? 0;
       setExportNote(
         `Exported ${n} ${n === 1 ? "entry" : "entries"}. Import the file at Letterboxd → Settings → Import & Export.`,
@@ -1296,13 +1322,11 @@ export function App() {
     setBackupNote(null);
     try {
       const backup = await buildBackup();
-      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `tmsync-backup-${new Date(backup.exportedAt).toISOString().slice(0, 10)}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
+      saveFile(
+        JSON.stringify(backup, null, 2),
+        "application/json",
+        `tmsync-backup-${new Date(backup.exportedAt).toISOString().slice(0, 10)}.json`,
+      );
       setBackupNote("Exported your data to a file.");
     } catch {
       setBackupNote("Couldn’t export.");
@@ -1550,12 +1574,7 @@ export function App() {
     }
   };
   const downloadShare = () => {
-    const url = URL.createObjectURL(new Blob([pickedFile()], { type: "application/json" }));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "tmsync-sites.json";
-    a.click();
-    URL.revokeObjectURL(url);
+    saveFile(pickedFile(), "application/json", "tmsync-sites.json");
     setShareNote(
       "Saved. Put the file anywhere with a public https address (a GitHub gist works), then share that address.",
     );
@@ -2063,6 +2082,17 @@ export function App() {
                               {cache?.error && ` · last try failed: ${cache.error}`}
                             </span>
                           </span>
+                          {src.enabled && blockedSources.has(src.id) && (
+                            <Btn
+                              t={t}
+                              tone="primary"
+                              disabled={busy}
+                              title="TMSync needs access to this address to read the file"
+                              onClick={() => void refreshSource(src.id)}
+                            >
+                              Allow
+                            </Btn>
+                          )}
                           <span class="flex shrink-0 items-center">
                             <IconBtn
                               t={t}

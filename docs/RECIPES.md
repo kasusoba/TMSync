@@ -252,8 +252,11 @@ To update the source, change the file at the same URL. Users get the change on t
 
 **How TMSync reads a source** (`lib/recipes/source-sync.ts`):
 
-- It refreshes each enabled source every 12 hours, with `If-None-Match` on the ETag, and on the
-  Refresh buttons in Options.
+- It refreshes each enabled source every 12 hours, and on the Refresh buttons in Options. It sends
+  `If-None-Match` only to a host it holds access for: to a host read by CORS alone, that header
+  would force a preflight the host may refuse.
+- A source that came from a backup or another browser may need access to its host on this one. Its
+  row in Options then shows **Allow**.
 - A file larger than 1 MB, or one that is not JSON, is refused. Each recipe and link is validated
   with Zod, and an invalid entry is dropped, never partly applied.
 - A failed refresh keeps the last good copy and shows the error on the source's row, so a source
@@ -281,7 +284,9 @@ source later changes such a recipe, the site card says so and offers **Use sourc
 the fork) or **Keep mine**. A fork is never replaced on its own.
 
 Removing or turning off a source removes its recipes and quick links at once. Forks stay, because
-they are the user's own.
+they are the user's own. Turning a source back on brings its quick links back as the user had
+them. A recipe the user made never hides a source recipe just because the two share an id: only a
+fork (which records the source it came from) does.
 
 ## Maintenance: site rot and domain moves
 

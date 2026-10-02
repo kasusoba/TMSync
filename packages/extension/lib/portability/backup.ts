@@ -61,7 +61,11 @@ const QuickLinkSiteSchema = LinkTemplates.extend({
 
 const RecipeSourceSchema = z.object({
   id: z.string(),
-  url: z.string().url(),
+  // https only, like the Add field in Options.
+  url: z
+    .string()
+    .url()
+    .refine((u) => u.startsWith("https://")),
   enabled: z.boolean(),
 });
 
@@ -109,7 +113,8 @@ const BackupSchema = z.object({
     customRecipes: z.array(z.unknown()).default([]),
     userQuickLinks: z.array(QuickLinkSiteSchema).default([]),
     sourceLinkToggles: z.record(z.string(), z.boolean()).default({}),
-    recipeSources: z.array(RecipeSourceSchema).default([]),
+    // Validated per item at apply time, so one bad source never sinks the import.
+    recipeSources: z.array(z.unknown()).default([]),
     siteSourcePins: z.record(z.string(), z.string()).default({}),
     forkBases: z
       .record(z.string(), z.object({ sourceId: z.string(), hash: z.string() }))
@@ -207,13 +212,37 @@ export async function applyBackup(backup: Backup): Promise<ImportSummary> {
   // Recipe sources: add the ones this device lacks (same URL = same source), after
   // its own, so the restore does not reorder what is here. Sites picks and fork
   // bases follow, imported wins on key.
+  // A source this device already has (by URL) may carry another id here, so
+  // picks and fork bases are moved onto this device's id.
   const haveSources = await recipeSources.getValue();
-  const newSources = d.recipeSources.filter(
-    (s) => !haveSources.some((h) => h.url === s.url || h.id === s.id),
-  );
+  const idHere = new Map<string, string>();
+  const newSources: z.infer<typeof RecipeSourceSchema>[] = [];
+  const validSources = d.recipeSources.flatMap((raw) => {
+    const res = RecipeSourceSchema.safeParse(raw);
+    return res.success ? [res.data] : [];
+  });
+  for (const s of validSources) {
+    const same = haveSources.find((h) => h.url === s.url);
+    if (same) idHere.set(s.id, same.id);
+    else if (haveSources.some((h) => h.id === s.id)) {
+      const id = crypto.randomUUID();
+      idHere.set(s.id, id);
+      newSources.push({ ...s, id });
+    } else {
+      idHere.set(s.id, s.id);
+      newSources.push(s);
+    }
+  }
+  const mapId = (id: string) => idHere.get(id) ?? id;
   if (newSources.length) await recipeSources.setValue([...haveSources, ...newSources]);
-  await siteSourcePins.setValue({ ...(await siteSourcePins.getValue()), ...d.siteSourcePins });
-  await forkBases.setValue({ ...(await forkBases.getValue()), ...d.forkBases });
+  const pins = Object.fromEntries(
+    Object.entries(d.siteSourcePins).map(([host, id]) => [host, mapId(id)]),
+  );
+  await siteSourcePins.setValue({ ...(await siteSourcePins.getValue()), ...pins });
+  const bases = Object.fromEntries(
+    Object.entries(d.forkBases).map(([rid, b]) => [rid, { ...b, sourceId: mapId(b.sourceId) }]),
+  );
+  await forkBases.setValue({ ...(await forkBases.getValue()), ...bases });
 
   // Quick links: merge user links by id; apply source link toggles to existing rows.
   const linkMap = new Map<string, QuickLinkSite>(

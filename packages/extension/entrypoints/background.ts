@@ -13,6 +13,7 @@ import {
   type RefreshResult,
   applySourceLinks,
   migrateFromLibrary,
+  pruneSourceCaches,
   refreshSources,
 } from "@/lib/recipes/source-sync";
 import { statusDotColor } from "@/lib/scrobble/action-badge";
@@ -165,14 +166,15 @@ export default defineBackground(() => {
     await noteNewSites(addedHosts(prev ?? [], next ?? [], others));
   });
   // A refresh of a source the user already had can bring new sites. The first
-  // copy of a new source is the user's own doing, not news, so it is skipped.
+  // good read of a source is the user's own doing, not news, so it is skipped
+  // (a failed first try leaves a copy with no `okAt`).
   sourceCaches.watch(async (next, prev) => {
     void syncRegistrations();
     const before = prev ?? {};
     const custom = await customRecipes.getValue();
     for (const [id, cache] of Object.entries(next ?? {})) {
       const old = before[id];
-      if (!old) continue;
+      if (!old?.okAt) continue;
       const others = [
         ...custom,
         ...Object.entries(next ?? {})
@@ -185,17 +187,24 @@ export default defineBackground(() => {
   // Adding, removing, reordering, or turning off a source, or pinning a site,
   // changes which recipes and quick links apply. Fetching stays with the refresh
   // message and the alarm, so this never fetches twice.
+  // A removed source takes its copy and its site picks with it. Fork bases stay:
+  // a fork of a removed source is the user's own recipe now.
   recipeSources.watch(async (next) => {
+    await pruneSourceCaches();
     const ids = new Set((next ?? []).map((s) => s.id));
-    const caches = await sourceCaches.getValue();
-    const kept = Object.fromEntries(Object.entries(caches).filter(([id]) => ids.has(id)));
-    if (Object.keys(kept).length !== Object.keys(caches).length) {
-      await sourceCaches.setValue(kept);
+    const pins = await siteSourcePins.getValue();
+    const keptPins = Object.fromEntries(Object.entries(pins).filter(([, id]) => ids.has(id)));
+    if (Object.keys(keptPins).length !== Object.keys(pins).length) {
+      await siteSourcePins.setValue(keptPins);
     }
     void syncRegistrations();
     await applySourceLinks();
   });
-  siteSourcePins.watch(() => void applySourceLinks());
+  // A pick can change which hosts a site's recipes cover, so registrations too.
+  siteSourcePins.watch(() => {
+    void syncRegistrations();
+    void applySourceLinks();
+  });
   forkBases.watch(() => void syncRegistrations());
 
   // Refresh the sources on startup + a periodic alarm (the SW is ephemeral, so we

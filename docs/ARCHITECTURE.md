@@ -520,17 +520,18 @@ never travels.
 | Layer | What | Where | Travels? |
 |---|---|---|---|
 | **Sources** | recipes and quick-link templates from the user's recipe sources | `local:source_caches` | no, each device fetches the sources itself |
-| **Sync** | your recipes, quick links, recipe source URLs and site picks, corrections, manual picks, badge prefs, list sync choices, and your toggles on source quick links | `sync:` | yes, the only synced layer |
+| **Sync** | your recipes, quick links, recipe source URLs, site picks and fork bases, corrections, manual picks, badge prefs, list sync choices, and your toggles on source quick links | `sync:` | yes, the only synced layer |
 | **Local** | tokens, resolution and rating caches, `enabled_origins`, crosswalk data | `local:` | no, secret or regenerable |
 
 - **`sync:`** (small, cross-device, user-owned): one `recipe:{id}` key per custom recipe (through
-  `recipes/store.ts`), plus `recipe_sources`, `site_source_pins`, `quick_links`,
+  `recipes/store.ts`), plus `recipe_sources`, `site_source_pins`, `fork_bases`,
+  `source_link_memory`, `quick_links`,
   `quick_links_enabled`, `corrections`, `manual_selections`, `badge_prefs`, and
   `list_sync_settings` (without the ignore list and automatic sync, which are per device).
 - **`local:`** (per-device): `trakt_tokens`, `anilist_tokens`, `mal_tokens`, `simkl_tokens`,
   `wetrakr_tokens`, the resolution caches, `wetrakr_corrections`, `wetrakr_ids_cache`,
   `simkl_matches`, `simkl_scrobble_at`, `simkl_held_stops`, rating and note
-  mirrors (the tracker is the source of truth), `source_caches`, `fork_bases`, `enabled_origins`,
+  mirrors (the tracker is the source of truth), `source_caches`, `enabled_origins`,
   `anime_map` and `animap_overrides`, `anilist_corrections`, `mal_corrections`, `quicklink_slugs`,
   and the list sync state (`list_sync_ignore`, `list_sync_auto_on`, `list_sync_job`, `list_sync_apply`, `list_sync_cancel_at`, `list_sync_picks`,
   `list_sync_cache_<tracker>`, `list_sync_base`, `list_sync_base_next`, `list_sync_auto`,

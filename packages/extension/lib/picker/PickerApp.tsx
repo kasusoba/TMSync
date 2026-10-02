@@ -346,13 +346,16 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
   async function save() {
     // Stable, human-readable id (docs/RECIPES.md): a host slug, unique
     // against existing recipe ids — so a re-authored site updates rather than dupes.
+    // Unique against source recipes too: a custom recipe that shares a source
+    // recipe's id reads as a fork of it.
     const existing = await customRecipes.getValue();
+    const { sourced } = await loadRecipeState();
     const id =
       editingId ??
-      newRecipeId(
-        location.hostname,
-        existing.map((r) => r.id),
-      );
+      newRecipeId(location.hostname, [
+        ...existing.map((r) => r.id),
+        ...sourced.map((x) => x.recipe.id),
+      ]);
     const built = buildRecipe(draft, { id, name });
     if (!built.ok) return setStatus(built.error);
     // Replace the recipe being edited (same id) and any other with the same
