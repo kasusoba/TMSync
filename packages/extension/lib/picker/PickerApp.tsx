@@ -1,7 +1,8 @@
 import "@/lib/ui/theme.css";
 import { actionError } from "@/lib/errors";
-import { loadRecipes, recipeTarget } from "@/lib/recipes";
+import { effectiveRecipes, loadRecipeState, recipeTarget } from "@/lib/recipes";
 import { newRecipeId, slugifyHost } from "@/lib/recipes/id";
+import { sourceLabel } from "@/lib/recipes/sources";
 import { customRecipes } from "@/lib/storage";
 import { ALL_TRACKERS, isSeasonless } from "@/lib/trackers/types";
 import { loadAccounts } from "@/lib/ui/accounts";
@@ -140,16 +141,16 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
   // No tracker connected: a new site would have nowhere to record, so the panel
   // asks to connect one first. null until the accounts load.
   const [noTracker, setNoTracker] = useState<boolean | null>(null);
-  // Name of a LIBRARY recipe that already covers this page (when the user has no
-  // override yet) — saving here creates a local override that wins over it.
-  const [libraryCovers, setLibraryCovers] = useState<string | null>(null);
+  // A recipe source's recipe that already covers this page (when the user has no
+  // override yet): saving here creates a local override that wins over it.
+  const [sourceCovers, setSourceCovers] = useState<{ name: string; source: string } | null>(null);
   // Name of an existing recipe for THIS SITE that doesn't cover the current URL
   // (so we note it rather than misleadingly entering "edit" on, say, a search page).
   const [siteRecipeName, setSiteRecipeName] = useState<string | null>(null);
 
-  // Populate ONLY from the user's own custom recipe — never from the library, so
-  // fixing a wrong library recipe starts fresh rather than inheriting its fields.
-  // Separately note if a library recipe covers this page (transparency); the
+  // Populate ONLY from the user's own custom recipe, never from a source, so
+  // fixing a wrong source recipe starts fresh rather than inheriting its fields.
+  // Separately note if a source recipe covers this page (transparency); the
   // local save will shadow it (loadRecipes dedupes by target, custom-first).
   useEffect(() => {
     void (async () => {
@@ -163,7 +164,7 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
         setName(own.name);
         setEditingId(own.id);
         setNoTracker(false);
-        return; // editing own recipe — no need for the library note
+        return; // editing own recipe, no need for the source note
       }
       // A new site starts with the trackers the user connected (none turned on for
       // a tracker they don't use).
@@ -174,8 +175,17 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
       // A recipe exists for this site but not this URL — note it instead of editing it.
       const siteRecipe = custom.find((r) => recipeMatchesHost(r, location.hostname));
       if (siteRecipe) setSiteRecipeName(siteRecipe.name);
-      const match = selectRecipe(await loadRecipes(), ctx);
-      if (match) setLibraryCovers(match.name);
+      const state = await loadRecipeState();
+      const effective = effectiveRecipes(state);
+      const match = selectRecipe(
+        effective.map((e) => e.recipe),
+        ctx,
+      );
+      const from = effective.find((e) => e.recipe === match)?.sourceId;
+      const source = state.sources.find((x) => x.id === from);
+      if (match && source) {
+        setSourceCovers({ name: match.name, source: sourceLabel(source, state.caches[source.id]) });
+      }
     })();
   }, [ctx]);
 
@@ -336,13 +346,16 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
   async function save() {
     // Stable, human-readable id (docs/RECIPES.md): a host slug, unique
     // against existing recipe ids — so a re-authored site updates rather than dupes.
+    // Unique against source recipes too: a custom recipe that shares a source
+    // recipe's id reads as a fork of it.
     const existing = await customRecipes.getValue();
+    const { sourced } = await loadRecipeState();
     const id =
       editingId ??
-      newRecipeId(
-        location.hostname,
-        existing.map((r) => r.id),
-      );
+      newRecipeId(location.hostname, [
+        ...existing.map((r) => r.id),
+        ...sourced.map((x) => x.recipe.id),
+      ]);
     const built = buildRecipe(draft, { id, name });
     if (!built.ok) return setStatus(built.error);
     // Replace the recipe being edited (same id) and any other with the same
@@ -454,7 +467,7 @@ export function PickerApp({ onClose }: { onClose: () => void }) {
                 ? { ok: true, text: previewText }
                 : { ok: false, error: preview.error }
           }
-          banner={!editingId && libraryCovers ? { kind: "library", name: libraryCovers } : null}
+          banner={!editingId && sourceCovers ? { kind: "source", ...sourceCovers } : null}
           siteRecipeNote={editingId ? null : siteRecipeName}
           status={status}
           canSave={

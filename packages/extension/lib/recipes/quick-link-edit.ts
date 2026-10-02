@@ -11,10 +11,10 @@ export interface QuickLinkFields extends LinkTemplates {
 /** The quick link on this domain. Look it up by domain, not by id: a link made in
  * Options, or moved from another domain, does not have the id `ql-<host>`. The
  * user's own link comes first, an enabled one before a disabled one. A disabled
- * library link is only an offer from the library, so it is not this domain's link. */
+ * source link is only an offer from a recipe source, so it is not this domain's link. */
 export function linkOnHost(links: QuickLinkSite[], host: string): QuickLinkSite | undefined {
   const here = links.filter((l) => normalizeHost(linkHost(l)) === normalizeHost(host));
-  const own = here.filter((l) => l.source !== "library");
+  const own = here.filter((l) => l.source !== "source");
   return own.find((l) => l.enabled) ?? own[0] ?? here.find((l) => l.enabled);
 }
 
@@ -38,11 +38,11 @@ export function saveLinkOnHost(
     anime: fields.anime,
     search: fields.search,
   });
-  if (current && current.source !== "library") {
+  if (current && current.source !== "source") {
     return links.map((l) => (l.id === current.id ? { ...l, ...entry(l.id) } : l));
   }
-  // A library link gets its templates from the library on every refresh, so an
-  // edit would not last. Save a new user link and turn the library link off.
+  // A source link gets its templates from its source on every refresh, so an
+  // edit would not last. Save a new user link and turn the source link off.
   // The id is `ql-<host>`, unless a link that moved from this domain still has it.
   const id = links.some((l) => l.id === `ql-${host}`) ? `ql-${host}-${now}` : `ql-${host}`;
   const rest = current
@@ -51,12 +51,12 @@ export function saveLinkOnHost(
   return [...rest, entry(id)];
 }
 
-/** The links after removing this domain's quick link. The library adds its links
- * back on every refresh, so a library link is turned off, not deleted. */
+/** The links after removing this domain's quick link. A source adds its links
+ * back on every refresh, so a source link is turned off, not deleted. */
 export function removeLinkOnHost(links: QuickLinkSite[], host: string): QuickLinkSite[] {
   const current = linkOnHost(links, host);
   if (!current) return links;
-  if (current.source === "library") {
+  if (current.source === "source") {
     return links.map((l) => (l.id === current.id ? { ...l, enabled: false } : l));
   }
   return links.filter((l) => l.id !== current.id);

@@ -41,37 +41,40 @@ function frame(p: Partial<RawFrame> & { frameId: number; url: string }): RawFram
 }
 
 describe("buildFrameTree", () => {
-  it("nests rive → vsrc.su → deep player and marks the unreached player to enable", () => {
-    // The rivestream case: top + the enabled aggregator are reached; the real
-    // player is a frame deeper than vsrc.su, on an origin we can't inject into.
+  it("nests examplestream → embeds.example → deep player and marks the unreached player to enable", () => {
+    // The examplestream case: top + the enabled aggregator are reached; the real
+    // player is a frame deeper than embeds.example, on an origin we can't inject into.
     const frames: RawFrame[] = [
       frame({
         frameId: 0,
-        url: "https://www.rivestream.app/watch?id=5",
+        url: "https://www.examplestream.app/watch?id=5",
         isTop: true,
-        iframeSrcs: ["https://vsrc.su/embed/5"],
+        iframeSrcs: ["https://embeds.example/embed/5"],
       }),
       frame({
         frameId: 12,
-        url: "https://vsrc.su/embed/5",
-        iframeSrcs: ["https://deepcdn.xyz/stream/abc"],
+        url: "https://embeds.example/embed/5",
+        iframeSrcs: ["https://videocdn.example/stream/abc"],
       }),
     ];
-    const roots = buildFrameTree(frames, ["https://www.rivestream.app", "https://vsrc.su"]);
+    const roots = buildFrameTree(frames, [
+      "https://www.examplestream.app",
+      "https://embeds.example",
+    ]);
     const top = defined(roots[0]);
 
     expect(top.isTop).toBe(true);
-    expect(top.origin).toBe("https://www.rivestream.app");
+    expect(top.origin).toBe("https://www.examplestream.app");
     expect(top.children).toHaveLength(1);
 
     const aggregator = defined(top.children[0]);
-    expect(aggregator.origin).toBe("https://vsrc.su");
+    expect(aggregator.origin).toBe("https://embeds.example");
     expect(aggregator.reached).toBe(true);
     expect(aggregator.enabled).toBe(true);
     expect(aggregator.depth).toBe(1);
 
     const player = defined(aggregator.children[0]);
-    expect(player.origin).toBe("https://deepcdn.xyz");
+    expect(player.origin).toBe("https://videocdn.example");
     expect(player.reached).toBe(false); // we couldn't inject — the actionable leaf
     expect(player.enabled).toBe(false);
     expect(player.frameId).toBeNull();
@@ -85,14 +88,14 @@ describe("buildFrameTree", () => {
     const frames: RawFrame[] = [
       frame({
         frameId: 0,
-        url: "https://www.rivestream.app/watch?id=5",
+        url: "https://www.examplestream.app/watch?id=5",
         isTop: true,
-        iframeSrcs: ["https://vsrc.su/embed/5"],
+        iframeSrcs: ["https://embeds.example/embed/5"],
       }),
       frame({
         frameId: 12,
-        url: "https://vsrc.su/embed/5",
-        iframeSrcs: ["https://deepcdn.xyz/stream/abc"],
+        url: "https://embeds.example/embed/5",
+        iframeSrcs: ["https://videocdn.example/stream/abc"],
       }),
     ];
     const top = defined(buildFrameTree(frames, [], true)[0]);

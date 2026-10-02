@@ -63,57 +63,58 @@ function Filter({
 type Pair = [string, string];
 const pair = (a: string, b: string): Pair => [a, b];
 
+// Made-up site names: the mock never names real sites.
 const NAMES = [
-  "Rive",
-  "CorsFlix",
-  "Cineby",
-  "Cineplay",
-  "Fmovies+",
-  "PopcornMovies",
-  "BingeBox",
-  "Flixer",
-  "Hexa",
-  "FlickyStream",
-  "MeowTV",
-  "CineMora",
-  "Cinevibe",
-  "bCine",
-  "Coreflix",
-  "Vyla",
-  "ShuttleTV",
-  "Poprink",
-  "Cinegram",
-  "LordFlix",
-  "Stigstream",
-  "dulo.tv",
-  "MovieBite",
-  "TouStream",
-  "IceFY",
-  "Lunara",
-  "SpenFlix",
+  "Atlas",
+  "Beacon",
+  "Cobalt",
+  "Delta",
+  "Ember",
+  "Fable",
+  "Garnet",
+  "Harbor",
+  "Indigo",
+  "Juniper",
+  "Kestrel",
+  "Lumen",
+  "Meadow",
+  "Nimbus",
+  "Orchid",
+  "Pebble",
+  "Quartz",
+  "Raven",
+  "Saffron",
+  "Tundra",
+  "Umber",
+  "Velvet",
   "Willow",
-  "Flixtrz",
-  "NomorFlix",
-  "CineBolt",
-  "ZXCSTREAM",
-  "NetPlay",
-  "Cinelove",
-  "Screenscape",
-  "Mapple.tv",
-  "Watch Surface",
-  "Watchott",
-  "StreamVaults",
-  "ReelStream",
-  "Chillflix",
-  "GaiaFlix",
-  "Vegeta TV",
-  "Smashystream",
-  "VidPlay",
-  "Nxsha",
+  "Yarrow",
+  "Zephyr",
+  "Alder",
+  "Birch",
+  "Cedar",
+  "Dune",
+  "Elm",
+  "Fern",
+  "Grove",
+  "Hazel",
+  "Iris",
+  "Jade",
+  "Lark",
+  "Maple",
+  "Nova",
+  "Oak",
+  "Pine",
+  "Quill",
+  "Reed",
+  "Sage",
+  "Thistle",
+  "Vale",
+  "Wren",
 ];
-const TLDS = ["to", "net", "cc", "watch", "stream", "mov", "sbs"];
+const TLDS = ["example", "test"];
 const hostOf = (n: string, i: number) =>
-  `${n.toLowerCase().replace(/[^a-z0-9]+/g, "")}.${TLDS[i % TLDS.length] ?? "to"}`;
+  `${n.toLowerCase().replace(/[^a-z0-9]+/g, "")}.${TLDS[i % TLDS.length] ?? "example"}`;
 const nameAt = (i: number) => NAMES[i % NAMES.length] ?? "Site";
 
 /** Sites as the options page groups them: domains + the recipes that read them. The
@@ -125,12 +126,12 @@ const SITE_CARDS = NAMES.slice(0, 10).map((name, i) => ({
   recipes:
     i % 2 === 0
       ? [
-          { pattern: "/movie", kind: "movie", trackers: ["trakt"] as Tracker[], library: false },
+          { pattern: "/movie", kind: "movie", trackers: ["trakt"] as Tracker[], sourced: false },
           {
             pattern: "/tv",
-            kind: i % 4 === 0 ? "show · library" : "show",
+            kind: i % 4 === 0 ? "show · My sites" : "show",
             trackers: ["trakt", "anilist"] as Tracker[],
-            library: i % 4 === 0,
+            sourced: i % 4 === 0,
           },
         ]
       : [
@@ -138,15 +139,37 @@ const SITE_CARDS = NAMES.slice(0, 10).map((name, i) => ({
             pattern: "/watch",
             kind: "manual pick",
             trackers: ["trakt"] as Tracker[],
-            library: false,
+            sourced: false,
           },
         ],
 }));
 const QUICK_LINKS = NAMES.slice(0, 22).map((name, i) => ({
   name,
   on: i % 3 !== 0,
-  library: i % 4 === 0,
+  sourced: i % 4 === 0,
 }));
+
+/** Recipe sources: one healthy, one whose last refresh failed, one turned off. */
+const SOURCES = [
+  {
+    name: "My sites",
+    url: "https://gist.githubusercontent.com/someone/abc123/raw/sites.json",
+    on: true,
+    status: "14 recipes · 6 quick links · updated 10/2/2026, 9:14 AM",
+  },
+  {
+    name: "raw.githubusercontent.com",
+    url: "https://raw.githubusercontent.com/friend/tmsync-sites/main/sites.json",
+    on: true,
+    status: "8 recipes · updated 10/1/2026, 9:02 PM · last try failed: HTTP 404",
+  },
+  {
+    name: "Anime sites",
+    url: "https://example.org/tmsync/anime.json",
+    on: false,
+    status: "5 recipes · updated 9/30/2026, 8:40 AM",
+  },
+];
 const SUGGESTIONS = NAMES.slice(24, 42).map(hostOf);
 const TITLES = [
   "Dune: Part Two (2024) · movie",
@@ -167,6 +190,7 @@ const SECTIONS: { id: string; label: string; icon: IconName; count?: number }[] 
   { id: "sites", label: "Sites", icon: "frame", count: 1 },
   { id: "links", label: "Quick links", icon: "link", count: QUICK_LINKS.length },
   { id: "corrections", label: "Corrections", icon: "check", count: CORRECTIONS.length },
+  { id: "sources", label: "Sources", icon: "link" },
 ];
 
 export function OptionsView({
@@ -417,7 +441,7 @@ export function OptionsView({
                                 </span>
                                 <span class={clsx("block text-[11px]", t.faint)}>{r.kind}</span>
                               </div>
-                              {!r.library && (
+                              {!r.sourced && (
                                 <div class="flex shrink-0 items-center">
                                   <IconBtn t={t} name="trash" title="Delete" danger />
                                 </div>
@@ -482,8 +506,8 @@ export function OptionsView({
                           <Switch on={l.on} t={t} />
                           <span class="flex-1 truncate">
                             <span class={clsx("text-[13px] font-medium", t.heading)}>{l.name}</span>
-                            {l.library && (
-                              <span class={clsx("ml-1.5 text-[11px]", t.faint)}>· library</span>
+                            {l.sourced && (
+                              <span class={clsx("ml-1.5 text-[11px]", t.faint)}>· My sites</span>
                             )}
                           </span>
                           <IconBtn
@@ -538,6 +562,67 @@ export function OptionsView({
                       <Icon name="plus" class="text-[10px]" />
                       {h}
                     </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {active === "sources" && (
+              <>
+                <PaneHead
+                  t={t}
+                  title="Recipe sources"
+                  right={
+                    <Btn t={t} tone="ghost">
+                      <Icon name="refresh" class="text-[12px]" /> Refresh all
+                    </Btn>
+                  }
+                />
+                <p class={clsx("text-[12px] leading-relaxed", t.sub)}>
+                  TMSync comes with no sites. A recipe source is a file of sites that someone made
+                  and put online. Paste its address to use its sites. When two sources cover one
+                  site, the higher one wins.
+                </p>
+                <div class="flex items-center gap-1.5">
+                  <input
+                    placeholder="https://…/sites.json"
+                    class={clsx(
+                      "min-w-0 flex-1 rounded-lg px-2.5 py-1.5 font-mono text-[12px] outline-none",
+                      t.input,
+                    )}
+                  />
+                  <Btn t={t} tone="primary">
+                    <Icon name="plus" class="text-[12px]" /> Add
+                  </Btn>
+                </div>
+                <div class="space-y-1.5">
+                  {SOURCES.map((src, i) => (
+                    <div
+                      key={src.url}
+                      class={clsx("flex items-center gap-3 rounded-lg px-3 py-2", t.card)}
+                    >
+                      <Switch on={src.on} t={t} />
+                      <span class={clsx("min-w-0 flex-1", !src.on && "opacity-50")}>
+                        <span class={clsx("block truncate text-[13px] font-medium", t.heading)}>
+                          {src.name}
+                        </span>
+                        <code class={clsx("block truncate font-mono text-[11px]", t.faint)}>
+                          {src.url}
+                        </code>
+                        <span class={clsx("block text-[11px]", t.sub)}>{src.status}</span>
+                      </span>
+                      <span class="flex shrink-0 items-center">
+                        <IconBtn t={t} name="up" title="Move up" disabled={i === 0} />
+                        <IconBtn
+                          t={t}
+                          name="down"
+                          title="Move down"
+                          disabled={i === SOURCES.length - 1}
+                        />
+                        <IconBtn t={t} name="refresh" title="Refresh" disabled={!src.on} />
+                        <IconBtn t={t} name="trash" title="Remove source" danger />
+                      </span>
+                    </div>
                   ))}
                 </div>
               </>

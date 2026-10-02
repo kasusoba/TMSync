@@ -89,12 +89,12 @@ describe("selectRecipe", () => {
 
 describe("explainMatch", () => {
   const doc = parse('<html><body><div id="player"></div></body></html>');
-  const url = "https://cinejoy.pk/tv/123";
+  const url = "https://examplewatch.pk/tv/123";
 
   it("reports each check for recipes scoped to the host", () => {
     const r = recipe({
-      name: "Cinejoy",
-      match: { hostnames: ["cinejoy.pk"], urlPattern: "/watch/", domFingerprint: "#player" },
+      name: "Examplewatch",
+      match: { hostnames: ["examplewatch.pk"], urlPattern: "/watch/", domFingerprint: "#player" },
     });
     const [c] = explainMatch([r], { document: doc, url });
     expect(c).toMatchObject({ url: false, marker: true });
@@ -108,9 +108,9 @@ describe("explainMatch", () => {
 
   it("marks a missing page marker, and null when there is none", () => {
     const a = recipe({
-      match: { hostnames: ["cinejoy.pk"], urlPattern: "/tv/", domFingerprint: "#x" },
+      match: { hostnames: ["examplewatch.pk"], urlPattern: "/tv/", domFingerprint: "#x" },
     });
-    const b = recipe({ match: { hostnames: ["cinejoy.pk"], urlPattern: "/tv/" } });
+    const b = recipe({ match: { hostnames: ["examplewatch.pk"], urlPattern: "/tv/" } });
     const out = explainMatch([a, b], { document: doc, url });
     expect(out.map((c) => c.marker)).toEqual([false, null]);
   });

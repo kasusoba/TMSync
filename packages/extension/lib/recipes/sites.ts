@@ -7,6 +7,8 @@ import {
   siteLabel,
   withRecipeHosts,
 } from "@tmsync/shared";
+import type { ForkBase } from "../storage";
+import { recipeHash } from "./sources";
 
 /**
  * A SITE as the options page shows it: the recipes that share a domain, and the
@@ -18,21 +20,20 @@ export interface SiteGroup {
   name: string;
   /** Storage form (`www.` kept, it is a real origin), one per comparison form. */
   hosts: string[];
-  recipes: { recipe: Recipe; library: boolean }[];
+  /** `sourceId` is set on a recipe from a recipe source, unset on the user's own. */
+  recipes: SiteRecipe[];
+}
+
+export interface SiteRecipe {
+  recipe: Recipe;
+  sourceId?: string;
 }
 
 /**
- * Group the effective recipes into sites. A custom recipe shadows the library one
- * with its id, as in the engine. A host-free recipe matches any host, so it is a
- * site of its own.
+ * Group the effective recipes (`mergeRecipes`) into sites. A host-free recipe
+ * matches any host, so it is a site of its own.
  */
-export function groupSites(custom: Recipe[], library: Recipe[]): SiteGroup[] {
-  const effective = [
-    ...custom.map((recipe) => ({ recipe, library: false })),
-    ...library
-      .filter((r) => !custom.some((c) => c.id === r.id))
-      .map((recipe) => ({ recipe, library: true })),
-  ];
+export function groupSites(effective: SiteRecipe[]): SiteGroup[] {
   let groups: SiteGroup[] = [];
   for (const entry of effective) {
     const hosts = recipeHosts(entry.recipe);
@@ -73,31 +74,41 @@ export function uniqueHosts(hosts: string[]): string[] {
 
 /**
  * The custom recipe list after giving every recipe of a site the host list
- * `hosts`. A library recipe is forked under its own id, which shadows the library
- * version, so the next library sync cannot undo the edit.
+ * `hosts`. A source recipe is forked under its own id, which shadows the source
+ * version, so the next refresh cannot undo the edit. Save `forkBasesOf` with it.
  */
 export function withSiteHosts(site: SiteGroup, hosts: string[], custom: Recipe[]): Recipe[] {
   const edited = new Set(site.recipes.map(({ recipe }) => recipe.id));
   const next = custom.map((r) => (edited.has(r.id) ? withRecipeHosts(r, hosts) : r));
   const forks = site.recipes
-    .filter(({ library, recipe }) => library && !custom.some((c) => c.id === recipe.id))
+    .filter(({ sourceId, recipe }) => sourceId && !custom.some((c) => c.id === recipe.id))
     .map(({ recipe }) => withRecipeHosts(recipe, hosts));
   return [...next, ...forks];
 }
 
+/** The fork bases to save when `withSiteHosts` forks a site's source recipes. */
+export function forkBasesOf(site: SiteGroup, custom: Recipe[]): Record<string, ForkBase> {
+  const out: Record<string, ForkBase> = {};
+  for (const { recipe, sourceId } of site.recipes) {
+    if (!sourceId || custom.some((c) => c.id === recipe.id)) continue;
+    out[recipe.id] = { sourceId, hash: recipeHash(recipe) };
+  }
+  return out;
+}
+
 /**
  * The custom recipe list after renaming a site: every custom recipe of the site
- * takes `name`. Library recipes keep theirs, because renaming one would fork it
- * and stop library fixes from reaching it, a high price for a label.
+ * takes `name`. Source recipes keep theirs, because renaming one would fork it
+ * and stop source fixes from reaching it, a high price for a label.
  */
 export function withSiteName(site: SiteGroup, name: string, custom: Recipe[]): Recipe[] {
-  const ids = new Set(site.recipes.filter((r) => !r.library).map((r) => r.recipe.id));
+  const ids = new Set(site.recipes.filter((r) => !r.sourceId).map((r) => r.recipe.id));
   return custom.map((r) => (ids.has(r.id) ? { ...r, name } : r));
 }
 
 /**
  * The site this page most likely moved from: one with the same name on another
- * domain (`cinejoy.to` for `cinejoy.pk`). Null when a site already lists this
+ * domain (`examplewatch.to` for `examplewatch.pk`). Null when a site already lists this
  * domain, or none shares its name. When several do, the one with a recipe whose
  * path fits this URL wins. It is a guess, so the caller asks before acting on it.
  */

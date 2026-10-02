@@ -1,18 +1,16 @@
 /**
  * Human-readable, content-STABLE recipe ids (docs/RECIPES.md).
  *
- * The old id was `custom-<host>-<Date.now()>` — unique per device, so two users
- * contributing the same site produced different ids → silent duplicate entries in
- * the shared list (worse than a conflict). A stable id derived from the host makes
- * a re-contribution an UPDATE, dedupes issue/PR titles, and lets the contribution
- * branch be keyed by content instead of issue number.
+ * The id is derived from the host, so two people who set up the same site get the
+ * same id. A local edit of a source recipe keeps the source id, which is how the
+ * fork shadows it (`mergeRecipes`).
  *
- * The id is NOT a foreign key anywhere: corrections are keyed by the scraped media
- * (see trakt/util `resolutionCacheKey`), quick links carry their own ids, and no
- * store references a recipe id — so migrating ids only rewrites `customRecipes`.
+ * Corrections are keyed by the scraped media (see trakt/util `resolutionCacheKey`),
+ * and quick links carry their own ids. The only store keyed by recipe id is
+ * `forkBases`, which records where a fork came from.
  */
 
-/** "www.miruro.to" → "miruro-to"; "watch.example.co.uk" → "watch-example-co-uk". */
+/** "www.exampleanime.to" → "exampleanime-to"; "watch.example.co.uk" → "watch-example-co-uk". */
 export function slugifyHost(hostname: string): string {
   return hostname
     .replace(/^www\./i, "")

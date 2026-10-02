@@ -33,45 +33,45 @@ describe("slugify", () => {
 });
 
 describe("buildSiteLinks", () => {
-  const cineby: LinkTemplates = {
-    movie: "https://cineby.app/movie/{tmdb}",
-    tv: "https://cineby.app/tv/{tmdb}/{season}/{episode}",
-    search: "https://cineby.app/search/{title}",
+  const examplemovies: LinkTemplates = {
+    movie: "https://examplemovies.app/movie/{tmdb}",
+    tv: "https://examplemovies.app/tv/{tmdb}/{season}/{episode}",
+    search: "https://examplemovies.app/search/{title}",
   };
 
   it("returns a direct movie link from tmdb plus a search fallback", () => {
     expect(
-      buildSiteLinks(cineby, { type: "movie", tmdb: "1034541", title: "Terrifier 3" }),
+      buildSiteLinks(examplemovies, { type: "movie", tmdb: "1034541", title: "Terrifier 3" }),
     ).toEqual({
-      direct: "https://cineby.app/movie/1034541",
-      search: "https://cineby.app/search/Terrifier%203",
+      direct: "https://examplemovies.app/movie/1034541",
+      search: "https://examplemovies.app/search/Terrifier%203",
     });
   });
 
   it("builds a direct tv link with season/episode", () => {
     expect(
-      buildSiteLinks(cineby, { type: "tv", tmdb: "273240", season: 1, episode: 2 }).direct,
-    ).toBe("https://cineby.app/tv/273240/1/2");
+      buildSiteLinks(examplemovies, { type: "tv", tmdb: "273240", season: 1, episode: 2 }).direct,
+    ).toBe("https://examplemovies.app/tv/273240/1/2");
   });
 
   it("omits direct when the id is missing, keeping search", () => {
-    expect(buildSiteLinks(cineby, { type: "movie", title: "The Rookie" })).toEqual({
-      search: "https://cineby.app/search/The%20Rookie",
+    expect(buildSiteLinks(examplemovies, { type: "movie", title: "The Rookie" })).toEqual({
+      search: "https://examplemovies.app/search/The%20Rookie",
     });
   });
 
   it("supports a {slug} search (hyphen-joined title)", () => {
-    const slugSite: LinkTemplates = { search: "https://popcornmovies.org/search/{slug}" };
+    const slugSite: LinkTemplates = { search: "https://exampleshows.org/search/{slug}" };
     expect(
       buildSiteLinks(slugSite, { type: "tv", season: 2, episode: 4, title: "The Rookie" }),
     ).toEqual({
-      search: "https://popcornmovies.org/search/the-rookie",
+      search: "https://exampleshows.org/search/the-rookie",
     });
   });
 
   it("uses the show slug (not the episode title) and strips its year for tv {slug}", () => {
     const site: LinkTemplates = {
-      tv: "https://popcornmovies.org/episode/{slug}/{season}-{episode}",
+      tv: "https://exampleshows.org/episode/{slug}/{season}-{episode}",
     };
     expect(
       buildSiteLinks(site, {
@@ -81,7 +81,7 @@ describe("buildSiteLinks", () => {
         season: 4,
         episode: 4,
       }),
-    ).toEqual({ direct: "https://popcornmovies.org/episode/invincible/4-4" });
+    ).toEqual({ direct: "https://exampleshows.org/episode/invincible/4-4" });
   });
 
   it("does not strip a trailing number that isn't a -YYYY suffix (e.g. 1923)", () => {
@@ -92,10 +92,10 @@ describe("buildSiteLinks", () => {
   });
 
   it("uses the clean title slug for movie {slug}, not Trakt's year-suffixed url slug", () => {
-    const site: LinkTemplates = { movie: "https://popcornmovies.org/movie/{slug}" };
+    const site: LinkTemplates = { movie: "https://exampleshows.org/movie/{slug}" };
     expect(
       buildSiteLinks(site, { type: "movie", slug: "terrifier-3-2024", title: "Terrifier 3" }),
-    ).toEqual({ direct: "https://popcornmovies.org/movie/terrifier-3" });
+    ).toEqual({ direct: "https://exampleshows.org/movie/terrifier-3" });
   });
 
   it("keeps a year that is part of the movie title (Blade Runner 2049)", () => {
@@ -122,7 +122,7 @@ describe("buildSiteLinks", () => {
 
 describe("host-based templates", () => {
   const site: LinkTemplates = {
-    host: "cineby.at",
+    host: "examplemovies.at",
     movie: "/movie/{tmdb}",
     tv: "/tv/{tmdb}/{season}/{episode}",
     search: "/search/{title}",
@@ -130,16 +130,18 @@ describe("host-based templates", () => {
 
   it("joins a path template to the site host", () => {
     expect(buildSiteLinks(site, { type: "movie", tmdb: "603", title: "The Matrix" })).toEqual({
-      direct: "https://cineby.at/movie/603",
-      search: "https://cineby.at/search/The%20Matrix",
+      direct: "https://examplemovies.at/movie/603",
+      search: "https://examplemovies.at/search/The%20Matrix",
     });
   });
 
   it("joins an anime path template too", () => {
     expect(
-      buildAniListSiteLinks({ host: "miruro.to", anime: "/watch/{anilist}" }, { anilistId: 21 })
-        .direct,
-    ).toBe("https://miruro.to/watch/21");
+      buildAniListSiteLinks(
+        { host: "exampleanime.to", anime: "/watch/{anilist}" },
+        { anilistId: 21 },
+      ).direct,
+    ).toBe("https://exampleanime.to/watch/21");
   });
 
   it("skips a path template when the site has no host", () => {
@@ -149,7 +151,7 @@ describe("host-based templates", () => {
   it("keeps an absolute template as it is", () => {
     expect(
       buildSiteLinks(
-        { host: "cineby.at", movie: "https://other.tld/movie/{tmdb}" },
+        { host: "examplemovies.at", movie: "https://other.tld/movie/{tmdb}" },
         { type: "movie", tmdb: "603" },
       ).direct,
     ).toBe("https://other.tld/movie/603");
@@ -158,11 +160,13 @@ describe("host-based templates", () => {
 
 describe("linkHost / withLinkHost", () => {
   it("reads the explicit host as stored", () => {
-    expect(linkHost({ host: "WWW.Cineby.At", movie: "/m/{tmdb}" })).toBe("www.cineby.at");
+    expect(linkHost({ host: "WWW.Examplemovies.At", movie: "/m/{tmdb}" })).toBe(
+      "www.examplemovies.at",
+    );
   });
 
   it("falls back to the host of the first absolute template", () => {
-    expect(linkHost({ movie: "https://cineby.at/movie/{tmdb}" })).toBe("cineby.at");
+    expect(linkHost({ movie: "https://examplemovies.at/movie/{tmdb}" })).toBe("examplemovies.at");
   });
 
   it("is empty when there is nothing to read", () => {
@@ -171,11 +175,14 @@ describe("linkHost / withLinkHost", () => {
 
   it("moves the site to a new host and relativizes its own templates", () => {
     const moved = withLinkHost(
-      { movie: "https://cineby.at/movie/{tmdb}", search: "https://cineby.at/search/{title}" },
-      "cineby.app",
+      {
+        movie: "https://examplemovies.at/movie/{tmdb}",
+        search: "https://examplemovies.at/search/{title}",
+      },
+      "examplemovies.app",
     );
     expect(moved).toEqual({
-      host: "cineby.app",
+      host: "examplemovies.app",
       movie: "/movie/{tmdb}",
       tv: undefined,
       anime: undefined,
@@ -184,14 +191,17 @@ describe("linkHost / withLinkHost", () => {
   });
 
   it("relativizes a template that differs only by www", () => {
-    const moved = withLinkHost({ movie: "https://www.cineby.at/movie/{tmdb}" }, "cineby.app");
+    const moved = withLinkHost(
+      { movie: "https://www.examplemovies.at/movie/{tmdb}" },
+      "examplemovies.app",
+    );
     expect(moved.movie).toBe("/movie/{tmdb}");
   });
 
   it("leaves a template on another host alone", () => {
     const moved = withLinkHost(
-      { host: "cineby.at", movie: "https://other.tld/movie/{tmdb}" },
-      "cineby.app",
+      { host: "examplemovies.at", movie: "https://other.tld/movie/{tmdb}" },
+      "examplemovies.app",
     );
     expect(moved.movie).toBe("https://other.tld/movie/{tmdb}");
   });

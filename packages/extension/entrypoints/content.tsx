@@ -1,7 +1,6 @@
 import { CONTENT_MARK } from "@/lib/diagnostics/why";
-import { loadRecipes } from "@/lib/recipes";
+import { loadRecipes, watchRecipes } from "@/lib/recipes";
 import { SessionManager } from "@/lib/scrobble/session";
-import { customRecipes, remoteRecipes } from "@/lib/storage";
 import { mountBadge } from "@/lib/ui/badge";
 
 /**
@@ -32,7 +31,7 @@ export default defineContentScript({
     // Reflect picker saves/edits/deletes LIVE, no page reload. The picker writes
     // the recipe stores; when they change, reload + re-evaluate this tab. On a new
     // site the picker's save injects this script first (`startOnTab`).
-    // A library refresh that finds no change still rewrites its fetch time, and
+    // A source refresh that finds no change still rewrites its fetch time, and
     // updateRecipes restarts the playing session, so compare the lists first.
     let loaded = JSON.stringify(recipes);
     const reload = async () => {
@@ -42,11 +41,6 @@ export default defineContentScript({
       loaded = key;
       session.updateRecipes(next);
     };
-    const unwatchCustom = customRecipes.watch(reload);
-    const unwatchRemote = remoteRecipes.watch(reload);
-    ctx.onInvalidated(() => {
-      unwatchCustom();
-      unwatchRemote();
-    });
+    ctx.onInvalidated(watchRecipes(reload));
   },
 });

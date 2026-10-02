@@ -29,9 +29,9 @@ function parse(html: string): Document {
 
 describe("defaultRecipeName", () => {
   it("capitalizes the domain for bare/www hosts", () => {
-    expect(defaultRecipeName("www.miruro.to")).toBe("Miruro");
-    expect(defaultRecipeName("cineby.at")).toBe("Cineby");
-    expect(defaultRecipeName("popcornmovies.org")).toBe("Popcornmovies");
+    expect(defaultRecipeName("www.exampleanime.to")).toBe("Exampleanime");
+    expect(defaultRecipeName("examplemovies.at")).toBe("Examplemovies");
+    expect(defaultRecipeName("exampleshows.org")).toBe("Exampleshows");
   });
   it("keeps the full host when a real subdomain is present", () => {
     expect(defaultRecipeName("watch.example.com")).toBe("watch.example.com");
@@ -40,34 +40,34 @@ describe("defaultRecipeName", () => {
 
 describe("deriveQuickLink", () => {
   it("derives a movie template from a numeric id", () => {
-    expect(deriveQuickLink("https://cineby.at/movie/693134", "trakt")).toEqual({
-      host: "cineby.at",
+    expect(deriveQuickLink("https://examplemovies.at/movie/693134", "trakt")).toEqual({
+      host: "examplemovies.at",
       movie: "/movie/{tmdb}",
     });
   });
 
   it("derives a tv template from a /{id}/{season}/{episode} path", () => {
-    expect(deriveQuickLink("https://cineby.at/tv/273240/1/2", "trakt", true)).toEqual({
-      host: "cineby.at",
+    expect(deriveQuickLink("https://examplemovies.at/tv/273240/1/2", "trakt", true)).toEqual({
+      host: "examplemovies.at",
       tv: "/tv/{tmdb}/{season}/{episode}",
     });
   });
 
   it("derives a tv template from a /{slug}/{s}-{e} path", () => {
     expect(
-      deriveQuickLink("https://popcornmovies.org/episode/the-rookie/2-4", "trakt", true),
-    ).toEqual({ host: "popcornmovies.org", tv: "/episode/{slug}/{season}-{episode}" });
+      deriveQuickLink("https://exampleshows.org/episode/the-rookie/2-4", "trakt", true),
+    ).toEqual({ host: "exampleshows.org", tv: "/episode/{slug}/{season}-{episode}" });
   });
 
   it("derives an anime template (slug) for AniList", () => {
-    expect(deriveQuickLink("https://reanime.to/watch/frieren-eu9jz6", "anilist")).toEqual({
-      host: "reanime.to",
+    expect(deriveQuickLink("https://animeexample.to/watch/frieren-eu9jz6", "anilist")).toEqual({
+      host: "animeexample.to",
       anime: "/watch/{slug}",
     });
   });
 });
 
-describe("page-title segments (SPA players, e.g. rivestream)", () => {
+describe("page-title segments (SPA players, e.g. examplestream)", () => {
   it("splits a title by its delimiter into trimmed parts", () => {
     const title = "Rive | Watch | The Super Mario Bros. Movie";
     expect(pickSeparator(title)).toBe("|");
@@ -108,22 +108,25 @@ describe("page-title segments (SPA players, e.g. rivestream)", () => {
     });
   });
 
-  it("splits a tab title on the spaced hyphen ('Michael - bCine')", () => {
-    expect(pickSeparator("Michael - bCine")).toBe(" - ");
-    expect(splitSegments("Michael - bCine", " - ")).toEqual([
+  it("splits a tab title on the spaced hyphen ('Michael - ExampleFilms')", () => {
+    expect(pickSeparator("Michael - ExampleFilms")).toBe(" - ");
+    expect(splitSegments("Michael - ExampleFilms", " - ")).toEqual([
       { text: "Michael", index: 0 },
-      { text: "bCine", index: 1 },
+      { text: "ExampleFilms", index: 1 },
     ]);
     // a hyphenated title must NOT be split by the bare hyphen
     expect(pickSeparator("Spider-Man")).toBe("");
   });
 
   it("segmentRegex picks the movie from a '<title> - <site>' tab title", () => {
-    const doc = new DOMParser().parseFromString("<title>Michael - bCine</title>", "text/html");
+    const doc = new DOMParser().parseFromString(
+      "<title>Michael - ExampleFilms</title>",
+      "text/html",
+    );
     const recipe: Recipe = {
       id: "r",
       schemaVersion: 2,
-      name: "bCine",
+      name: "ExampleFilms",
       match: { urlPattern: ".*" },
       mediaType: "movie",
       tracker: "trakt",
@@ -137,10 +140,12 @@ describe("page-title segments (SPA players, e.g. rivestream)", () => {
         },
       },
     };
-    expect(extract(recipe, { document: doc, url: "https://bcine.ru/movie/936075" })).toEqual({
-      ok: true,
-      media: { mediaType: "movie", title: "Michael" },
-    });
+    expect(extract(recipe, { document: doc, url: "https://examplefilms.ru/movie/936075" })).toEqual(
+      {
+        ok: true,
+        media: { mediaType: "movie", title: "Michael" },
+      },
+    );
   });
 
   it("queryParamRegex extracts season/episode by name (mediaType auto → show)", () => {
@@ -235,22 +240,22 @@ describe("DOM number picking (one element packs several, e.g. '1x6 – Episode 6
   });
 });
 
-describe("player-frame URL picking (S/E inside a cross-origin embed, e.g. 1embed.cc)", () => {
+describe("player-frame URL picking (S/E inside a cross-origin embed, e.g. 1player.example)", () => {
   it("reads season/episode from a player iframe's src attribute by ordinal", () => {
-    // bcine.ru/tv/276161 hides S/E; the 1embed.cc iframe src carries it:
-    // numbers are [1 (1embed), 276161, 1 (season), 6 (episode), 1 (auto_play)].
+    // examplefilms.ru/tv/276161 hides S/E; the 1player.example iframe src carries it:
+    // numbers are [1 (1player), 276161, 1 (season), 6 (episode), 1 (auto_play)].
     // (readDom just does querySelector + getAttribute, so a non-<iframe> element
     // carrying the same `src` exercises the identical path — and avoids happy-dom
     // trying to network-fetch a real iframe during the test.)
     const doc = new DOMParser().parseFromString(
-      `<title>Teach You a Lesson - bCine</title>
-       <div class="player" src="https://1embed.cc/embed/tv/276161/1/6?color=ffffff&auto_play=1"></div>`,
+      `<title>Teach You a Lesson - ExampleFilms</title>
+       <div class="player" src="https://1player.example/embed/tv/276161/1/6?color=ffffff&auto_play=1"></div>`,
       "text/html",
     );
     const recipe: Recipe = {
       id: "r",
       schemaVersion: 2,
-      name: "bCine",
+      name: "ExampleFilms",
       match: { urlPattern: ".*" },
       mediaType: "auto",
       tracker: "trakt",
@@ -280,7 +285,7 @@ describe("player-frame URL picking (S/E inside a cross-origin embed, e.g. 1embed
         },
       },
     };
-    expect(extract(recipe, { document: doc, url: "https://bcine.ru/tv/276161" })).toEqual({
+    expect(extract(recipe, { document: doc, url: "https://examplefilms.ru/tv/276161" })).toEqual({
       ok: true,
       media: { mediaType: "show", title: "Teach You a Lesson", season: 1, episode: 6 },
     });
@@ -289,7 +294,7 @@ describe("player-frame URL picking (S/E inside a cross-origin embed, e.g. 1embed
 
 describe("TMDB id (auto-detect + resolve-by-id)", () => {
   it("detects the id from a named query param", () => {
-    expect(detectTmdbIdField("https://www.rivestream.app/watch?type=movie&id=502356")).toEqual({
+    expect(detectTmdbIdField("https://www.examplestream.app/watch?type=movie&id=502356")).toEqual({
       source: "url",
       regex: queryParamRegex("id"),
       group: 1,
@@ -298,7 +303,7 @@ describe("TMDB id (auto-detect + resolve-by-id)", () => {
   });
 
   it("detects the id from a /movie|/tv path segment (not the season/episode)", () => {
-    const field = detectTmdbIdField("https://cineby.at/tv/273240/1/2");
+    const field = detectTmdbIdField("https://examplemovies.at/tv/273240/1/2");
     expect(field).toEqual({
       source: "url",
       regex: "/(?:movie|tv|watch|series|show)/(\\d+)",
@@ -310,7 +315,7 @@ describe("TMDB id (auto-detect + resolve-by-id)", () => {
     const recipe: Recipe = {
       id: "r",
       schemaVersion: 2,
-      name: "Cineby",
+      name: "Examplemovies",
       match: { urlPattern: ".*" },
       mediaType: "movie",
       tracker: "trakt",
@@ -319,7 +324,7 @@ describe("TMDB id (auto-detect + resolve-by-id)", () => {
       extract: { title: { source: "title" }, ids: { tmdb: field! } },
     };
     expect(
-      extract(recipe, { document: doc, url: "https://cineby.at/tv/273240/1/2" }),
+      extract(recipe, { document: doc, url: "https://examplemovies.at/tv/273240/1/2" }),
     ).toMatchObject({ ok: true, media: { ids: { tmdb: 273240 } } });
   });
 
@@ -328,19 +333,21 @@ describe("TMDB id (auto-detect + resolve-by-id)", () => {
   });
 
   it("builds + extracts an id-ONLY recipe (no title needed)", () => {
-    // The 1embed case: the in-frame title is junk, so the user drops it and relies
+    // The 1player case: the in-frame title is junk, so the user drops it and relies
     // on the id. Title is optional once a tmdbId is present.
     const draft: RecipeDraft = {
-      ...emptyDraft("https://bcine.ru/movie/936075", ["trakt"]),
-      fields: { tmdbId: detectTmdbIdField("https://bcine.ru/movie/936075") },
+      ...emptyDraft("https://examplefilms.ru/movie/936075", ["trakt"]),
+      fields: { tmdbId: detectTmdbIdField("https://examplefilms.ru/movie/936075") },
     };
-    const built = buildRecipe(draft, { id: "m", name: "bCine" });
+    const built = buildRecipe(draft, { id: "m", name: "ExampleFilms" });
     expect(built.ok).toBe(true);
     if (!built.ok) return;
     expect(built.recipe.extract?.title).toBeUndefined();
 
     const doc = new DOMParser().parseFromString("<title>x</title>", "text/html");
-    expect(extract(built.recipe, { document: doc, url: "https://bcine.ru/movie/936075" })).toEqual({
+    expect(
+      extract(built.recipe, { document: doc, url: "https://examplefilms.ru/movie/936075" }),
+    ).toEqual({
       ok: true,
       media: { mediaType: "movie", title: "", ids: { tmdb: 936075 } },
     });
@@ -353,11 +360,11 @@ describe("TMDB id (auto-detect + resolve-by-id)", () => {
     // General show, both trackers on → trackers[] persisted; native hint = trakt (season present).
     const both = buildRecipe(
       {
-        ...emptyDraft("https://cineby.at/tv/1429/3/15"),
+        ...emptyDraft("https://examplemovies.at/tv/1429/3/15"),
         trackers: ["trakt", "anilist"],
         fields: { ...title, season },
       },
-      { id: "s", name: "Cineby" },
+      { id: "s", name: "Examplemovies" },
     );
     expect(both.ok).toBe(true);
     if (both.ok) {
@@ -367,8 +374,12 @@ describe("TMDB id (auto-detect + resolve-by-id)", () => {
 
     // Dedicated anime, AniList only → single-tracker: no trackers[], tracker = anilist.
     const anime = buildRecipe(
-      { ...emptyDraft("https://reanime.to/watch/frieren/3"), trackers: ["anilist"], fields: title },
-      { id: "a", name: "reanime" },
+      {
+        ...emptyDraft("https://animeexample.to/watch/frieren/3"),
+        trackers: ["anilist"],
+        fields: title,
+      },
+      { id: "a", name: "animeexample" },
     );
     expect(anime.ok).toBe(true);
     if (anime.ok) {
@@ -379,11 +390,11 @@ describe("TMDB id (auto-detect + resolve-by-id)", () => {
     // Anime site, also mirror to Trakt → trackers[] persisted; native hint = anilist.
     const mirror = buildRecipe(
       {
-        ...emptyDraft("https://reanime.to/watch/frieren/3"),
+        ...emptyDraft("https://animeexample.to/watch/frieren/3"),
         trackers: ["anilist", "trakt"],
         fields: title,
       },
-      { id: "m", name: "reanime" },
+      { id: "m", name: "animeexample" },
     );
     expect(mirror.ok).toBe(true);
     if (mirror.ok) {
@@ -400,11 +411,11 @@ describe("TMDB id (auto-detect + resolve-by-id)", () => {
     // e.g. …/tmdb-tv-60564) — NOT an AniList id. Drop it; AniList resolves by title.
     const anime = buildRecipe(
       {
-        ...emptyDraft("https://aether.bar/media/tmdb-tv-60564"),
+        ...emptyDraft("https://examplemedia.bar/media/tmdb-tv-60564"),
         trackers: ["anilist"],
         fields: { ...title, tmdbId: id },
       },
-      { id: "aether", name: "Aether" },
+      { id: "examplemedia", name: "Examplemedia" },
     );
     expect(anime.ok).toBe(true);
     if (anime.ok) expect(anime.recipe.extract?.ids).toBeUndefined();
@@ -412,11 +423,11 @@ describe("TMDB id (auto-detect + resolve-by-id)", () => {
     // Trakt (or any Trakt-involving) recipe: the id is a TMDB id, kept.
     const trakt = buildRecipe(
       {
-        ...emptyDraft("https://cineby.at/tv/1429"),
+        ...emptyDraft("https://examplemovies.at/tv/1429"),
         trackers: ["trakt"],
         fields: { ...title, tmdbId: id },
       },
-      { id: "cineby", name: "Cineby" },
+      { id: "examplemovies", name: "Examplemovies" },
     );
     expect(trakt.ok).toBe(true);
     if (trakt.ok) expect(trakt.recipe.extract?.ids).toEqual({ tmdb: id });
@@ -424,18 +435,18 @@ describe("TMDB id (auto-detect + resolve-by-id)", () => {
     // Multi-track (Trakt involved) → TMDB, since Trakt is the native numbering.
     const multi = buildRecipe(
       {
-        ...emptyDraft("https://cineby.at/tv/1429"),
+        ...emptyDraft("https://examplemovies.at/tv/1429"),
         trackers: ["trakt", "anilist"],
         fields: { ...title, tmdbId: id },
       },
-      { id: "cineby2", name: "Cineby" },
+      { id: "examplemovies2", name: "Examplemovies" },
     );
     expect(multi.ok).toBe(true);
     if (multi.ok) expect(multi.recipe.extract?.ids).toEqual({ tmdb: id });
   });
 
   it("prunes Trakt-only fields (season + tmdb id) when Trakt is toggled off", () => {
-    // The aether case: a recipe built with BOTH trackers picks up season + tmdb id,
+    // The examplemedia case: a recipe built with BOTH trackers picks up season + tmdb id,
     // then Trakt is unchecked. The saved recipe must reflect the toggle — keep only
     // what AniList consumes (title + episode), not stale Trakt fields.
     const id: Field = { source: "url", regex: "/(\\d+)", transforms: ["toInt"] };
@@ -452,11 +463,11 @@ describe("TMDB id (auto-detect + resolve-by-id)", () => {
       transforms: ["toInt"],
     };
     const fields = { title: { source: "title" as const }, season, episode, tmdbId: id };
-    const url = "https://aether.bar/media/tmdb-tv-60564";
+    const url = "https://examplemedia.bar/media/tmdb-tv-60564";
 
     const both = buildRecipe(
       { ...emptyDraft(url), trackers: ["trakt", "anilist"], fields },
-      { id: "aether", name: "Aether" },
+      { id: "examplemedia", name: "Examplemedia" },
     );
     expect(both.ok).toBe(true);
     if (both.ok) {
@@ -467,7 +478,7 @@ describe("TMDB id (auto-detect + resolve-by-id)", () => {
     // Same picked fields, Trakt OFF → season + tmdb id gone; title + episode remain.
     const anilistOnly = buildRecipe(
       { ...emptyDraft(url), trackers: ["anilist"], fields },
-      { id: "aether", name: "Aether" },
+      { id: "examplemedia", name: "Examplemedia" },
     );
     expect(anilistOnly.ok).toBe(true);
     if (anilistOnly.ok) {
@@ -479,26 +490,28 @@ describe("TMDB id (auto-detect + resolve-by-id)", () => {
   });
 
   it("drops season/episode from a movie recipe (would resolve as a show otherwise)", () => {
-    // Regression: a movie page (bcine /movie/4977 = the film Paprika) whose draft
+    // Regression: a movie page (examplefilms /movie/4977 = the film Paprika) whose draft
     // picked up a stray season/episode would resolve tmdb id 4977 in the *tv*
     // namespace (a 1979 series). A movie must never carry season/episode.
     const draft: RecipeDraft = {
-      ...emptyDraft("https://bcine.ru/movie/4977", ["trakt"]),
+      ...emptyDraft("https://examplefilms.ru/movie/4977", ["trakt"]),
       mediaType: "movie",
       fields: {
-        tmdbId: detectTmdbIdField("https://bcine.ru/movie/4977"),
+        tmdbId: detectTmdbIdField("https://examplefilms.ru/movie/4977"),
         season: { source: "url", regex: urlTokenRegex(0), group: 1, transforms: ["toInt"] },
         episode: { source: "url", regex: urlTokenRegex(0), group: 1, transforms: ["toInt"] },
       },
     };
-    const built = buildRecipe(draft, { id: "m", name: "bCine" });
+    const built = buildRecipe(draft, { id: "m", name: "ExampleFilms" });
     expect(built.ok).toBe(true);
     if (!built.ok) return;
     expect(built.recipe.extract?.season).toBeUndefined();
     expect(built.recipe.extract?.episode).toBeUndefined();
 
     const doc = new DOMParser().parseFromString("<title>x</title>", "text/html");
-    expect(extract(built.recipe, { document: doc, url: "https://bcine.ru/movie/4977" })).toEqual({
+    expect(
+      extract(built.recipe, { document: doc, url: "https://examplefilms.ru/movie/4977" }),
+    ).toEqual({
       ok: true,
       media: { mediaType: "movie", title: "", ids: { tmdb: 4977 } },
     });
@@ -510,7 +523,7 @@ describe("TMDB id (auto-detect + resolve-by-id)", () => {
   });
 
   it("auto-detect includes the tmdbId field from the page URL", () => {
-    const ctx = { document: parse(movieHtml), url: "https://cineby.at/movie/693134" };
+    const ctx = { document: parse(movieHtml), url: "https://examplemovies.at/movie/693134" };
     expect(autoDetectFields(ctx).tmdbId).toEqual({
       source: "url",
       regex: "/(?:movie|tv|watch|series|show)/(\\d+)",
@@ -527,11 +540,11 @@ describe("suggestUrlPattern", () => {
   });
 
   it("keeps a typed-id prefix so movie/show recipes come out disjoint", () => {
-    // Aether-style: type lives in the 2nd segment's prefix, same base path.
+    // Examplemedia-style: type lives in the 2nd segment's prefix, same base path.
     expect(
-      suggestUrlPattern("https://aether.bar/media/tmdb-tv-2604-the-boondocks/8382/201035"),
+      suggestUrlPattern("https://examplemedia.bar/media/tmdb-tv-2604-the-boondocks/8382/201035"),
     ).toBe("/media/tmdb-tv-");
-    expect(suggestUrlPattern("https://aether.bar/media/tmdb-movie-1244492-look-back")).toBe(
+    expect(suggestUrlPattern("https://examplemedia.bar/media/tmdb-movie-1244492-look-back")).toBe(
       "/media/tmdb-movie-",
     );
   });
@@ -573,16 +586,16 @@ describe("urlTokenRegex (season/episode from URL)", () => {
     };
   }
 
-  it("cineby /tv/273240/1/2 → S1E2 (skip the show id)", () => {
+  it("examplemovies /tv/273240/1/2 → S1E2 (skip the show id)", () => {
     const doc = new DOMParser().parseFromString("<title>x</title>", "text/html");
-    const url = "https://www.cineby.at/tv/273240/1/2?play=true";
+    const url = "https://www.examplemovies.at/tv/273240/1/2?play=true";
     const r = extract(urlRecipe(1, 2), { document: doc, url });
     expect(r).toMatchObject({ ok: true, media: { season: 1, episode: 2 } });
   });
 
-  it("popcornmovies /episode/the-rookie/1-2 → S1E2", () => {
+  it("exampleshows /episode/the-rookie/1-2 → S1E2", () => {
     const doc = new DOMParser().parseFromString("<title>x</title>", "text/html");
-    const url = "https://popcornmovies.org/episode/the-rookie/1-2";
+    const url = "https://exampleshows.org/episode/the-rookie/1-2";
     const r = extract(urlRecipe(0, 1), { document: doc, url });
     expect(r).toMatchObject({ ok: true, media: { season: 1, episode: 2 } });
   });

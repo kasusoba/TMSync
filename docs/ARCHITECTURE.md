@@ -9,13 +9,13 @@ TMSync scrobbles movies and non-anime TV to Trakt, WeTrakr, and/or Simkl, and an
 MyAnimeList (and to Trakt, WeTrakr, and Simkl too), all at once if the user wants. It works on arbitrary
 streaming sites, including ones with no API. List sync (section 7) can also bring the
 lists of all connected trackers in sync. It exists because tools like MAL-Sync cover only anime,
-and others are tied to official integrations and will not touch aggregator sites.
+and others work only through official integrations.
 
 Four decisions shape everything below:
 
 - **Recipes are data, not code.** A store policy and a security requirement. No remote code, ever.
-- **No backend.** The recipe library is versioned JSON served from the repo. There is no server, no
-  account, and no database.
+- **No backend, and no site list.** TMSync ships with no sites. Users add **recipe sources**: JSON
+  files that anyone can publish at an https URL. There is no server, no account, and no database.
 - **Privacy.** Matching and scrobbling run on the user's machine. Watch data goes only to the user's
   own tracker accounts, and each item goes only to the trackers it is routed to.
 - **No broad permissions at install.** Access to a site is requested per origin, on a user gesture.
@@ -31,8 +31,8 @@ right tracker(s). Three moving parts:
 - **The content script** runs *on the page*. It matches a recipe, finds the video, reads the
   title/season/episode, draws the on-page badge, and owns the live watch session (play/pause/stop).
 - **The background service worker** is the *hub*. It resolves "Attack on Titan S1E5" into a real
-  Trakt/AniList id, calls the tracker APIs, holds your OAuth tokens, and refreshes the recipe
-  library. It is **stateless**, it forgets everything between wake-ups and re-reads storage each
+  Trakt/AniList id, calls the tracker APIs, holds your OAuth tokens, and refreshes the user's recipe
+  sources. It is **stateless**, it forgets everything between wake-ups and re-reads storage each
   time (an MV3 requirement).
 - **`@tmsync/shared`** is a *pure* package (no DOM, no browser APIs): the recipe schema, the
   `extract()` engine, and helper logic. It's the testable core, and could be reused server-side one
@@ -65,14 +65,14 @@ from AniList.
 
 ## 2. Repo shape
 
-pnpm workspace, two packages plus a recipe library:
+pnpm workspace, two packages plus the anime crosswalk data:
 
 | Path | What it is |
 |---|---|
 | `packages/shared/` | **Pure engine + schema.** No DOM, no browser globals. Zod recipe schema, `extract()`, matching, transforms, quick-link templates. The testable core. |
 | `packages/extension/` | **The WXT app.** All entrypoints, the tracker adapters, the session/scrobble machine, storage, UI kit, element picker. Preact for injected UI. |
-| `recipes/index.json` | One **tracker-agnostic** recipe + quick-link library (crowdsourced via PR). Recipes for every tracker coexist; each carries its own tracker set and the engine routes per-recipe. |
 | `recipes/anime-map.json` | The TMDB to AniList crosswalk (with MAL ids), rebuilt weekly from Fribb's `anime-lists` by CI. |
+| `docs/examples/recipe-source.json` | A sample recipe source file (public-domain films on the Internet Archive). Not added by default. |
 
 Root `package.json` scripts just delegate into the extension package via `pnpm -F @tmsync/extension`.
 
@@ -97,8 +97,9 @@ watched". Follow the numbers:
    → `transforms`, and returns a `ParsedMedia` (`{ mediaType, title, year?, season?, episode?,
    ids? }`). It **never throws**: a bad selector just yields `null`.
 4. **Badge + session.** The top frame mounts the Shadow-DOM badge and starts a `SessionManager`
-   (`lib/scrobble/session.ts`). If the player is in a cross-origin iframe (common on gray-market
-   sites), the *matching* frame publishes the media for the tab and the *video-owning* frame pulls
+   (`lib/scrobble/session.ts`). When the page has no `<video>` in its DOM, it also looks inside
+   open shadow roots, for players built as web components (`lib/scrobble/deep-video.ts`). If the player is in a cross-origin iframe (common on sites
+   that embed a third-party player), the *matching* frame publishes the media for the tab and the *video-owning* frame pulls
    it: they coordinate over messaging.
 5. **Route.** The background decides which adapter(s) get this item from `recipeTrackers()`,
    kept to the trackers the user connected (`connectedTrackers()`). A recipe can name several
@@ -141,7 +142,7 @@ The heart of the "recipes are data, not code" guarantee. Everything here is pure
   it's ever used; an invalid recipe is discarded, never partially applied. `recipeTrackers()` reads
   the multi-track set (`trackers` if present, else `[tracker]`). Schema evolution is handled with
   Zod `.transform`s for back-compat (e.g. legacy `tmdbId` folds into the open `ids` map).
-- **`transforms.ts`**, **`recipes.ts`** (parse/validate untrusted library JSON, discarding bad
+- **`transforms.ts`**, **`recipes.ts`** (parse/validate an untrusted recipe source file, discarding bad
   entries individually), **`links.ts`** (quick-link URL templating), **`types.ts`** (`ParsedMedia`,
   `EngineContext`, `ExtractResult`).
 
@@ -514,25 +515,26 @@ handlers live in `background.ts`.
 
 Every persisted value is a `storage.defineItem`, split into three layers by prefix. The rule that
 keeps them consistent: **the export bundle equals the sync payload equals "your own deltas."**
-Library content comes from the repo and is never synced or exported. Device-local content never
-travels.
+Source content comes from each source's URL and is never synced or exported. Device-local content
+never travels.
 
 | Layer | What | Where | Travels? |
 |---|---|---|---|
-| **Library** | shared recipes and quick-link templates (PR-contributed) | `local:remote_recipes` cache, plus the bundled seed | no, each device fetches the repo itself |
-| **Sync** | your recipes, quick links, corrections, manual picks, badge prefs, list sync choices, and your toggles on library items | `sync:` | yes, the only synced layer |
+| **Sources** | recipes and quick-link templates from the user's recipe sources | `local:source_caches` | no, each device fetches the sources itself |
+| **Sync** | your recipes, quick links, recipe source URLs, site picks and fork bases, corrections, manual picks, badge prefs, list sync choices, and your toggles on source quick links | `sync:` | yes, the only synced layer |
 | **Local** | tokens, resolution and rating caches, `enabled_origins`, crosswalk data | `local:` | no, secret or regenerable |
 
 - **`sync:`** (small, cross-device, user-owned): one `recipe:{id}` key per custom recipe (through
-  `recipes/store.ts`), plus `quick_links`, `quick_links_enabled`, `corrections`, `manual_selections`,
-  `badge_prefs`, and `list_sync_settings` (without the ignore list and automatic sync, which
-  are per device).
+  `recipes/store.ts`), plus `recipe_sources`, `site_source_pins`, `fork_bases`,
+  `source_link_memory`, `quick_links`,
+  `quick_links_enabled`, `corrections`, `manual_selections`, `badge_prefs`, and
+  `list_sync_settings` (without the ignore list and automatic sync, which are per device).
 - **`local:`** (per-device): `trakt_tokens`, `anilist_tokens`, `mal_tokens`, `simkl_tokens`,
   `wetrakr_tokens`, the resolution caches, `wetrakr_corrections`, `wetrakr_ids_cache`,
   `simkl_matches`, `simkl_scrobble_at`, `simkl_held_stops`, rating and note
-  mirrors (the tracker is the source of truth), `remote_recipes`, `enabled_origins`, `anime_map`
-  and `animap_overrides`, `anilist_corrections`, `mal_corrections`, `quicklink_slugs`, and the
-  list sync state (`list_sync_ignore`, `list_sync_auto_on`, `list_sync_job`, `list_sync_apply`, `list_sync_cancel_at`, `list_sync_picks`,
+  mirrors (the tracker is the source of truth), `source_caches`, `enabled_origins`,
+  `anime_map` and `animap_overrides`, `anilist_corrections`, `mal_corrections`, `quicklink_slugs`,
+  and the list sync state (`list_sync_ignore`, `list_sync_auto_on`, `list_sync_job`, `list_sync_apply`, `list_sync_cancel_at`, `list_sync_picks`,
   `list_sync_cache_<tracker>`, `list_sync_base`, `list_sync_base_next`, `list_sync_auto`,
   `list_sync_auto_seen`).
 - **Tokens are encrypted at rest** (`lib/secret.ts`). An AES-GCM key, made non-extractable, lives
@@ -545,10 +547,12 @@ travels.
 - **`session:`** (ephemeral, per tab): `tab_sessions` (the crash-reconcile source of truth),
   `tab_frame_origins`, `tab_status`, `manual_contexts`, `episode_overrides`.
 
-**Merge, at read time:** `effective = library (minus what the user disabled) + user items`. User
-data always wins, a library refresh never overwrites it, and a library item removed upstream leaves
-a harmless orphan toggle. The `source: "library" | "user"` field on a quick link is the
-discriminator.
+**Merge, at read time** (`lib/recipes/index.ts`, `lib/recipes/sources.ts`): `effective = user
+recipes + one source per site`. User data always wins, and a source refresh never overwrites it.
+When several sources cover one site, the site comes whole from the one the user picked, else the
+highest in the list (rules in [`RECIPES.md`](./RECIPES.md#recipe-sources)). Source quick links are
+merged into `quick_links` with `source: "source"` and their `sourceId`; the user's own links have
+`source: "user"`.
 
 **Why `storage.sync`.** It is the browser vendor's sync (a Google or Firefox account), not a TMSync
 backend, so there is still no backend. Its limits shape the design:
@@ -562,7 +566,7 @@ backend, so there is still no backend. Its limits shape the design:
    `enabled_origins` stays local because it reflects actual grants.
 4. **Last write wins**, per item.
 
-**Export and import** serialize the sync layer, and nothing else: no library content, no tokens, no
+**Export and import** serialize the sync layer, and nothing else: no source content, no tokens, no
 caches. Import merges into the sync layer with user data winning, and de-duplicates by id. It is the
 fix for "my setup is on the PC and I am on the laptop", with or without browser sync.
 
@@ -601,8 +605,8 @@ regex/number/title chip builders, `buildRecipe` (assembles + Zod-validates), and
 ## 12. Build, test, distribution
 
 - **WXT** (`packages/extension/wxt.config.ts`): Preact + Tailwind v4. Minimal install permissions
-  (`storage, alarms, scripting, identity, activeTab`) + specific host perms (Trakt, AniList, the
-  recipe CDN); broad access is `optional_host_permissions` requested per-origin on a gesture. MAL's
+  (`storage, alarms, scripting, identity, activeTab`) + specific host perms (Trakt, AniList, and
+  `raw.githubusercontent.com` for the anime map); broad access is `optional_host_permissions` requested per-origin on a gesture. MAL's
   hosts are optional too, requested on Connect. A
   `build:manifestGenerated` hook strips WXT's derived broad host perms and re-expresses them as
   optional. A committed extension `key`/`gecko.id` keeps the extension id, and thus the OAuth

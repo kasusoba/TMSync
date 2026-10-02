@@ -59,9 +59,6 @@ version instead.
 
 ## Automation
 
-- **Contribution bot** (`.github/workflows/contribution.yml`): turns a `contribution`-labelled
-  issue into a PR. Only a maintainer can add the label. It needs Settings, then Actions, then
-  "Allow GitHub Actions to create and approve pull requests". Review and merge its PRs like any
-  other.
 - **Crosswalk** (`.github/workflows/anime-map.yml`): rebuilds `recipes/anime-map.json` from the
-  upstream Fribb list every Monday. Run `pnpm anime-map` to rebuild it by hand.
+  upstream Fribb list every Monday and opens a PR. It needs Settings, then Actions, then "Allow
+  GitHub Actions to create and approve pull requests". Run `pnpm anime-map` to rebuild it by hand.

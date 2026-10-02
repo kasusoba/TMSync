@@ -33,7 +33,7 @@ function mockPalette(url: string, shape: FieldShape, body = ""): PickSource[] {
 
 /** A mock page carrying the metadata a typical streaming site exposes. */
 const MOCK_HEAD = `
-  <title>Teach You a Lesson - bCine</title>
+  <title>Teach You a Lesson - ExampleFilms</title>
   <meta property="og:title" content="Teach You a Lesson" />
   <meta property="og:type" content="video.episode" />
   <meta name="description" content="Episode 6 of season 1." />
@@ -41,7 +41,7 @@ const MOCK_HEAD = `
     {"@type":"TVEpisode","name":"Teach You a Lesson","episodeNumber":6,
      "partOfTVSeason":{"seasonNumber":1},"datePublished":"2024-03-12"}
   </script>
-  <iframe id="player" src="https://1embed.cc/embed/tv/276161/1/6?auto_play=1"></iframe>`;
+  <iframe id="player" src="https://1player.example/embed/tv/276161/1/6?auto_play=1"></iframe>`;
 
 function Tile({
   label,
@@ -78,7 +78,7 @@ function Group({
   );
 }
 
-const EP_URL = "popcornmovies.org/episode/spider-noir/1-1";
+const EP_URL = "exampleshows.org/episode/spider-noir/1-1";
 const NAV = [
   ["popup", "Popup"],
   ["picker", "Picker"],
@@ -149,7 +149,7 @@ export function App() {
             <PopupView
               variant={variant}
               connected
-              origins={[{ origin: "https://www.cineby.at", isTop: true, enabled: false }]}
+              origins={[{ origin: "https://www.examplemovies.at", isTop: true, enabled: false }]}
             />
           </Tile>
           <Tile label="Connected · allowed site" t={t}>
@@ -157,14 +157,14 @@ export function App() {
               variant={variant}
               connected
               note="Allowed · reload to start."
-              origins={[{ origin: "https://www.cineby.at", isTop: true, enabled: true }]}
+              origins={[{ origin: "https://www.examplemovies.at", isTop: true, enabled: true }]}
             />
           </Tile>
           <Tile label="Connected · new sites from a sync" t={t}>
             <PopupView
               variant={variant}
               connected
-              origins={[{ origin: "https://www.cineby.at", isTop: true, enabled: true }]}
+              origins={[{ origin: "https://www.examplemovies.at", isTop: true, enabled: true }]}
               newSites={3}
               onReviewNewSites={() => {}}
               onDismissNewSites={() => {}}
@@ -174,7 +174,7 @@ export function App() {
             <PopupView
               variant={variant}
               connected
-              origins={[{ origin: "https://www.cineby.at", isTop: true, enabled: true }]}
+              origins={[{ origin: "https://www.examplemovies.at", isTop: true, enabled: true }]}
               nowPlaying={
                 <div class={clsx("space-y-2 rounded-xl p-3", t.card)}>
                   <div class="flex items-center gap-2">
@@ -204,7 +204,7 @@ export function App() {
             <PopupView
               variant={variant}
               connected
-              origins={[{ origin: "https://www.cineby.at", isTop: true, enabled: true }]}
+              origins={[{ origin: "https://www.examplemovies.at", isTop: true, enabled: true }]}
               badgeMode="full"
               onBadgeMode={() => {}}
             />
@@ -213,12 +213,12 @@ export function App() {
             <PopupView
               variant={variant}
               connected
-              origins={[{ origin: "https://www.cineby.at", isTop: true, enabled: true }]}
-              quickLinkHost="www.cineby.at"
+              origins={[{ origin: "https://www.examplemovies.at", isTop: true, enabled: true }]}
+              quickLinkHost="www.examplemovies.at"
               quickLinkInitial={{
-                name: "Cineby",
+                name: "Examplemovies",
                 tracker: "trakt",
-                host: "cineby.at",
+                host: "examplemovies.at",
                 movie: "/movie/{tmdb}",
                 tv: "/tv/{tmdb}/{season}/{episode}",
               }}
@@ -229,24 +229,24 @@ export function App() {
             <PopupView
               variant={variant}
               connected
-              origins={[{ origin: "https://cinejoy.pk", isTop: true, enabled: false }]}
-              movedSite={{ name: "Cinejoy", host: "cinejoy.pk" }}
+              origins={[{ origin: "https://examplewatch.pk", isTop: true, enabled: false }]}
+              movedSite={{ name: "Examplewatch", host: "examplewatch.pk" }}
             />
           </Tile>
           <Tile label="Why no badge? · recipe marker not on the page (click to open)" t={t}>
             <PopupView
               variant={variant}
               connected
-              origins={[{ origin: "https://cinejoy.pk", isTop: true, enabled: true }]}
+              origins={[{ origin: "https://examplewatch.pk", isTop: true, enabled: true }]}
               frameTree={[
                 {
                   frameId: 0,
-                  url: "https://cinejoy.pk/tv/2604",
-                  origin: "https://cinejoy.pk",
+                  url: "https://examplewatch.pk/tv/2604",
+                  origin: "https://examplewatch.pk",
                   isTop: true,
                   reached: true,
                   enabled: true,
-                  title: "Cinejoy",
+                  title: "Examplewatch",
                   videos: [],
                   hasVideo: false,
                   hasActiveVideo: false,
@@ -257,7 +257,7 @@ export function App() {
                     checks: 6,
                     recipes: 42,
                     step: "no-match",
-                    candidates: [{ name: "Cinejoy", url: true, marker: false }],
+                    candidates: [{ name: "Examplewatch", url: true, marker: false }],
                   },
                 },
               ]}
@@ -272,14 +272,14 @@ export function App() {
               connected
               onSetupFrame={() => {}}
               origins={[
-                { origin: "https://www.rivestream.app", isTop: true, enabled: true },
-                { origin: "https://vsrc.su", isTop: false, enabled: true },
+                { origin: "https://www.examplestream.app", isTop: true, enabled: true },
+                { origin: "https://embeds.example", isTop: false, enabled: true },
               ]}
               frameTree={[
                 {
                   frameId: 0,
-                  url: "https://www.rivestream.app/watch?id=5",
-                  origin: "https://www.rivestream.app",
+                  url: "https://www.examplestream.app/watch?id=5",
+                  origin: "https://www.examplestream.app",
                   isTop: true,
                   reached: true,
                   enabled: true,
@@ -292,8 +292,8 @@ export function App() {
                 },
                 {
                   frameId: 12,
-                  url: "https://vsrc.su/embed/5",
-                  origin: "https://vsrc.su",
+                  url: "https://embeds.example/embed/5",
+                  origin: "https://embeds.example",
                   isTop: false,
                   reached: true,
                   enabled: true,
@@ -306,8 +306,8 @@ export function App() {
                 },
                 {
                   frameId: 34,
-                  url: "https://cloudstream.pro/e/abc",
-                  origin: "https://cloudstream.pro",
+                  url: "https://streamcdn.example/e/abc",
+                  origin: "https://streamcdn.example",
                   isTop: false,
                   reached: true,
                   enabled: true,
@@ -341,7 +341,7 @@ export function App() {
             <PickerPanel
               variant={variant}
               mode="setup"
-              name="Popcorn Movies"
+              name="Example Shows"
               fields={[]}
               mediaType="auto"
               trackers={[]}
@@ -354,7 +354,7 @@ export function App() {
             <PickerPanel
               variant={variant}
               mode="setup"
-              name="Popcorn Movies"
+              name="Example Shows"
               urlPattern="/watch/movie-"
               patternMatchesPage
               fields={[
@@ -374,7 +374,7 @@ export function App() {
             <PickerPanel
               variant={variant}
               mode="setup"
-              name="Rivestream"
+              name="Examplestream"
               fields={[
                 { key: "title", label: "Title", value: "Euphoria", source: "title" },
                 { key: "year", label: "Year", value: null },
@@ -391,15 +391,15 @@ export function App() {
             <PickerPanel
               variant={variant}
               mode="setup"
-              name="bCine"
+              name="ExampleFilms"
               picking="Title"
               fields={[
-                { key: "title", label: "Title", value: "bCine", source: "meta" },
+                { key: "title", label: "Title", value: "ExampleFilms", source: "meta" },
                 { key: "year", label: "Year", value: null },
                 { key: "season", label: "Season", value: null },
                 { key: "episode", label: "Episode", value: null },
               ]}
-              sources={mockPalette("https://bcine.ru/tv/276161", "text", MOCK_HEAD)}
+              sources={mockPalette("https://examplefilms.ru/tv/276161", "text", MOCK_HEAD)}
               mediaType="auto"
               trackers={["trakt"]}
               iframe
@@ -410,7 +410,7 @@ export function App() {
             <PickerPanel
               variant={variant}
               mode="setup"
-              name="bCine"
+              name="ExampleFilms"
               picking="Episode"
               fields={[
                 { key: "title", label: "Title", value: "Teach You a Lesson", source: "title" },
@@ -418,7 +418,7 @@ export function App() {
                 { key: "season", label: "Season", value: "1", source: "dom" },
                 { key: "episode", label: "Episode", value: null },
               ]}
-              sources={mockPalette("https://bcine.ru/tv/276161", "number", MOCK_HEAD)}
+              sources={mockPalette("https://examplefilms.ru/tv/276161", "number", MOCK_HEAD)}
               mediaType="auto"
               trackers={["trakt"]}
               iframe
@@ -458,7 +458,7 @@ export function App() {
             <PickerPanel
               variant={variant}
               mode="edit"
-              name="Cineby"
+              name="Examplemovies"
               fields={[
                 { key: "title", label: "Title", value: "Dune: Part Two", source: "meta" },
                 { key: "year", label: "Year", value: "2024", source: "dom" },
@@ -472,12 +472,12 @@ export function App() {
               status="Saved. Scrobbling on this page."
             />
           </Tile>
-          <Tile label="Library covers this page · override" t={t}>
+          <Tile label="A source covers this page · override" t={t}>
             <PickerPanel
               variant={variant}
               mode="setup"
-              name="Popcorn Movies"
-              banner={{ kind: "library", name: "Popcorn Movies" }}
+              name="Example Shows"
+              banner={{ kind: "source", name: "Example Movies", source: "My sites" }}
               fields={[
                 { key: "title", label: "Title", value: "Srimulat", source: "dom" },
                 { key: "year", label: "Year", value: "2023", source: "dom" },
@@ -508,7 +508,7 @@ export function App() {
             <PickerPanel
               variant={variant}
               mode="setup"
-              name="reanime.to"
+              name="animeexample.to"
               fields={[
                 { key: "title", label: "Title", value: "Frieren", source: "dom" },
                 { key: "episode", label: "Episode", value: "3", source: "url" },
@@ -523,7 +523,7 @@ export function App() {
             <PickerPanel
               variant={variant}
               mode="setup"
-              name="reanime.to"
+              name="animeexample.to"
               fields={[
                 { key: "title", label: "Title", value: "Frieren", source: "dom" },
                 { key: "episode", label: "Episode", value: "3", source: "url" },
@@ -538,7 +538,7 @@ export function App() {
             <PickerPanel
               variant={variant}
               mode="setup"
-              name="reanime.to"
+              name="animeexample.to"
               fields={[
                 { key: "title", label: "Title", value: "Frieren", source: "dom" },
                 { key: "episode", label: "Episode", value: "3", source: "url" },
@@ -553,7 +553,7 @@ export function App() {
             <PickerPanel
               variant={variant}
               mode="setup"
-              name="cineby.app"
+              name="examplemovies.app"
               fields={[
                 { key: "title", label: "Title", value: "Severance", source: "meta" },
                 { key: "season", label: "Season", value: "2", source: "url" },
@@ -862,9 +862,9 @@ export function App() {
             <QuickLinksView
               variant={variant}
               items={[
-                { name: "Cineby", direct: "#" },
-                { name: "Popcorn Movies", direct: "#", search: "#" },
-                { name: "Fmovies", search: "#" },
+                { name: "Examplemovies", direct: "#" },
+                { name: "Example Shows", direct: "#", search: "#" },
+                { name: "Cobalt", search: "#" },
               ]}
             />
           </Tile>

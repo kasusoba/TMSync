@@ -1,15 +1,29 @@
-import { RECIPES } from "@/config";
+import { REPO_URL } from "@/config";
 import { actionError } from "@/lib/errors";
 import { defaultRecipeName } from "@/lib/picker/recipe-builder";
 import { applyBackup, buildBackup, parseBackup } from "@/lib/portability/backup";
-import { type Contribution, contribute } from "@/lib/portability/contribute";
-import { type SiteGroup, groupSites, withSiteHosts, withSiteName } from "@/lib/recipes/sites";
+import { sourceFile } from "@/lib/portability/share";
+import { type RecipeState, effectiveRecipes, loadRecipeState, watchRecipes } from "@/lib/recipes";
+import {
+  type SiteGroup,
+  forkBasesOf,
+  groupSites,
+  withSiteHosts,
+  withSiteName,
+} from "@/lib/recipes/sites";
+import {
+  needsSourceAccess,
+  parseSourceUrl,
+  releaseSourceAccess,
+  requestSourceAccess,
+} from "@/lib/recipes/source-access";
+import { type SourceChoice, recipeHash, sourceLabel } from "@/lib/recipes/sources";
 import {
   type AnimeMapCache,
   type BadgePrefs,
   type OptionsIntent,
   type QuickLinkSite,
-  type RemoteRecipes,
+  type RecipeSource,
   anilistCorrections,
   animapOverrides,
   animeMap,
@@ -17,12 +31,14 @@ import {
   connectIntent,
   corrections,
   customRecipes,
+  forkBases,
   malCorrections,
   newPendingSites,
   optionsIntent,
   quickLinks,
   quickLinksEnabled,
-  remoteRecipes,
+  recipeSources,
+  siteSourcePins,
 } from "@/lib/storage";
 import { accessRefusedNote, requestTrackerAccess } from "@/lib/trackers/access";
 import type { AniListIdentity } from "@/lib/trackers/anilist/types";
@@ -83,6 +99,16 @@ function parseHostInput(value: string): string {
       .replace(/^[a-z]+:\/\//i, "")
       .split(/[/?#]/)[0] ?? "";
   return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(bare) ? hostText(bare) : "";
+}
+
+/** Save `text` as a file download named `name`. */
+function saveFile(text: string, type: string, name: string): void {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 /** Hostname a recipe is grouped under: the first host in its scope. */
@@ -193,7 +219,8 @@ function QuickLinkRow({
   onDelete,
   onToggle,
   onEdit,
-  onContribute,
+  sourceName,
+  onShare,
   onDragStart,
   onDragEnter,
   onDragEnd,
@@ -210,8 +237,10 @@ function QuickLinkRow({
   onToggle: (id: string) => void;
   /** Toggle this row's expansion — collapses whichever other row was open. */
   onEdit: () => void;
-  /** Open Contribute with this quick link ticked. */
-  onContribute: () => void;
+  /** The recipe source this link comes from, if it is not the user's own. */
+  sourceName?: string;
+  /** Open Share with this quick link ticked. */
+  onShare: () => void;
   // Drag-to-reorder (HTML5 DnD): handle starts the drag; the row is a drop target.
   onDragStart: () => void;
   onDragEnter: () => void;
@@ -306,12 +335,10 @@ function QuickLinkRow({
         <TrackerMark tracker={site.tracker ?? "trakt"} class="size-4" />
         <span class="min-w-0 flex-1 truncate">
           <span class={clsx("text-[13px] font-medium", t.heading)}>{site.name}</span>
-          {site.source === "library" && (
-            <span class={clsx("ml-1.5 text-[11px]", t.faint)}>· library</span>
-          )}
+          {sourceName && <span class={clsx("ml-1.5 text-[11px]", t.faint)}>· {sourceName}</span>}
         </span>
-        {site.source !== "library" && (
-          <IconBtn t={t} name="external" title="Contribute to library" onClick={onContribute} />
+        {site.source !== "source" && (
+          <IconBtn t={t} name="external" title="Share" onClick={onShare} />
         )}
         <IconBtn t={t} name="edit" title="Edit" onClick={onEdit} />
         <IconBtn t={t} name="trash" title="Delete" danger onClick={() => onDelete(site.id)} />
@@ -405,8 +432,14 @@ function SiteCard({
   onAddHost,
   onRemoveHost,
   onRename,
-  onContribute,
+  onShare,
   onDelete,
+  nameOf,
+  choice,
+  stale,
+  onPin,
+  onUseSource,
+  onKeepMine,
 }: {
   site: SiteGroup;
   isHostEnabled: (host: string) => boolean;
@@ -423,13 +456,24 @@ function SiteCard({
   onAddHost: () => void;
   onRemoveHost: (host: string) => void;
   onRename: (name: string) => void;
-  /** Open Contribute with this site ticked. */
-  onContribute: () => void;
+  /** Open Share with this site ticked. */
+  onShare: () => void;
   onDelete: (id: string) => void;
+  /** A recipe source's display name, by id. */
+  nameOf: (sourceId: string) => string;
+  /** Set when several sources cover this site: which one it uses, and the others. */
+  choice?: SourceChoice;
+  /** The site has forks whose source version changed since. */
+  stale: boolean;
+  /** Use this source for the site, or (null) go back to the list order. */
+  onPin: (sourceId: string | null) => void;
+  onUseSource: () => void;
+  onKeepMine: () => void;
 }) {
   const needsAccess = site.hosts.some((h) => !isHostEnabled(h));
-  // The site has recipes of your own: you can rename it and contribute it.
-  const owned = site.recipes.some((r) => !r.library);
+  // The site has recipes of your own: you can rename it and share it.
+  const owned = site.recipes.some((r) => !r.sourceId);
+  const fromSource = site.recipes.find((r) => r.sourceId)?.sourceId;
   const [naming, setNaming] = useState(false);
   const [draftName, setDraftName] = useState(site.name);
   const saveName = () => {
@@ -479,14 +523,7 @@ function SiteCard({
         )}
         {!naming && (
           <span class="flex shrink-0 items-center gap-1">
-            {owned && (
-              <IconBtn
-                t={t}
-                name="external"
-                title="Contribute this site to the library"
-                onClick={onContribute}
-              />
-            )}
+            {owned && <IconBtn t={t} name="external" title="Share this site" onClick={onShare} />}
             {/* Access is one way: allow once, keep it. The domain dots show the
                 state. Removing a domain or the site's last recipe takes it back. */}
             {!allSites && needsAccess && (
@@ -497,6 +534,61 @@ function SiteCard({
           </span>
         )}
       </div>
+
+      {(fromSource || choice) && (
+        <div class={clsx("flex flex-wrap items-center gap-1.5 text-[11px]", t.sub)}>
+          {fromSource && <span>From {nameOf(choice?.sourceId ?? fromSource)}.</span>}
+          {choice && (
+            <>
+              <span>Also in:</span>
+              {choice.others.map((id) => (
+                <Btn
+                  key={id}
+                  t={t}
+                  tone="ghost"
+                  class="px-2 py-0.5 text-[11px]"
+                  disabled={busy}
+                  title={`Use the recipes from ${nameOf(id)} for this site`}
+                  onClick={() => onPin(id)}
+                >
+                  Use {nameOf(id)}
+                </Btn>
+              ))}
+              {choice.pinned && (
+                <Btn
+                  t={t}
+                  tone="ghost"
+                  class="px-2 py-0.5 text-[11px]"
+                  disabled={busy}
+                  title="Use the highest source in your list for this site"
+                  onClick={() => onPin(null)}
+                >
+                  Use list order
+                </Btn>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {stale && (
+        <div
+          class={clsx(
+            "flex flex-wrap items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-[11px]",
+            t.infoBox,
+          )}
+        >
+          <span>The source has a newer version of the recipes you changed here.</span>
+          <span class="flex items-center gap-1.5">
+            <Btn t={t} tone="ghost" class="px-2 py-0.5 text-[11px]" onClick={onKeepMine}>
+              Keep mine
+            </Btn>
+            <Btn t={t} tone="primary" class="px-2 py-0.5 text-[11px]" onClick={onUseSource}>
+              Use source version
+            </Btn>
+          </span>
+        </div>
+      )}
 
       <div>
         <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>Domains</span>
@@ -545,7 +637,7 @@ function SiteCard({
       <div>
         <span class={clsx("mb-1 block text-[11px] font-medium", t.faint)}>Recipes</span>
         <div class="space-y-1">
-          {site.recipes.map(({ recipe: r, library }) => (
+          {site.recipes.map(({ recipe: r, sourceId }) => (
             <div key={r.id} class="flex items-center justify-between gap-2">
               {/* The card already names the site; a recipe's name shows only when it differs. */}
               <div class="min-w-0">
@@ -560,12 +652,12 @@ function SiteCard({
                   ))}
                 </span>
                 <span class={clsx("block text-[11px]", t.faint)}>
-                  {[recipeKind(r), r.name !== site.name && r.name, library && "library"]
+                  {[recipeKind(r), r.name !== site.name && r.name, sourceId && nameOf(sourceId)]
                     .filter(Boolean)
                     .join(" · ")}
                 </span>
               </div>
-              {!library && (
+              {!sourceId && (
                 <div class="flex shrink-0 items-center">
                   <IconBtn
                     t={t}
@@ -599,11 +691,11 @@ function useSettled(on: boolean, ms: number): boolean {
 }
 
 /**
- * The shared library's freshness, at the foot of the panes it feeds (Sites and
- * Quick links). The library updates itself in the background, so "Update now" sits
+ * The recipe sources' freshness, at the foot of the panes they feed (Sites and
+ * Quick links). Sources update themselves in the background, so "Update now" sits
  * here, next to what it updates, and not in the page header.
  */
-function LibraryFooter({
+function SourcesFooter({
   t,
   busy,
   msg,
@@ -628,7 +720,7 @@ function LibraryFooter({
         class="shrink-0 px-2 py-1 text-[11px]"
         disabled={busy}
         onClick={onUpdate}
-        title="Get the latest recipes and quick links from the shared library now"
+        title="Get the latest recipes and quick links from your recipe sources now"
       >
         <Icon name="refresh" class="text-[11px]" /> Update now
       </Btn>
@@ -642,7 +734,7 @@ const SECTIONS: { id: string; label: string; icon: IconName }[] = [
   { id: "sites", label: "Sites", icon: "frame" },
   { id: "links", label: "Quick links", icon: "link" },
   { id: "corrections", label: "Corrections", icon: "check" },
-  { id: "contribute", label: "Contribute", icon: "external" },
+  { id: "sources", label: "Sources", icon: "link" },
   { id: "backup", label: "Backup", icon: "copy" },
   { id: "display", label: "Display", icon: "settings" },
 ];
@@ -739,8 +831,8 @@ export function App() {
   const [anilistCorr, setAnilistCorr] = useState<Record<string, AniListIdentity | null>>({});
   const [malCorr, setMalCorr] = useState<Record<string, MalIdentity | null>>({});
   const [animap, setAnimap] = useState<AnimapOverrides>({ forward: {}, reverse: {} });
-  const [remote, setRemote] = useState<RemoteRecipes | null>(null);
-  /** The CDN anime-map crosswalk cache (multi-track). Shown in the Library pane so
+  const [recipeState, setRecipeState] = useState<RecipeState | null>(null);
+  /** The CDN anime-map crosswalk cache (multi-track). Shown in the Sites pane so
    * "how current is my episode mapping?" is answerable without the devtools. */
   const [mapCache, setMapCache] = useState<AnimeMapCache | null>(null);
   // `working` guards against a second action; `busy` is what the buttons show.
@@ -772,10 +864,14 @@ export function App() {
   const [backupBusy, setBackupBusy] = useState(false);
   const [backupNote, setBackupNote] = useState<string | null>(null);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
-  /** Contribute checklist: the rows the user unticked (all are ticked at first). */
-  const [skipContrib, setSkipContrib] = useState<Set<string>>(new Set());
-  /** After "Contribute": the paste step for a bundle too large to prefill. */
-  const [contribNote, setContribNote] = useState<string | null>(null);
+  /** Share checklist: the rows the user unticked (all are ticked at first). */
+  const [skipShare, setSkipShare] = useState<Set<string>>(new Set());
+  const [shareNote, setShareNote] = useState<string | null>(null);
+  /** The "add a recipe source" input, and the result of the last add or refresh. */
+  const [sourceUrl, setSourceUrl] = useState("");
+  const [sourceNote, setSourceNote] = useState<string | null>(null);
+  /** Sources whose host needs access TMSync does not hold (from a backup or sync). */
+  const [blockedSources, setBlockedSources] = useState<Set<string>>(new Set());
   /** Feedback for a Connect attempt (Options mirrors the popup — a failed/cancelled
    * OAuth used to silently do nothing here). */
   const [accountMsg, setAccountMsg] = useState<string | null>(null);
@@ -786,31 +882,34 @@ export function App() {
   const has = (s: string) => s.toLowerCase().includes(q.toLowerCase());
 
   const refresh = async () => {
-    const [acc, sit, rec, ql, qlOn, c, ac, mc, am, rem, amap, bp, broad] = await Promise.all([
+    const [acc, sit, rs, ql, qlOn, c, ac, mc, am, amap, bp, broad] = await Promise.all([
       loadAccounts(),
       sendMessage("listEnabledSites", undefined),
-      customRecipes.getValue(),
+      loadRecipeState(),
       quickLinks.getValue(),
       quickLinksEnabled.getValue(),
       corrections.getValue(),
       anilistCorrections.getValue(),
       malCorrections.getValue(),
       animapOverrides.getValue(),
-      remoteRecipes.getValue(),
       animeMap.getValue(),
       badgePrefs.getValue(),
       browser.permissions.contains({ origins: ["*://*/*"] }),
     ]);
     setAccounts(acc);
     setSites(sit);
-    setRecipes(rec);
+    setRecipes(rs.custom);
+    setRecipeState(rs);
+    const blocked = await Promise.all(
+      rs.sources.map(async (x) => ((await needsSourceAccess(x.url)) ? [x.id] : [])),
+    );
+    setBlockedSources(new Set(blocked.flat()));
     setLinks(ql);
     setLinksOn(qlOn);
     setCorr(c);
     setAnilistCorr(ac);
     setMalCorr(mc);
     setAnimap(am);
-    setRemote(rem);
     setMapCache(amap);
     setBadge(bp);
     setAllSites(broad);
@@ -818,7 +917,7 @@ export function App() {
 
   // Toggle the broad "enable all sites" grant. The request/remove must run in this
   // page's user-gesture context; the SW then reconciles the catch-all vs per-origin
-  // scripts. On grant, every recipe (synced/imported/CDN) is live with no prompt.
+  // scripts. On grant, every recipe (synced/imported/sourced) is live with no prompt.
   const toggleAllSites = () =>
     act(async () => {
       if (allSites) {
@@ -830,6 +929,12 @@ export function App() {
     });
 
   // --- a site's domains ---
+  // Changing a source site's domains forks its recipes; note what they came from.
+  const saveSiteHosts = async (site: SiteGroup, hosts: string[]) => {
+    const custom = await customRecipes.getValue();
+    await forkBases.setValue({ ...(await forkBases.getValue()), ...forkBasesOf(site, custom) });
+    await customRecipes.setValue(withSiteHosts(site, hosts, custom));
+  };
   // Streaming sites move domain and keep their pages, so a site's recipes stay
   // right and only the domain list changes. A move is "add the new, remove the old".
   const startAddHost = (key: string) => {
@@ -848,9 +953,7 @@ export function App() {
       if (!allSites && !(await browser.permissions.request({ origins: [`https://${to}/*`] }))) {
         return setHostNote("TMSync needs access to the new domain to work there.");
       }
-      await customRecipes.setValue(
-        withSiteHosts(site, [...site.hosts, to], await customRecipes.getValue()),
-      );
+      await saveSiteHosts(site, [...site.hosts, to]);
       await sendMessage("registerSite", `https://${to}`);
       setAddingHostFor(null);
     });
@@ -863,7 +966,7 @@ export function App() {
       const rest = site.hosts.filter((h) => !isGone(h));
       const target = rest[0];
       if (!target) return; // the last domain goes with the recipes, not on its own
-      await customRecipes.setValue(withSiteHosts(site, rest, await customRecipes.getValue()));
+      await saveSiteHosts(site, rest);
       const ql = await quickLinks.getValue();
       await quickLinks.setValue(ql.map((l) => (isGone(linkHost(l)) ? withLinkHost(l, target) : l)));
       await sendMessage("unregisterSite", `https://${gone}`);
@@ -900,20 +1003,159 @@ export function App() {
     await badgePrefs.setValue(next);
   };
 
-  // Pull the whole shared library (recipes AND quick links) from the central repo.
-  const syncLibrary = async () => {
+  // Refetch every recipe source (recipes AND quick links) and the anime map.
+  const updateSources = async () => {
     setBusy(true);
     setSyncMsg(null);
     const out = await sendMessage("refreshRecipes", undefined);
-    setSyncMsg(out.ok ? `Updated · ${out.count} recipes` : `Couldn’t sync: ${out.error}`);
-    setRemote(await remoteRecipes.getValue());
-    setMapCache(await animeMap.getValue());
+    setSyncMsg(out.ok ? `Updated · ${out.count} recipes` : `Couldn’t update: ${out.error}`);
+    await refresh();
     setBusy(false);
   };
+
+  // --- recipe sources ---
+  const sourceList = recipeState?.sources ?? [];
+  const nameOf = (id: string) => {
+    const src = sourceList.find((x) => x.id === id);
+    return src ? sourceLabel(src, recipeState?.caches[id]) : "a removed source";
+  };
+
+  const addSource = () =>
+    act(async () => {
+      const url = parseSourceUrl(sourceUrl);
+      if (!url) return setSourceNote("Paste the https:// address of a recipe source file.");
+      if (sourceList.some((x) => x.url === url)) return setSourceNote("You already have it.");
+      // First, while the click still counts as a gesture.
+      if (!(await requestSourceAccess(url))) {
+        return setSourceNote("TMSync needs access to that address to read the file.");
+      }
+      const source: RecipeSource = { id: crypto.randomUUID(), url, enabled: true };
+      await recipeSources.setValue([...(await recipeSources.getValue()), source]);
+      const out = await sendMessage("refreshRecipes", { sourceId: source.id });
+      setSourceUrl("");
+      setSourceNote(
+        out.ok
+          ? `Added · ${out.count} recipe${out.count === 1 ? "" : "s"}.`
+          : `Added, but it couldn’t be read: ${out.error}`,
+      );
+    });
+
+  const setSources = (next: RecipeSource[]) => act(() => recipeSources.setValue(next));
+
+  const moveSource = (id: string, by: -1 | 1) => {
+    const list = [...sourceList];
+    const at = list.findIndex((x) => x.id === id);
+    const to = at + by;
+    const item = list[at];
+    if (!item || to < 0 || to >= list.length) return;
+    list.splice(at, 1);
+    list.splice(to, 0, item);
+    void setSources(list);
+  };
+
+  const toggleSource = (id: string) =>
+    act(async () => {
+      const src = sourceList.find((x) => x.id === id);
+      // Turning on: ask for host access first, while the click is a gesture.
+      if (src && !src.enabled && !(await requestSourceAccess(src.url))) {
+        return setSourceNote("TMSync needs access to that address to read the file.");
+      }
+      const next = sourceList.map((x) => (x.id === id ? { ...x, enabled: !x.enabled } : x));
+      await recipeSources.setValue(next);
+      if (next.find((x) => x.id === id)?.enabled) {
+        await sendMessage("refreshRecipes", { sourceId: id });
+      }
+    });
+
+  const refreshSource = (id: string) =>
+    act(async () => {
+      const src = sourceList.find((x) => x.id === id);
+      if (src && !(await requestSourceAccess(src.url))) {
+        return setSourceNote("TMSync needs access to that address to read the file.");
+      }
+      const out = await sendMessage("refreshRecipes", { sourceId: id });
+      setSourceNote(
+        out.ok ? `${nameOf(id)} · ${out.count} recipes.` : `${nameOf(id)}: ${out.error}`,
+      );
+    });
+
+  const removeSource = (id: string) =>
+    act(async () => {
+      const gone = sourceList.find((x) => x.id === id);
+      const next = sourceList.filter((x) => x.id !== id);
+      await recipeSources.setValue(next);
+      if (gone && !sites.includes(new URL(gone.url).origin)) {
+        await releaseSourceAccess(
+          gone.url,
+          next.map((x) => x.url),
+        );
+      }
+    });
+
+  // A site that several sources cover: pin one, or go back to the list order.
+  const pinSite = (choice: SourceChoice, sourceId: string | null) =>
+    act(async () => {
+      const pins = { ...(await siteSourcePins.getValue()) };
+      for (const h of choice.hosts) {
+        if (sourceId) pins[h] = sourceId;
+        else delete pins[h];
+      }
+      await siteSourcePins.setValue(pins);
+    });
+
+  // A fork whose source version changed: go back to the source's version of the
+  // whole site (every fork in it, so its recipes stay on the same domains), or
+  // keep the forks and stop asking.
+  const staleOf = (site: SiteGroup) =>
+    site.recipes.filter((r) => !r.sourceId && recipeState?.stale.includes(r.recipe.id));
+  const useSourceVersion = (site: SiteGroup) =>
+    act(async () => {
+      const ids = new Set(
+        site.recipes
+          .filter((r) => !r.sourceId && recipeState?.bases[r.recipe.id])
+          .map((r) => r.recipe.id),
+      );
+      await customRecipes.setValue((await customRecipes.getValue()).filter((r) => !ids.has(r.id)));
+      const bases = { ...(await forkBases.getValue()) };
+      for (const id of ids) delete bases[id];
+      await forkBases.setValue(bases);
+    });
+  const keepMine = (site: SiteGroup) =>
+    act(async () => {
+      const bases = { ...(await forkBases.getValue()) };
+      for (const { recipe } of staleOf(site)) {
+        const base = bases[recipe.id];
+        const current = recipeState?.sourced.find(
+          (x) => x.sourceId === base?.sourceId && x.recipe.id === recipe.id,
+        );
+        if (base && current) bases[recipe.id] = { ...base, hash: recipeHash(current.recipe) };
+      }
+      await forkBases.setValue(bases);
+    });
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: load once on open
   useEffect(() => {
     void refresh();
+  }, []);
+
+  // Stay current when storage changes behind this page: turning a source off makes
+  // the background remove its quick links a moment later, a refresh brings new
+  // recipes, and another device can sync. Debounced, since one change can touch
+  // several items.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: subscribe once on open
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const later = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => void refresh(), 150);
+    };
+    const offRecipes = watchRecipes(later);
+    const offLinks = quickLinks.watch(later);
+    return () => {
+      if (timer) clearTimeout(timer);
+      offRecipes();
+      offLinks();
+    };
   }, []);
 
   // The popup's "Review" asks Options to open on a tab (and filter). Apply it on
@@ -932,7 +1174,7 @@ export function App() {
 
   // With Options open, new sites count as seen: the Sites badge in the sidebar
   // shows them on every tab. So the popup nudge is only for sites that arrive
-  // while Options is closed (the background library sync, another device, an
+  // while Options is closed (a background source refresh, another device, an
   // import from elsewhere).
   useEffect(() => {
     const clear = (list: string[] | null) => {
@@ -992,9 +1234,8 @@ export function App() {
       const next = all.filter((r) => r.id !== id);
       await customRecipes.setValue(next);
       if (!gone) return;
-      const covered = new Set(
-        [...next, ...(remote?.recipes ?? [])].flatMap(recipeHosts).map(normalizeHost),
-      );
+      const sourced = (recipeState?.sourced ?? []).map((x) => x.recipe);
+      const covered = new Set([...next, ...sourced].flatMap(recipeHosts).map(normalizeHost));
       for (const h of recipeHosts(gone)) {
         if (covered.has(normalizeHost(h))) continue;
         await sendMessage("unregisterSite", `https://${h}`);
@@ -1084,13 +1325,7 @@ export function App() {
     setExportFrom(tracker);
     const out = await sendMessage("exportLetterboxd", { tracker });
     if (out.ok && out.csv !== undefined) {
-      const blob = new Blob([out.csv], { type: "text/csv;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${tracker}-letterboxd.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
+      saveFile(out.csv, "text/csv;charset=utf-8", `${tracker}-letterboxd.csv`);
       const n = out.count ?? 0;
       setExportNote(
         `Exported ${n} ${n === 1 ? "entry" : "entries"}. Import the file at Letterboxd → Settings → Import & Export.`,
@@ -1101,34 +1336,17 @@ export function App() {
     setExporting(false);
   };
 
-  // --- contribute site config to the central repo (prefilled GitHub issue) ---
-  const openContribution = async (c: Contribution) => {
-    setContribNote(null);
-    if (c.paste) {
-      // Too long to prefill: copy the JSON, and the issue asks the user to paste it.
-      try {
-        await navigator.clipboard.writeText(c.json);
-        setContribNote("JSON copied. Paste it into the issue.");
-      } catch {
-        setContribNote("Couldn’t copy the JSON. Use Copy JSON, then paste it into the issue.");
-      }
-    }
-    window.open(c.url, "_blank", "noreferrer");
-  };
-
   // --- backup (export / import the user-owned deltas) ---
   const exportBackup = async () => {
     setBackupBusy(true);
     setBackupNote(null);
     try {
       const backup = await buildBackup();
-      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `tmsync-backup-${new Date(backup.exportedAt).toISOString().slice(0, 10)}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
+      saveFile(
+        JSON.stringify(backup, null, 2),
+        "application/json",
+        `tmsync-backup-${new Date(backup.exportedAt).toISOString().slice(0, 10)}.json`,
+      );
       setBackupNote("Exported your data to a file.");
     } catch {
       setBackupNote("Couldn’t export.");
@@ -1150,9 +1368,12 @@ export function App() {
       // Imported recipes on an already-granted origin (or under the broad grant)
       // should go live now, not on next reload.
       await sendMessage("syncSiteRegistrations", undefined);
+      // Fetch the recipe sources the backup added.
+      if (s.sources) await sendMessage("refreshRecipes", undefined);
       await refresh();
       const parts = [
         `${s.recipes} recipe${s.recipes === 1 ? "" : "s"}`,
+        ...(s.sources ? [`${s.sources} recipe source${s.sources === 1 ? "" : "s"}`] : []),
         `${s.quickLinks} quick link${s.quickLinks === 1 ? "" : "s"}`,
         `${s.corrections} correction${s.corrections === 1 ? "" : "s"}`,
         `${s.manualSelections} manual pick${s.manualSelections === 1 ? "" : "s"}`,
@@ -1292,7 +1513,9 @@ export function App() {
     })),
   ];
   const suggestions = recipeSuggestions(recipes, links);
-  const siteGroups = groupSites(recipes, remote?.recipes ?? []);
+  const siteGroups = recipeState ? groupSites(effectiveRecipes(recipeState)) : [];
+  const choiceOf = (site: SiteGroup) =>
+    recipeState?.choices.find((c) => site.hosts.some((h) => c.hosts.includes(normalizeHost(h))));
   const isHostEnabled = (h: string) => allSites || sites.includes(`https://${h}`);
   const siteNeedsAccess = (site: SiteGroup) => site.hosts.some((h) => !isHostEnabled(h));
   // Origins the user enabled that no recipe covers: player iframes, enabled from
@@ -1314,16 +1537,16 @@ export function App() {
   const needsFilter = needsOnly && toAllow.length > 0;
   const visibleSites = needsFilter ? toAllow : matchingSites;
 
-  // --- contribute: a site is its own recipes plus its quick link ---
+  // --- share: a site is its own recipes plus its quick link ---
   const ownRecipes = (site: SiteGroup) =>
-    site.recipes.filter((r) => !r.library).map((r) => r.recipe);
+    site.recipes.filter((r) => !r.sourceId).map((r) => r.recipe);
   const ownLinksFor = (site: SiteGroup) => {
     const hosts = new Set(site.hosts.map(normalizeHost));
-    return links.filter((l) => l.source !== "library" && hosts.has(normalizeHost(linkHost(l))));
+    return links.filter((l) => l.source !== "source" && hosts.has(normalizeHost(linkHost(l))));
   };
   // Checklist rows: each site of yours, then quick links that belong to none of them.
   const siteRows = siteGroups
-    .filter((g) => g.recipes.some((r) => !r.library))
+    .filter((g) => g.recipes.some((r) => !r.sourceId))
     .map((g) => ({
       key: `site:${g.key}`,
       name: g.name,
@@ -1331,44 +1554,50 @@ export function App() {
       links: ownLinksFor(g),
     }));
   const inSiteRows = new Set(siteRows.flatMap((r) => r.links.map((l) => l.id)));
-  const contribRows = [
+  const shareRows = [
     ...siteRows,
     ...links
-      .filter((l) => l.source !== "library" && !inSiteRows.has(l.id))
+      .filter((l) => l.source !== "source" && !inSiteRows.has(l.id))
       .map((l) => ({ key: `link:${l.id}`, name: l.name, recipes: [] as Recipe[], links: [l] })),
   ];
-  const picked = contribRows.filter((r) => !skipContrib.has(r.key));
+  const picked = shareRows.filter((r) => !skipShare.has(r.key));
   const pickedCount = picked.reduce((n, r) => n + r.recipes.length + r.links.length, 0);
-  const toggleContrib = (key: string) =>
-    setSkipContrib((prev) => {
+  const toggleShare = (key: string) =>
+    setSkipShare((prev) => {
       const next = new Set(prev);
       if (!next.delete(key)) next.add(key);
       return next;
     });
-  // A quick link of one of your sites is contributed with that site.
-  const contribKeyOfLink = (l: QuickLinkSite) =>
+  // A quick link of one of your sites is shared with that site.
+  const shareKeyOfLink = (l: QuickLinkSite) =>
     siteRows.find((r) => r.links.some((x) => x.id === l.id))?.key ?? `link:${l.id}`;
-  // From a Sites or Quick links row: open Contribute with only that row ticked.
-  const pickContribution = (key: string) => {
-    setSkipContrib(new Set(contribRows.map((r) => r.key).filter((k) => k !== key)));
-    setContribNote(null);
+  // From a Sites or Quick links row: open Share with only that row ticked.
+  const pickShare = (key: string) => {
+    setSkipShare(new Set(shareRows.map((r) => r.key).filter((k) => k !== key)));
+    setShareNote(null);
     setQ("");
-    setActive("contribute");
+    setActive("sources");
   };
-  const pickedContribution = () =>
-    contribute(
+  const pickedFile = () =>
+    sourceFile(
       picked.flatMap((r) => r.recipes),
       picked.flatMap((r) => r.links),
       picked.length === 1 ? picked[0]?.name : undefined,
     );
-  const copyContribution = async () => {
+  const copyShare = async () => {
     try {
-      await navigator.clipboard.writeText(pickedContribution().json);
-      setCopied("contribution");
+      await navigator.clipboard.writeText(pickedFile());
+      setCopied("share");
       setTimeout(() => setCopied(null), 1500);
     } catch {
-      setContribNote("Couldn’t copy. The browser blocked the clipboard.");
+      setShareNote("Couldn’t copy. The browser blocked the clipboard.");
     }
+  };
+  const downloadShare = () => {
+    saveFile(pickedFile(), "application/json", "tmsync-sites.json");
+    setShareNote(
+      "Saved. Put the file anywhere with a public https address (a GitHub gist works), then share that address.",
+    );
   };
 
   const counts: Record<string, number> = {
@@ -1383,9 +1612,6 @@ export function App() {
     <div class={clsx("flex min-h-screen flex-col font-sans", t.page)}>
       <header class={clsx("flex items-center gap-3 border-b px-5 py-3.5", t.divider)}>
         <span class={clsx("text-[15px] font-semibold tracking-tight", t.heading)}>TMSync</span>
-        <div class="ml-auto flex items-center gap-2.5">
-          {contribNote && <span class={clsx("text-[12px]", t.sub)}>{contribNote}</span>}
-        </div>
       </header>
 
       <div class="flex flex-1">
@@ -1431,7 +1657,7 @@ export function App() {
               t={t}
               name="github"
               title="TMSync on GitHub"
-              onClick={() => window.open(RECIPES.contributeUrl, "_blank", "noreferrer")}
+              onClick={() => window.open(REPO_URL, "_blank", "noreferrer")}
             />
           </div>
         </nav>
@@ -1478,22 +1704,13 @@ export function App() {
               <>
                 <PaneHead title="Sites" />
                 <p class={clsx("text-[12px] leading-relaxed", t.sub)}>
-                  Each site, its domains, and the recipes that read it. Yours win over the shared
-                  library where they overlap. If a site moves, add its new domain. Add a site with
-                  “Set up this site” in the popup, or{" "}
-                  <a
-                    href={RECIPES.contributeUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    class={clsx("underline underline-offset-2", t.link)}
-                  >
-                    contribute here
-                  </a>
-                  .
+                  Each site, its domains, and the recipes that read it. Yours win over your recipe
+                  sources where they overlap. If a site moves, add its new domain. Add a site with
+                  “Set up this site” in the popup, or add a recipe source under Sources.
                 </p>
 
                 {/* Broad grant: one toggle makes every recipe (synced, imported, or
-                    from the library) work instantly, with no per-site prompt. */}
+                    from a source) work instantly, with no per-site prompt. */}
                 <div
                   class={clsx(
                     "mb-3 flex items-start justify-between gap-3 rounded-lg px-3 py-2.5",
@@ -1513,7 +1730,7 @@ export function App() {
                 {siteGroups.length + playerFrames.length === 0 ? (
                   <p class={clsx("rounded-lg px-3 py-4 text-center text-[12px]", t.card, t.sub)}>
                     No sites yet. Open the TMSync popup on a streaming site and use “Set up this
-                    site”, or import a backup.
+                    site”, add a recipe source under Sources, or import a backup.
                   </p>
                 ) : (
                   <Filter q={q} setQ={setQ} placeholder="Filter sites…" />
@@ -1563,8 +1780,17 @@ export function App() {
                       onAddHost={() => void addHost(site)}
                       onRemoveHost={(h) => void removeHost(site, h)}
                       onRename={(name) => void renameSite(site, name)}
-                      onContribute={() => pickContribution(`site:${site.key}`)}
+                      onShare={() => pickShare(`site:${site.key}`)}
                       onDelete={deleteRecipe}
+                      nameOf={nameOf}
+                      choice={choiceOf(site)}
+                      stale={staleOf(site).length > 0}
+                      onPin={(id) => {
+                        const c = choiceOf(site);
+                        if (c) void pinSite(c, id);
+                      }}
+                      onUseSource={() => void useSourceVersion(site)}
+                      onKeepMine={() => void keepMine(site)}
                     />
                   ))}
                 </div>
@@ -1606,13 +1832,15 @@ export function App() {
                   </>
                 )}
 
-                {/* Where the shared recipes and the anime map come from, and how fresh
-                    they are. Both ride the same CDN and the same library update. */}
-                <LibraryFooter t={t} busy={busy} msg={syncMsg} onUpdate={syncLibrary}>
+                {/* Where the sourced recipes and the anime map come from, and how fresh
+                    they are. One "Update now" refreshes both. */}
+                <SourcesFooter t={t} busy={busy} msg={syncMsg} onUpdate={updateSources}>
                   <p>
-                    {remote
-                      ? `Library · ${remote.recipes.length} shared recipes · updated ${new Date(remote.fetchedAt).toLocaleString()}`
-                      : "Library · not fetched yet · it syncs automatically in the background."}
+                    {sourceList.length > 0
+                      ? `Recipe sources · ${sourceList.filter((x) => x.enabled).length} on · ${
+                          recipeState?.sourced.length ?? 0
+                        } recipes in use`
+                      : "Recipe sources · none yet · add one under Sources."}
                   </p>
                   <p>
                     {mapCache
@@ -1621,7 +1849,7 @@ export function App() {
                         } · updated ${new Date(mapCache.fetchedAt).toLocaleString()}`
                       : "Anime map · not fetched yet · anime multi-tracking waits for it."}
                   </p>
-                </LibraryFooter>
+                </SourcesFooter>
               </>
             )}
 
@@ -1667,7 +1895,8 @@ export function App() {
                           onDelete={deleteLink}
                           onToggle={toggleLink}
                           onEdit={() => setOpenLinkId((cur) => (cur === s.id ? null : s.id))}
-                          onContribute={() => pickContribution(contribKeyOfLink(s))}
+                          sourceName={s.sourceId ? nameOf(s.sourceId) : undefined}
+                          onShare={() => pickShare(shareKeyOfLink(s))}
                           onDragStart={() => onLinkDragStart(s.id)}
                           onDragEnter={() => onLinkDragEnter(s.id)}
                           onDragEnd={onLinkDragEnd}
@@ -1697,15 +1926,13 @@ export function App() {
                     ))}
                   </div>
                 )}
-                <LibraryFooter t={t} busy={busy} msg={syncMsg} onUpdate={syncLibrary}>
+                <SourcesFooter t={t} busy={busy} msg={syncMsg} onUpdate={updateSources}>
                   <p>
-                    {remote
-                      ? `Links marked “library” come from the shared library · ${
-                          links.filter((l) => l.source === "library").length
-                        } shared links · updated ${new Date(remote.fetchedAt).toLocaleString()}`
-                      : "Links marked “library” come from the shared library · not fetched yet · it syncs automatically in the background."}
+                    {`A link with a source name comes from that recipe source, and arrives off · ${
+                      links.filter((l) => l.source === "source").length
+                    } source links.`}
                   </p>
-                </LibraryFooter>
+                </SourcesFooter>
               </>
             )}
 
@@ -1769,16 +1996,170 @@ export function App() {
               </>
             )}
 
-            {active === "contribute" && (
+            {active === "sources" && (
               <>
-                <PaneHead title="Contribute" />
+                <PaneHead
+                  title="Recipe sources"
+                  right={
+                    sourceList.length > 0 ? (
+                      <Btn t={t} tone="ghost" disabled={busy} onClick={updateSources}>
+                        <Icon name="refresh" class="text-[12px]" /> Refresh all
+                      </Btn>
+                    ) : undefined
+                  }
+                />
                 <p class={clsx("text-[12px] leading-relaxed", t.sub)}>
-                  Share your recipes &amp; quick links with everyone. This opens a GitHub issue with
-                  them filled in: site config only, no watch data. A maintainer checks it, then it
-                  goes into the shared library. Tick what to share, then open an issue, or copy the
-                  JSON to paste it yourself.
+                  TMSync comes with no sites. A recipe source is a file of sites that someone made
+                  and put online. Paste its address to use its sites. TMSync reads it as data and
+                  never runs code from it. Reading it shows your IP address to its host, but no
+                  watch data goes there. When two sources cover one site, the higher one wins.{" "}
+                  <a
+                    href={`${REPO_URL}/blob/main/docs/RECIPES.md#recipe-sources`}
+                    target="_blank"
+                    rel="noreferrer"
+                    class={clsx("underline underline-offset-2", t.link)}
+                  >
+                    How to make one
+                  </a>
+                  .
                 </p>
-                {contribRows.length === 0 ? (
+                <div class="flex items-center gap-1.5">
+                  <input
+                    value={sourceUrl}
+                    placeholder="https://…/sites.json"
+                    spellcheck={false}
+                    onInput={(e) => setSourceUrl((e.target as HTMLInputElement).value)}
+                    onKeyDown={(e) => e.key === "Enter" && void addSource()}
+                    class={clsx(
+                      "min-w-0 flex-1 rounded-lg px-2.5 py-1.5 font-mono text-[12px] outline-none ring-inset focus:ring-2",
+                      t.input,
+                    )}
+                  />
+                  <Btn
+                    t={t}
+                    tone="primary"
+                    disabled={busy || !sourceUrl.trim()}
+                    onClick={() => void addSource()}
+                  >
+                    <Icon name="plus" class="text-[12px]" /> Add
+                  </Btn>
+                </div>
+                {sourceNote && (
+                  <p class={clsx("rounded-md px-2.5 py-1.5 text-[11px]", t.infoBox)}>
+                    {sourceNote}
+                  </p>
+                )}
+                {sourceList.length === 0 ? (
+                  <p class={clsx("rounded-lg px-3 py-4 text-center text-[12px]", t.card, t.sub)}>
+                    No recipe sources yet.
+                  </p>
+                ) : (
+                  <div class="space-y-1.5">
+                    {sourceList.map((src, i) => {
+                      const cache = recipeState?.caches[src.id];
+                      const status = !cache
+                        ? "Not read yet"
+                        : [
+                            `${cache.recipes.length} recipe${cache.recipes.length === 1 ? "" : "s"}`,
+                            cache.links.length > 0 &&
+                              `${cache.links.length} quick link${cache.links.length === 1 ? "" : "s"}`,
+                            `updated ${new Date(cache.fetchedAt).toLocaleString()}`,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ");
+                      return (
+                        <div
+                          key={src.id}
+                          class={clsx("flex items-center gap-3 rounded-lg px-3 py-2", t.card)}
+                        >
+                          <Switch
+                            on={src.enabled}
+                            t={t}
+                            onClick={() => void toggleSource(src.id)}
+                          />
+                          <span class={clsx("min-w-0 flex-1", !src.enabled && "opacity-50")}>
+                            <span class={clsx("block truncate text-[13px] font-medium", t.heading)}>
+                              {sourceLabel(src, cache)}
+                              {cache?.homepage && (
+                                <a
+                                  href={cache.homepage}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  class={clsx(
+                                    "ml-1.5 text-[11px] font-normal underline underline-offset-2",
+                                    t.link,
+                                  )}
+                                >
+                                  homepage
+                                </a>
+                              )}
+                            </span>
+                            <code class={clsx("block truncate font-mono text-[11px]", t.faint)}>
+                              {src.url}
+                            </code>
+                            <span class={clsx("block text-[11px]", t.sub)}>
+                              {status}
+                              {cache?.error && ` · last try failed: ${cache.error}`}
+                            </span>
+                          </span>
+                          {src.enabled && blockedSources.has(src.id) && (
+                            <Btn
+                              t={t}
+                              tone="primary"
+                              disabled={busy}
+                              title="TMSync needs access to this address to read the file"
+                              onClick={() => void refreshSource(src.id)}
+                            >
+                              Allow
+                            </Btn>
+                          )}
+                          <span class="flex shrink-0 items-center">
+                            <IconBtn
+                              t={t}
+                              name="up"
+                              title="Move up (wins over the ones below)"
+                              disabled={busy || i === 0}
+                              onClick={() => moveSource(src.id, -1)}
+                            />
+                            <IconBtn
+                              t={t}
+                              name="down"
+                              title="Move down"
+                              disabled={busy || i === sourceList.length - 1}
+                              onClick={() => moveSource(src.id, 1)}
+                            />
+                            <IconBtn
+                              t={t}
+                              name="refresh"
+                              title="Refresh"
+                              disabled={busy || !src.enabled}
+                              onClick={() => void refreshSource(src.id)}
+                            />
+                            <IconBtn
+                              t={t}
+                              name="trash"
+                              title="Remove source"
+                              danger
+                              disabled={busy}
+                              onClick={() => void removeSource(src.id)}
+                            />
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <div class={clsx("flex items-center gap-2 px-1 pt-4 text-[11px]", t.faint)}>
+                  <span class="font-medium uppercase tracking-wide">Share your sites</span>
+                  <span class="h-px flex-1 bg-current opacity-20" />
+                </div>
+                <p class={clsx("text-[12px] leading-relaxed", t.sub)}>
+                  Save your recipes and quick links as a source file: site config only, no watch
+                  data. Put it anywhere with a public https address, for example a GitHub gist, and
+                  anyone can add that address as a source.
+                </p>
+                {shareRows.length === 0 ? (
                   <p class={clsx("rounded-lg px-3 py-4 text-center text-[12px]", t.card, t.sub)}>
                     Nothing to share yet. Recipes and quick links you make show here.
                   </p>
@@ -1787,7 +2168,7 @@ export function App() {
                     {/* One row per site (its recipes and its quick link) or loose
                         quick link. All ticked at first: untick what to keep back. */}
                     <div class="space-y-1.5">
-                      {contribRows.map((row) => (
+                      {shareRows.map((row) => (
                         <label
                           key={row.key}
                           class={clsx(
@@ -1797,8 +2178,8 @@ export function App() {
                         >
                           <input
                             type="checkbox"
-                            checked={!skipContrib.has(row.key)}
-                            onChange={() => toggleContrib(row.key)}
+                            checked={!skipShare.has(row.key)}
+                            onChange={() => toggleShare(row.key)}
                             class="size-4 shrink-0 cursor-pointer accent-ikura"
                           />
                           <span class="min-w-0 flex-1">
@@ -1824,38 +2205,40 @@ export function App() {
                         t={t}
                         tone="ghost"
                         onClick={() =>
-                          setSkipContrib(
-                            picked.length === contribRows.length
-                              ? new Set(contribRows.map((r) => r.key))
+                          setSkipShare(
+                            picked.length === shareRows.length
+                              ? new Set(shareRows.map((r) => r.key))
                               : new Set(),
                           )
                         }
                       >
-                        {picked.length === contribRows.length ? "Select none" : "Select all"}
+                        {picked.length === shareRows.length ? "Select none" : "Select all"}
                       </Btn>
                       <span class="flex items-center gap-2">
                         <Btn
                           t={t}
                           tone="ghost"
                           disabled={pickedCount === 0}
-                          onClick={() => void copyContribution()}
+                          onClick={() => void copyShare()}
                         >
-                          <Icon
-                            name={copied === "contribution" ? "check" : "copy"}
-                            class="text-[12px]"
-                          />
-                          {copied === "contribution" ? "Copied" : "Copy JSON"}
+                          <Icon name={copied === "share" ? "check" : "copy"} class="text-[12px]" />
+                          {copied === "share" ? "Copied" : "Copy JSON"}
                         </Btn>
                         <Btn
                           t={t}
                           tone="primary"
                           disabled={pickedCount === 0}
-                          onClick={() => void openContribution(pickedContribution())}
+                          onClick={downloadShare}
                         >
-                          <Icon name="external" class="text-[12px]" /> Open issue · {pickedCount}
+                          <Icon name="external" class="text-[12px]" /> Save file · {pickedCount}
                         </Btn>
                       </span>
                     </div>
+                    {shareNote && (
+                      <p class={clsx("rounded-md px-2.5 py-1.5 text-[11px]", t.infoBox)}>
+                        {shareNote}
+                      </p>
+                    )}
                   </>
                 )}
               </>

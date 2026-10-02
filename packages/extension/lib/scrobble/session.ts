@@ -1,4 +1,5 @@
 import { noteFrameDiag } from "@/lib/diagnostics/why";
+import { openShadowRoots, shadowVideos } from "@/lib/scrobble/deep-video";
 import { quickLinkSlugs } from "@/lib/storage";
 import { inferNativeTracker } from "@/lib/trackers";
 import { type Tracker, isSeasonless, trackerLabel } from "@/lib/trackers/types";
@@ -416,7 +417,7 @@ export class SessionManager {
     });
     this.ctx.onInvalidated(() => this.teardownSession());
 
-    // SPA sites often set the real title/og:title AFTER initial load (e.g. cineby
+    // SPA sites often set the real title/og:title AFTER initial load (e.g. examplemovies
     // shows the site name first). Re-extract when <head> metadata changes.
     if (document.head) {
       const headObserver = new MutationObserver(this.scheduleReconcile);
@@ -479,7 +480,7 @@ export class SessionManager {
 
     void this.reconcile();
     // Run in EVERY frame, not just the top: aggregator embeds nest iframes (rive →
-    // vsrc.su → the real video host), and a frame can only see its OWN children.
+    // embeds.example → the real video host), and a frame can only see its OWN children.
     // Each frame reporting its child origins is what surfaces a deeply-nested
     // player in the popup so the user can enable it. (The badge hint stays top-only.)
     this.watchPlayerFrames();
@@ -595,7 +596,7 @@ export class SessionManager {
     }
     let media = result.media;
 
-    // A show whose URL carries no episode (e.g. a Cineby "?play=true" deep link):
+    // A show whose URL carries no episode (e.g. a Examplemovies "?play=true" deep link):
     // the page can't tell us which episode is playing. Apply a season/episode the
     // user supplied for this URL, else prompt for it via the badge — without one
     // the scrobble would fail with "missing episode #".
@@ -631,7 +632,7 @@ export class SessionManager {
     this.episodeAwaiting = false;
     this.localMedia = media;
     // Still missing something this recipe scrapes (a title or an episode)? Keep
-    // watching the DOM — a hover-gated player bar (e.g. aether.bar's `S1 - E5`)
+    // watching the DOM — a hover-gated player bar (e.g. examplemedia.bar's `S1 - E5`)
     // may render it a moment later, and the body observer will re-extract.
     this.awaitingMetadata =
       (recipe.extract?.title !== undefined && !media.title) ||
@@ -829,6 +830,8 @@ export class SessionManager {
   /**
    * The first <video> that isn't a muted, looping background trailer (common on
    * movie landing pages). Falls back to any video if all look like trailers.
+   * Only when the page has no video at all does it look inside open shadow roots
+   * (web-component players), so the common case stays one query.
    */
   private findVideo(): HTMLVideoElement | null {
     const seen = new Set<HTMLVideoElement>();
@@ -841,6 +844,7 @@ export class SessionManager {
         }
       }
     }
+    if (candidates.length === 0) candidates.push(...shadowVideos(document));
     // Exclude muted, looping background trailers entirely (never fall back to
     // one — that would scrobble just from viewing a movie landing page). Prefer
     // a video that's actually playing.
@@ -982,19 +986,33 @@ export class SessionManager {
     // and on a landing page whose only <video> is a muted background trailer
     // (excluded by findVideo) it never stops. A short debounce keeps it cheap.
     let timer: ReturnType<typeof setTimeout> | null = null;
+    // A web-component player can add its <video> inside its shadow root after the
+    // host is in the page, which a document observer never sees. Watch each open
+    // shadow root too, once.
+    const watched = new WeakSet<ShadowRoot>();
+    const watchShadows = () => {
+      for (const root of openShadowRoots(document)) {
+        if (watched.has(root)) continue;
+        watched.add(root);
+        this.videoObserver?.observe(root, { childList: true, subtree: true });
+      }
+    };
     const check = () => {
       timer = null;
       if (this.findVideo()) {
         this.videoObserver?.disconnect();
         this.videoObserver = null;
         void this.ensurePlaying();
+        return;
       }
+      watchShadows();
     };
     this.videoObserver = new MutationObserver(() => {
       if (timer) return;
       timer = setTimeout(check, 400);
     });
     this.videoObserver.observe(document.documentElement, { childList: true, subtree: true });
+    watchShadows();
     this.ctx.onInvalidated(() => {
       if (timer) clearTimeout(timer);
       this.videoObserver?.disconnect();
@@ -1099,7 +1117,7 @@ export class SessionManager {
 
   /**
    * Best-effort: while we're still missing the title/episode, poke the player with
-   * a synthetic pointer/mouse move so a hover-gated control bar (e.g. aether.bar's
+   * a synthetic pointer/mouse move so a hover-gated control bar (e.g. examplemedia.bar's
    * `S1 - E5`) renders WITHOUT the user having to move their mouse. Bounded per
    * session; a re-extract follows shortly after. Some players ignore untrusted
    * events — then the body observer still catches it on the user's first hover.

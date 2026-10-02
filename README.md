@@ -8,15 +8,15 @@
   </p>
 </div>
 
-Automatically scrobble what you watch to your media trackers, on any streaming site. TMSync is
+Automatically scrobble what you watch to your media trackers, on the sites you choose. TMSync is
 multi-tracker by design. Today it supports [Trakt](https://trakt.tv),
 [WeTrakr](https://wetrakr.com), [AniList](https://anilist.co),
 [MyAnimeList](https://myanimelist.net), and [Simkl](https://simkl.com), with room for more.
 
-TMSync is a browser extension for Chrome and Firefox. While you watch on a streaming site it
+TMSync is a browser extension for Chrome and Firefox. While you watch on a site you set up, it
 reads what's playing, finds it on the right tracker, and logs it for you. No manual check-ins.
-It also works on aggregator sites that don't have an official app or API, which most trackers
-can't touch.
+It works on any site with a video player and a readable title, even one with no official app or
+API. TMSync comes with no sites: you add the ones you use.
 
 Each thing you watch is routed to the trackers that fit it, all at once if you like:
 
@@ -47,9 +47,12 @@ idea, made general across trackers.
   WeTrakr, and Simkl update in real time, so your profile shows what you're currently watching. AniList
   and MyAnimeList get one list update per episode, once you pass the point where it counts as
   watched.
-- Works on most sites with a video and a readable title, including ones with no API.
-- Lets you add a new site yourself with a point-and-click picker, like an ad blocker's element
+- Works on any site with a video and a readable title, including ones with no API. It comes with
+  no sites, and you add the ones you use.
+- Lets you add a site yourself with a point-and-click picker, like an ad blocker's element
   picker. No code.
+- Or add a recipe source: a file of sites that someone else set up, at a web address. Share your
+  own sites the same way.
 - Got the wrong match? Click the badge, search the tracker, pick the right one. It remembers the fix.
 - Rate what you watch and keep a private note per item, synced back to your tracker (Simkl
   takes ratings only).
@@ -60,8 +63,8 @@ idea, made general across trackers.
   Pick one tracker as the main list, or let each list fill in what the others have. A removal
   on one list carries over to the others. You can turn on a daily automatic sync (it only adds;
   removals and conflicts wait for you).
-- Adds "watch on..." links to trakt.tv, wetrakr.com, and anilist.co pages that take you to your usual streaming
-  sites at the right episode.
+- Adds "watch on..." links to trakt.tv, wetrakr.com, and anilist.co pages that take you to your
+  own sites at the right episode.
 - Backs up your sites, quick links, and corrections to a file, and exports your Trakt or WeTrakr
   movie history to Letterboxd as a CSV.
 - Your watch history only goes to your own tracker accounts. Matching and scrobbling happen on
@@ -75,18 +78,16 @@ idea, made general across trackers.
    or [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/tmsync/).
 2. Click the toolbar icon and connect the trackers you use: Trakt, WeTrakr, AniList, MyAnimeList, Simkl,
    or any mix. MyAnimeList asks for access to myanimelist.net when you connect it.
-3. Open something to watch on a streaming site and turn TMSync on for it under "Video detection"
-   in the popup. A small badge shows what it matched. Press play.
-4. On a site nobody has added yet, click "Set up recipe" in the toolbar popup, point at the
-   title and episode, and you're tracking it. Then share it from Options, under Contribute, so
-   others get the site too.
+3. Add your sites. On a movie or episode page, click "Set up recipe" in the toolbar popup and
+   point at the title and episode. Or, if someone shared a recipe source with you, paste its
+   address in Options, under Sources.
+4. Turn TMSync on for the site in the popup and press play. A small badge shows what it matched.
 
 ## Contributing
 
-Site definitions ("recipes") are crowdsourced, and code contributions are welcome. The fastest
-way to add a site is the Contribute page in the extension's options: it opens a prefilled GitHub
-issue, and a bot turns it into a pull request. No server, no account beyond GitHub. Everything
-else, from hand-written recipes to running the code locally, is in
+Code contributions are welcome. This repo does not keep a list of sites: to share yours, save them
+as a recipe source from Options, under Sources, and post the file anywhere. The recipe and source
+format is in [`docs/RECIPES.md`](./docs/RECIPES.md), and running the code locally is in
 [`CONTRIBUTING.md`](./CONTRIBUTING.md).
 
 For how the code works, start with [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
@@ -95,23 +96,24 @@ For how the code works, start with [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.
 
 This is a hobby project, maintained in spare time on a best-effort basis, with no SLA and no
 guarantees. Issues and PRs are read and appreciated, but may be answered slowly. If something's
-broken or a site stopped matching, opening an issue with the details is the most useful thing you
-can do.
+broken, opening an issue with the details is the most useful thing you can do.
 
-Want to chat, ask a question, or request a site? Join the
+Want to chat or ask a question? Join the
 [TMSync Discord](https://discord.gg/XCRsUnrJR).
 
 <!--
   Chrome Web Store listing copy, kept here so it stays in sync.
 
   Short description (max 132 chars):
-  Auto-scrobble what you watch to your trackers (Trakt, WeTrakr, AniList, MyAnimeList, Simkl). Works on most streaming sites.
+  Auto-scrobble what you watch to your trackers (Trakt, WeTrakr, AniList, MyAnimeList, Simkl) on the sites you set up.
 
   Full description: the "What it does" + "Getting started" sections above.
 
   Host permission justification (optional host access, "*://*/*"):
-  TMSync asks for access to one site at a time, only when the user turns it on. It needs
-  access to a streaming site to read the title and episode that plays there. It also asks
+  TMSync comes with no sites. It asks for access to one site at a time, only when the user turns
+  it on. It needs access to a site the user set up to read the title and episode that plays
+  there. When the user adds a recipe source (a file of site settings at a web address), it asks
+  for read access to that address's host, unless the host already allows it. It also asks
   for access to myanimelist.net and api.myanimelist.net only when the user connects a
   MyAnimeList account, to sign in and to update that user's anime list. MyAnimeList's API
   does not allow calls from other origins without this access. In the same way it asks for

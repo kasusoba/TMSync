@@ -1,26 +1,40 @@
-import { ANIME_MAP, RECIPES } from "@/config";
+import { ANIME_MAP } from "@/config";
 import { CONTENT_MARK } from "@/lib/diagnostics/why";
 import { errorMessage } from "@/lib/errors";
-import { bundledLinks } from "@/lib/recipes";
-import { addedHosts, findMovedSite, groupSites, withSiteHosts } from "@/lib/recipes/sites";
+import { effectiveRecipes, loadRecipeState, loadRecipes } from "@/lib/recipes";
+import {
+  addedHosts,
+  findMovedSite,
+  forkBasesOf,
+  groupSites,
+  withSiteHosts,
+} from "@/lib/recipes/sites";
+import {
+  type RefreshResult,
+  applySourceLinks,
+  migrateFromLibrary,
+  pruneSourceCaches,
+  refreshSources,
+} from "@/lib/recipes/source-sync";
 import { statusDotColor } from "@/lib/scrobble/action-badge";
 import {
-  type QuickLinkSite,
   animapOverrides,
   animeMap,
   customRecipes,
   enabledOrigins,
   episodeOverrides,
+  forkBases,
   listSyncAuto,
   listSyncAutoSeen,
   listSyncSettings,
   manualContexts,
   manualSelections,
   newPendingSites,
-  quickLinks,
-  remoteRecipes,
+  recipeSources,
   sealPlainSecrets,
   siteGrantIntent,
+  siteSourcePins,
+  sourceCaches,
   tabFrameOrigins,
   tabSessions,
   tabStatus,
@@ -117,7 +131,7 @@ const siteId = (origin: string) => `tmsync-${origin.replace(/[^a-z0-9]/gi, "-")}
 /** The broad optional grant (`optional_host_permissions`) + the single catch-all
  * content-script it backs. When the user opts into "enable all sites", one grant
  * covers every recipe origin, so we register ONE all-URLs (ALL_SITES) script
- * instead of per-origin ones — and any synced/imported/CDN recipe is live with no
+ * instead of per-origin ones, and any synced, imported, or source recipe is live with no
  * further prompt. Kept mutually exclusive with the per-origin scripts (running both
  * would inject the content script twice into the same frame). */
 const ALL_SITES = "*://*/*";
@@ -136,32 +150,66 @@ export default defineBackground(() => {
   // origin) so a plain "reload the extension" is enough and survives updates.
   void syncRegistrations();
   void customRecipes.migrate();
+  void migrateFromLibrary();
   // Encrypt OAuth tokens stored before encryption existed (lib/secret.ts).
   void sealPlainSecrets();
 
   // Keep registrations in step with the recipe set: a recipe synced from another
-  // device, imported, or pulled from the CDN auto-activates on any origin the user
-  // already granted (or everywhere, under the broad grant) — no manual re-enable.
+  // device, imported, or pulled from a source auto-activates on any origin the user
+  // already granted (or everywhere, under the broad grant), no manual re-enable.
   // These are event listeners re-established on each SW wake, not held state.
-  // Also note the sites a change brings in, for the popup's one-line nudge. The
-  // first library fetch (no old list) is setup, not news, so it is skipped.
+  // Also note the sites a change brings in, for the popup's one-line nudge.
   customRecipes.watch(async (next, prev) => {
     void syncRegistrations();
-    const library = (await remoteRecipes.getValue())?.recipes ?? [];
-    await noteNewSites(addedHosts(prev ?? [], next ?? [], library));
+    const { sourced } = await loadRecipeState();
+    const others = sourced.map((s) => s.recipe);
+    await noteNewSites(addedHosts(prev ?? [], next ?? [], others));
   });
-  remoteRecipes.watch(async (next, prev) => {
+  // A refresh of a source the user already had can bring new sites. The first
+  // good read of a source is the user's own doing, not news, so it is skipped
+  // (a failed first try leaves a copy with no `okAt`).
+  sourceCaches.watch(async (next, prev) => {
     void syncRegistrations();
-    if (!prev) return;
+    const before = prev ?? {};
     const custom = await customRecipes.getValue();
-    await noteNewSites(addedHosts(prev.recipes, next?.recipes ?? [], custom));
+    for (const [id, cache] of Object.entries(next ?? {})) {
+      const old = before[id];
+      if (!old?.okAt) continue;
+      const others = [
+        ...custom,
+        ...Object.entries(next ?? {})
+          .filter(([other]) => other !== id)
+          .flatMap(([, c]) => c.recipes),
+      ];
+      await noteNewSites(addedHosts(old.recipes, cache.recipes, others));
+    }
   });
+  // Adding, removing, reordering, or turning off a source, or pinning a site,
+  // changes which recipes and quick links apply. Fetching stays with the refresh
+  // message and the alarm, so this never fetches twice.
+  // A removed source takes its copy and its site picks with it. Fork bases stay:
+  // a fork of a removed source is the user's own recipe now.
+  recipeSources.watch(async (next) => {
+    await pruneSourceCaches();
+    const ids = new Set((next ?? []).map((s) => s.id));
+    const pins = await siteSourcePins.getValue();
+    const keptPins = Object.fromEntries(Object.entries(pins).filter(([, id]) => ids.has(id)));
+    if (Object.keys(keptPins).length !== Object.keys(pins).length) {
+      await siteSourcePins.setValue(keptPins);
+    }
+    void syncRegistrations();
+    await applySourceLinks();
+  });
+  // A pick can change which hosts a site's recipes cover, so registrations too.
+  siteSourcePins.watch(() => {
+    void syncRegistrations();
+    void applySourceLinks();
+  });
+  forkBases.watch(() => void syncRegistrations());
 
-  // Seed quick links shipped in the bundled library (available offline, before
-  // the first fetch), then refresh the CDN list on startup + a periodic alarm
-  // (the SW is ephemeral, so we can't hold a timer — constraint #4).
-  void mergeLibraryLinks(bundledLinks);
-  void fetchRemoteRecipes();
+  // Refresh the sources on startup + a periodic alarm (the SW is ephemeral, so we
+  // can't hold a timer, constraint #4).
+  void refreshSources();
   // The anime-map crosswalk rides the same pattern (fetched, never bundled), on its
   // own daily alarm. Upstream regenerates weekly.
   void fetchAnimeMap();
@@ -179,7 +227,7 @@ export default defineBackground(() => {
   listSyncAuto.watch(() => void showAutoBadge());
   listSyncAutoSeen.watch(() => void showAutoBadge());
   browser.alarms.onAlarm.addListener((alarm) => {
-    if (alarm.name === "tmsync-recipes") void fetchRemoteRecipes(true);
+    if (alarm.name === "tmsync-recipes") void refreshSources({ force: true });
     if (alarm.name === "tmsync-anime-map") void fetchAnimeMap(true);
     if (alarm.name === AUTO_ALARM) void runAuto();
     for (const service of allServices()) void service.alarms?.[alarm.name]?.();
@@ -199,10 +247,11 @@ export default defineBackground(() => {
   for (const service of allServices()) service.onWake?.();
   watchConnectGrants();
 
-  onMessage("refreshRecipes", async () => {
-    // One "Refresh" button, both CDN lists. Awaited so the options page reads a
-    // fresh anime-map cache right after this resolves.
-    const [out] = await Promise.all([fetchRemoteRecipes(true), fetchAnimeMap(true)]);
+  onMessage("refreshRecipes", async ({ data }): Promise<RefreshResult> => {
+    // One source (just added or turned on), or every source plus the anime map
+    // (the Refresh button). Awaited so the options page reads fresh caches after.
+    if (data?.sourceId) return refreshSources({ onlyId: data.sourceId });
+    const [out] = await Promise.all([refreshSources({ force: true }), fetchAnimeMap(true)]);
     return out;
   });
 
@@ -1303,46 +1352,6 @@ async function claimScrobbleOwner(
 }
 
 /**
- * Fetch + cache the CDN recipe list — one tracker-agnostic file (each recipe
- * carries its own `tracker`). Skips when the cache is fresh (unless forced), and
- * sends `If-None-Match` so an unchanged list returns 304 and reuses the cache
- * (only the freshness timestamp is bumped). Validates with parseLibrary so a
- * malformed list never lands in the cache. Best-effort: on any failure the
- * existing cache (or the bundled seed) stays in use.
- */
-async function fetchRemoteRecipes(
-  force = false,
-): Promise<{ ok: boolean; count: number; error?: string }> {
-  try {
-    const current = await remoteRecipes.getValue();
-    if (!force && current && Date.now() - current.fetchedAt < RECIPES.refreshMs) {
-      return { ok: true, count: current.recipes.length };
-    }
-    const res = await fetch(
-      RECIPES.url,
-      current?.etag ? { headers: { "If-None-Match": current.etag } } : undefined,
-    );
-    // 304 Not Modified — the list is unchanged; keep the cache, just mark it fresh
-    // so we don't re-request until the next TTL window.
-    if (res.status === 304 && current) {
-      await remoteRecipes.setValue({ ...current, fetchedAt: Date.now() });
-      return { ok: true, count: current.recipes.length };
-    }
-    if (!res.ok) {
-      return { ok: false, count: current?.recipes.length ?? 0, error: `HTTP ${res.status}` };
-    }
-    const library = parseLibrary((await res.json()) as unknown);
-    const etag = res.headers.get("ETag") ?? undefined;
-    await remoteRecipes.setValue({ recipes: library.recipes, fetchedAt: Date.now(), etag });
-    await mergeLibraryLinks(library.links);
-    await graduateRecipes(library.recipes);
-    return { ok: true, count: library.recipes.length };
-  } catch (e) {
-    return { ok: false, count: 0, error: errorMessage(e) };
-  }
-}
-
-/**
  * Fetch + cache the anime-map crosswalk from the CDN (multi-track). Same shape as
  * the recipe fetch: TTL-gated, `If-None-Match` conditional, validated before it
  * lands, best-effort (a failure leaves the previous copy in use). It is NOT
@@ -1382,75 +1391,9 @@ async function fetchAnimeMap(
 }
 
 /**
- * Recipe graduation: once a custom recipe's identical twin appears in the library
- * (the user's contribution landed), retire the local copy so it stops shadowing +
- * consuming the synced set. A diverged custom recipe is kept (user edits win).
- */
-async function graduateRecipes(libraryRecipes: Recipe[]): Promise<void> {
-  const libById = new Map(libraryRecipes.map((r) => [r.id, JSON.stringify(r)]));
-  const custom = await customRecipes.getValue();
-  const kept = custom.filter((r) => libById.get(r.id) !== JSON.stringify(r));
-  if (kept.length !== custom.length) await customRecipes.setValue(kept);
-}
-
-/** True if a user link is identical to its library version (so it can graduate
- *  cleanly). A diverged user copy keeps shadowing instead. */
-function linkMatchesLibrary(cur: QuickLinkSite, l: LibraryLink): boolean {
-  return (
-    cur.name === l.name &&
-    (cur.tracker ?? "trakt") === l.tracker &&
-    cur.host === l.host &&
-    cur.movie === l.movie &&
-    cur.tv === l.tv &&
-    cur.anime === l.anime &&
-    cur.search === l.search
-  );
-}
-
-/**
- * Merge shared library links into the user's quick-links store. New ones arrive
- * DISABLED (the user enables favourites); existing library-sourced entries get
- * their templates/name refreshed but keep the user's enabled choice. A user-owned
- * entry whose id now appears in the library (i.e. their contribution landed) and
- * matches it GRADUATES to a library entry, keeping its enabled toggle; a diverged
- * user entry is left untouched (it shadows the library version).
- */
-async function mergeLibraryLinks(links: LibraryLink[]): Promise<void> {
-  if (links.length === 0) return;
-  const existing = await quickLinks.getValue();
-  const byId = new Map(existing.map((s) => [s.id, s]));
-  let changed = false;
-  for (const l of links) {
-    const cur = byId.get(l.id);
-    const fields = {
-      name: l.name,
-      tracker: l.tracker,
-      host: l.host,
-      movie: l.movie,
-      tv: l.tv,
-      anime: l.anime,
-      search: l.search,
-    };
-    if (!cur) {
-      byId.set(l.id, { id: l.id, enabled: false, source: "library", ...fields });
-      changed = true;
-    } else if (cur.source === "library") {
-      byId.set(l.id, { ...cur, ...fields });
-      changed = true;
-    } else if (linkMatchesLibrary(cur, l)) {
-      // Graduate: the user's contributed link is now in the library, unchanged —
-      // adopt it (keep their enabled toggle), freeing it from the synced set.
-      byId.set(l.id, { ...cur, source: "library", ...fields });
-      changed = true;
-    }
-  }
-  if (changed) await quickLinks.setValue([...byId.values()]);
-}
-
-/**
  * Reconcile the set of registered content scripts against permissions + recipes.
  * The single source of truth for "what is injected where"; safe to call on startup,
- * on a recipe change (sync/import/CDN refresh), and after the broad-grant toggle.
+ * on a recipe change (sync, import, or source refresh), and after the broad-grant toggle.
  *
  *  - Broad grant held → desired = the ONE catch-all all-URLs script; every
  *    per-origin script is removed (avoids double-injection). All recipes go live
@@ -1488,19 +1431,18 @@ async function syncRegistrations(): Promise<void> {
 
 /** Distinct origins a recipe could match: EVERY host in its scope, not just the
  * first, so a site that moved domain is enabled on its old and new hosts alike.
- * Custom + remote recipes; `https` is assumed (streaming sites are TLS). */
+ * The effective recipes (custom + sources); `https` is assumed (streaming sites
+ * are TLS). */
 async function recipeOrigins(): Promise<string[]> {
-  const custom = await customRecipes.getValue();
-  const remote = (await remoteRecipes.getValue())?.recipes ?? [];
   const hosts = new Set<string>();
-  for (const r of [...custom, ...remote]) {
+  for (const r of await loadRecipes()) {
     for (const h of recipeHosts(r)) hosts.add(`https://${h}`);
   }
   return [...hosts];
 }
 
 /** Fold any recipe origin the user already holds permission for into
- * `enabledOrigins`, so a synced/imported/CDN recipe on an already-granted site
+ * `enabledOrigins`, so a synced, imported, or source recipe on an already-granted site
  * becomes active with no prompt. Only ADDS — never revokes. */
 async function adoptPermittedRecipeOrigins(): Promise<void> {
   const enabled = new Set(await enabledOrigins.getValue());
@@ -1638,12 +1580,12 @@ async function finishSiteGrant(): Promise<SiteGrantOutcome> {
     if (action === "adopt") {
       // Written before the content script is injected, so it loads them.
       const url = (await browser.tabs.get(tabId)).url ?? "";
-      const custom = await customRecipes.getValue();
-      const library = (await remoteRecipes.getValue())?.recipes ?? [];
-      const moved = findMovedSite(groupSites(custom, library), url);
+      const state = await loadRecipeState();
+      const moved = findMovedSite(groupSites(effectiveRecipes(state)), url);
       if (!moved) return { done: true, ok: false, error: "This page no longer matches a site." };
       const host = hostText(new URL(origin).hostname);
-      await customRecipes.setValue(withSiteHosts(moved, [...moved.hosts, host], custom));
+      await forkBases.setValue({ ...state.bases, ...forkBasesOf(moved, state.custom) });
+      await customRecipes.setValue(withSiteHosts(moved, [...moved.hosts, host], state.custom));
       siteName = moved.name;
     }
     const res = await registerSite(origin);

@@ -55,7 +55,8 @@ export interface PickerPanelProps {
   trackers: Tracker[];
   iframe: boolean;
   preview: { ok: true; text: string } | { ok: false; error: string };
-  banner?: { kind: "library"; name: string } | null;
+  /** A recipe from the user's recipe source `source` already covers this page. */
+  banner?: { kind: "source"; name: string; source: string } | null;
   /** Name of a recipe that exists for this site but doesn't cover the current URL. */
   siteRecipeNote?: string | null;
   status?: string | null;
@@ -251,7 +252,7 @@ export function PickerPanel(p: PickerPanelProps) {
   const saveLabel =
     p.mode === "edit"
       ? "Update recipe"
-      : p.banner?.kind === "library"
+      : p.banner?.kind === "source"
         ? "Save override & enable"
         : "Save & enable";
   const hasTitle =
@@ -304,10 +305,10 @@ export function PickerPanel(p: PickerPanelProps) {
 
         {/* scrollable body — everything between the pinned header and actions */}
         <div class="-mr-1 min-h-0 flex-1 overflow-y-auto pr-1">
-          {p.banner?.kind === "library" && (
+          {p.banner?.kind === "source" && (
             <div class={clsx("mb-3 rounded-lg px-2.5 py-2 text-[11px] leading-snug", t.infoBox)}>
-              A library recipe (“{p.banner.name}”) already covers this page. Saving creates your
-              local override · it wins over the library one.
+              A recipe from {p.banner.source} (“{p.banner.name}”) already covers this page. Saving
+              creates your local override · it wins over the source one.
             </div>
           )}
 

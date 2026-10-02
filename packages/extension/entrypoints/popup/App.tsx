@@ -5,6 +5,7 @@ import {
   flattenFrameTree,
 } from "@/lib/diagnostics/frame-tree";
 import { deriveQuickLink } from "@/lib/picker/recipe-builder";
+import { effectiveRecipes, loadRecipeState } from "@/lib/recipes";
 import { linkOnHost, removeLinkOnHost, saveLinkOnHost } from "@/lib/recipes/quick-link-edit";
 import { type SiteGroup, findMovedSite, groupSites } from "@/lib/recipes/sites";
 import {
@@ -13,11 +14,9 @@ import {
   type SiteGrantIntent,
   badgePrefs,
   connectIntent,
-  customRecipes,
   newPendingSites,
   optionsIntent,
   quickLinks,
-  remoteRecipes,
   siteGrantIntent,
   tabFrameOrigins,
   tabSessions,
@@ -196,19 +195,17 @@ export function App() {
   const refresh = async () => {
     const tabId = await activeTabId();
     setTabId(tabId);
-    const [acc, url, found, sites, links, badge, custom, remote, pending, fresh] =
-      await Promise.all([
-        loadAccounts(),
-        activeTabUrl(),
-        tabId !== null ? collectOrigins(tabId) : Promise.resolve<string[]>([]),
-        sendMessage("listEnabledSites", undefined),
-        quickLinks.getValue(),
-        badgePrefs.getValue(),
-        customRecipes.getValue(),
-        remoteRecipes.getValue(),
-        sendMessage("pendingSites", undefined),
-        newPendingSites.getValue(),
-      ]);
+    const [acc, url, found, sites, links, badge, recipeState, pending, fresh] = await Promise.all([
+      loadAccounts(),
+      activeTabUrl(),
+      tabId !== null ? collectOrigins(tabId) : Promise.resolve<string[]>([]),
+      sendMessage("listEnabledSites", undefined),
+      quickLinks.getValue(),
+      badgePrefs.getValue(),
+      loadRecipeState(),
+      sendMessage("pendingSites", undefined),
+      newPendingSites.getValue(),
+    ]);
     // Merge the live snapshot with origins the content script accumulated over
     // the session — catches player iframes that loaded after the page settled.
     const stored = tabId !== null ? ((await tabFrameOrigins.getValue())[tabId] ?? []) : [];
@@ -237,8 +234,8 @@ export function App() {
     // opens in edit mode — so the button says "Edit recipe", not "Set up recipe".
     // Host scope + urlPattern (the popup has no page DOM to check a
     // domFingerprint), which is enough for picker-authored recipes.
-    setPageHasRecipe(!!url && custom.some((r) => matchesUrl(r, url)));
-    setMovedSite(url ? findMovedSite(groupSites(custom, remote?.recipes ?? []), url) : null);
+    setPageHasRecipe(!!url && recipeState.custom.some((r) => matchesUrl(r, url)));
+    setMovedSite(url ? findMovedSite(groupSites(effectiveRecipes(recipeState)), url) : null);
     // Map the page's frames (cheap: stitched from iframe `src`, NO permission prompt)
     // so the top site and any embedded player frames show as ONE indented list. Scan
     // any scriptable http page; a single-frame page just yields the one top node.

@@ -144,14 +144,14 @@ export function queryParamRegex(key: string): string {
 }
 
 /** Separators a site uses in its page <title> (e.g. "Rive | Watch | Title", or
- * "Michael - bCine"). The spaced ASCII hyphen comes last and is space-padded so
+ * "Michael - ExampleFilms"). The spaced ASCII hyphen comes last and is space-padded so
  * it doesn't split hyphenated titles like "Spider-Man". */
 const TITLE_SEPARATORS = ["|", "·", "—", "–", "•", " - "] as const;
 
 /**
  * Regex capturing the Nth `separator`-delimited segment of a string. Index-based,
  * so it generalises across pages on the same site ("Rive | Watch | X" at index 2
- * captures X; "X - bCine" at index 0 captures X; a URL split on "/" captures the
+ * captures X; "X - ExampleFilms" at index 0 captures X; a URL split on "/" captures the
  * slug at its last index). Splits on the LITERAL separator (lazy), so it works
  * for multi-char separators like " - " (a char-class approach can't).
  * Leading/trailing space is trimmed by the field's transforms.
@@ -310,8 +310,8 @@ export function recipeToDraft(recipe: Recipe): RecipeDraft {
 
 /**
  * A friendly default recipe name from a hostname. For a bare domain or a `www.`
- * one, Capitalize the second-level label ("www.miruro.to" / "cineby.at" →
- * "Miruro" / "Cineby"). When a real subdomain remains ("watch.example.com"), keep
+ * one, Capitalize the second-level label ("www.exampleanime.to" / "examplemovies.at" →
+ * "Exampleanime" / "Examplemovies"). When a real subdomain remains ("watch.example.com"), keep
  * the full hostname — the bare label alone would be ambiguous. (Compound TLDs like
  * "example.co.uk" fall into the keep-full branch; rare for these sites.)
  */
