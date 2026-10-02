@@ -108,7 +108,7 @@ export function withSiteName(site: SiteGroup, name: string, custom: Recipe[]): R
 
 /**
  * The site this page most likely moved from: one with the same name on another
- * domain (`cinejoy.to` for `cinejoy.pk`). Null when a site already lists this
+ * domain (`examplewatch.to` for `examplewatch.pk`). Null when a site already lists this
  * domain, or none shares its name. When several do, the one with a recipe whose
  * path fits this URL wins. It is a guess, so the caller asks before acting on it.
  */

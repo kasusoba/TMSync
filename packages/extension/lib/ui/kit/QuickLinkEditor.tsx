@@ -46,7 +46,7 @@ export function QuickLinkEditor({
 }) {
   const editing = !!initial;
   const seed = initial ?? derive?.("trakt") ?? {};
-  // Default to the friendly capitalized hostname ("cineby.at" → "Cineby"), same as
+  // Default to the friendly capitalized hostname ("examplemovies.at" → "Examplemovies"), same as
   // a new recipe — not the raw host.
   const [name, setName] = useState(initial?.name ?? defaultRecipeName(host));
   const [tracker, setTracker] = useState<QuickLinkTracker>(initial?.tracker ?? "trakt");

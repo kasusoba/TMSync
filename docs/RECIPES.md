@@ -20,14 +20,14 @@ one, how recipes are versioned, and how they reach users through recipe sources.
 
 ```jsonc
 {
-  "id": "cineby-movie",          // unique, kebab-case, usually "<site>-<movie|tv|episode>"
+  "id": "examplemovies-movie",          // unique, kebab-case, usually "<site>-<movie|tv|episode>"
   "schemaVersion": 4,            // see Versioning (4 here because it names simkl)
-  "name": "Cineby",              // human-readable site name (shown in UI)
+  "name": "Examplemovies",              // human-readable site name (shown in UI)
   "trackers": ["trakt", "simkl"], // trakt | anilist | mal | simkl. Omit it and the legacy single
                                  //   `tracker` field (default "trakt") is used. Prefer `trackers`.
   "match": {
     "urlPattern": "/movie",        // regex tested against location.href: the PATH, no host
-    "hostnames": ["cineby.at"],    // the site's domain(s). Omit it and the recipe matches any host.
+    "hostnames": ["examplemovies.at"],    // the site's domain(s). Omit it and the recipe matches any host.
     "domFingerprint": ".player"    // optional: a selector that must exist (clone-resilient)
   },
   "mediaType": "auto",           // "auto" | "movie" | "show" ("auto" infers show when season/episode present)
@@ -79,7 +79,7 @@ remake and same-title mix-ups. The title then becomes a display fallback. `imdb`
 (`tt1375666`) and the rest are numeric.
 
 A namespace is the site's *source identity* (which id catalog the page hands you). It is not the
-destination. Miruro exposes a TMDB id but writes to AniList, because a recipe's destination is its
+destination. Exampleanime exposes a TMDB id but writes to AniList, because a recipe's destination is its
 own `trackers` field. Each tracker adapter declares which namespaces it resolves natively
 (`resolvableNamespaces`), and resolution runs a ladder: a native id, then an id mapped through the
 anime crosswalk, then a title search, then the user-correction picker. See the tracker section of
@@ -105,7 +105,7 @@ anime crosswalk, then a title search, then the user-correction picker. See the t
   is refused with a warning instead of being written.
 
 Recipe ids are readable and stable, not timestamps. The picker derives one from the host slug
-(`www.miruro.to` becomes `miruro-to`), with `-2`, `-3` on a collision (`lib/recipes/id.ts`). Two
+(`www.exampleanime.to` becomes `exampleanime-to`), with `-2`, `-3` on a collision (`lib/recipes/id.ts`). Two
 people who set up the same site then produce the same id. An id is unique inside one source file
 only. A local edit of a source recipe keeps its id, and that is how the edit shadows the source
 version.
@@ -116,12 +116,12 @@ Whether a site needs one recipe or two disjoint ones depends on whose numbering 
 (native vs derived, in [`ARCHITECTURE.md`](./ARCHITECTURE.md)), not on how many media types it
 hosts.
 
-**A TMDB-native site with the type in the URL needs two recipes.** Aether has
-`aether.bar/media/tmdb-tv-2604-...` and `aether.bar/media/tmdb-movie-1244492-...`. Movie and TV are
+**A TMDB-native site with the type in the URL needs two recipes.** Examplemedia has
+`examplemedia.bar/media/tmdb-tv-2604-...` and `examplemedia.bar/media/tmdb-movie-1244492-...`. Movie and TV are
 different TMDB id namespaces, and Trakt tells movies from shows, so these are two resolutions. A
-naive `urlPattern` (`aether\.bar/media`) would match both, and the second recipe would shadow the
+naive `urlPattern` (`examplemedia\.bar/media`) would match both, and the second recipe would shadow the
 first. The picker keeps the typed-id prefix, so the two come out disjoint on their own:
-`aether\.bar/media/tmdb-tv-` and `aether\.bar/media/tmdb-movie-`.
+`examplemedia\.bar/media/tmdb-tv-` and `examplemedia\.bar/media/tmdb-movie-`.
 
 **An AniList-native slug site where a movie is "episode 1" needs one recipe.** You do not separate
 movies from series, because AniList does not: a movie entry has `episodes: 1`, and writing progress
@@ -144,9 +144,9 @@ MyAnimeList, and Simkl pages need the site access their Connect asks for.
 
 ```jsonc
 {
-  "id": "cineby",                            // unique, kebab-case
-  "name": "Cineby",                          // shown on the button
-  "host": "cineby.at",                       // the site's domain, the one field to change if it moves
+  "id": "examplemovies",                            // unique, kebab-case
+  "name": "Examplemovies",                          // shown on the button
+  "host": "examplemovies.at",                       // the site's domain, the one field to change if it moves
   "tracker": "trakt",                        // the kind: "trakt" (movies and TV) | "anilist" (anime)
   "movie": "/movie/{tmdb}",
   "tv":    "/tv/{tmdb}/{season}/{episode}",
@@ -304,7 +304,7 @@ has `host`, with paths below it. `packages/shared/src/hosts.ts` reads and rewrit
 that older patterns carry. A move is handled in one of three ways, cheapest first:
 
 1. **The popup offers it.** Open the popup on the new domain. If one of your sites has the same
-   name on another domain, it asks "Did Cinejoy move here?". One click asks for access, adds the
+   name on another domain, it asks "Did Examplewatch move here?". One click asks for access, adds the
    domain to every recipe of that site, and starts tracking (`findMovedSite` in
    `packages/extension/lib/recipes/sites.ts`).
 2. **Options, under Sites, on the site's card.** Add the new domain (access is requested), then

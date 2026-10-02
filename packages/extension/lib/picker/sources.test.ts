@@ -4,7 +4,7 @@ import { type DraftFieldKey, pickSeparator, splitNumbers, splitSegments } from "
 import { type FieldShape, buildPalette, looksSlug, shapeOf, textTransforms } from "./sources";
 
 const HEAD = `
-  <title>Teach You a Lesson - bCine</title>
+  <title>Teach You a Lesson - ExampleFilms</title>
   <meta property="og:title" content="Teach You a Lesson" />
   <meta name="description" content="Season 1, Episode 6" />
   <script type="application/ld+json">
@@ -12,9 +12,9 @@ const HEAD = `
      "partOfTVSeason":{"seasonNumber":1},"datePublished":"2024-03-12"}
   </script>`;
 
-const BODY = `<iframe id="player" src="https://1embed.cc/embed/tv/276161/1/6?auto_play=1"></iframe>`;
+const BODY = `<iframe id="player" src="https://1player.example/embed/tv/276161/1/6?auto_play=1"></iframe>`;
 
-const URL_ = "https://bcine.ru/tv/breaking-bad/276161?season=1&episode=6";
+const URL_ = "https://examplefilms.ru/tv/breaking-bad/276161?season=1&episode=6";
 
 /**
  * Render a fixture page into the live test document. The picker reads the real
@@ -86,7 +86,7 @@ describe("buildPalette: every source is offered for every field", () => {
 
   it("drops a source with nothing pickable for the shape", () => {
     // No numbers anywhere → no number chips → no sources at all.
-    const bare = ctx("<title>Dune</title>", "", "https://cineby.at/movie");
+    const bare = ctx("<title>Dune</title>", "", "https://examplemovies.at/movie");
     expect(palette("number", bare).sources).toEqual([]);
     expect(palette("text", bare).sources.map((s) => s.id)).toEqual(["url", "title"]);
   });
@@ -147,7 +147,7 @@ describe("a TEXT field can be filled from any source", () => {
     const c = ctx();
     const p = palette("text", c);
     expect(readChip(p, chipId(p, "title", "Teach You a Lesson"), c)).toBe("Teach You a Lesson");
-    expect(readChip(p, chipId(p, "title", "bCine"), c)).toBe("bCine");
+    expect(readChip(p, chipId(p, "title", "ExampleFilms"), c)).toBe("ExampleFilms");
   });
 
   it("from a meta tag, taken whole when it has no delimiter", () => {
@@ -188,7 +188,7 @@ describe("chip helpers", () => {
   });
 
   it("pickSeparator uses / for a URL and the title delimiter otherwise", () => {
-    expect(pickSeparator("https://bcine.ru/tv/276161")).toBe("/");
+    expect(pickSeparator("https://examplefilms.ru/tv/276161")).toBe("/");
     expect(pickSeparator("Rive | Watch | Dune")).toBe("|");
     expect(pickSeparator("Dune")).toBe("");
   });

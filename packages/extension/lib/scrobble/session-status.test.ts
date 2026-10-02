@@ -82,7 +82,7 @@ describe("statusFromReply multi-track outcomes", () => {
   });
 
   it("drops the scraped season for an AniList label (seasonless: E3, not S1E3)", () => {
-    // aether scrapes season=1, but AniList entries are per-cour (no seasons).
+    // examplemedia scrapes season=1, but AniList entries are per-cour (no seasons).
     const reply: ScrobbleReply = {
       ok: true,
       resolved: true,

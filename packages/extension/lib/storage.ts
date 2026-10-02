@@ -529,7 +529,7 @@ export const manualSelections = storage.defineItem<Record<string, ParsedMedia>>(
 
 /**
  * Manual season/episode the user supplied for a show page whose URL carries no
- * episode (e.g. a Cineby `…/tv/{id}?play=true` deep link). Keyed by the page
+ * episode (e.g. a Examplemovies `…/tv/{id}?play=true` deep link). Keyed by the page
  * URL. Session-scoped (`session`) on purpose: such a link can resume a different
  * episode on a later visit, so a stale override must not persist across browser
  * restarts. Only S/E-less show URLs ever reach this path, so the URL is an

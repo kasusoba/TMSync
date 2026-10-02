@@ -416,7 +416,7 @@ export class SessionManager {
     });
     this.ctx.onInvalidated(() => this.teardownSession());
 
-    // SPA sites often set the real title/og:title AFTER initial load (e.g. cineby
+    // SPA sites often set the real title/og:title AFTER initial load (e.g. examplemovies
     // shows the site name first). Re-extract when <head> metadata changes.
     if (document.head) {
       const headObserver = new MutationObserver(this.scheduleReconcile);
@@ -479,7 +479,7 @@ export class SessionManager {
 
     void this.reconcile();
     // Run in EVERY frame, not just the top: aggregator embeds nest iframes (rive →
-    // vsrc.su → the real video host), and a frame can only see its OWN children.
+    // embeds.example → the real video host), and a frame can only see its OWN children.
     // Each frame reporting its child origins is what surfaces a deeply-nested
     // player in the popup so the user can enable it. (The badge hint stays top-only.)
     this.watchPlayerFrames();
@@ -595,7 +595,7 @@ export class SessionManager {
     }
     let media = result.media;
 
-    // A show whose URL carries no episode (e.g. a Cineby "?play=true" deep link):
+    // A show whose URL carries no episode (e.g. a Examplemovies "?play=true" deep link):
     // the page can't tell us which episode is playing. Apply a season/episode the
     // user supplied for this URL, else prompt for it via the badge — without one
     // the scrobble would fail with "missing episode #".
@@ -631,7 +631,7 @@ export class SessionManager {
     this.episodeAwaiting = false;
     this.localMedia = media;
     // Still missing something this recipe scrapes (a title or an episode)? Keep
-    // watching the DOM — a hover-gated player bar (e.g. aether.bar's `S1 - E5`)
+    // watching the DOM — a hover-gated player bar (e.g. examplemedia.bar's `S1 - E5`)
     // may render it a moment later, and the body observer will re-extract.
     this.awaitingMetadata =
       (recipe.extract?.title !== undefined && !media.title) ||
@@ -1099,7 +1099,7 @@ export class SessionManager {
 
   /**
    * Best-effort: while we're still missing the title/episode, poke the player with
-   * a synthetic pointer/mouse move so a hover-gated control bar (e.g. aether.bar's
+   * a synthetic pointer/mouse move so a hover-gated control bar (e.g. examplemedia.bar's
    * `S1 - E5`) renders WITHOUT the user having to move their mouse. Bounded per
    * session; a re-extract follows shortly after. Some players ignore untrusted
    * events — then the body observer still catches it on the user's first hover.

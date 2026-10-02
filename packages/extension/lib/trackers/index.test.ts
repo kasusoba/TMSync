@@ -62,7 +62,7 @@ describe("inferNativeTracker (multi-track — which numbering the page speaks)",
   });
 
   it("a DISABLED tracker can't be native — AniList-only on a TMDB/seasoned page ⇒ AniList", () => {
-    // The aether case: recipe scrapes tmdb + season but the user enabled ONLY AniList.
+    // The examplemedia case: recipe scrapes tmdb + season but the user enabled ONLY AniList.
     // Field-wise it looks Trakt-native, but Trakt is off, so AniList records directly
     // (scraped episode) instead of being forced through the crosswalk.
     const media = {

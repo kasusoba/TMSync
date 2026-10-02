@@ -28,9 +28,9 @@ function recipe(match: Recipe["match"]): Recipe {
 
 describe("hostText / normalizeHost / hostOf", () => {
   it("keeps www in the storage form, drops it in the comparison form", () => {
-    expect(hostText("WWW.Cineby.At")).toBe("www.cineby.at");
-    expect(normalizeHost("WWW.Cineby.At")).toBe("cineby.at");
-    expect(hostOf("https://www.cineby.at/movie/42")).toBe("cineby.at");
+    expect(hostText("WWW.Examplemovies.At")).toBe("www.examplemovies.at");
+    expect(normalizeHost("WWW.Examplemovies.At")).toBe("examplemovies.at");
+    expect(hostOf("https://www.examplemovies.at/movie/42")).toBe("examplemovies.at");
   });
 
   it("returns an empty string for an unparseable url", () => {
@@ -40,13 +40,16 @@ describe("hostText / normalizeHost / hostOf", () => {
 
 describe("patternHosts / patternPath", () => {
   it("reads a single escaped host anchor", () => {
-    expect(patternHosts("cineby\\.at/movie")).toEqual(["cineby.at"]);
-    expect(patternPath("cineby\\.at/movie")).toBe("/movie");
+    expect(patternHosts("examplemovies\\.at/movie")).toEqual(["examplemovies.at"]);
+    expect(patternPath("examplemovies\\.at/movie")).toBe("/movie");
   });
 
   it("reads an alternation of hosts", () => {
-    expect(patternHosts("(?:cineby\\.at|cineby\\.app)/movie")).toEqual(["cineby.at", "cineby.app"]);
-    expect(patternPath("(?:cineby\\.at|cineby\\.app)/movie")).toBe("/movie");
+    expect(patternHosts("(?:examplemovies\\.at|examplemovies\\.app)/movie")).toEqual([
+      "examplemovies.at",
+      "examplemovies.app",
+    ]);
+    expect(patternPath("(?:examplemovies\\.at|examplemovies\\.app)/movie")).toBe("/movie");
   });
 
   it("reads a host-only pattern", () => {
@@ -63,28 +66,33 @@ describe("patternHosts / patternPath", () => {
 
 describe("withPatternHosts", () => {
   it("re-anchors a pattern to one host", () => {
-    expect(withPatternHosts("/movie", ["cineby.at"])).toBe("cineby\\.at/movie");
+    expect(withPatternHosts("/movie", ["examplemovies.at"])).toBe("examplemovies\\.at/movie");
   });
 
   it("re-anchors to several hosts as an alternation", () => {
-    expect(withPatternHosts("cineby\\.at/movie", ["cineby.at", "cineby.app"])).toBe(
-      "(?:cineby\\.at|cineby\\.app)/movie",
-    );
+    expect(
+      withPatternHosts("examplemovies\\.at/movie", ["examplemovies.at", "examplemovies.app"]),
+    ).toBe("(?:examplemovies\\.at|examplemovies\\.app)/movie");
   });
 
   it("strips the anchor when given no hosts", () => {
-    expect(withPatternHosts("cineby\\.at/movie", [])).toBe("/movie");
+    expect(withPatternHosts("examplemovies\\.at/movie", [])).toBe("/movie");
   });
 });
 
 describe("recipeHosts", () => {
   it("prefers the hostnames list, keeping each host as stored", () => {
-    const r = recipe({ urlPattern: "/movie", hostnames: ["Cineby.at", "www.cineby.app"] });
-    expect(recipeHosts(r)).toEqual(["cineby.at", "www.cineby.app"]);
+    const r = recipe({
+      urlPattern: "/movie",
+      hostnames: ["Examplemovies.at", "www.examplemovies.app"],
+    });
+    expect(recipeHosts(r)).toEqual(["examplemovies.at", "www.examplemovies.app"]);
   });
 
   it("falls back to the pattern anchor", () => {
-    expect(recipeHosts(recipe({ urlPattern: "cineby\\.at/movie" }))).toEqual(["cineby.at"]);
+    expect(recipeHosts(recipe({ urlPattern: "examplemovies\\.at/movie" }))).toEqual([
+      "examplemovies.at",
+    ]);
   });
 
   it("is empty for a host-free recipe", () => {
@@ -94,16 +102,16 @@ describe("recipeHosts", () => {
 
 describe("withRecipeHosts", () => {
   it("moves the host out of the pattern and into hostnames", () => {
-    const moved = withRecipeHosts(recipe({ urlPattern: "cineby\\.at/movie" }), [
-      "cineby.at",
-      "cineby.app",
+    const moved = withRecipeHosts(recipe({ urlPattern: "examplemovies\\.at/movie" }), [
+      "examplemovies.at",
+      "examplemovies.app",
     ]);
-    expect(moved.match.hostnames).toEqual(["cineby.at", "cineby.app"]);
+    expect(moved.match.hostnames).toEqual(["examplemovies.at", "examplemovies.app"]);
     expect(moved.match.urlPattern).toBe("/movie");
   });
 
   it("drops the list when given no hosts", () => {
-    const freed = withRecipeHosts(recipe({ urlPattern: "cineby\\.at/movie" }), []);
+    const freed = withRecipeHosts(recipe({ urlPattern: "examplemovies\\.at/movie" }), []);
     expect(freed.match.hostnames).toBeUndefined();
     expect(freed.match.urlPattern).toBe("/movie");
   });
@@ -117,13 +125,13 @@ describe("escapeRegex", () => {
 
 describe("siteLabel", () => {
   it("takes the name part and ignores www, subdomains, and the ending", () => {
-    expect(siteLabel("cinejoy.to")).toBe("cinejoy");
-    expect(siteLabel("www.cinejoy.pk")).toBe("cinejoy");
-    expect(siteLabel("watch.cinejoy.to")).toBe("cinejoy");
+    expect(siteLabel("examplewatch.to")).toBe("examplewatch");
+    expect(siteLabel("www.examplewatch.pk")).toBe("examplewatch");
+    expect(siteLabel("watch.examplewatch.to")).toBe("examplewatch");
   });
 
   it("looks past a second-level ending like co.uk", () => {
-    expect(siteLabel("cinejoy.co.uk")).toBe("cinejoy");
+    expect(siteLabel("examplewatch.co.uk")).toBe("examplewatch");
   });
 
   it("is empty for a bare name", () => {

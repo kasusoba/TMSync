@@ -8,7 +8,7 @@
  * (see docs/RECIPES.md).
  *
  * Older recipes carry the host inside `match.urlPattern` instead (the picker used
- * to build `cineby\.at/movie`). These helpers read and rewrite that anchor so both
+ * to build `examplemovies\.at/movie`). These helpers read and rewrite that anchor so both
  * shapes work.
  */
 import type { Recipe } from "./schema";
@@ -59,8 +59,8 @@ function leadToken(pattern: string): { token: string; rest: string } {
 }
 
 /**
- * Hosts a urlPattern is anchored to: a leading escaped hostname (`cineby\.at/movie`)
- * or an alternation of them (`(?:cineby\.at|cineby\.app)/movie`). Empty when the
+ * Hosts a urlPattern is anchored to: a leading escaped hostname (`examplemovies\.at/movie`)
+ * or an alternation of them (`(?:examplemovies\.at|examplemovies\.app)/movie`). Empty when the
  * pattern carries no host, which is what the picker writes now.
  */
 export function patternHosts(urlPattern: string): string[] {
@@ -115,8 +115,8 @@ export function withRecipeHosts(recipe: Recipe, hosts: string[]): Recipe {
 const SECOND_LEVEL = new Set(["co", "com", "net", "org", "ac", "gov", "edu"]);
 
 /**
- * The name part of a host: `cinejoy` for `cinejoy.to`, `www.cinejoy.pk`, or
- * `watch.cinejoy.co.uk`. A site that moves domain usually keeps it and changes
+ * The name part of a host: `examplewatch` for `examplewatch.to`, `www.examplewatch.pk`, or
+ * `watch.examplewatch.co.uk`. A site that moves domain usually keeps it and changes
  * only the ending, so two hosts with the same label are likely one site.
  */
 export function siteLabel(hostname: string): string {

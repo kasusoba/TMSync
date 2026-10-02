@@ -52,13 +52,13 @@ describe("explainBadge", () => {
         isTop: true,
         diag: diag({
           step: "no-match",
-          candidates: [{ name: "Cinejoy", url: true, marker: false }],
+          candidates: [{ name: "Examplewatch", url: true, marker: false }],
         }),
       }),
     ]);
     expect(out.at(-1)).toEqual({
       tone: "bad",
-      text: "Cinejoy: its page marker is not on the page (yet).",
+      text: "Examplewatch: its page marker is not on the page (yet).",
     });
   });
 

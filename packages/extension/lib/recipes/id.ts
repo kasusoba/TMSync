@@ -10,7 +10,7 @@
  * `forkBases`, which records where a fork came from.
  */
 
-/** "www.miruro.to" → "miruro-to"; "watch.example.co.uk" → "watch-example-co-uk". */
+/** "www.exampleanime.to" → "exampleanime-to"; "watch.example.co.uk" → "watch-example-co-uk". */
 export function slugifyHost(hostname: string): string {
   return hostname
     .replace(/^www\./i, "")

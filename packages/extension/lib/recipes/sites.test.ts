@@ -36,12 +36,16 @@ function recipe(id: string, match: Recipe["match"], name = id): Recipe {
 
 describe("groupSites", () => {
   it("groups recipes that share a host into one site", () => {
-    const movie = recipe("movie", { urlPattern: "/movie", hostnames: ["cineby.at"] }, "Cineby");
-    const tv = recipe("tv", { urlPattern: "/tv", hostnames: ["www.cineby.at"] });
+    const movie = recipe(
+      "movie",
+      { urlPattern: "/movie", hostnames: ["examplemovies.at"] },
+      "Examplemovies",
+    );
+    const tv = recipe("tv", { urlPattern: "/tv", hostnames: ["www.examplemovies.at"] });
     const other = recipe("other", { urlPattern: "/watch", hostnames: ["other.tld"] }, "Other");
     const sites = groupSites([movie, tv, other], []);
-    expect(sites.map((s) => s.name)).toEqual(["Cineby", "Other"]);
-    expect(sites[0]?.hosts).toEqual(["cineby.at"]);
+    expect(sites.map((s) => s.name)).toEqual(["Examplemovies", "Other"]);
+    expect(sites[0]?.hosts).toEqual(["examplemovies.at"]);
     expect(sites[0]?.recipes.map((r) => r.recipe.id)).toEqual(["movie", "tv"]);
   });
 
@@ -55,8 +59,8 @@ describe("groupSites", () => {
   });
 
   it("reads the host an older recipe anchors in its pattern", () => {
-    const sites = groupSites([recipe("old", { urlPattern: "cineby\\.at/movie" })], []);
-    expect(sites[0]?.hosts).toEqual(["cineby.at"]);
+    const sites = groupSites([recipe("old", { urlPattern: "examplemovies\\.at/movie" })], []);
+    expect(sites[0]?.hosts).toEqual(["examplemovies.at"]);
   });
 
   it("keeps a host-free recipe as a site of its own", () => {
@@ -66,9 +70,15 @@ describe("groupSites", () => {
   });
 
   it("marks source recipes and drops the ones a custom recipe shadows", () => {
-    const mine = recipe("cineby", { urlPattern: "/movie", hostnames: ["cineby.at"] });
-    const shadowed = recipe("cineby", { urlPattern: "/old", hostnames: ["cineby.at"] });
-    const shared = recipe("cineby-tv", { urlPattern: "/tv", hostnames: ["cineby.at"] });
+    const mine = recipe("examplemovies", { urlPattern: "/movie", hostnames: ["examplemovies.at"] });
+    const shadowed = recipe("examplemovies", {
+      urlPattern: "/old",
+      hostnames: ["examplemovies.at"],
+    });
+    const shared = recipe("examplemovies-tv", {
+      urlPattern: "/tv",
+      hostnames: ["examplemovies.at"],
+    });
     const [site] = groupSites([mine], [shadowed, shared]);
     expect(site?.recipes.map((r) => [r.recipe.match.urlPattern, r.sourceId])).toEqual([
       ["/movie", undefined],
@@ -115,38 +125,57 @@ describe("withSiteName", () => {
 });
 
 describe("findMovedSite", () => {
-  const cinejoyMovie = recipe(
+  const examplewatchMovie = recipe(
     "m",
-    { urlPattern: "/watch/movie", hostnames: ["cinejoy.to"] },
-    "Cinejoy",
+    { urlPattern: "/watch/movie", hostnames: ["examplewatch.to"] },
+    "Examplewatch",
   );
-  const cinejoyTv = recipe("t", { urlPattern: "/watch/tv", hostnames: ["cinejoy.to"] }, "Cinejoy");
+  const examplewatchTv = recipe(
+    "t",
+    { urlPattern: "/watch/tv", hostnames: ["examplewatch.to"] },
+    "Examplewatch",
+  );
   const other = recipe("o", { urlPattern: "/watch", hostnames: ["other.tld"] }, "Other");
 
   it("finds the site with the same name on another domain", () => {
-    const sites = groupSites([cinejoyMovie, cinejoyTv, other], []);
-    expect(findMovedSite(sites, "https://cinejoy.pk/watch/movie/1423191")?.name).toBe("Cinejoy");
+    const sites = groupSites([examplewatchMovie, examplewatchTv, other], []);
+    expect(findMovedSite(sites, "https://examplewatch.pk/watch/movie/1423191")?.name).toBe(
+      "Examplewatch",
+    );
   });
 
   it("finds it even when no recipe path fits this URL", () => {
-    const sites = groupSites([cinejoyTv], []);
-    expect(findMovedSite(sites, "https://cinejoy.pk/")?.name).toBe("Cinejoy");
+    const sites = groupSites([examplewatchTv], []);
+    expect(findMovedSite(sites, "https://examplewatch.pk/")?.name).toBe("Examplewatch");
   });
 
   it("prefers the site whose recipe path fits when two share the name", () => {
-    const tv = recipe("a", { urlPattern: "/tv", hostnames: ["cinejoy.net"] }, "Cinejoy TV");
-    const movie = recipe("b", { urlPattern: "/watch/movie", hostnames: ["cinejoy.to"] }, "Cinejoy");
+    const tv = recipe(
+      "a",
+      { urlPattern: "/tv", hostnames: ["examplewatch.net"] },
+      "Examplewatch TV",
+    );
+    const movie = recipe(
+      "b",
+      { urlPattern: "/watch/movie", hostnames: ["examplewatch.to"] },
+      "Examplewatch",
+    );
     const sites = groupSites([tv, movie], []);
-    expect(findMovedSite(sites, "https://cinejoy.pk/watch/movie/1")?.name).toBe("Cinejoy");
+    expect(findMovedSite(sites, "https://examplewatch.pk/watch/movie/1")?.name).toBe(
+      "Examplewatch",
+    );
   });
 
   it("offers nothing when a site already lists this domain", () => {
-    const both = recipe("b", { urlPattern: "/x", hostnames: ["cinejoy.to", "www.cinejoy.pk"] });
-    expect(findMovedSite(groupSites([both], []), "https://cinejoy.pk/x")).toBeNull();
+    const both = recipe("b", {
+      urlPattern: "/x",
+      hostnames: ["examplewatch.to", "www.examplewatch.pk"],
+    });
+    expect(findMovedSite(groupSites([both], []), "https://examplewatch.pk/x")).toBeNull();
   });
 
   it("offers nothing when no site shares the name", () => {
-    expect(findMovedSite(groupSites([other], []), "https://cinejoy.pk/watch")).toBeNull();
+    expect(findMovedSite(groupSites([other], []), "https://examplewatch.pk/watch")).toBeNull();
   });
 });
 
