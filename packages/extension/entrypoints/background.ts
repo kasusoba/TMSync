@@ -131,7 +131,7 @@ const siteId = (origin: string) => `tmsync-${origin.replace(/[^a-z0-9]/gi, "-")}
 /** The broad optional grant (`optional_host_permissions`) + the single catch-all
  * content-script it backs. When the user opts into "enable all sites", one grant
  * covers every recipe origin, so we register ONE all-URLs (ALL_SITES) script
- * instead of per-origin ones — and any synced/imported/CDN recipe is live with no
+ * instead of per-origin ones, and any synced, imported, or source recipe is live with no
  * further prompt. Kept mutually exclusive with the per-origin scripts (running both
  * would inject the content script twice into the same frame). */
 const ALL_SITES = "*://*/*";
@@ -1393,7 +1393,7 @@ async function fetchAnimeMap(
 /**
  * Reconcile the set of registered content scripts against permissions + recipes.
  * The single source of truth for "what is injected where"; safe to call on startup,
- * on a recipe change (sync/import/CDN refresh), and after the broad-grant toggle.
+ * on a recipe change (sync, import, or source refresh), and after the broad-grant toggle.
  *
  *  - Broad grant held → desired = the ONE catch-all all-URLs script; every
  *    per-origin script is removed (avoids double-injection). All recipes go live
@@ -1442,7 +1442,7 @@ async function recipeOrigins(): Promise<string[]> {
 }
 
 /** Fold any recipe origin the user already holds permission for into
- * `enabledOrigins`, so a synced/imported/CDN recipe on an already-granted site
+ * `enabledOrigins`, so a synced, imported, or source recipe on an already-granted site
  * becomes active with no prompt. Only ADDS — never revokes. */
 async function adoptPermittedRecipeOrigins(): Promise<void> {
   const enabled = new Set(await enabledOrigins.getValue());
