@@ -38,8 +38,8 @@ describe("removeLinkOnHost", () => {
 });
 
 describe("linkOnHost", () => {
-  it("prefers the user's own link over a library link", () => {
-    const lib = link("lib-a", "a.com", { source: "library" });
+  it("prefers the user's own link over a source link", () => {
+    const lib = link("lib-a", "a.com", { source: "source", sourceId: "s" });
     const own = link("ql-a.com", "a.com");
     expect(linkOnHost([lib, own], "a.com")).toBe(own);
   });
@@ -51,9 +51,12 @@ describe("linkOnHost", () => {
   });
 
   // It used to show as "Quick link added" although the link was off.
-  it("ignores a disabled library link", () => {
+  it("ignores a disabled source link", () => {
     expect(
-      linkOnHost([link("lib-a", "a.com", { source: "library", enabled: false })], "a.com"),
+      linkOnHost(
+        [link("lib-a", "a.com", { source: "source", sourceId: "s", enabled: false })],
+        "a.com",
+      ),
     ).toBe(undefined);
   });
 });
@@ -73,10 +76,10 @@ describe("saveLinkOnHost", () => {
     ]);
   });
 
-  // An edit merged into a library link made it `source: "user"`, so it stopped
-  // getting library updates.
-  it("saves a new user link and turns the library link off", () => {
-    const lib = link("lib-a", "a.com", { source: "library" });
+  // An edit merged into a source link made it `source: "user"`, so it stopped
+  // getting source updates.
+  it("saves a new user link and turns the source link off", () => {
+    const lib = link("lib-a", "a.com", { source: "source", sourceId: "s" });
     expect(saveLinkOnHost([lib], "a.com", FIELDS)).toEqual([
       { ...lib, enabled: false },
       { id: "ql-a.com", enabled: true, source: "user", ...FIELDS },
@@ -90,9 +93,9 @@ describe("saveLinkOnHost", () => {
   });
 });
 
-describe("removeLinkOnHost on a library link", () => {
-  it("turns it off, because the library would add it back", () => {
-    const lib = link("lib-a", "a.com", { source: "library" });
+describe("removeLinkOnHost on a source link", () => {
+  it("turns it off, because the source would add it back", () => {
+    const lib = link("lib-a", "a.com", { source: "source", sourceId: "s" });
     expect(removeLinkOnHost([lib], "a.com")).toEqual([{ ...lib, enabled: false }]);
   });
 });

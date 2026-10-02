@@ -15,28 +15,23 @@ export const TRAKT = {
   userAgent: "tmsync/1.0",
 } as const;
 
+/** The project's repository: source code, issues, and the recipe format docs. */
+export const REPO_URL = "https://github.com/kasusoba/TMSync";
+
 /**
- * Phase-1 recipe distribution: a versioned JSON list fetched from the repo/CDN
- * (no backend — constraint #7), contributed by PR. Override the URL with
- * WXT_RECIPES_URL. The fetch is a plain public GET — no watch data leaves the
- * client (constraint #6). The CDN origin needs a matching host permission.
+ * Recipe sources: user-added URLs of recipe files (the extension ships no sites).
+ * The fetch is a plain public GET, no watch data leaves the client (constraint #6).
  */
-export const RECIPES = {
-  /** One tracker-agnostic list. Each recipe carries its own `tracker` field, so
-   * Trakt and AniList (and future trackers) live in the same file — the engine
-   * routes per-recipe, nothing is baked into the layout. */
-  url:
-    import.meta.env.WXT_RECIPES_URL ||
-    "https://raw.githubusercontent.com/kasusoba/TMSync/main/recipes/index.json",
-  /** Re-fetch at most this often. */
+export const SOURCES = {
+  /** Re-fetch a source at most this often. */
   refreshMs: 12 * 60 * 60 * 1000,
-  /** Where contributors open a PR to add a site. */
-  contributeUrl: import.meta.env.WXT_RECIPES_REPO || "https://github.com/kasusoba/TMSync",
+  /** A larger file is refused, so a hostile source cannot fill storage. */
+  maxBytes: 1_000_000,
 } as const;
 
 /**
  * The TMDB<->AniList crosswalk used by the multi-track fan-out (docs/ARCHITECTURE.md).
- * Fetched from the same CDN as the recipe list rather than bundled: the rows are
+ * Fetched from this repo's CDN rather than bundled: the rows are
  * ~300 KB, and upstream (Fribb/anime-lists) regenerates weekly, so a bundled copy
  * would both bloat the service worker and go stale between releases. A plain public
  * GET, no watch data leaves the client (constraint #6).

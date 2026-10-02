@@ -472,12 +472,12 @@ export function App() {
               status="Saved. Scrobbling on this page."
             />
           </Tile>
-          <Tile label="Library covers this page · override" t={t}>
+          <Tile label="A source covers this page · override" t={t}>
             <PickerPanel
               variant={variant}
               mode="setup"
               name="Popcorn Movies"
-              banner={{ kind: "library", name: "Popcorn Movies" }}
+              banner={{ kind: "source", name: "Example Movies", source: "My sites" }}
               fields={[
                 { key: "title", label: "Title", value: "Srimulat", source: "dom" },
                 { key: "year", label: "Year", value: "2023", source: "dom" },

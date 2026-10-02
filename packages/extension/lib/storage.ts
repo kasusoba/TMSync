@@ -1,5 +1,5 @@
 import type { BadgeStatus } from "@/messaging";
-import type { LinkTemplates, ParsedMedia, Recipe } from "@tmsync/shared";
+import type { LibraryLink, LinkTemplates, ParsedMedia, Recipe } from "@tmsync/shared";
 import { storage } from "wxt/utils/storage";
 import { type Sealed, isSealed, seal, unseal } from "./secret";
 import type { ApplyJob } from "./sync/apply";
@@ -363,23 +363,62 @@ export const optionsIntent = storage.defineItem<OptionsIntent | null>("session:o
   fallback: null,
 });
 
-/** Recipes authored locally via the element picker (merged with the bundled list).
+/** Recipes authored locally via the element picker (they win over every source).
  * One sync key per recipe; see recipes/store.ts. */
 export { customRecipes } from "./recipes/store";
 
 /**
- * Cached copy of the versioned recipe list fetched from the repo/CDN (Phase 1
- * source of truth). Validated before storing; refreshed on a TTL by the
- * background worker. `etag` enables conditional (304) refetches.
+ * Recipe sources: URLs of recipe files the user added, run by anyone (the extension
+ * ships no sites). Small, so `sync`. Array order is priority: index 0 wins when two
+ * sources cover one site (lib/recipes/sources.ts).
  */
-export interface RemoteRecipes {
+export interface RecipeSource {
+  id: string;
+  url: string;
+  enabled: boolean;
+}
+export const recipeSources = storage.defineItem<RecipeSource[]>("sync:recipe_sources", {
+  fallback: [],
+});
+
+/**
+ * The last good copy of each source, by source id. Validated before it lands;
+ * a failed fetch keeps the copy and records `error`. Regenerable, so `local`.
+ */
+export interface SourceCache {
   recipes: Recipe[];
+  links: LibraryLink[];
+  /** The file's own `name` and `homepage`, if it has them. */
+  name?: string;
+  homepage?: string;
+  /** Last attempt, good or bad. Gates the refresh TTL. */
   fetchedAt: number;
   etag?: string;
+  /** The last attempt's failure. Cleared by the next good fetch. */
+  error?: string;
 }
-export const remoteRecipes = storage.defineItem<RemoteRecipes | null>("local:remote_recipes", {
-  fallback: null,
-  version: 2,
+export const sourceCaches = storage.defineItem<Record<string, SourceCache>>("local:source_caches", {
+  fallback: {},
+});
+
+/**
+ * The source the user picked for a site that several sources cover, by host
+ * (comparison form, `normalizeHost`). Only written for a non-default pick.
+ */
+export const siteSourcePins = storage.defineItem<Record<string, string>>("sync:site_source_pins", {
+  fallback: {},
+});
+
+/**
+ * What a forked source recipe was forked from: its source and a hash of the source
+ * version then. When the source version changes, the site row offers it.
+ */
+export interface ForkBase {
+  sourceId: string;
+  hash: string;
+}
+export const forkBases = storage.defineItem<Record<string, ForkBase>>("local:fork_bases", {
+  fallback: {},
 });
 
 /**
@@ -396,9 +435,10 @@ export interface QuickLinkSite extends LinkTemplates {
    * `QUICK_LINK_PAGES` names the trackers whose pages show each. Defaults to
    * "trakt" for back-compat (v1 links). */
   tracker?: QuickLinkTracker;
-  /** "library" = synced from the shared list (templates refresh on sync);
+  /** "source" = from the recipe source `sourceId` (templates refresh with it);
    * "user"/undefined = created or fully owned by the user. */
-  source?: "library" | "user";
+  source?: "source" | "user";
+  sourceId?: string;
 }
 export const quickLinks = storage.defineItem<QuickLinkSite[]>("sync:quick_links", {
   fallback: [],
@@ -729,7 +769,7 @@ export const listSyncPicks = storage.defineItem<SyncPicks>("local:list_sync_pick
  * User corrections to the anime-map crosswalk (multi-track — docs/ARCHITECTURE.md).
  * A LOCAL override layer above Fribb (precedence: override › Fribb › miss) — fixes
  * a wrong/missed/ambiguous derived match by pinning (or blocking) the target entry.
- * Local + regenerable-by-hand; contributable back like recipes.
+ * Local + regenerable-by-hand.
  */
 export const animapOverrides = storage.defineItem<AnimapOverrides>("local:animap_overrides", {
   fallback: { forward: {}, reverse: {} },

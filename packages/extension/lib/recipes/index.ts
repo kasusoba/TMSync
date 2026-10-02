@@ -1,45 +1,77 @@
-import { type LibraryLink, type Recipe, parseLibrary, recipeHosts } from "@tmsync/shared";
-// Bundled seed list — a fallback so the extension works offline / before the
-// first CDN fetch. The remote list (when present) supersedes it. It's one
-// tracker-agnostic file: every recipe carries its own `tracker` field and the
-// engine routes per-recipe, so Trakt and AniList (and future trackers) coexist
-// in the same list.
-import rawBundled from "../../../../recipes/index.json";
-import { customRecipes, remoteRecipes } from "../storage";
+import type { Recipe } from "@tmsync/shared";
+import {
+  type ForkBase,
+  type RecipeSource,
+  type SourceCache,
+  customRecipes,
+  forkBases,
+  recipeSources,
+  siteSourcePins,
+  sourceCaches,
+} from "../storage";
+import {
+  type SourceChoice,
+  type SourcedRecipe,
+  mergeRecipes,
+  resolveSources,
+  staleForks,
+} from "./sources";
 
-const bundledLibrary = parseLibrary(rawBundled);
-const bundled = bundledLibrary.recipes;
+export { recipeTarget } from "./sources";
 
-/** Quick-link sites shipped in the bundled library (seeded even before a fetch). */
-export const bundledLinks: LibraryLink[] = bundledLibrary.links;
+/** Everything the recipe list is built from, read in one go. */
+export interface RecipeState {
+  custom: Recipe[];
+  sources: RecipeSource[];
+  caches: Record<string, SourceCache>;
+  pins: Record<string, string>;
+  bases: Record<string, ForkBase>;
+  /** The sourced recipes after the one-source-per-site rule. */
+  sourced: SourcedRecipe[];
+  /** Sites that several sources cover, and which one each uses. */
+  choices: SourceChoice[];
+  /** Ids of forks whose source version changed since the fork. */
+  stale: string[];
+}
 
-/** What makes two recipes the same target: the same hosts AND the same pattern.
- * The host belongs to `hostnames` now, so the pattern alone is no longer unique
- * (every site has a `/movie` recipe). */
-export const recipeTarget = (r: Recipe) =>
-  `${recipeHosts(r).sort().join(",")}|${r.match.urlPattern}`;
+export async function loadRecipeState(): Promise<RecipeState> {
+  const [custom, sources, caches, pins, bases] = await Promise.all([
+    customRecipes.getValue(),
+    recipeSources.getValue(),
+    sourceCaches.getValue(),
+    siteSourcePins.getValue(),
+    forkBases.getValue(),
+  ]);
+  const { recipes: sourced, choices } = resolveSources(sources, caches, pins);
+  const stale = staleForks(custom, sourced, bases);
+  return { custom, sources, caches, pins, bases, sourced, choices, stale };
+}
+
+/** The effective recipes with the source each came from (unset on the user's own). */
+export function effectiveRecipes(s: RecipeState): { recipe: Recipe; sourceId?: string }[] {
+  return mergeRecipes(s.custom, s.sourced, s.bases);
+}
 
 /**
- * The recipes the engine should use, merged by precedence: the user's own custom
- * recipes win, then the fetched remote list, then the bundled seed. Deduped by
- * BOTH id and target (first wins), so a local recipe for a site cleanly SHADOWS
- * a library recipe covering the same URL even if their ids differ. The result is
- * one effective recipe per target, never a confusing double match.
+ * The recipes the engine should use: the user's own first, then the sources in
+ * priority order with one source per site (lib/recipes/sources.ts). One recipe
+ * per target, so a local recipe for a site cleanly SHADOWS a source recipe that
+ * covers the same URL even if their ids differ.
  */
 export async function loadRecipes(): Promise<Recipe[]> {
-  const [remoteEntry, custom] = await Promise.all([
-    remoteRecipes.getValue(),
-    customRecipes.getValue(),
-  ]);
-  const seenIds = new Set<string>();
-  const seenTargets = new Set<string>();
-  const merged: Recipe[] = [];
-  for (const r of [...custom, ...(remoteEntry?.recipes ?? []), ...bundled]) {
-    const target = recipeTarget(r);
-    if (seenIds.has(r.id) || seenTargets.has(target)) continue;
-    seenIds.add(r.id);
-    seenTargets.add(target);
-    merged.push(r);
-  }
-  return merged;
+  return effectiveRecipes(await loadRecipeState()).map((e) => e.recipe);
+}
+
+/** Every storage item `loadRecipes` reads, for a caller that reloads on change. */
+export function watchRecipes(cb: () => void): () => void {
+  const off = [
+    customRecipes.watch(cb),
+    recipeSources.watch(cb),
+    sourceCaches.watch(cb),
+    siteSourcePins.watch(cb),
+    forkBases.watch(cb),
+  ];
+  return () => {
+    for (const f of off) f();
+  };
 }

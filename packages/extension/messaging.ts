@@ -245,7 +245,8 @@ export interface ProtocolMap {
    * per-tracker destinations and gate actions. */
   resolveAll(q: { media: ParsedMedia; trackers: Tracker[] }): TrackerResolution[];
   /** Force-refresh the CDN recipe list; returns how many recipes are now cached. */
-  refreshRecipes(): { ok: boolean; count: number; error?: string };
+  /** Refresh one recipe source, or (no id) every source plus the anime map. */
+  refreshRecipes(data?: { sourceId?: string }): { ok: boolean; count: number; error?: string };
   /** Build a Letterboxd-import CSV from the user's movie history, ratings and
    * reviews on one tracker (rewatches included). Client-side only: the CSV is
    * returned to the page to download; nothing is sent anywhere new (constraint #6). */

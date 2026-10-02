@@ -4,8 +4,8 @@ import { describe, expect, it } from "vitest";
 // where import.meta.url is rewritten and fs paths can't be relied on).
 import episodeHtml from "./fixtures/sample-episode.html?raw";
 import movieHtml from "./fixtures/sample-movie.html?raw";
-// Synthetic recipes paired with the fixtures below — kept out of the shipped
-// recipes/index.json so that list holds only real, contributable site recipes.
+// Synthetic recipes paired with the fixtures below. TMSync ships no site recipes,
+// so these synthetic pages are what pin the engine's output.
 import sampleRecipes from "./fixtures/sample-recipes.json";
 
 /**

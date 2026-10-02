@@ -37,14 +37,15 @@ export default defineConfig({
     description: "Automatically track what you watch and keep your trackers up to date.",
     // Shown as the "homepage" link on the extension's card in the browser's
     // management page — point it at the repo so installed users can reach the
-    // source, issues, and recipe library.
+    // source, issues, and the recipe format docs.
     homepage_url: "https://github.com/kasusoba/TMSync",
     // `identity` for Trakt OAuth; `activeTab` lets the popup read the current
     // tab's URL (on the action click) to offer "enable on this site".
     permissions: ["storage", "alarms", "scripting", "identity", "activeTab"],
     // Specific (non-broad) host access: the Trakt API, the AniList GraphQL
-    // endpoint, and the CDN we fetch the recipe list from. Allowed by constraint
-    // #5 — what's forbidden is broad `*://*/*` / <all_urls>.
+    // endpoint, and the CDN we fetch the anime map from (recipe sources hosted on
+    // GitHub use it too). Allowed by constraint #5, what's forbidden is broad
+    // `*://*/*` / <all_urls>.
     host_permissions: [
       "https://api.trakt.tv/*",
       // anilist.co for the OAuth token exchange (code → access token); graphql

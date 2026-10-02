@@ -4,10 +4,13 @@ import {
   badgePrefs,
   corrections,
   customRecipes,
+  forkBases,
   listSyncSettings,
   manualSelections,
   quickLinks,
   quickLinksEnabled,
+  recipeSources,
+  siteSourcePins,
 } from "@/lib/storage";
 import type { ListSyncSettings } from "@/lib/sync/types";
 import type { ResolvedIdentity } from "@/lib/trackers/trakt/types";
@@ -17,9 +20,9 @@ import { z } from "zod";
 
 /**
  * Manual backup (export/import). The bundle is exactly the **sync layer** — the
- * user-owned deltas (custom recipes, user quick links + library toggles,
- * corrections, manual picks, badge prefs) — and explicitly NOT library content
- * (re-fetched from the repo), tokens, or caches. See docs/ARCHITECTURE.md: the export
+ * user-owned deltas (custom recipes, recipe source URLs and site picks, user quick
+ * links + source link toggles, corrections, manual picks, badge prefs), and
+ * explicitly NOT source content (re-fetched from each source), tokens, or caches. See docs/ARCHITECTURE.md: the export
  * bundle === the sync payload === "your stuff", so both portability paths move the
  * same set.
  *
@@ -52,7 +55,14 @@ const QuickLinkSiteSchema = LinkTemplates.extend({
   name: z.string(),
   enabled: z.boolean(),
   tracker: z.enum(["trakt", "anilist"]).optional(),
-  source: z.enum(["library", "user"]).optional(),
+  // "library" is the old name of a link from the central list, read as "user".
+  source: z.enum(["library", "user", "source"]).optional(),
+});
+
+const RecipeSourceSchema = z.object({
+  id: z.string(),
+  url: z.string().url(),
+  enabled: z.boolean(),
 });
 
 const BadgePrefsSchema: z.ZodType<BadgePrefs> = z.object({
@@ -98,7 +108,12 @@ const BackupSchema = z.object({
     // sinks the whole import — kept loose here.
     customRecipes: z.array(z.unknown()).default([]),
     userQuickLinks: z.array(QuickLinkSiteSchema).default([]),
-    libraryLinkToggles: z.record(z.string(), z.boolean()).default({}),
+    sourceLinkToggles: z.record(z.string(), z.boolean()).default({}),
+    recipeSources: z.array(RecipeSourceSchema).default([]),
+    siteSourcePins: z.record(z.string(), z.string()).default({}),
+    forkBases: z
+      .record(z.string(), z.object({ sourceId: z.string(), hash: z.string() }))
+      .default({}),
     corrections: z.record(z.string(), ResolvedIdentitySchema).default({}),
     manualSelections: z.record(z.string(), ParsedMediaSchema).default({}),
     badgePrefs: BadgePrefsSchema.optional(),
@@ -111,6 +126,8 @@ export type Backup = z.infer<typeof BackupSchema>;
 
 export interface ImportSummary {
   recipes: number;
+  /** Recipe sources this device did not have yet. */
+  sources: number;
   quickLinks: number;
   corrections: number;
   manualSelections: number;
@@ -121,20 +138,24 @@ export interface ImportSummary {
 
 /** Gather the user-owned deltas into a versioned, downloadable bundle. */
 export async function buildBackup(): Promise<Backup> {
-  const [recipes, links, corr, manual, badge, linksOn, listSync] = await Promise.all([
-    customRecipes.getValue(),
-    quickLinks.getValue(),
-    corrections.getValue(),
-    manualSelections.getValue(),
-    badgePrefs.getValue(),
-    quickLinksEnabled.getValue(),
-    listSyncSettings.getValue(),
-  ]);
-  // Library quick links come from the repo on every device — carry only their
-  // on/off toggle, not the templates.
-  const userQuickLinks = links.filter((l) => l.source !== "library");
-  const libraryLinkToggles: Record<string, boolean> = {};
-  for (const l of links) if (l.source === "library") libraryLinkToggles[l.id] = l.enabled;
+  const [recipes, links, corr, manual, badge, linksOn, listSync, sources, pins, bases] =
+    await Promise.all([
+      customRecipes.getValue(),
+      quickLinks.getValue(),
+      corrections.getValue(),
+      manualSelections.getValue(),
+      badgePrefs.getValue(),
+      quickLinksEnabled.getValue(),
+      listSyncSettings.getValue(),
+      recipeSources.getValue(),
+      siteSourcePins.getValue(),
+      forkBases.getValue(),
+    ]);
+  // Source quick links come from their source on every device, so carry only
+  // their on/off toggle, not the templates.
+  const userQuickLinks = links.filter((l) => l.source !== "source");
+  const sourceLinkToggles: Record<string, boolean> = {};
+  for (const l of links) if (l.source === "source") sourceLinkToggles[l.id] = l.enabled;
   // Automatic sync is per device: two browsers running it would each send the same
   // Trakt plays. So it stays out of the backup.
   const { auto: _device, ...listSyncPrefs } = listSync;
@@ -145,7 +166,10 @@ export async function buildBackup(): Promise<Backup> {
     data: {
       customRecipes: recipes,
       userQuickLinks,
-      libraryLinkToggles,
+      sourceLinkToggles,
+      recipeSources: sources,
+      siteSourcePins: pins,
+      forkBases: bases,
       corrections: corr,
       manualSelections: manual,
       badgePrefs: badge,
@@ -180,12 +204,24 @@ export async function applyBackup(backup: Backup): Promise<ImportSummary> {
   for (const r of validRecipes) recipeMap.set(r.id, r);
   await customRecipes.setValue([...recipeMap.values()]);
 
-  // Quick links: merge user links by id; apply library toggles to existing rows.
+  // Recipe sources: add the ones this device lacks (same URL = same source), after
+  // its own, so the restore does not reorder what is here. Sites picks and fork
+  // bases follow, imported wins on key.
+  const haveSources = await recipeSources.getValue();
+  const newSources = d.recipeSources.filter(
+    (s) => !haveSources.some((h) => h.url === s.url || h.id === s.id),
+  );
+  if (newSources.length) await recipeSources.setValue([...haveSources, ...newSources]);
+  await siteSourcePins.setValue({ ...(await siteSourcePins.getValue()), ...d.siteSourcePins });
+  await forkBases.setValue({ ...(await forkBases.getValue()), ...d.forkBases });
+
+  // Quick links: merge user links by id; apply source link toggles to existing rows.
   const linkMap = new Map<string, QuickLinkSite>(
     (await quickLinks.getValue()).map((l) => [l.id, l]),
   );
-  for (const l of d.userQuickLinks) linkMap.set(l.id, { ...l, source: l.source ?? "user" });
-  for (const [id, enabled] of Object.entries(d.libraryLinkToggles)) {
+  for (const { source: _old, ...l } of d.userQuickLinks)
+    linkMap.set(l.id, { ...l, source: "user" });
+  for (const [id, enabled] of Object.entries(d.sourceLinkToggles)) {
     const ex = linkMap.get(id);
     if (ex) linkMap.set(id, { ...ex, enabled });
   }
@@ -210,6 +246,7 @@ export async function applyBackup(backup: Backup): Promise<ImportSummary> {
 
   return {
     recipes: validRecipes.length,
+    sources: newSources.length,
     quickLinks: d.userQuickLinks.length,
     corrections: Object.keys(d.corrections).length,
     manualSelections: Object.keys(d.manualSelections).length,

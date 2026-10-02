@@ -3,11 +3,23 @@ import { describe, expect, it } from "vitest";
 import {
   addedHosts,
   findMovedSite,
-  groupSites,
+  forkBasesOf,
+  groupSites as groupEffective,
   uniqueHosts,
   withSiteHosts,
   withSiteName,
 } from "./sites";
+import { mergeRecipes, recipeHash } from "./sources";
+
+/** Group custom recipes plus recipes from one source "s", as the UI does. */
+const groupSites = (custom: Recipe[], sourced: Recipe[]) =>
+  groupEffective(
+    mergeRecipes(
+      custom,
+      sourced.map((recipe) => ({ recipe, sourceId: "s" })),
+      {},
+    ),
+  );
 
 function recipe(id: string, match: Recipe["match"], name = id): Recipe {
   return {
@@ -53,14 +65,14 @@ describe("groupSites", () => {
     expect(sites[0]?.hosts).toEqual([]);
   });
 
-  it("marks library recipes and drops the ones a custom recipe shadows", () => {
+  it("marks source recipes and drops the ones a custom recipe shadows", () => {
     const mine = recipe("cineby", { urlPattern: "/movie", hostnames: ["cineby.at"] });
     const shadowed = recipe("cineby", { urlPattern: "/old", hostnames: ["cineby.at"] });
     const shared = recipe("cineby-tv", { urlPattern: "/tv", hostnames: ["cineby.at"] });
     const [site] = groupSites([mine], [shadowed, shared]);
-    expect(site?.recipes.map((r) => [r.recipe.match.urlPattern, r.library])).toEqual([
-      ["/movie", false],
-      ["/tv", true],
+    expect(site?.recipes.map((r) => [r.recipe.match.urlPattern, r.sourceId])).toEqual([
+      ["/movie", undefined],
+      ["/tv", "s"],
     ]);
   });
 });
@@ -72,7 +84,7 @@ describe("uniqueHosts", () => {
 });
 
 describe("withSiteHosts", () => {
-  it("rewrites custom recipes in place and forks library ones", () => {
+  it("rewrites custom recipes in place and forks source ones", () => {
     const mine = recipe("mine", { urlPattern: "/movie", hostnames: ["old.tld"] });
     const lib = recipe("lib", { urlPattern: "old\\.tld/tv" });
     const unrelated = recipe("x", { urlPattern: "/x", hostnames: ["x.tld"] });
@@ -84,11 +96,14 @@ describe("withSiteHosts", () => {
       ["x", ["x.tld"], "/x"],
       ["lib", ["new.tld"], "/tv"],
     ]);
+    expect(forkBasesOf(site, [mine, unrelated])).toEqual({
+      lib: { sourceId: "s", hash: recipeHash(lib) },
+    });
   });
 });
 
 describe("withSiteName", () => {
-  it("renames the site's custom recipes and leaves library ones alone", () => {
+  it("renames the site's custom recipes and leaves source ones alone", () => {
     const mine = recipe("mine", { urlPattern: "/movie", hostnames: ["a.tld"] }, "watch.a.tld");
     const lib = recipe("lib", { urlPattern: "/tv", hostnames: ["a.tld"] }, "Library A");
     const other = recipe("x", { urlPattern: "/x", hostnames: ["x.tld"] }, "X");
