@@ -2,8 +2,7 @@
 
 A recipe is declarative data that tells the engine where a title, year, season, and episode sit on
 a streaming page and how to clean them. It is never code. This page is the reference for writing
-one, how recipes are versioned, and how they reach users. To submit one, see
-[`CONTRIBUTING.md`](../CONTRIBUTING.md). The Zod schema in
+one, how recipes are versioned, and how they reach users through recipe sources. The Zod schema in
 [`packages/shared/src/schema.ts`](../packages/shared/src/schema.ts) is the source of truth.
 
 - [Anatomy of a recipe](#anatomy-of-a-recipe)
@@ -12,8 +11,8 @@ one, how recipes are versioned, and how they reach users. To submit one, see
 - [Quick links](#quick-links)
 - [Versioning](#versioning)
 - [Where recipes live](#where-recipes-live)
+- [Recipe sources](#recipe-sources)
 - [Maintenance: site rot and domain moves](#maintenance-site-rot-and-domain-moves)
-- [Contribution mechanics](#contribution-mechanics)
 
 ---
 
@@ -107,8 +106,9 @@ anime crosswalk, then a title search, then the user-correction picker. See the t
 
 Recipe ids are readable and stable, not timestamps. The picker derives one from the host slug
 (`www.miruro.to` becomes `miruro-to`), with `-2`, `-3` on a collision (`lib/recipes/id.ts`). Two
-users who contribute the same site then produce the same id, so the library never gets a silent
-duplicate. No store references a recipe id as a foreign key, so ids can change freely.
+people who set up the same site then produce the same id. An id is unique inside one source file
+only. A local edit of a source recipe keeps its id, and that is how the edit shadows the source
+version.
 
 ## One recipe or two
 
@@ -170,8 +170,8 @@ Placeholders, substituted from the tracker page (never executed):
 | `{romaji}`          | AniList | URL-encoded romaji title |
 | `{canonical}`       | AniList | the site's real slug, learned from a prior watch (needs a `canonical` field on the recipe) |
 
-If a template references an id the page doesn't expose, TMSync falls back to `search`. Library
-quick links arrive **disabled**, and each user enables their favourites.
+If a template references an id the page doesn't expose, TMSync falls back to `search`. Quick links
+from a recipe source arrive **disabled**, and each user enables their favourites.
 
 ## Versioning
 
@@ -204,23 +204,84 @@ Version 4 added the MyAnimeList and Simkl trackers. A recipe that names either c
 builds (`minSchemaVersion`). A legacy `extract.tmdbId` folds into `ids.tmdb` through a schema
 transform, so old recipes keep parsing.
 
-When a real break is needed, do both halves together. Add a storage migration for the user's custom
-recipes, which are the only data users own. Regenerate the library at the new `schemaVersion`, and
-optionally keep both tiers live for a while so builds that have not updated keep working.
+When a real break is needed, add a storage migration for the user's custom recipes in the same
+change. Source authors then republish their files at the new `schemaVersion`. A source file can
+keep both versions of a recipe for a while, so builds that have not updated keep working.
 
 ## Where recipes live
 
-- **Custom recipes** are the user's own. They sync across the user's browsers through
-  `browser.storage.sync`, one key per recipe (`recipe:{id}`), and never go to a TMSync server.
-- **Library recipes** live in [`recipes/index.json`](../recipes/index.json), one tracker-agnostic
-  list, and are contributed by pull request. The extension fetches the list from the repo CDN every
-  12 hours (`alarms`, conditional on the ETag) and also bundles a copy as an offline seed.
-- **Precedence:** the user's custom recipes win, then the fetched list, then the bundled seed. A
-  local recipe shadows a library recipe for the same target (hosts plus pattern), even if the ids
-  differ, so there is one effective recipe per target and never a double match.
+TMSync ships with no site recipes. A user gets recipes in two ways:
 
-Because the list comes over the CDN, fixing a rotted library recipe reaches every user on their
-next refresh, with no extension release.
+- **Custom recipes** are the user's own, made with the picker or imported from a backup. They sync
+  across the user's browsers through `browser.storage.sync`, one key per recipe (`recipe:{id}`),
+  and never go to a TMSync server.
+- **Recipe sources** are files of recipes and quick links that anyone can publish at an https URL.
+  The user adds the URL in Options, under Sources. See [Recipe sources](#recipe-sources).
+
+The user's custom recipes always win. A local recipe shadows a source recipe for the same target
+(hosts plus pattern), even if the ids differ, so there is one effective recipe per target and never
+a double match.
+
+## Recipe sources
+
+A recipe source is one JSON file with this shape:
+
+```jsonc
+{
+  "name": "My sites",                     // optional: shown in Options (else the URL's host)
+  "homepage": "https://example.org/",     // optional: where people can find who runs it
+  "recipes": [ /* recipes, as above */ ],
+  "links":   [ /* quick links, as above */ ]
+}
+```
+
+A complete, valid sample is [`docs/examples/recipe-source.json`](./examples/recipe-source.json). It
+reads public-domain films on the Internet Archive. It is a format sample, and TMSync does not add
+it by default. To try it, add its raw URL as a source:
+`https://raw.githubusercontent.com/kasusoba/TMSync/main/docs/examples/recipe-source.json`.
+
+**Making one.** Set up your sites with the picker. Then, in Options under Sources, use **Share your
+sites**: tick the sites and quick links, and save the file (or copy the JSON). Only site config goes
+in the file. Corrections, manual picks, and crosswalk overrides reveal what you watched, so they
+never leave the device.
+
+**Hosting it.** Put the file anywhere with a public https URL. A GitHub gist or a repo works:
+`raw.githubusercontent.com`, `gist.githubusercontent.com`, and `cdn.jsdelivr.net` need no extra
+permission. Any other host makes TMSync ask for read access to that host when the user adds the URL.
+To update the source, change the file at the same URL. Users get the change on their next refresh.
+
+**How TMSync reads a source** (`lib/recipes/source-sync.ts`):
+
+- It refreshes each enabled source every 12 hours, with `If-None-Match` on the ETag, and on the
+  Refresh buttons in Options.
+- A file larger than 1 MB, or one that is not JSON, is refused. Each recipe and link is validated
+  with Zod, and an invalid entry is dropped, never partly applied.
+- A failed refresh keeps the last good copy and shows the error on the source's row, so a source
+  that is down for a day does not drop its sites.
+- The fetch is a plain public GET with no cookies. It shows the user's IP address to the host, like
+  any page. No watch data goes there.
+
+**When two sources cover one site** (`lib/recipes/sources.ts`):
+
+1. The user's own recipes win over every source.
+2. A site comes from one source, whole. Recipes are grouped into sites by shared host, across
+   sources too, so a domain move still joins them. TMSync never takes the movie recipe from one
+   source and the TV recipe from another, because no author tested that mix.
+3. That source is the one the user picked on the site's card ("Use \<source\>"), else the
+   highest enabled source in the list. Reordering the list changes the default for every site the
+   user did not pick.
+4. A recipe with no `hostnames` is not part of a site. It joins the list in its source's order, and
+   the first recipe that matches a page wins.
+5. Quick links follow rule 3, one per host and one per id. A link the user edited is theirs and a
+   source never overwrites it.
+
+**Local edits of source recipes.** Changing a source site's domains on its card forks its recipes
+into the user's own, under the same ids, and records the source version they came from. When the
+source later changes such a recipe, the site card says so and offers **Use source version** (drop
+the fork) or **Keep mine**. A fork is never replaced on its own.
+
+Removing or turning off a source removes its recipes and quick links at once. Forks stay, because
+they are the user's own.
 
 ## Maintenance: site rot and domain moves
 
@@ -229,8 +290,9 @@ recipe's selectors or `urlPattern` stop matching. The loop is:
 
 1. **Detect.** A recipe-snapshot test goes red in CI (saved HTML plus the expected `extract()`
    output, in `packages/extension/test/fixtures/`), or a user hits a bad parse.
-2. **Fix.** Re-pick with the picker and contribute the updated recipe.
-3. **Ship.** Merge, and the CDN serves it on the next refresh.
+2. **Fix.** Re-pick with the picker. If the recipe came from a source, the local fix shadows it.
+3. **Share.** A source author updates the file at the same URL, and users get it on their next
+   refresh, with no extension release.
 
 A change to a picker heuristic such as `suggestUrlPattern` does not rot saved recipes. Heuristics
 run only when a recipe is authored, and a saved recipe keeps its stored `match`.
@@ -246,41 +308,10 @@ that older patterns carry. A move is handled in one of three ways, cheapest firs
    domain to every recipe of that site, and starts tracking (`findMovedSite` in
    `packages/extension/lib/recipes/sites.ts`).
 2. **Options, under Sites, on the site's card.** Add the new domain (access is requested), then
-   remove the old one (its access is revoked). A library recipe is forked locally under the same id,
-   so the next library sync cannot undo the edit.
-3. **A contributed recipe.** Add the new hostname to `hostnames`, and keep the old one while it
-   still resolves.
+   remove the old one (its access is revoked). A source recipe is forked locally under the same id,
+   so the next refresh cannot undo the edit.
+3. **In a source file.** The author adds the new hostname to `hostnames`, and keeps the old one
+   while it still resolves.
 
 A recipe with no `hostnames` matches any host on its pattern and fingerprint alone. That is the
 clone-resilient escape hatch, not the default. The picker always writes a host scope.
-
-## Contribution mechanics
-
-Only site config is contributable: recipes and quick links. Corrections, manual picks, and the
-crosswalk overrides reveal what the user watched, so they never leave the device.
-
-The extension builds a self-describing payload into a prefilled GitHub issue. The user submits it
-with their own GitHub login, and no backend is involved:
-
-```json
-{ "kind": "recipe", "tracker": "trakt", "action": "add", "id": "cineby", "schemaVersion": 3, "data": {} }
-```
-
-Local-only fields (`source`, `enabled`) are already stripped, so the data is library-shaped. A
-large bundle exceeds the issue URL limit, so TMSync copies the JSON and the issue asks the user to
-paste it.
-
-`.github/workflows/contribution.yml` runs `scripts/apply-contribution.mjs` when a maintainer adds
-the `contribution` label (or opens an issue that already has it). Outsiders cannot add labels, so
-every outside contribution waits for a maintainer check. The script routes recipes to `recipes[]`
-and quick links to `links[]`, adds by id (an existing id is an update, never a silent duplicate),
-formats the file, and opens a PR on a content-keyed branch, so re-contributing the same site
-updates its PR. It comments on the issue with the PR link. This is repo automation, not a hosted
-service. Schema validation stays with the tests: a malformed entry is dropped by `parseLibrary` and
-the tests fail, which blocks the merge. Two different sites editing the same array can still
-conflict, and a human resolves that.
-
-**Graduation.** When a contribution merges, the library keeps its id. On the next refresh an
-identical local recipe is retired, so it stops using sync quota. An identical local quick link
-becomes a library entry and keeps the user's enable or disable toggle. If the user edited their
-copy after contributing, the local copy stays and keeps shadowing the library one.

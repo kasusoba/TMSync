@@ -3,7 +3,7 @@
 Operating guide for Claude Code on this repo. Read before generating or editing code. These decisions are **settled**; do not relitigate or "improve" them without being asked.
 
 ## Project in one paragraph
-TMSync is a cross-browser (Chrome + Firefox) WebExtension that passively scrobbles what the user watches on arbitrary streaming sites (including gray-market ones with no API) to the right tracker: **movies and non-anime TV → Trakt, WeTrakr, and/or Simkl**, **anime series → AniList and/or MyAnimeList (MAL)** (and Trakt, WeTrakr, and Simkl too). It detects the media from the page using **declarative recipes** (data, not code), resolves it against the tracker(s) it routes to, and records progress. **Anime may be multi-tracked to Trakt, WeTrakr, AniList, MAL, and Simkl at once** via a TMDB↔AniList crosswalk (with MAL ids); Simkl takes the page's own numbering and never uses the crosswalk. Non-anime goes only to Trakt, WeTrakr, and Simkl. Site definitions can be added on the fly via an in-page element picker. `docs/ARCHITECTURE.md` explains how it works, `docs/RECIPES.md` covers recipes, and `docs/TRACKERS.md` covers each tracker's API.
+TMSync is a cross-browser (Chrome + Firefox) WebExtension that passively scrobbles what the user watches on arbitrary sites (including ones with no API) to the right tracker: **movies and non-anime TV → Trakt, WeTrakr, and/or Simkl**, **anime series → AniList and/or MyAnimeList (MAL)** (and Trakt, WeTrakr, and Simkl too). It detects the media from the page using **declarative recipes** (data, not code), resolves it against the tracker(s) it routes to, and records progress. **Anime may be multi-tracked to Trakt, WeTrakr, AniList, MAL, and Simkl at once** via a TMDB↔AniList crosswalk (with MAL ids); Simkl takes the page's own numbering and never uses the crosswalk. Non-anime goes only to Trakt, WeTrakr, and Simkl. Site definitions can be added on the fly via an in-page element picker, or from **recipe sources** (user-added URLs of recipe files, run by anyone). TMSync ships with **no sites** and the repo keeps no site list. `docs/ARCHITECTURE.md` explains how it works, `docs/RECIPES.md` covers recipes, and `docs/TRACKERS.md` covers each tracker's API.
 
 ## Hard constraints (never violate)
 1. **Pluggable tracker registry, multi-tracked.** Trackers are a **list you can grow**, currently **Trakt + WeTrakr + AniList + MyAnimeList + Simkl**. Each tracker is one implementation behind the adapter seam (see **Tracker adapters**); adding one = a new adapter + a picker toggle + (if it uses a different numbering) an anime-map entry, **without touching the other trackers or the shared `extract()` engine** (checklist: `docs/TRACKERS.md`). An item may be written to **every enabled tracker at once** (multi-track, `docs/ARCHITECTURE.md`); the picker exposes an **independent on/off toggle per tracker** (no "primary tab"). Which enabled tracker is **native** (its numbering matches the page → written directly) vs **derived** (mapped via the crosswalk) is **inferred at scrobble time**, not user-picked. Feasibility is per-item: a tracker that can't resolve an item (e.g. AniList on non-anime) is simply skipped.
@@ -11,8 +11,8 @@ TMSync is a cross-browser (Chrome + Firefox) WebExtension that passively scrobbl
 3. **No remote code execution.** Never `eval`, `new Function`, inject remote `<script>`, or fetch-and-run JS. Recipes are **data** interpreted by the bundled engine. This is an MV3 + store-policy requirement, not a style choice. The recipe schema must stay expressive enough that no site ever needs a code escape hatch.
 4. **Background is a stateless, ephemeral MV3 service worker.** Never keep watch-session state, timers, or accumulated buffers in background memory. The content script owns session state. The background reads everything it needs from `storage` on each wake. Use `alarms` if scheduling is ever required. **One scoped exception: list sync jobs** (`lib/sync/job.ts`, the preview and apply runs). A job is one bounded run that saves its state to storage after each step, so it may hold a liveness beat timer, a retry sleep, and the lists it is reading in memory while it runs. A worker stopped mid-job loses only time: the saved job shows it stopped, the read caches and the writes already taken stay, and the next preview plans what is left. Nothing else gets this exception, and nothing a job holds in memory may be needed after it ends.
 5. **No broad host permissions at install.** Use `optional_host_permissions: ["*://*/*"]` and request per-origin on a user gesture, then `chrome.scripting.registerContentScripts`. Never put `<all_urls>` in `host_permissions`. `activeTab` is insufficient (per-click, non-persistent).
-6. **Privacy split.** Resolution + scrobbling are client-side. Watch data goes only to the user's own tracker accounts (Trakt, WeTrakr, AniList, MAL, Simkl), and each item only to the trackers it's routed to. Any current/future backend receives only anonymous recipe data, never watch history.
-7. **No backend in v1.** Recipes are a versioned JSON list fetched from the repo/CDN, contributed by PR. Do not scaffold a server unless explicitly asked (that is Phase 2).
+6. **Privacy split.** Resolution + scrobbling are client-side. Watch data goes only to the user's own tracker accounts (Trakt, WeTrakr, AniList, MAL, Simkl), and each item only to the trackers it's routed to. A recipe source is a plain GET of a public file and receives no watch data.
+7. **No backend, and no central site list.** TMSync ships with no site recipes. Users add **recipe sources** (https URLs of JSON files in the library format, Mihon style), and share their own sites as a source file. Never add a first-party list of sites, a bundled seed, or a "suggested sources" list; this keeps the project neutral about the sites people use. When sources overlap, a site comes whole from one source (the user's pin, else list order) and the user's own recipes always win (`lib/recipes/sources.ts`, `docs/RECIPES.md`). Do not scaffold a server.
 8. **Validate untrusted input.** Every recipe is parsed through the Zod schema before use. A recipe failing validation is discarded, never partially applied.
 
 ## Stack (use exactly these)
@@ -20,7 +20,7 @@ TMSync is a cross-browser (Chrome + Firefox) WebExtension that passively scrobbl
 - **Injected content UI:** Preact (lightweight; content scripts ship on every page). Render inside Shadow DOM via WXT's `createShadowRootUi`. Tailwind allowed only if scoped into the shadow root.
 - **Options page:** React is fine here (not injected, weight irrelevant). Any UI kit / design system is welcome (shadcn, Radix, etc.).
 - **Messaging:** `@webext-core/messaging` for typed content↔background↔options messages. No ad-hoc `postMessage` plumbing.
-- **Storage:** WXT storage API. `local` for caches (recipe list, resolution cache, per-(site,show) corrections, OAuth tokens). `sync` for small user prefs.
+- **Storage:** WXT storage API. `local` for caches (recipe source copies, resolution cache, per-(site,show) corrections, OAuth tokens). `sync` for small user prefs.
 - **Element picker selectors:** `@medv/finder` to generate short, robust, unique selectors. Do not hand-roll selector heuristics.
 - **Validation:** Zod (recipe schema + any external payloads).
 - **Trakt:** OAuth via `browser.identity.launchWebAuthFlow` (or device-code flow). A thin typed `fetch` client — no heavy SDK. Cache search/resolve results.
@@ -35,12 +35,9 @@ TMSync is a cross-browser (Chrome + Firefox) WebExtension that passively scrobbl
 /
 ├─ packages/
 │  ├─ extension/      # WXT app: entrypoints/, content/, background/, options/, engine/
-│  ├─ shared/         # recipe schema (Zod) + types + pure helpers (no DOM, no browser APIs)
-│  └─ server/         # Phase 2 only — do not create until asked
-├─ recipes/index.json # ONE tracker-agnostic recipe + quick-link list (source of truth,
-│                     #   PR-contributed). Recipes for every tracker coexist; each names its own
-│                     #   `trackers` and the engine routes per-recipe. No per-tracker files.
-├─ docs/              # ARCHITECTURE, RECIPES, TRACKERS, RELEASING
+│  └─ shared/         # recipe schema (Zod) + types + pure helpers (no DOM, no browser APIs)
+├─ recipes/anime-map.json # the TMDB↔AniList crosswalk (CI-generated). No site recipes live here.
+├─ docs/              # ARCHITECTURE, RECIPES, TRACKERS, RELEASING; examples/recipe-source.json
 ├─ CONTRIBUTING.md
 ├─ README.md
 └─ CLAUDE.md
@@ -71,7 +68,7 @@ Engine contract: a single pure-ish `extract(recipe, { document, url }): ParsedMe
    - `ended` → `POST /scrobble/stop` (~100%).
    - leaving before `ended` (tab close / SPA nav / video element removed) → also `POST /scrobble/stop` with last known progress.
    - **Trakt owns the watched decision:** on `stop`, progress ≥ 80% → added to history; < 80% → kept as paused/Continue Watching. Do not implement a parallel watched-threshold. If a stricter cutoff is ever wanted, send `pause` (not `stop`) below it to avoid duplicate scrobbles.
-6. Corrections: user picks the right entry (Trakt search result, or AniList `Media`) → store keyed by `(siteId, rawTitle)` → reused on future matches → optionally offered as a contribution.
+6. Corrections: user picks the right entry (Trakt search result, or AniList `Media`) → store keyed by `(siteId, rawTitle)` → reused on future matches.
 
 ### Scrobble rules (avoid API abuse + lost stops)
 - One `start` per session; coalesce/debounce rapid `play`/`pause` bursts (seeking, ad breaks, keyframe stepping). Scrobbling every raw event is the classic mistake.
@@ -182,7 +179,7 @@ The look and these rules are **settled**; don't relitigate spacing/colour/struct
   - Icon actions (close, minimize, reorder, edit, delete) use the **borderless `IconBtn`** (hover state, no ring). Never mix bordered and borderless icon buttons.
   - **Destructive** actions are a **trash `IconBtn` (`danger`)**, identical everywhere (recipes, corrections, quick links).
   - Text buttons: `primary` (filled red) = the main action; `ghost` = secondary (Refresh, Add, Disable, Copy JSON); `danger` (ghost-rose) = bulk-destructive (Clear all).
-  - **Red underline is for genuine inline text links only** (e.g. "contribute here"). Never style a button as red underlined text.
+  - **Red underline is for genuine inline text links only** (e.g. "How to make one"). Never style a button as red underlined text.
   - All interactive controls get `cursor: pointer` (restored in the theme base layer; Tailwind v4 preflight defaults buttons to `default`).
   - In any header show **either the logo mark or the wordmark — not both**.
 - **Account section is a provider list**, **one row per tracker** (today five: Trakt, WeTrakr, AniList, MyAnimeList, Simkl). Each row is mark + name + status + Connect/Disconnect, and NAMES the provider so "Connect" is never "connect to what?". The rows are independent connections; which trackers an item goes to is the per-recipe toggle set (constraint #1), not the account list. Reuse the existing provider-row component for both; don't invent a second pattern. Section is labelled "Account".
@@ -199,9 +196,10 @@ The look and these rules are **settled**; don't relitigate spacing/colour/struct
 - Do not resurrect a "primary tracker" tab/selector in the picker — trackers are **independent toggles**; native-vs-derived is inferred at runtime.
 - Non-anime (movies, Western TV) may be multi-tracked only to Trakt, WeTrakr, and Simkl, which take seasoned numbering and tmdb/imdb ids as scraped, so no crosswalk is involved. Simkl is the `any` family: it gets the page's own numbering and never goes through the crosswalk. Never send non-anime through the anime-map crosswalk or to a cour-family tracker (AniList, MAL).
 - Do not silently mis-write a derived tracker: **refuse-on-ambiguous** + per-tracker `progress > episodes` guardrail; each tracker is advance-only and never lowers remote progress (`docs/ARCHITECTURE.md`, "Multi-tracking").
-- Keep the recipe library as ONE tracker-agnostic file (`recipes/index.json`): every recipe names its own trackers and the engine routes per-recipe. Do NOT introduce per-tracker recipe files/directories: they bake the tracker into the layout and don't scale as trackers are added.
+- Keep a recipe source as ONE tracker-agnostic file: every recipe names its own trackers and the engine routes per-recipe. Do NOT introduce per-tracker recipe files or sections: they bake the tracker into the layout and don't scale as trackers are added.
+- Do not bring back a central recipe list, a bundled site seed, or a default or suggested recipe source. Sites come only from the user's own recipes and the sources the user adds.
 - Do not give AniList a fake scrobble loop — it has no scrobble API; one `SaveMediaListEntry` write per episode at threshold.
-- Do not create `packages/server` or any hosted DB/voting system in v1.
+- Do not create `packages/server` or any hosted DB/voting system.
 - Do not store session state, timers, or buffers in the background service worker (the only exception is a running list sync job, constraint #4).
 - Do not request `<all_urls>` or put host permissions in the install manifest.
 - Do not let recipes carry or run JavaScript; no `eval`/`new Function`/remote scripts.

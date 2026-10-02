@@ -1,78 +1,35 @@
 # Contributing to TMSync
 
-Two kinds of contribution are welcome: **site definitions** (the easy, high-value one) and
-**code**. Chat about either on the [TMSync Discord](https://discord.gg/XCRsUnrJR).
+Code contributions are welcome. Chat on the [TMSync Discord](https://discord.gg/XCRsUnrJR).
 
-- [Site definitions](#site-definitions): recipes and quick links
+- [Sites: share them as your own recipe source](#sites-share-them-as-your-own-recipe-source)
 - [Code contributions](#code-contributions)
 - [Running the extension locally](#running-the-extension-locally)
 - [Before you open a PR](#before-you-open-a-pr)
 
 ---
 
-## Site definitions
+## Sites: share them as your own recipe source
 
-The most useful thing most people can contribute is a **recipe** (so TMSync can scrobble a
-streaming site) and/or a **quick link** (so a "watch on ..." button appears on tracker pages).
-Both live in one tracker-agnostic file, [`recipes/index.json`](./recipes/index.json). Each recipe
-names the trackers it records to, so Trakt, WeTrakr, Simkl, and anime sites coexist in the same list.
-There is no backend: the library is versioned JSON fetched from this repo, and it reaches every
-user with the next library sync after a PR merges.
+TMSync ships with no sites, and this repo does not take site lists. Users add **recipe sources**
+instead: JSON files of recipes and quick links that anyone can publish at an https URL. To share
+your sites:
+
+1. Set up each site with the picker: on a movie or episode page, open the toolbar popup and click
+   **Set up recipe**. Check that the badge shows the right title.
+2. In the extension's options, open **Sources**, then **Share your sites**. Tick what to share and
+   save the file. It holds site config only, never watch data.
+3. Put the file anywhere with a public https URL (a GitHub gist works) and share that URL. Anyone
+   adds it under Sources. When you update the file at the same URL, they get the change on their
+   next refresh.
+
+[`docs/RECIPES.md`](./docs/RECIPES.md) has the recipe reference, the source file format, how
+TMSync picks between two sources that cover one site, and a sample source file.
 
 > **Recipes are data, never code.** A recipe describes *where* a value is on the page and
 > *how to clean it*. It can never run JavaScript. This is a hard requirement (MV3 + store
 > policy), so the schema has no code escape hatch. If a site seems impossible to express
-> declaratively, open an issue rather than trying to work around it.
-
-### The easy way: contribute from the extension
-
-1. Build the extension (see [Running the extension locally](#running-the-extension-locally))
-   or use the store version. Open the site on a movie or episode page.
-2. In the toolbar popup, click **Set up recipe**. Point at the title, year, season, and episode.
-   The picker auto-detects page metadata (`og:title`, JSON-LD) first and shows a live preview of
-   what it reads. Save it, then check that the badge matches the right title.
-3. In the extension's options, open **Contribute**. Tick the recipes and quick links to share
-   and click the button to open a prefilled GitHub issue. It carries site config only, never
-   watch data. Submit the issue as it is.
-4. A maintainer checks the issue and adds the `contribution` label. A bot then opens a pull
-   request from it and comments on the issue with the link. After review and merge, your site
-   is in the library.
-
-If the JSON is too long to prefill, TMSync copies it and the issue asks you to paste it.
-
-### The manual way: edit `recipes/index.json`
-
-```jsonc
-{
-  "recipes": [ /* scraping config: how to read media off a page */ ],
-  "links":   [ /* quick links: how to deep-link from a tracker page out to a site */ ]
-}
-```
-
-Keep both top-level keys. The library may be empty or small at any given time, so don't rely on
-existing entries as templates. [`docs/RECIPES.md`](./docs/RECIPES.md) has a full annotated recipe,
-the field reference, authoring tips, and the quick-link placeholders. A minimal recipe looks like
-this:
-
-```jsonc
-{
-  "id": "cineby-movie",
-  "schemaVersion": 3,
-  "name": "Cineby",
-  "trackers": ["trakt"],
-  "match": { "urlPattern": "/movie", "hostnames": ["cineby.at"] },
-  "mediaType": "movie",
-  "extract": {
-    "title": { "source": "meta", "selector": "og:title", "transforms": ["trim"] }
-  }
-}
-```
-
-Every entry is validated against the Zod schema in
-[`packages/shared/src/schema.ts`](./packages/shared/src/schema.ts) on load. **An entry that fails
-validation is silently discarded**, so a typo means your site just won't appear. The tests validate
-the file, so run them before opening a PR. To copy a recipe you made with the picker, open Options,
-then Sites, and use the copy icon on the recipe.
+> declaratively, open an issue about the engine rather than trying to work around it.
 
 ---
 
@@ -106,8 +63,9 @@ improvements. A few things make a code PR easy to accept:
   `packages/extension/lib/ui/kit`. Add new states to the gallery page (`gallery.html` in a dev
   build), which renders every surface with mock data.
 
-> **Out of scope** (please don't PR these): sending watch history anywhere but the user's own
-> tracker accounts, putting tracker-specific or anime-numbering logic into the shared engine, or a
+> **Out of scope** (please don't PR these): recipes or quick links for specific sites (share
+> them as your own recipe source), sending watch history anywhere but the user's own tracker
+> accounts, putting tracker-specific or anime-numbering logic into the shared engine, or a
 > backend or hosted service. See [`CLAUDE.md`](./CLAUDE.md) for the full constraint list.
 
 This is a spare-time project. Reviews are best-effort and may take a while. That is not a lack of
@@ -118,10 +76,9 @@ interest; thanks for your patience.
 ```
 packages/shared      # recipe schema (Zod) + types + pure extraction engine (no DOM/browser globals)
 packages/extension   # WXT app: entrypoints (background, content, popup, options), engine, tracker adapters, picker, UI
-recipes/index.json   # the tracker-agnostic recipe + quick-link library (PR-contributed)
 recipes/anime-map.json # the TMDB to AniList crosswalk (generated weekly by CI, do not edit by hand)
-docs/                # design notes
-scripts/             # release, contribution bot, and crosswalk build
+docs/                # design notes, plus docs/examples/recipe-source.json (a sample source file)
+scripts/             # release and crosswalk build
 ```
 
 ### Branches, commits, and PRs
@@ -200,7 +157,7 @@ document.documentElement.dataset.tmsyncBuild
 ## Before you open a PR
 
 ```bash
-pnpm test        # unit tests, including recipes/index.json against the schema
+pnpm test        # unit tests, including the sample source file against the schema
 pnpm typecheck   # tsc --noEmit across packages
 pnpm lint        # biome (format + lint); `pnpm format` fixes formatting
 pnpm build       # and `pnpm build:firefox`
@@ -210,14 +167,7 @@ A pre-push git hook runs the same five checks CI does (typecheck, lint, test, bu
 build:firefox), so a red push is caught locally. `pnpm test:e2e` runs the Playwright test from
 `packages/extension` and is not part of CI.
 
-For a **site definition** PR:
-1. Edit `recipes/index.json` and add your recipe and/or quick link.
-2. Confirm the tests pass (a discarded entry means a schema mismatch to fix).
-3. Open a PR that names the site and says what you tested: movie page, episode page, and that a
-   scrobble fired.
-
-Shipping a recipe in this repo makes its selectors **public**. That is the intended, crowdsourced
-model. Don't include anything you wouldn't want public, and never commit tracker OAuth
-credentials or signing keys (`.env` and `.keys/` are git-ignored for this reason).
+Never commit tracker OAuth credentials or signing keys (`.env` and `.keys/` are git-ignored for
+this reason).
 
 Maintainers: see [`docs/RELEASING.md`](./docs/RELEASING.md) for cutting a release.

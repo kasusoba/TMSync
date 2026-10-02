@@ -1,0 +1,36 @@
+{
+  "name": "Example: Internet Archive films",
+  "homepage": "https://github.com/kasusoba/TMSync/blob/main/docs/RECIPES.md#recipe-sources",
+  "recipes": [
+    {
+      "id": "archive-org",
+      "schemaVersion": 2,
+      "name": "Internet Archive",
+      "trackers": ["trakt"],
+      "match": {
+        "urlPattern": "/details/",
+        "hostnames": ["archive.org"]
+      },
+      "mediaType": "movie",
+      "video": { "selector": "video", "frame": "top" },
+      "extract": {
+        "title": {
+          "source": "meta",
+          "selector": "og:title",
+          "regex": "^(.+?)\\s*:",
+          "group": 1,
+          "transforms": ["trim", "collapseSpaces"]
+        }
+      }
+    }
+  ],
+  "links": [
+    {
+      "id": "archive-org",
+      "name": "Internet Archive",
+      "host": "archive.org",
+      "tracker": "trakt",
+      "search": "/search?query={title}&and[]=mediatype%3A%22movies%22"
+    }
+  ]
+}
