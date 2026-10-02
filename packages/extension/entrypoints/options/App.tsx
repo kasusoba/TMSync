@@ -3,7 +3,7 @@ import { actionError } from "@/lib/errors";
 import { defaultRecipeName } from "@/lib/picker/recipe-builder";
 import { applyBackup, buildBackup, parseBackup } from "@/lib/portability/backup";
 import { sourceFile } from "@/lib/portability/share";
-import { type RecipeState, effectiveRecipes, loadRecipeState } from "@/lib/recipes";
+import { type RecipeState, effectiveRecipes, loadRecipeState, watchRecipes } from "@/lib/recipes";
 import {
   type SiteGroup,
   forkBasesOf,
@@ -1136,6 +1136,26 @@ export function App() {
   // biome-ignore lint/correctness/useExhaustiveDependencies: load once on open
   useEffect(() => {
     void refresh();
+  }, []);
+
+  // Stay current when storage changes behind this page: turning a source off makes
+  // the background remove its quick links a moment later, a refresh brings new
+  // recipes, and another device can sync. Debounced, since one change can touch
+  // several items.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: subscribe once on open
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const later = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => void refresh(), 150);
+    };
+    const offRecipes = watchRecipes(later);
+    const offLinks = quickLinks.watch(later);
+    return () => {
+      if (timer) clearTimeout(timer);
+      offRecipes();
+      offLinks();
+    };
   }, []);
 
   // The popup's "Review" asks Options to open on a tab (and filter). Apply it on
