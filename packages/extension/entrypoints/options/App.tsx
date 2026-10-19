@@ -1609,13 +1609,18 @@ export function App() {
   if (notEnabledCount > 0) counts.sites = notEnabledCount;
 
   return (
-    <div class={clsx("flex min-h-screen flex-col font-sans", t.page)}>
+    <div class={clsx("flex h-screen flex-col font-sans", t.page)}>
       <header class={clsx("flex items-center gap-3 border-b px-5 py-3.5", t.divider)}>
         <span class={clsx("text-[15px] font-semibold tracking-tight", t.heading)}>TMSync</span>
       </header>
 
-      <div class="flex flex-1">
-        <nav class={clsx("flex w-52 shrink-0 flex-col space-y-0.5 border-r p-3", t.divider)}>
+      <div class="flex min-h-0 flex-1">
+        <nav
+          class={clsx(
+            "flex w-52 shrink-0 flex-col space-y-0.5 overflow-y-auto border-r p-3",
+            t.divider,
+          )}
+        >
           {SECTIONS.map((sec) => (
             <button
               key={sec.id}
@@ -1662,7 +1667,7 @@ export function App() {
           </div>
         </nav>
 
-        <main class="min-w-0 flex-1 p-6">
+        <main class="min-w-0 flex-1 overflow-y-auto p-6">
           {/* List sync is a wide table; the other panes read best narrow. */}
           <div class={clsx("mx-auto space-y-3", active === "listsync" ? "max-w-6xl" : "max-w-xl")}>
             {actError && (
